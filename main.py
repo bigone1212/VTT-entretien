@@ -43,14 +43,22 @@ def init_db():
     cursor.execute("SELECT COUNT(*) FROM composants")
     if cursor.fetchone()[0] == 0:
         composants_initiaux = [
-            ("Chaîne Shimano XT (Remplacement)", 1200, 2000, "piece", 55, 68),
-            ("Nettoyage & Lubrification chaîne", 2500, 300, "maintenance", 55, 76),
-            ("Plaquettes de frein avant (N04C)", 0, 1500, "piece", 21, 46),
-            ("Plaquettes de frein arrière", 0, 1500, "piece", 78, 52),
-            ("Fourche Fox 36 - Entretien 50h", 0, 800, "maintenance", 23, 35),
-            ("Fourche Fox 36 - Révision lourde 200h", 0, 3200, "maintenance", 27, 28),
-            ("Cassette Shimano XT 12-speed", 0, 4000, "piece", 73, 58),
-            ("Pneu arrière / tubeless", 0, 2500, "piece", 84, 78)
+            # 1. Chaîne Shimano XT -> sur la transmission (entre pédalier et cassette arrière)
+            ("Chaîne Shimano XT (Remplacement)", 1200, 2000, "piece", 43, 72),
+            # 2. Nettoyage chaîne -> juste à côté du pédalier
+            ("Nettoyage & Lubrification chaîne", 2500, 300, "maintenance", 53, 76),
+            # 3. Plaquettes de frein avant -> sur l'étrier de frein avant (roue de droite)
+            ("Plaquettes de frein avant (N04C)", 0, 1500, "piece", 78, 62),
+            # 4. Plaquettes de frein arrière -> sur l'étrier de frein arrière (roue de gauche)
+            ("Plaquettes de frein arrière", 0, 1500, "piece", 31, 64),
+            # 5. Fourche Fox 36 (50h) -> sur le plongeur de la fourche (avant)
+            ("Fourche Fox 36 - Entretien 50h", 0, 800, "maintenance", 79, 44),
+            # 6. Fourche Fox 36 (200h) -> un peu plus haut sur la fourche
+            ("Fourche Fox 36 - Révision lourde 200h", 0, 3200, "maintenance", 75, 34),
+            # 7. Cassette Shimano XT -> au centre de la roue arrière
+            ("Cassette Shimano XT 12-speed", 0, 4000, "piece", 31, 74),
+            # 8. Pneu arrière / tubeless -> sur le pneu de gauche
+            ("Pneu arrière / tubeless", 0, 2500, "piece", 16, 58)
         ]
         cursor.executemany("INSERT INTO composants (nom, km_depart, seuil_alerte, categorie, pos_x, pos_y) VALUES (?, ?, ?, ?, ?, ?)", composants_initiaux)
         conn.commit()
@@ -286,7 +294,6 @@ def accueil():
         </div>
 
         <div class="bike-container">
-            <!-- Utilisation du nouveau lien direct Roulez Jeunesse -->
             <img src="https://shop.roulezjeunesse.com/cdn/shop/files/CubeStereoHybridONE44EXC8001.jpg?v=1736521382&width=1220" alt="Mon Cube Stereo Hybrid" class="bike-img">
             <div id="hotspotsContainer"></div>
         </div>
