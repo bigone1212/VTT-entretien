@@ -147,14 +147,14 @@ def accueil():
                 font-weight: 600;
                 cursor: pointer;
             }
-            /* Schéma interactif du vélo corrigé (sans écrasement) */
+            /* Schéma interactif du vélo */
             .bike-container {
                 position: relative;
                 width: 100%;
                 max-width: 600px;
                 height: 220px;
                 margin: 0 auto 20px auto;
-                background: var(--card-bg);
+                background: #ffffff;
                 border-radius: 14px;
                 overflow: hidden;
                 border: 1px solid rgba(255,255,255,0.05);
@@ -287,9 +287,9 @@ def accueil():
             </div>
         </div>
 
-        <!-- Schéma interactif avec la photo du Cube Stereo Hybrid -->
+        <!-- Schéma interactif avec une image propre du VTTAE -->
         <div class="bike-container">
-            <img src="https://images.mhw-bike.fr/pub/media/catalog/product/cache/60fd909c855a9b8eb6a7cb89115b0baf/c/u/cube-stereo-hybrid-one44-hpc-exc-800-slabgrey-n-black-2027.jpg" alt="Mon Cube Stereo Hybrid" class="bike-img">
+            <img src="https://images.unsplash.com/photo-1576435728678-68d0fbf94e91?auto=format&fit=crop&w=800&q=80" alt="Mon Cube Stereo Hybrid" class="bike-img">
             <div id="hotspotsContainer"></div>
         </div>
 
