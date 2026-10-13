@@ -151,7 +151,7 @@ def accueil():
                 position: relative;
                 width: 100%;
                 max-width: 600px;
-                height: 240px;
+                height: 260px;
                 margin: 0 auto 20px auto;
                 background: #ffffff;
                 border-radius: 14px;
@@ -286,8 +286,8 @@ def accueil():
         </div>
 
         <div class="bike-container">
-            <!-- Image intégrée directement en dur, affichage garanti à 100% -->
-            <img src="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=" alt="Mon Cube Stereo Hybrid" class="bike-img" id="cubeImg">
+            <!-- Utilisation du nouveau lien direct Roulez Jeunesse -->
+            <img src="https://shop.roulezjeunesse.com/cdn/shop/files/CubeStereoHybridONE44EXC8001.jpg?v=1736521382&width=1220" alt="Mon Cube Stereo Hybrid" class="bike-img">
             <div id="hotspotsContainer"></div>
         </div>
 
