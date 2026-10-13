@@ -34,7 +34,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS historique (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             composant_id INTEGER,
-            date_remplacement TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            date_remplacement TEXT DEFAULT CURRENT_TIMESTAMP,
             cout REAL DEFAULT 0,
             notes TEXT,
             FOREIGN KEY (composant_id) REFERENCES composants (id)
@@ -43,9 +43,7 @@ def init_db():
     cursor.execute("SELECT COUNT(*) FROM composants")
     if cursor.fetchone()[0] == 0:
         composants_initiaux = [
-            # 1. Chaîne Shimano XT -> décalé légèrement vers la gauche (pos_x: 27)
             ("Chaîne Shimano XT (Remplacement)", 1200, 2000, "piece", 27, 76),
-            # 2. Nettoyage & Lubrification chaîne (test 85%)
             ("Nettoyage & Lubrification chaîne", 2445, 300, "maintenance", 35, 76),
             ("Plaquettes de frein avant (N04C)", 0, 1500, "piece", 70, 62),
             ("Plaquettes de frein arrière", 0, 1500, "piece", 22, 47),
@@ -66,6 +64,7 @@ class SynchroRequest(BaseModel):
 class RemplacementRequest(BaseModel):
     notes: Optional[str] = "Intervention standard"
     cout: Optional[float] = 0.0
+    date_remplacement: Optional[str] = None
 
 @app.get("/", response_class=HTMLResponse)
 def accueil():
@@ -133,15 +132,18 @@ def accueil():
                 display: flex;
                 gap: 10px;
             }
-            input[type="number"] {
+            input[type="number"], input[type="text"], input[type="date"], select {
                 flex: 1;
                 background: #0f1117;
                 border: 1px solid #2a303c;
                 border-radius: 8px;
                 padding: 10px;
                 color: #fff;
-                font-size: 1.1rem;
+                font-size: 1rem;
                 outline: none;
+                width: 100%;
+                box-sizing: border-box;
+                margin-bottom: 10px;
             }
             button.btn-primary {
                 background: var(--accent);
@@ -214,7 +216,7 @@ def accueil():
                 flex-direction: column;
                 gap: 12px;
                 max-width: 600px;
-                margin: 0 auto;
+                margin: 0 auto 20px auto;
             }
             .card {
                 background: var(--card-bg);
@@ -264,12 +266,9 @@ def accueil():
                 background: var(--success);
                 border-radius: 6px;
             }
-            .bar-fill.near-warning {
-                background: var(--warning);
-            }
-            .bar-fill.warning {
-                background: var(--danger);
-            }
+            .bar-fill.near-warning { background: var(--warning); }
+            .bar-fill.warning { background: var(--danger); }
+            
             button.btn-action {
                 background: rgba(255,255,255,0.05);
                 color: var(--text-color);
@@ -279,6 +278,30 @@ def accueil():
                 border-radius: 8px;
                 font-size: 0.85rem;
                 cursor: pointer;
+            }
+            .history-section {
+                max-width: 600px;
+                margin: 0 auto;
+                background: var(--card-bg);
+                border-radius: 14px;
+                padding: 16px;
+                border: 1px solid rgba(255,255,255,0.05);
+                box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            }
+            .history-section h2 {
+                font-size: 1.1rem;
+                margin-top: 0;
+                color: #fff;
+            }
+            .history-item {
+                font-size: 0.85rem;
+                padding: 8px 0;
+                border-bottom: 1px solid rgba(255,255,255,0.05);
+                display: flex;
+                justify-content: space-between;
+            }
+            .history-item:last-child {
+                border-bottom: none;
             }
             .loading {
                 text-align: center;
@@ -310,18 +333,38 @@ def accueil():
             <div class="loading">Chargement des composants...</div>
         </div>
 
+        <div class="history-section">
+            <h2>📜 Ajouter un ancien entretien</h2>
+            <select id="histComposant"></select>
+            <input type="date" id="histDate">
+            <input type="number" step="0.01" id="histCout" placeholder="Coût en € (optionnel)">
+            <input type="text" id="histNotes" placeholder="Notes (ex: Acheté chez le bouclard, purge, etc.)">
+            <button class="btn-primary" style="width:100%; padding:10px;" onclick="ajouterHistorique()">Enregistrer l'ancien entretien</button>
+            
+            <h2 style="margin-top: 24px;">📋 Historique des interventions</h2>
+            <div id="historyList">
+                <div class="loading">Chargement de l'historique...</div>
+            </div>
+        </div>
+
         <script>
+            let composantsData = [];
+
             async function chargerEtat() {
                 try {
                     const res = await fetch('/api/etat');
                     const data = await res.json();
                     
                     document.getElementById('veloInfo').innerText = `Kilométrage total : ${data.km_total} km`;
+                    composantsData = data.composants;
                     
                     const container = document.getElementById('composantsList');
                     const hotspotsContainer = document.getElementById('hotspotsContainer');
+                    const selectComp = document.getElementById('histComposant');
+                    
                     container.innerHTML = '';
                     hotspotsContainer.innerHTML = '';
+                    selectComp.innerHTML = '';
                     
                     data.composants.forEach((c, index) => {
                         let statusClass = 'ok';
@@ -337,6 +380,8 @@ def accueil():
                         const badgeText = c.pourcentage_usure >= 100 ? 'À faire' : `${c.pourcentage_usure}%`;
                         const btnLabel = c.categorie === 'maintenance' ? '🔧 Marquer Fait' : '⚙️ Remplacer';
                         
+                        selectComp.innerHTML += `<option value="${c.id}">${c.nom}</option>`;
+
                         hotspotsContainer.innerHTML += `
                             <div class="hotspot ${hotspotClass}" style="top: ${c.pos_y}%; left: ${c.pos_x}%;" title="${c.nom} (${c.pourcentage_usure}%)" onclick="remplacer(${c.id}, '${c.nom}')">
                                 ${index + 1}
@@ -360,9 +405,37 @@ def accueil():
                             </div>
                         `;
                     });
+
+                    chargerHistorique();
                 } catch (e) {
                     console.error(e);
                 }
+            }
+
+            async function chargerHistorique() {
+                const res = await fetch('/api/historique');
+                const history = await res.json();
+                const listDiv = document.getElementById('historyList');
+                listDiv.innerHTML = '';
+                
+                if(history.length === 0) {
+                    listDiv.innerHTML = '<p style="color: var(--text-muted); font-size: 0.85rem;">Aucune intervention enregistrée.</p>';
+                    return;
+                }
+
+                history.forEach(h => {
+                    listDiv.innerHTML += `
+                        <div class="history-item">
+                            <div>
+                                <strong>${h.composant_nom}</strong><br>
+                                <span style="color: var(--text-muted);">${h.notes || 'Intervention standard'} - <em>${h.date_remplacement}</em></span>
+                            </div>
+                            <div style="text-align: right; font-weight: 600; color: var(--accent);">
+                                ${h.cout} €
+                            </div>
+                        </div>
+                    `;
+                });
             }
 
             async function syncKm() {
@@ -383,9 +456,32 @@ def accueil():
                 await fetch(`/api/composants/${id}/remplacer`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({notes: "Mise à jour visuelle mobile", cout: 0})
+                    body: JSON.stringify({notes: "Remplacement récent", cout: 0})
                 });
                 chargerEtat();
+            }
+
+            async function ajouterHistorique() {
+                const composant_id = document.getElementById('histComposant').value;
+                const date_remplacement = document.getElementById('histDate').value;
+                const cout = parseFloat(document.getElementById('histCout').value) || 0.0;
+                const notes = document.getElementById('histNotes').value || "Ancien entretien";
+
+                if(!date_remplacement) {
+                    alert("Veuillez sélectionner une date.");
+                    return;
+                }
+
+                await fetch(`/api/historique`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({composant_id: parseInt(composant_id), date_remplacement, cout, notes})
+                });
+
+                document.getElementById('histDate').value = '';
+                document.getElementById('histCout').value = '';
+                document.getElementById('histNotes').value = '';
+                chargerHistorique();
             }
 
             chargerEtat();
@@ -430,6 +526,39 @@ def obtenir_etat():
         })
     return {"km_total": km_global, "composants": resultat}
 
+@app.get("/api/historique")
+def obtenir_historique():
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT h.id, c.nom as composant_nom, h.date_remplacement, h.cout, h.notes 
+        FROM historique h 
+        JOIN composants c ON h.composant_id = c.id 
+        ORDER BY h.date_remplacement DESC
+    """)
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+class HistoriqueRequest(BaseModel):
+    composant_id: int
+    date_remplacement: str
+    cout: Optional[float] = 0.0
+    notes: Optional[str] = "Ancien entretien"
+
+@app.post("/api/historique")
+def ajouter_historique(data: HistoriqueRequest):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO historique (composant_id, date_remplacement, cout, notes) VALUES (?, ?, ?, ?)",
+        (data.composant_id, data.date_remplacement, data.cout, data.notes)
+    )
+    conn.commit()
+    conn.close()
+    return {"statut": "success"}
+
 @app.post("/api/sync")
 def synchroniser_kilometrage(data: SynchroRequest):
     conn = sqlite3.connect(DB_NAME)
@@ -449,9 +578,11 @@ def remplacer_composant(composant_id: int, data: RemplacementRequest):
     km_global = velo["km_total"] if velo else 0
     
     cursor.execute("UPDATE composants SET km_depart = ? WHERE id = ?", (km_global, composant_id))
+    
+    date_resp = data.date_remplacement if data.date_remplacement else "Aujourd'hui"
     cursor.execute(
-        "INSERT INTO historique (composant_id, cout, notes) VALUES (?, ?, ?)",
-        (composant_id, data.cout, data.notes)
+        "INSERT INTO historique (composant_id, date_remplacement, cout, notes) VALUES (?, ?, ?, ?)",
+        (composant_id, date_resp, data.cout, data.notes)
     )
     
     conn.commit()
