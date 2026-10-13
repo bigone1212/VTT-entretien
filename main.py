@@ -49,8 +49,8 @@ def init_db():
             ("Nettoyage & Lubrification chaîne", 2500, 300, "maintenance", 53, 76),
             # 3. Plaquettes de frein avant
             ("Plaquettes de frein avant (N04C)", 0, 1500, "piece", 78, 62),
-            # 4. Plaquettes de frein arrière -> bien au-dessus de la cassette
-            ("Plaquettes de frein arrière", 0, 1500, "piece", 27, 44),
+            # 4. Plaquettes de frein arrière -> légèrement en bas à droite de la position précédente
+            ("Plaquettes de frein arrière", 0, 1500, "piece", 30, 52),
             # 5. Fourche Fox 36 (50h)
             ("Fourche Fox 36 - Entretien 50h", 0, 800, "maintenance", 79, 44),
             # 6. Fourche Fox 36 (200h)
