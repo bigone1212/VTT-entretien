@@ -49,7 +49,6 @@ def init_db():
             ("Plaquettes de frein arrière", 0, 1500, "piece", 30, 47),
             ("Fourche Fox 36 - Entretien 50h", 0, 800, "maintenance", 79, 44),
             ("Fourche Fox 36 - Révision lourde 200h", 0, 3200, "maintenance", 75, 34),
-            # 7. Cassette Shimano XT -> décalé vers la gauche
             ("Cassette Shimano XT 12-speed", 0, 4000, "piece", 27, 63),
             ("Pneu arrière / tubeless", 0, 2500, "piece", 16, 58)
         ]
@@ -116,6 +115,9 @@ def accueil():
                 margin-bottom: 20px;
                 box-shadow: 0 4px 12px rgba(0,0,0,0.3);
                 border: 1px solid rgba(255,255,255,0.05);
+                max-width: 600px;
+                margin-left: auto;
+                margin-right: auto;
             }
             .sync-card label {
                 display: block;
@@ -152,21 +154,19 @@ def accueil():
                 position: relative;
                 width: 100%;
                 max-width: 600px;
-                height: 260px;
+                aspect-ratio: 16 / 9; /* Force un ratio fixe identique sur tous les écrans pour que les % ne bougent pas */
                 margin: 0 auto 20px auto;
                 background: #ffffff;
                 border-radius: 14px;
                 overflow: hidden;
                 border: 1px solid rgba(255,255,255,0.05);
                 box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-                display: flex;
-                align-items: center;
-                justify-content: center;
             }
             .bike-img {
-                max-width: 100%;
-                max-height: 100%;
-                object-fit: contain;
+                width: 100%;
+                height: 100%;
+                object-fit: contain; /* S'assure que l'image épouse parfaitement le conteneur sans se déformer */
+                display: block;
             }
             .hotspot {
                 position: absolute;
@@ -278,7 +278,7 @@ def accueil():
             <p id="veloInfo">Kilométrage total : chargement...</p>
         </div>
 
-        <div class="sync-card" style="max-width: 600px; margin-left: auto; margin-right: auto;">
+        <div class="sync-card">
             <label for="kmInput">Kilométrage total du VTTAE</label>
             <div class="sync-row">
                 <input type="number" id="kmInput" placeholder="Ex: 2700">
