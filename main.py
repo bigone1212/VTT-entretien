@@ -43,10 +43,10 @@ def init_db():
     cursor.execute("SELECT COUNT(*) FROM composants")
     if cursor.fetchone()[0] == 0:
         composants_initiaux = [
-            # 1. Chaîne Shimano XT -> décalé vers la gauche (pos_x: 30)
-            ("Chaîne Shimano XT (Remplacement)", 1200, 2000, "piece", 30, 72),
-            # 2. Nettoyage chaîne -> décalé vers la gauche (pos_x: 40)
-            ("Nettoyage & Lubrification chaîne", 2500, 300, "maintenance", 40, 76),
+            # 1. Chaîne Shimano XT -> descendu (pos_y: 76)
+            ("Chaîne Shimano XT (Remplacement)", 1200, 2000, "piece", 30, 76),
+            # 2. Nettoyage chaîne -> décalé à gauche (pos_x: 35)
+            ("Nettoyage & Lubrification chaîne", 2500, 300, "maintenance", 35, 76),
             # 3. Plaquettes de frein avant (N04C)
             ("Plaquettes de frein avant (N04C)", 0, 1500, "piece", 70, 62),
             # 4. Plaquettes de frein arrière
