@@ -12,11 +12,20 @@ def init_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.execute("""
+        CREATE TABLE IF NOT EXISTS velo (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            km_total INTEGER DEFAULT 0
+        )
+    """)
+    cursor.execute("INSERT OR IGNORE INTO velo (id, km_total) VALUES (1, 2700)")
+    
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS composants (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             nom TEXT NOT NULL,
-            km_actuel INTEGER DEFAULT 0,
-            seuil_alerte INTEGER NOT NULL
+            km_depart INTEGER DEFAULT 0,
+            seuil_alerte INTEGER NOT NULL,
+            categorie TEXT DEFAULT 'piece'
         )
     """)
     cursor.execute("""
@@ -32,14 +41,16 @@ def init_db():
     cursor.execute("SELECT COUNT(*) FROM composants")
     if cursor.fetchone()[0] == 0:
         composants_initiaux = [
-            ("Chaîne Shimano XT", 0, 2000),
-            ("Plaquettes de frein avant (N04C)", 0, 1500),
-            ("Plaquettes de frein arrière", 0, 1500),
-            ("Fourche Fox 36 Float AWL", 0, 50),
-            ("Cassette Shimano XT 12-speed", 0, 4000),
-            ("Pneu arrière / tubeless", 0, 2500)
+            ("Chaîne Shimano XT (Remplacement)", 1200, 2000, "piece"),
+            ("Nettoyage & Lubrification chaîne", 2500, 300, "maintenance"),
+            ("Plaquettes de frein avant (N04C)", 0, 1500, "piece"),
+            ("Plaquettes de frein arrière", 0, 1500, "piece"),
+            ("Fourche Fox 36 - Entretien 50h (joints/mousse)", 0, 800, "maintenance"),   # ~800km équivaut à 50h de VTT engagé
+            ("Fourche Fox 36 - Révision lourde 200h", 0, 3200, "maintenance"),
+            ("Cassette Shimano XT 12-speed", 0, 4000, "piece"),
+            ("Pneu arrière / tubeless", 0, 2500, "piece")
         ]
-        cursor.executemany("INSERT INTO composants (nom, km_actuel, seuil_alerte) VALUES (?, ?, ?)", composants_initiaux)
+        cursor.executemany("INSERT INTO composants (nom, km_depart, seuil_alerte, categorie) VALUES (?, ?, ?, ?)", composants_initiaux)
         conn.commit()
     conn.close()
 
@@ -49,7 +60,7 @@ class SynchroRequest(BaseModel):
     km_total: int
 
 class RemplacementRequest(BaseModel):
-    notes: Optional[str] = "Remplacement standard"
+    notes: Optional[str] = "Intervention standard"
     cout: Optional[float] = 0.0
 
 @app.get("/", response_class=HTMLResponse)
@@ -228,13 +239,13 @@ def accueil():
     <body>
         <div class="header">
             <h1>🚲 Cube Stereo Hybrid</h1>
-            <p>Tableau de bord d'usure & maintenance</p>
+            <p id="veloInfo">Kilométrage total : chargement...</p>
         </div>
 
         <div class="sync-card">
             <label for="kmInput">Kilométrage total du VTTAE</label>
             <div class="sync-row">
-                <input type="number" id="kmInput" placeholder="Ex: 1250">
+                <input type="number" id="kmInput" placeholder="Ex: 2700">
                 <button class="btn-primary" onclick="syncKm()">Mettre à jour</button>
             </div>
         </div>
@@ -248,13 +259,17 @@ def accueil():
                 try {
                     const res = await fetch('/api/etat');
                     const data = await res.json();
+                    
+                    document.getElementById('veloInfo').innerText = `Kilométrage total : ${data.km_total} km`;
+                    
                     const container = document.getElementById('composantsList');
                     container.innerHTML = '';
                     
                     data.composants.forEach(c => {
                         const isWarn = c.pourcentage_usure >= 100;
                         const badgeClass = isWarn ? 'warning' : 'ok';
-                        const badgeText = isWarn ? 'À remplacer' : `${c.pourcentage_usure}% usé`;
+                        const badgeText = isWarn ? 'À faire / Remplacer' : `${c.pourcentage_usure}%`;
+                        const btnLabel = c.categorie === 'maintenance' ? '🔧 Marquer Fait' : '⚙️ Déclarer Remplacement';
                         
                         container.innerHTML += `
                             <div class="card">
@@ -263,13 +278,13 @@ def accueil():
                                     <div class="badge ${badgeClass}">${badgeText}</div>
                                 </div>
                                 <div class="stats-row">
-                                    <span>Actuel : <strong>${c.km_actuel} km</strong></span>
-                                    <span>Seuil : <strong>${c.seuil_alerte} km</strong></span>
+                                    <span>Parcouru : <strong>${c.km_actuel} km</strong></span>
+                                    <span>Objectif/Seuil : <strong>${c.seuil_alerte} km</strong></span>
                                 </div>
                                 <div class="bar-bg">
                                     <div class="bar-fill ${isWarn ? 'warning' : ''}" style="width: ${Math.min(c.pourcentage_usure, 100)}%"></div>
                                 </div>
-                                <button class="btn-action" onclick="remplacer(${c.id}, '${c.nom}')">⚙️ Déclarer Remplacement</button>
+                                <button class="btn-action" onclick="remplacer(${c.id}, '${c.nom}')">${btnLabel}</button>
                             </div>
                         `;
                     });
@@ -295,11 +310,11 @@ def accueil():
             }
 
             async function remplacer(id, nom) {
-                if(!confirm(`Confirmer le remplacement / entretien de : ${nom} ?`)) return;
+                if(!confirm(`Confirmer la mise à jour pour : ${nom} ?`)) return;
                 await fetch(`/api/composants/${id}/remplacer`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({notes: "Remplacement interface mobile", cout: 0})
+                    body: JSON.stringify({notes: "Action validée depuis interface mobile", cout: 0})
                 });
                 chargerEtat();
             }
@@ -315,31 +330,39 @@ def obtenir_etat():
     conn = sqlite3.connect(DB_NAME)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
+    
+    cursor.execute("SELECT km_total FROM velo WHERE id = 1")
+    velo = cursor.fetchone()
+    km_global = velo["km_total"] if velo else 0
+    
     cursor.execute("SELECT * FROM composants")
     rows = cursor.fetchall()
     conn.close()
     
     resultat = []
     for row in rows:
-        km = row["km_actuel"]
+        km_depart = row["km_depart"]
+        km = max(0, km_global - km_depart)
         seuil = row["seuil_alerte"]
         pourcentage = min(round((km / seuil) * 100), 100) if seuil > 0 else 0
         alerte = km >= seuil
+        
         resultat.append({
             "id": row["id"],
             "nom": row["nom"],
             "km_actuel": km,
             "seuil_alerte": seuil,
             "pourcentage_usure": pourcentage,
-            "alerte_entretien": alerte
+            "alerte_entretien": alerte,
+            "categorie": row["categorie"]
         })
-    return {"composants": resultat}
+    return {"km_total": km_global, "composants": resultat}
 
 @app.post("/api/sync")
 def synchroniser_kilometrage(data: SynchroRequest):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    cursor.execute("UPDATE composants SET km_actuel = ?", (data.km_total,))
+    cursor.execute("UPDATE velo SET km_total = ? WHERE id = 1", (data.km_total,))
     conn.commit()
     conn.close()
     return {"statut": "success"}
@@ -348,12 +371,17 @@ def synchroniser_kilometrage(data: SynchroRequest):
 def remplacer_composant(composant_id: int, data: RemplacementRequest):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM composants WHERE id = ?", (composant_id,))
-    if not cursor.fetchone():
-        conn.close()
-        raise HTTPException(status_code=404, detail="Composant non trouvé")
-    cursor.execute("UPDATE composants SET km_actuel = 0 WHERE id = ?", (composant_id,))
-    cursor.execute("INSERT INTO historique (composant_id, cout, notes) VALUES (?, ?, ?)", (composant_id, data.cout, data.notes))
+    
+    cursor.execute("SELECT km_total FROM velo WHERE id = 1")
+    velo = cursor.fetchone()
+    km_global = velo["km_total"] if velo else 0
+    
+    cursor.execute("UPDATE composants SET km_depart = ? WHERE id = ?", (km_global, composant_id))
+    cursor.execute(
+        "INSERT INTO historique (composant_id, cout, notes) VALUES (?, ?, ?)",
+        (composant_id, data.cout, data.notes)
+    )
+    
     conn.commit()
     conn.close()
     return {"statut": "success"}
