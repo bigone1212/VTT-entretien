@@ -348,15 +348,12 @@ def accueil():
         </div>
 
         <script>
-            let composantsData = [];
-
             async function chargerEtat() {
                 try {
                     const res = await fetch('/api/etat');
                     const data = await res.json();
                     
                     document.getElementById('veloInfo').innerText = `Kilométrage total : ${data.km_total} km`;
-                    composantsData = data.composants;
                     
                     const container = document.getElementById('composantsList');
                     const hotspotsContainer = document.getElementById('hotspotsContainer');
@@ -428,10 +425,10 @@ def accueil():
                         <div class="history-item">
                             <div>
                                 <strong>${h.composant_nom}</strong><br>
-                                <span style="color: var(--text-muted);">${h.notes || 'Intervention standard'} - <em>${h.date_remplacement}</em></span>
+                                <span style="color: var(--text-muted);">${h.notes || 'Intervention réalisée'} - <em>${h.date_remplacement}</em></span>
                             </div>
                             <div style="text-align: right; font-weight: 600; color: var(--accent);">
-                                ${h.cout} €
+                                ${h.cout > 0 ? h.cout + ' €' : ''}
                             </div>
                         </div>
                     `;
@@ -453,10 +450,17 @@ def accueil():
 
             async function remplacer(id, nom) {
                 if(!confirm(`Confirmer la mise à jour pour : ${nom} ?`)) return;
+                
+                const aujourdhui = new Date().toISOString().split('T')[0];
+                
                 await fetch(`/api/composants/${id}/remplacer`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({notes: "Remplacement récent", cout: 0})
+                    body: JSON.stringify({
+                        notes: "Entretien réalisé", 
+                        cout: 0,
+                        date_remplacement: aujourdhui
+                    })
                 });
                 chargerEtat();
             }
@@ -481,7 +485,7 @@ def accueil():
                 document.getElementById('histDate').value = '';
                 document.getElementById('histCout').value = '';
                 document.getElementById('histNotes').value = '';
-                chargerHistorique();
+                chargerEtat();
             }
 
             chargerEtat();
@@ -535,7 +539,7 @@ def obtenir_historique():
         SELECT h.id, c.nom as composant_nom, h.date_remplacement, h.cout, h.notes 
         FROM historique h 
         JOIN composants c ON h.composant_id = c.id 
-        ORDER BY h.date_remplacement DESC
+        ORDER BY h.id DESC
     """)
     rows = cursor.fetchall()
     conn.close()
