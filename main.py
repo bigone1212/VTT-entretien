@@ -43,21 +43,13 @@ def init_db():
     cursor.execute("SELECT COUNT(*) FROM composants")
     if cursor.fetchone()[0] == 0:
         composants_initiaux = [
-            # 1. Chaîne Shimano XT
             ("Chaîne Shimano XT (Remplacement)", 1200, 2000, "piece", 30, 76),
-            # 2. Nettoyage chaîne
             ("Nettoyage & Lubrification chaîne", 2500, 300, "maintenance", 35, 76),
-            # 3. Plaquettes de frein avant (N04C)
             ("Plaquettes de frein avant (N04C)", 0, 1500, "piece", 70, 62),
-            # 4. Plaquettes de frein arrière
             ("Plaquettes de frein arrière", 0, 1500, "piece", 22, 47),
-            # 5. Fourche Fox 36 (50h) -> décalé à gauche (pos_x: 75)
             ("Fourche Fox 36 - Entretien 50h", 0, 800, "maintenance", 75, 44),
-            # 6. Fourche Fox 36 (200h) -> décalé à gauche (pos_x: 71)
             ("Fourche Fox 36 - Révision lourde 200h", 0, 3200, "maintenance", 71, 34),
-            # 7. Cassette Shimano XT
             ("Cassette Shimano XT 12-speed", 0, 4000, "piece", 20, 63),
-            # 8. Pneu arrière / tubeless -> décalé à gauche (pos_x: 7)
             ("Pneu arrière / tubeless", 0, 2500, "piece", 7, 58)
         ]
         cursor.executemany("INSERT INTO composants (nom, km_depart, seuil_alerte, categorie, pos_x, pos_y) VALUES (?, ?, ?, ?, ?, ?)", composants_initiaux)
@@ -199,12 +191,21 @@ def accueil():
             }
             .hotspot.warning {
                 background: var(--danger);
-                animation: pulse 1.5s infinite;
+                animation: pulse-red 1.5s infinite;
             }
-            @keyframes pulse {
+            .hotspot.near-warning {
+                background: var(--warning);
+                animation: pulse-orange 1.5s infinite;
+            }
+            @keyframes pulse-red {
                 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
                 70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
                 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+            }
+            @keyframes pulse-orange {
+                0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7); }
+                70% { box-shadow: 0 0 0 10px rgba(245, 158, 11, 0); }
+                100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
             }
             .grid {
                 display: flex;
@@ -238,6 +239,7 @@ def accueil():
                 font-weight: 600;
             }
             .badge.ok { background: rgba(16, 185, 129, 0.15); color: var(--success); }
+            .badge.near-warning { background: rgba(245, 158, 11, 0.15); color: var(--warning); }
             .badge.warning { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
             
             .stats-row {
@@ -259,6 +261,9 @@ def accueil():
                 height: 100%;
                 background: var(--success);
                 border-radius: 6px;
+            }
+            .bar-fill.near-warning {
+                background: var(--warning);
             }
             .bar-fill.warning {
                 background: var(--danger);
@@ -317,13 +322,21 @@ def accueil():
                     hotspotsContainer.innerHTML = '';
                     
                     data.composants.forEach((c, index) => {
-                        const isWarn = c.pourcentage_usure >= 100;
-                        const badgeClass = isWarn ? 'warning' : 'ok';
-                        const badgeText = isWarn ? 'À faire' : `${c.pourcentage_usure}%`;
+                        let statusClass = 'ok';
+                        let hotspotClass = '';
+                        if (c.pourcentage_usure >= 100) {
+                            statusClass = 'warning';
+                            hotspotClass = 'warning';
+                        } else if (c.pourcentage_usure >= 85) {
+                            statusClass = 'near-warning';
+                            hotspotClass = 'near-warning';
+                        }
+
+                        const badgeText = c.pourcentage_usure >= 100 ? 'À faire' : `${c.pourcentage_usure}%`;
                         const btnLabel = c.categorie === 'maintenance' ? '🔧 Marquer Fait' : '⚙️ Remplacer';
                         
                         hotspotsContainer.innerHTML += `
-                            <div class="hotspot ${isWarn ? 'warning' : ''}" style="top: ${c.pos_y}%; left: ${c.pos_x}%;" title="${c.nom}" onclick="remplacer(${c.id}, '${c.nom}')">
+                            <div class="hotspot ${hotspotClass}" style="top: ${c.pos_y}%; left: ${c.pos_x}%;" title="${c.nom} (${c.pourcentage_usure}%)" onclick="remplacer(${c.id}, '${c.nom}')">
                                 ${index + 1}
                             </div>
                         `;
@@ -332,14 +345,14 @@ def accueil():
                             <div class="card" id="card-${c.id}">
                                 <div class="card-top">
                                     <div class="component-name">📍 #${index + 1} - ${c.nom}</div>
-                                    <div class="badge ${badgeClass}">${badgeText}</div>
+                                    <div class="badge ${statusClass}">${badgeText}</div>
                                 </div>
                                 <div class="stats-row">
                                     <span>Parcouru : <strong>${c.km_actuel} km</strong></span>
                                     <span>Seuil : <strong>${c.seuil_alerte} km</strong></span>
                                 </div>
                                 <div class="bar-bg">
-                                    <div class="bar-fill ${isWarn ? 'warning' : ''}" style="width: ${Math.min(c.pourcentage_usure, 100)}%"></div>
+                                    <div class="bar-fill ${statusClass}" style="width: ${Math.min(c.pourcentage_usure, 100)}%"></div>
                                 </div>
                                 <button class="btn-action" onclick="remplacer(${c.id}, '${c.nom}')">${btnLabel}</button>
                             </div>
