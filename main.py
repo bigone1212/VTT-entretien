@@ -17,6 +17,7 @@ def init_db():
             km_total INTEGER DEFAULT 0
         )
     """)
+    # On fixe le km total à 2700 km
     cursor.execute("INSERT OR IGNORE INTO velo (id, km_total) VALUES (1, 2700)")
     
     cursor.execute("""
@@ -44,7 +45,8 @@ def init_db():
     if cursor.fetchone()[0] == 0:
         composants_initiaux = [
             ("Chaîne Shimano XT (Remplacement)", 1200, 2000, "piece", 30, 76),
-            ("Nettoyage & Lubrification chaîne", 2500, 300, "maintenance", 35, 76),
+            # TEST 85% : km_total (2700) - km_depart (2445) = 255 km parcourus sur 300 km de seuil = 85% d'usure !
+            ("Nettoyage & Lubrification chaîne", 2445, 300, "maintenance", 35, 76),
             ("Plaquettes de frein avant (N04C)", 0, 1500, "piece", 70, 62),
             ("Plaquettes de frein arrière", 0, 1500, "piece", 22, 47),
             ("Fourche Fox 36 - Entretien 50h", 0, 800, "maintenance", 75, 44),
