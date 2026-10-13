@@ -3,7 +3,6 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 import sqlite3
 from typing import Optional
-import base64
 
 app = FastAPI(title="VTTAE Entretien")
 
@@ -43,7 +42,6 @@ def init_db():
     """)
     cursor.execute("SELECT COUNT(*) FROM composants")
     if cursor.fetchone()[0] == 0:
-        # Coordonnées ajustées pour la vraie photo du Cube Stereo Hybrid
         composants_initiaux = [
             ("Chaîne Shimano XT (Remplacement)", 1200, 2000, "piece", 55, 68),
             ("Nettoyage & Lubrification chaîne", 2500, 300, "maintenance", 55, 76),
@@ -288,8 +286,7 @@ def accueil():
         </div>
 
         <div class="bike-container">
-            <!-- Utilisation directe de l'image de ton VTTAE en base64 pour un affichage instantané et garanti -->
-            <img src="/static/cube.jpg" alt="Mon Cube Stereo Hybrid" class="bike-img" onerror="this.src='https://images.unsplash.com/photo-1576435728678-68d0fbf94e91?auto=format&fit=crop&w=800&q=80'">
+            <img src="https://images.mhw-bike.fr/pub/media/catalog/product/cache/60fd909c855a9b8eb6a7cb89115b0baf/c/u/cube-stereo-hybrid-one44-hpc-exc-800-slabgrey-n-black-2027.jpg" alt="Mon Cube Stereo Hybrid" class="bike-img">
             <div id="hotspotsContainer"></div>
         </div>
 
