@@ -42,16 +42,15 @@ def init_db():
     """)
     cursor.execute("SELECT COUNT(*) FROM composants")
     if cursor.fetchone()[0] == 0:
-        # Coordonnées (pos_x, pos_y en %) approximatives sur une image de profil de vélo
         composants_initiaux = [
-            ("Chaîne Shimano XT (Remplacement)", 1200, 2000, "piece", 55, 65),
-            ("Nettoyage & Lubrification chaîne", 2500, 300, "maintenance", 55, 70),
-            ("Plaquettes de frein avant (N04C)", 0, 1500, "piece", 20, 45),
-            ("Plaquettes de frein arrière", 0, 1500, "piece", 80, 50),
-            ("Fourche Fox 36 - Entretien 50h", 0, 800, "maintenance", 22, 35),
-            ("Fourche Fox 36 - Révision lourde 200h", 0, 3200, "maintenance", 25, 30),
-            ("Cassette Shimano XT 12-speed", 0, 4000, "piece", 75, 55),
-            ("Pneu arrière / tubeless", 0, 2500, "piece", 82, 75)
+            ("Chaîne Shimano XT (Remplacement)", 1200, 2000, "piece", 58, 68),
+            ("Nettoyage & Lubrification chaîne", 2500, 300, "maintenance", 58, 76),
+            ("Plaquettes de frein avant (N04C)", 0, 1500, "piece", 21, 46),
+            ("Plaquettes de frein arrière", 0, 1500, "piece", 78, 52),
+            ("Fourche Fox 36 - Entretien 50h", 0, 800, "maintenance", 23, 35),
+            ("Fourche Fox 36 - Révision lourde 200h", 0, 3200, "maintenance", 27, 28),
+            ("Cassette Shimano XT 12-speed", 0, 4000, "piece", 73, 58),
+            ("Pneu arrière / tubeless", 0, 2500, "piece", 84, 78)
         ]
         cursor.executemany("INSERT INTO composants (nom, km_depart, seuil_alerte, categorie, pos_x, pos_y) VALUES (?, ?, ?, ?, ?, ?)", composants_initiaux)
         conn.commit()
@@ -148,13 +147,13 @@ def accueil():
                 font-weight: 600;
                 cursor: pointer;
             }
-            /* Section Vélo Interactif */
+            /* Schéma interactif du vélo */
             .bike-container {
                 position: relative;
                 width: 100%;
                 max-width: 600px;
                 margin: 0 auto 20px auto;
-                background: var(--card-bg);
+                background: #ffffff;
                 border-radius: 14px;
                 overflow: hidden;
                 border: 1px solid rgba(255,255,255,0.05);
@@ -163,7 +162,6 @@ def accueil():
             .bike-img {
                 width: 100%;
                 display: block;
-                opacity: 0.85;
             }
             .hotspot {
                 position: absolute;
@@ -284,10 +282,9 @@ def accueil():
             </div>
         </div>
 
-        <!-- Schéma interactif du vélo -->
+        <!-- Schéma interactif du vélo avec la vraie photo du Cube -->
         <div class="bike-container">
-            <!-- Image de référence d'un VTTAE tout suspendu -->
-            <img src="https://images.unsplash.com/photo-1576435728678-68d0fbf94e91?auto=format&fit=crop&w=800&q=80" alt="VTTAE Schéma" class="bike-img">
+            <img src="https://images.mhw-bike.fr/pub/media/catalog/product/cache/60fd909c855a9b8eb6a7cb89115b0baf/c/u/cube-stereo-hybrid-one44-hpc-exc-800-slabgrey-n-black-2027.jpg" alt="Mon Cube Stereo Hybrid" class="bike-img">
             <div id="hotspotsContainer"></div>
         </div>
 
@@ -314,14 +311,12 @@ def accueil():
                         const badgeText = isWarn ? 'À faire' : `${c.pourcentage_usure}%`;
                         const btnLabel = c.categorie === 'maintenance' ? '🔧 Marquer Fait' : '⚙️ Remplacer';
                         
-                        // Ajout de la bulle interactive sur l'image
                         hotspotsContainer.innerHTML += `
                             <div class="hotspot ${isWarn ? 'warning' : ''}" style="top: ${c.pos_y}%; left: ${c.pos_x}%;" title="${c.nom}" onclick="remplacer(${c.id}, '${c.nom}')">
                                 ${index + 1}
                             </div>
                         `;
 
-                        // Ajout de la carte dans la liste
                         container.innerHTML += `
                             <div class="card" id="card-${c.id}">
                                 <div class="card-top">
