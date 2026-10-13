@@ -49,8 +49,8 @@ def init_db():
             ("Nettoyage & Lubrification chaîne", 2500, 300, "maintenance", 53, 76),
             # 3. Plaquettes de frein avant
             ("Plaquettes de frein avant (N04C)", 0, 1500, "piece", 78, 62),
-            # 4. Plaquettes de frein arrière -> déplacé juste au-dessus de la cassette
-            ("Plaquettes de frein arrière", 0, 1500, "piece", 27, 60),
+            # 4. Plaquettes de frein arrière -> bien au-dessus de la cassette
+            ("Plaquettes de frein arrière", 0, 1500, "piece", 27, 44),
             # 5. Fourche Fox 36 (50h)
             ("Fourche Fox 36 - Entretien 50h", 0, 800, "maintenance", 79, 44),
             # 6. Fourche Fox 36 (200h)
@@ -318,7 +318,7 @@ def accueil():
                     data.composants.forEach((c, index) => {
                         const isWarn = c.pourcentage_usure >= 100;
                         const badgeClass = isWarn ? 'warning' : 'ok';
-                        const badgeTest = isWarn ? 'À faire' : `${c.pourcentage_usure}%`;
+                        const badgeText = isWarn ? 'À faire' : `${c.pourcentage_usure}%`;
                         const btnLabel = c.categorie === 'maintenance' ? '🔧 Marquer Fait' : '⚙️ Remplacer';
                         
                         hotspotsContainer.innerHTML += `
@@ -331,7 +331,7 @@ def accueil():
                             <div class="card" id="card-${c.id}">
                                 <div class="card-top">
                                     <div class="component-name">📍 #${index + 1} - ${c.nom}</div>
-                                    <div class="badge ${badgeClass}">${badgeTest}</div>
+                                    <div class="badge ${badgeClass}">${badgeText}</div>
                                 </div>
                                 <div class="stats-row">
                                     <span>Parcouru : <strong>${c.km_actuel} km</strong></span>
