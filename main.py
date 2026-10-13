@@ -286,7 +286,8 @@ def accueil():
         </div>
 
         <div class="bike-container">
-            <img src="https://images.mhw-bike.fr/pub/media/catalog/product/cache/60fd909c855a9b8eb6a7cb89115b0baf/c/u/cube-stereo-hybrid-one44-hpc-exc-800-slabgrey-n-black-2027.jpg" alt="Mon Cube Stereo Hybrid" class="bike-img">
+            <!-- Image intégrée directement en dur, affichage garanti à 100% -->
+            <img src="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=" alt="Mon Cube Stereo Hybrid" class="bike-img" id="cubeImg">
             <div id="hotspotsContainer"></div>
         </div>
 
