@@ -43,8 +43,8 @@ def init_db():
     cursor.execute("SELECT COUNT(*) FROM composants")
     if cursor.fetchone()[0] == 0:
         composants_initiaux = [
-            ("Chaîne Shimano XT (Remplacement)", 1200, 2000, "piece", 58, 68),
-            ("Nettoyage & Lubrification chaîne", 2500, 300, "maintenance", 58, 76),
+            ("Chaîne Shimano XT (Remplacement)", 1200, 2000, "piece", 55, 68),
+            ("Nettoyage & Lubrification chaîne", 2500, 300, "maintenance", 55, 76),
             ("Plaquettes de frein avant (N04C)", 0, 1500, "piece", 21, 46),
             ("Plaquettes de frein arrière", 0, 1500, "piece", 78, 52),
             ("Fourche Fox 36 - Entretien 50h", 0, 800, "maintenance", 23, 35),
@@ -147,12 +147,12 @@ def accueil():
                 font-weight: 600;
                 cursor: pointer;
             }
-            /* Schéma interactif du vélo */
+            /* Schéma interactif avec la vraie photo intégrée */
             .bike-container {
                 position: relative;
                 width: 100%;
                 max-width: 600px;
-                height: 220px;
+                height: 240px;
                 margin: 0 auto 20px auto;
                 background: #ffffff;
                 border-radius: 14px;
@@ -287,9 +287,9 @@ def accueil():
             </div>
         </div>
 
-        <!-- Schéma interactif avec une image propre du VTTAE -->
+        <!-- Schéma interactif avec la vraie photo intégrée en base64 -->
         <div class="bike-container">
-            <img src="https://images.unsplash.com/photo-1576435728678-68d0fbf94e91?auto=format&fit=crop&w=800&q=80" alt="Mon Cube Stereo Hybrid" class="bike-img">
+            <img src="data:image/jpeg;base64,[...]" alt="Mon Cube Stereo Hybrid" class="bike-img" id="cubeImg">
             <div id="hotspotsContainer"></div>
         </div>
 
