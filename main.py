@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 import sqlite3
 from typing import Optional
+from datetime import date
 
 app = FastAPI(title="VTTAE Entretien")
 
@@ -34,7 +35,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS historique (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             composant_id INTEGER,
-            date_remplacement TEXT DEFAULT CURRENT_TIMESTAMP,
+            date_remplacement TEXT,
             cout REAL DEFAULT 0,
             notes TEXT,
             FOREIGN KEY (composant_id) REFERENCES composants (id)
@@ -65,6 +66,12 @@ class RemplacementRequest(BaseModel):
     notes: Optional[str] = "Intervention standard"
     cout: Optional[float] = 0.0
     date_remplacement: Optional[str] = None
+
+class HistoriqueRequest(BaseModel):
+    composant_id: int
+    date_remplacement: str
+    cout: Optional[float] = 0.0
+    notes: Optional[str] = "Ancien entretien"
 
 @app.get("/", response_class=HTMLResponse)
 def accueil():
@@ -457,8 +464,8 @@ def accueil():
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
-                        notes: "Entretien réalisé", 
-                        cout: 0,
+                        notes: "Intervention standard", 
+                        cout: 0.0,
                         date_remplacement: aujourdhui
                     })
                 });
@@ -545,12 +552,6 @@ def obtenir_historique():
     conn.close()
     return [dict(row) for row in rows]
 
-class HistoriqueRequest(BaseModel):
-    composant_id: int
-    date_remplacement: str
-    cout: Optional[float] = 0.0
-    notes: Optional[str] = "Ancien entretien"
-
 @app.post("/api/historique")
 def ajouter_historique(data: HistoriqueRequest):
     conn = sqlite3.connect(DB_NAME)
@@ -581,12 +582,18 @@ def remplacer_composant(composant_id: int, data: RemplacementRequest):
     velo = cursor.fetchone()
     km_global = velo["km_total"] if velo else 0
     
+    # Met à jour le kilométrage de départ du composant
     cursor.execute("UPDATE composants SET km_depart = ? WHERE id = ?", (km_global, composant_id))
     
-    date_resp = data.date_remplacement if data.date_remplacement else "Aujourd'hui"
+    # Récupère la date envoyée ou utilise la date du jour par défaut
+    date_resp = data.date_remplacement if data.date_remplacement else str(date.today())
+    notes_resp = data.notes if data.notes else "Intervention standard"
+    cout_resp = data.cout if data.cout is not None else 0.0
+    
+    # Enregistre l'intervention dans l'historique
     cursor.execute(
         "INSERT INTO historique (composant_id, date_remplacement, cout, notes) VALUES (?, ?, ?, ?)",
-        (composant_id, date_resp, data.cout, data.notes)
+        (composant_id, date_resp, cout_resp, notes_resp)
     )
     
     conn.commit()
