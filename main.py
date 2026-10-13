@@ -43,21 +43,21 @@ def init_db():
     cursor.execute("SELECT COUNT(*) FROM composants")
     if cursor.fetchone()[0] == 0:
         composants_initiaux = [
-            # 1. Chaîne Shimano XT -> décalée à gauche
+            # 1. Chaîne Shimano XT
             ("Chaîne Shimano XT (Remplacement)", 1200, 2000, "piece", 35, 72),
-            # 2. Nettoyage chaîne -> décalé à gauche (vers le pédalier)
+            # 2. Nettoyage chaîne
             ("Nettoyage & Lubrification chaîne", 2500, 300, "maintenance", 45, 76),
-            # 3. Plaquettes de frein avant (inchangé)
-            ("Plaquettes de frein avant (N04C)", 0, 1500, "piece", 78, 62),
-            # 4. Plaquettes de frein arrière -> décalées à gauche
+            # 3. Plaquettes de frein avant -> décalé vers la gauche aussi
+            ("Plaquettes de frein avant (N04C)", 0, 1500, "piece", 65, 62),
+            # 4. Plaquettes de frein arrière
             ("Plaquettes de frein arrière", 0, 1500, "piece", 22, 47),
-            # 5. Fourche Fox 36 (50h) (inchangé)
+            # 5. Fourche Fox 36 (50h)
             ("Fourche Fox 36 - Entretien 50h", 0, 800, "maintenance", 79, 44),
-            # 6. Fourche Fox 36 (200h) (inchangé)
+            # 6. Fourche Fox 36 (200h)
             ("Fourche Fox 36 - Révision lourde 200h", 0, 3200, "maintenance", 75, 34),
-            # 7. Cassette Shimano XT -> décalée à gauche
+            # 7. Cassette Shimano XT
             ("Cassette Shimano XT 12-speed", 0, 4000, "piece", 20, 63),
-            # 8. Pneu arrière / tubeless -> décalé à gauche (sur le bord du pneu)
+            # 8. Pneu arrière / tubeless
             ("Pneu arrière / tubeless", 0, 2500, "piece", 10, 58)
         ]
         cursor.executemany("INSERT INTO composants (nom, km_depart, seuil_alerte, categorie, pos_x, pos_y) VALUES (?, ?, ?, ?, ?, ?)", composants_initiaux)
