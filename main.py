@@ -43,21 +43,21 @@ def init_db():
     cursor.execute("SELECT COUNT(*) FROM composants")
     if cursor.fetchone()[0] == 0:
         composants_initiaux = [
-            # 1. Chaîne Shimano XT -> sur la transmission (entre pédalier et cassette arrière)
+            # 1. Chaîne Shimano XT
             ("Chaîne Shimano XT (Remplacement)", 1200, 2000, "piece", 43, 72),
-            # 2. Nettoyage chaîne -> juste à côté du pédalier
+            # 2. Nettoyage chaîne
             ("Nettoyage & Lubrification chaîne", 2500, 300, "maintenance", 53, 76),
-            # 3. Plaquettes de frein avant -> sur l'étrier de frein avant (roue de droite)
+            # 3. Plaquettes de frein avant
             ("Plaquettes de frein avant (N04C)", 0, 1500, "piece", 78, 62),
-            # 4. Plaquettes de frein arrière -> sur l'étrier de frein arrière (roue de gauche)
-            ("Plaquettes de frein arrière", 0, 1500, "piece", 31, 64),
-            # 5. Fourche Fox 36 (50h) -> sur le plongeur de la fourche (avant)
+            # 4. Plaquettes de frein arrière -> déplacé juste au-dessus de la cassette
+            ("Plaquettes de frein arrière", 0, 1500, "piece", 27, 60),
+            # 5. Fourche Fox 36 (50h)
             ("Fourche Fox 36 - Entretien 50h", 0, 800, "maintenance", 79, 44),
-            # 6. Fourche Fox 36 (200h) -> un peu plus haut sur la fourche
+            # 6. Fourche Fox 36 (200h)
             ("Fourche Fox 36 - Révision lourde 200h", 0, 3200, "maintenance", 75, 34),
-            # 7. Cassette Shimano XT -> au centre de la roue arrière
+            # 7. Cassette Shimano XT
             ("Cassette Shimano XT 12-speed", 0, 4000, "piece", 31, 74),
-            # 8. Pneu arrière / tubeless -> sur le pneu de gauche
+            # 8. Pneu arrière / tubeless
             ("Pneu arrière / tubeless", 0, 2500, "piece", 16, 58)
         ]
         cursor.executemany("INSERT INTO composants (nom, km_depart, seuil_alerte, categorie, pos_x, pos_y) VALUES (?, ?, ?, ?, ?, ?)", composants_initiaux)
@@ -318,7 +318,7 @@ def accueil():
                     data.composants.forEach((c, index) => {
                         const isWarn = c.pourcentage_usure >= 100;
                         const badgeClass = isWarn ? 'warning' : 'ok';
-                        const badgeText = isWarn ? 'À faire' : `${c.pourcentage_usure}%`;
+                        const badgeTest = isWarn ? 'À faire' : `${c.pourcentage_usure}%`;
                         const btnLabel = c.categorie === 'maintenance' ? '🔧 Marquer Fait' : '⚙️ Remplacer';
                         
                         hotspotsContainer.innerHTML += `
@@ -331,7 +331,7 @@ def accueil():
                             <div class="card" id="card-${c.id}">
                                 <div class="card-top">
                                     <div class="component-name">📍 #${index + 1} - ${c.nom}</div>
-                                    <div class="badge ${badgeClass}">${badgeText}</div>
+                                    <div class="badge ${badgeClass}">${badgeTest}</div>
                                 </div>
                                 <div class="stats-row">
                                     <span>Parcouru : <strong>${c.km_actuel} km</strong></span>
