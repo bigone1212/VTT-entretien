@@ -47,8 +47,8 @@ def init_db():
             ("Chaîne Shimano XT (Remplacement)", 1200, 2000, "piece", 35, 72),
             # 2. Nettoyage chaîne
             ("Nettoyage & Lubrification chaîne", 2500, 300, "maintenance", 45, 76),
-            # 3. Plaquettes de frein avant -> décalé vers la gauche aussi
-            ("Plaquettes de frein avant (N04C)", 0, 1500, "piece", 65, 62),
+            # 3. Plaquettes de frein avant -> ramené un peu vers la droite
+            ("Plaquettes de frein avant (N04C)", 0, 1500, "piece", 70, 62),
             # 4. Plaquettes de frein arrière
             ("Plaquettes de frein arrière", 0, 1500, "piece", 22, 47),
             # 5. Fourche Fox 36 (50h)
@@ -433,12 +433,4 @@ def remplacer_composant(composant_id: int, data: RemplacementRequest):
     velo = cursor.fetchone()
     km_global = velo["km_total"] if velo else 0
     
-    cursor.execute("UPDATE composants SET km_depart = ? WHERE id = ?", (km_global, composant_id))
-    cursor.execute(
-        "INSERT INTO historique (composant_id, cout, notes) VALUES (?, ?, ?)",
-        (composant_id, data.cout, data.notes)
-    )
-    
-    conn.commit()
-    conn.close()
-    return {"statut": "success"}
+    cursor.execute("UPDATE composants SET km_depart = ? WHERE id = ?", (km_global, composant_
