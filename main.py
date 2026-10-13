@@ -49,8 +49,8 @@ def init_db():
             ("Plaquettes de frein arrière", 0, 1500, "piece", 30, 47),
             ("Fourche Fox 36 - Entretien 50h", 0, 800, "maintenance", 79, 44),
             ("Fourche Fox 36 - Révision lourde 200h", 0, 3200, "maintenance", 75, 34),
-            # 7. Cassette Shimano XT -> déplacée à la pointe du curseur
-            ("Cassette Shimano XT 12-speed", 0, 4000, "piece", 37, 63),
+            # 7. Cassette Shimano XT -> décalé vers la gauche
+            ("Cassette Shimano XT 12-speed", 0, 4000, "piece", 27, 63),
             ("Pneu arrière / tubeless", 0, 2500, "piece", 16, 58)
         ]
         cursor.executemany("INSERT INTO composants (nom, km_depart, seuil_alerte, categorie, pos_x, pos_y) VALUES (?, ?, ?, ?, ?, ?)", composants_initiaux)
