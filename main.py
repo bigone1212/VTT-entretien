@@ -147,7 +147,6 @@ def accueil():
                 font-weight: 600;
                 cursor: pointer;
             }
-            /* Schéma interactif avec la vraie photo intégrée */
             .bike-container {
                 position: relative;
                 width: 100%;
@@ -198,7 +197,6 @@ def accueil():
                 70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
                 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
             }
-            /* Liste classique */
             .grid {
                 display: flex;
                 flex-direction: column;
@@ -287,9 +285,8 @@ def accueil():
             </div>
         </div>
 
-        <!-- Schéma interactif avec la vraie photo intégrée en base64 -->
         <div class="bike-container">
-            <img src="data:image/jpeg;base64,[...]" alt="Mon Cube Stereo Hybrid" class="bike-img" id="cubeImg">
+            <img src="https://images.unsplash.com/photo-1576435728678-68d0fbf94e91?auto=format&fit=crop&w=800&q=80" alt="Mon Cube Stereo Hybrid" class="bike-img">
             <div id="hotspotsContainer"></div>
         </div>
 
