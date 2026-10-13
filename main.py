@@ -25,7 +25,9 @@ def init_db():
             nom TEXT NOT NULL,
             km_depart INTEGER DEFAULT 0,
             seuil_alerte INTEGER NOT NULL,
-            categorie TEXT DEFAULT 'piece'
+            categorie TEXT DEFAULT 'piece',
+            pos_x INTEGER DEFAULT 50,
+            pos_y INTEGER DEFAULT 50
         )
     """)
     cursor.execute("""
@@ -40,17 +42,18 @@ def init_db():
     """)
     cursor.execute("SELECT COUNT(*) FROM composants")
     if cursor.fetchone()[0] == 0:
+        # Coordonnées (pos_x, pos_y en %) approximatives sur une image de profil de vélo
         composants_initiaux = [
-            ("Chaîne Shimano XT (Remplacement)", 1200, 2000, "piece"),
-            ("Nettoyage & Lubrification chaîne", 2500, 300, "maintenance"),
-            ("Plaquettes de frein avant (N04C)", 0, 1500, "piece"),
-            ("Plaquettes de frein arrière", 0, 1500, "piece"),
-            ("Fourche Fox 36 - Entretien 50h (joints/mousse)", 0, 800, "maintenance"),   # ~800km équivaut à 50h de VTT engagé
-            ("Fourche Fox 36 - Révision lourde 200h", 0, 3200, "maintenance"),
-            ("Cassette Shimano XT 12-speed", 0, 4000, "piece"),
-            ("Pneu arrière / tubeless", 0, 2500, "piece")
+            ("Chaîne Shimano XT (Remplacement)", 1200, 2000, "piece", 55, 65),
+            ("Nettoyage & Lubrification chaîne", 2500, 300, "maintenance", 55, 70),
+            ("Plaquettes de frein avant (N04C)", 0, 1500, "piece", 20, 45),
+            ("Plaquettes de frein arrière", 0, 1500, "piece", 80, 50),
+            ("Fourche Fox 36 - Entretien 50h", 0, 800, "maintenance", 22, 35),
+            ("Fourche Fox 36 - Révision lourde 200h", 0, 3200, "maintenance", 25, 30),
+            ("Cassette Shimano XT 12-speed", 0, 4000, "piece", 75, 55),
+            ("Pneu arrière / tubeless", 0, 2500, "piece", 82, 75)
         ]
-        cursor.executemany("INSERT INTO composants (nom, km_depart, seuil_alerte, categorie) VALUES (?, ?, ?, ?)", composants_initiaux)
+        cursor.executemany("INSERT INTO composants (nom, km_depart, seuil_alerte, categorie, pos_x, pos_y) VALUES (?, ?, ?, ?, ?, ?)", composants_initiaux)
         conn.commit()
     conn.close()
 
@@ -94,10 +97,10 @@ def accueil():
             }
             .header {
                 text-align: center;
-                margin-bottom: 24px;
+                margin-bottom: 20px;
             }
             .header h1 {
-                font-size: 1.5rem;
+                font-size: 1.4rem;
                 margin: 0 0 4px 0;
                 color: #fff;
             }
@@ -108,7 +111,7 @@ def accueil():
             }
             .sync-card {
                 background: var(--card-bg);
-                padding: 16px;
+                padding: 14px;
                 border-radius: 14px;
                 margin-bottom: 20px;
                 box-shadow: 0 4px 12px rgba(0,0,0,0.3);
@@ -116,9 +119,9 @@ def accueil():
             }
             .sync-card label {
                 display: block;
-                font-size: 0.8rem;
+                font-size: 0.75rem;
                 color: var(--text-muted);
-                margin-bottom: 8px;
+                margin-bottom: 6px;
                 text-transform: uppercase;
                 letter-spacing: 0.5px;
             }
@@ -131,32 +134,74 @@ def accueil():
                 background: #0f1117;
                 border: 1px solid #2a303c;
                 border-radius: 8px;
-                padding: 12px;
+                padding: 10px;
                 color: #fff;
                 font-size: 1.1rem;
                 outline: none;
-            }
-            input[type="number"]:focus {
-                border-color: var(--accent);
             }
             button.btn-primary {
                 background: var(--accent);
                 color: white;
                 border: none;
                 border-radius: 8px;
-                padding: 0 20px;
+                padding: 0 16px;
                 font-weight: 600;
-                font-size: 0.95rem;
                 cursor: pointer;
-                transition: background 0.2s;
             }
-            button.btn-primary:active {
-                background: var(--accent-hover);
+            /* Section Vélo Interactif */
+            .bike-container {
+                position: relative;
+                width: 100%;
+                max-width: 600px;
+                margin: 0 auto 20px auto;
+                background: var(--card-bg);
+                border-radius: 14px;
+                overflow: hidden;
+                border: 1px solid rgba(255,255,255,0.05);
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
             }
+            .bike-img {
+                width: 100%;
+                display: block;
+                opacity: 0.85;
+            }
+            .hotspot {
+                position: absolute;
+                width: 24px;
+                height: 24px;
+                background: var(--accent);
+                border: 2px solid #fff;
+                border-radius: 50%;
+                transform: translate(-50%, -50%);
+                cursor: pointer;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 0.7rem;
+                font-weight: bold;
+                color: white;
+                transition: transform 0.2s;
+            }
+            .hotspot:hover {
+                transform: translate(-50%, -50%) scale(1.2);
+            }
+            .hotspot.warning {
+                background: var(--danger);
+                animation: pulse 1.5s infinite;
+            }
+            @keyframes pulse {
+                0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+                70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+                100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+            }
+            /* Liste classique */
             .grid {
                 display: flex;
                 flex-direction: column;
                 gap: 12px;
+                max-width: 600px;
+                margin: 0 auto;
             }
             .card {
                 background: var(--card-bg);
@@ -164,23 +209,21 @@ def accueil():
                 padding: 16px;
                 box-shadow: 0 4px 12px rgba(0,0,0,0.2);
                 border: 1px solid rgba(255,255,255,0.05);
-                position: relative;
-                overflow: hidden;
             }
             .card-top {
                 display: flex;
                 justify-content: space-between;
                 align-items: flex-start;
-                margin-bottom: 10px;
+                margin-bottom: 8px;
             }
             .component-name {
                 font-weight: 600;
-                font-size: 1.05rem;
+                font-size: 1rem;
                 color: #fff;
             }
             .badge {
-                font-size: 0.75rem;
-                padding: 4px 8px;
+                font-size: 0.7rem;
+                padding: 3px 8px;
                 border-radius: 20px;
                 font-weight: 600;
             }
@@ -190,26 +233,22 @@ def accueil():
             .stats-row {
                 display: flex;
                 justify-content: space-between;
-                font-size: 0.85rem;
+                font-size: 0.8rem;
                 color: var(--text-muted);
-                margin-bottom: 8px;
-            }
-            .stats-row span strong {
-                color: #fff;
+                margin-bottom: 6px;
             }
             .bar-bg {
                 background: #0f1117;
                 border-radius: 6px;
-                height: 8px;
+                height: 6px;
                 width: 100%;
                 overflow: hidden;
-                margin-bottom: 14px;
+                margin-bottom: 12px;
             }
             .bar-fill {
                 height: 100%;
                 background: var(--success);
                 border-radius: 6px;
-                transition: width 0.4s ease;
             }
             .bar-fill.warning {
                 background: var(--danger);
@@ -219,20 +258,15 @@ def accueil():
                 color: var(--text-color);
                 border: 1px solid rgba(255,255,255,0.1);
                 width: 100%;
-                padding: 10px;
+                padding: 8px;
                 border-radius: 8px;
-                font-size: 0.9rem;
-                font-weight: 500;
+                font-size: 0.85rem;
                 cursor: pointer;
-                transition: all 0.2s;
-            }
-            button.btn-action:active {
-                background: rgba(255,255,255,0.15);
             }
             .loading {
                 text-align: center;
                 color: var(--text-muted);
-                padding: 40px;
+                padding: 30px;
             }
         </style>
     </head>
@@ -242,12 +276,19 @@ def accueil():
             <p id="veloInfo">Kilométrage total : chargement...</p>
         </div>
 
-        <div class="sync-card">
+        <div class="sync-card" style="max-width: 600px; margin-left: auto; margin-right: auto;">
             <label for="kmInput">Kilométrage total du VTTAE</label>
             <div class="sync-row">
                 <input type="number" id="kmInput" placeholder="Ex: 2700">
                 <button class="btn-primary" onclick="syncKm()">Mettre à jour</button>
             </div>
+        </div>
+
+        <!-- Schéma interactif du vélo -->
+        <div class="bike-container">
+            <!-- Image de référence d'un VTTAE tout suspendu -->
+            <img src="https://images.unsplash.com/photo-1576435728678-68d0fbf94e91?auto=format&fit=crop&w=800&q=80" alt="VTTAE Schéma" class="bike-img">
+            <div id="hotspotsContainer"></div>
         </div>
 
         <div id="composantsList" class="grid">
@@ -263,23 +304,33 @@ def accueil():
                     document.getElementById('veloInfo').innerText = `Kilométrage total : ${data.km_total} km`;
                     
                     const container = document.getElementById('composantsList');
+                    const hotspotsContainer = document.getElementById('hotspotsContainer');
                     container.innerHTML = '';
+                    hotspotsContainer.innerHTML = '';
                     
-                    data.composants.forEach(c => {
+                    data.composants.forEach((c, index) => {
                         const isWarn = c.pourcentage_usure >= 100;
                         const badgeClass = isWarn ? 'warning' : 'ok';
-                        const badgeText = isWarn ? 'À faire / Remplacer' : `${c.pourcentage_usure}%`;
-                        const btnLabel = c.categorie === 'maintenance' ? '🔧 Marquer Fait' : '⚙️ Déclarer Remplacement';
+                        const badgeText = isWarn ? 'À faire' : `${c.pourcentage_usure}%`;
+                        const btnLabel = c.categorie === 'maintenance' ? '🔧 Marquer Fait' : '⚙️ Remplacer';
                         
+                        // Ajout de la bulle interactive sur l'image
+                        hotspotsContainer.innerHTML += `
+                            <div class="hotspot ${isWarn ? 'warning' : ''}" style="top: ${c.pos_y}%; left: ${c.pos_x}%;" title="${c.nom}" onclick="remplacer(${c.id}, '${c.nom}')">
+                                ${index + 1}
+                            </div>
+                        `;
+
+                        // Ajout de la carte dans la liste
                         container.innerHTML += `
-                            <div class="card">
+                            <div class="card" id="card-${c.id}">
                                 <div class="card-top">
-                                    <div class="component-name">${c.nom}</div>
+                                    <div class="component-name">📍 #${index + 1} - ${c.nom}</div>
                                     <div class="badge ${badgeClass}">${badgeText}</div>
                                 </div>
                                 <div class="stats-row">
                                     <span>Parcouru : <strong>${c.km_actuel} km</strong></span>
-                                    <span>Objectif/Seuil : <strong>${c.seuil_alerte} km</strong></span>
+                                    <span>Seuil : <strong>${c.seuil_alerte} km</strong></span>
                                 </div>
                                 <div class="bar-bg">
                                     <div class="bar-fill ${isWarn ? 'warning' : ''}" style="width: ${Math.min(c.pourcentage_usure, 100)}%"></div>
@@ -289,17 +340,14 @@ def accueil():
                         `;
                     });
                 } catch (e) {
-                    document.getElementById('composantsList').innerHTML = '<div class="loading" style="color:var(--danger)">Erreur de chargement des données.</div>';
+                    console.error(e);
                 }
             }
 
             async function syncKm() {
                 const input = document.getElementById('kmInput');
                 const km = parseInt(input.value);
-                if(isNaN(km) || km < 0) {
-                    alert("Entre un kilométrage valide.");
-                    return;
-                }
+                if(isNaN(km) || km < 0) return;
                 await fetch('/api/sync', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
@@ -314,7 +362,7 @@ def accueil():
                 await fetch(`/api/composants/${id}/remplacer`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({notes: "Action validée depuis interface mobile", cout: 0})
+                    body: JSON.stringify({notes: "Mise à jour visuelle mobile", cout: 0})
                 });
                 chargerEtat();
             }
@@ -354,7 +402,9 @@ def obtenir_etat():
             "seuil_alerte": seuil,
             "pourcentage_usure": pourcentage,
             "alerte_entretien": alerte,
-            "categorie": row["categorie"]
+            "categorie": row["categorie"],
+            "pos_x": row["pos_x"],
+            "pos_y": row["pos_y"]
         })
     return {"km_total": km_global, "composants": resultat}
 
