@@ -7,7 +7,8 @@ from datetime import date
 
 app = FastAPI(title="VTTAE Entretien")
 
-DB_NAME = "vtt_entretien.db"
+# On change le nom de la base pour forcer la recréation propre sur Render
+DB_NAME = "vtt_entretien_v2.db"
 
 def init_db():
     conn = sqlite3.connect(DB_NAME)
@@ -24,7 +25,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS composants (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             nom TEXT NOT NULL,
-            km_depart INTEGER DEFAULT 0,
+            km_depart INTEGER DEFAULT 2700,
             seuil_alerte INTEGER NOT NULL,
             categorie TEXT DEFAULT 'piece',
             pos_x INTEGER DEFAULT 50,
@@ -43,15 +44,16 @@ def init_db():
     """)
     cursor.execute("SELECT COUNT(*) FROM composants")
     if cursor.fetchone()[0] == 0:
+        # Tous les composants démarrent par défaut au km actuel du vélo (2700) -> 0 km parcouru au lancement
         composants_initiaux = [
-            ("Chaîne Shimano XT (Remplacement)", 1200, 2000, "piece", 27, 76),
+            ("Chaîne Shimano XT (Remplacement)", 2700, 2000, "piece", 27, 76),
             ("Nettoyage & Lubrification chaîne", 2445, 300, "maintenance", 35, 76),
-            ("Plaquettes de frein avant (N04C)", 0, 1500, "piece", 70, 62),
-            ("Plaquettes de frein arrière", 0, 1500, "piece", 22, 47),
-            ("Fourche Fox 36 - Entretien 50h", 0, 800, "maintenance", 75, 44),
-            ("Fourche Fox 36 - Révision lourde 200h", 0, 3200, "maintenance", 71, 34),
-            ("Cassette Shimano XT 12-speed", 0, 4000, "piece", 20, 63),
-            ("Pneu arrière / tubeless", 0, 2500, "piece", 7, 58)
+            ("Plaquettes de frein avant (N04C)", 2700, 1500, "piece", 70, 62),
+            ("Plaquettes de frein arrière", 2700, 1500, "piece", 22, 47),
+            ("Fourche Fox 36 - Entretien 50h", 2700, 800, "maintenance", 75, 44),
+            ("Fourche Fox 36 - Révision lourde 200h", 2700, 3200, "maintenance", 71, 34),
+            ("Cassette Shimano XT 12-speed", 2700, 4000, "piece", 20, 63),
+            ("Pneu arrière / tubeless", 2700, 2500, "piece", 7, 58)
         ]
         cursor.executemany("INSERT INTO composants (nom, km_depart, seuil_alerte, categorie, pos_x, pos_y) VALUES (?, ?, ?, ?, ?, ?)", composants_initiaux)
         conn.commit()
@@ -492,7 +494,7 @@ def accueil():
                 document.getElementById('histDate').value = '';
                 document.getElementById('histCout').value = '';
                 document.getElementById('histNotes').value = '';
-                chargerEtat();
+                chargerHistorique();
             }
 
             chargerEtat();
@@ -582,6 +584,7 @@ def remplacer_composant(composant_id: int, data: RemplacementRequest):
     velo = cursor.fetchone()
     km_global = velo["km_total"] if velo and velo["km_total"] is not None else 2700
     
+    # Met à jour le km_depart à la valeur actuelle exacte du vélo
     cursor.execute("UPDATE composants SET km_depart = ? WHERE id = ?", (km_global, composant_id))
     
     date_resp = data.date_remplacement if data.date_remplacement else str(date.today())
