@@ -210,6 +210,18 @@ def init_db():
                 2445, 300, "maintenance", 35, 76
             ),
             (
+                "Contrôle pressions (Pneus & Suspensions)",
+                0, 150, "maintenance", 50, 50
+            ),
+            (
+                "Contrôle serrage axes & visserie",
+                0, 300, "maintenance", 45, 65
+            ),
+            (
+                "Nettoyage plongeurs & joints spi",
+                0, 150, "maintenance", 75, 40
+            ),
+            (
                 "Plaquettes de frein avant (N04C)",
                 0, 1500, "piece", 70, 62
             ),
@@ -972,7 +984,6 @@ def accueil():
                 }
             }
 
-            // Vérifie si un code est déjà en mémoire
             if (sessionStorage.getItem('vtt_code')) {
                 fetch('/api/etat', { headers: getHeaders() }).then(res => {
                     if (res.ok) {
