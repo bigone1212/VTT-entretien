@@ -14,6 +14,67 @@ app = FastAPI(title="VTTAE Entretien")
 # BASE DE DONNÉES
 # ============================================================
 
+REGLAGES_PAR_DEFAUT = {
+    "terrain_route": 1.0,
+    "terrain_mixte": 1.15,
+    "terrain_chemin": 1.3,
+    "terrain_sentier": 1.6,
+    "poids_denivele": 1.0,
+}
+
+
+def lire_reglages(cursor):
+    """Réglages d'usure : valeurs enregistrées, sinon valeurs par défaut."""
+    reglages = dict(REGLAGES_PAR_DEFAUT)
+
+    cursor.execute("SELECT cle, valeur FROM reglages")
+
+    for ligne in cursor.fetchall():
+        if ligne[0] in reglages and ligne[1] is not None:
+            reglages[ligne[0]] = float(ligne[1])
+
+    return reglages
+
+
+def famille_de(nom):
+    """Famille d'une pièce, déduite de son nom."""
+    nom = (nom or "").lower()
+
+    if "plaquette" in nom or "frein" in nom:
+        return "freins"
+
+    if "fourche" in nom or "amortisseur" in nom:
+        return "suspension"
+
+    if "pneu" in nom:
+        return "pneu"
+
+    return "transmission"
+
+
+def facteur_usure(famille, distance_km, d_pos, d_neg, terrain, reglages):
+    """
+    Combien de km d'usure équivaut 1 km de cette sortie pour cette famille.
+    1,0 = usure normale ; 2,0 = deux fois plus vite.
+    """
+    coef_terrain = reglages.get(f"terrain_{terrain}", 1.0)
+    distance = max(float(distance_km or 0), 0.1)
+    poids = reglages.get("poids_denivele", 1.0)
+
+    # Transmission : le dénivelé positif (montées) la fatigue.
+    if famille == "transmission":
+        montee = (d_pos or 0) / distance
+        return coef_terrain * (1 + poids * montee / 100)
+
+    # Freins : c'est le dénivelé négatif (descentes) qui compte.
+    if famille == "freins":
+        descente = (d_neg or 0) / distance
+        return coef_terrain * (1 + poids * descente / 100)
+
+    # Fourche, pneus : surtout le type de terrain.
+    return coef_terrain
+
+
 def maintenant_utc():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -108,6 +169,20 @@ def init_db():
             trace TEXT
         )
     """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS reglages (
+            cle TEXT PRIMARY KEY,
+            valeur DOUBLE PRECISION NOT NULL
+        )
+    """)
+
+    for cle, valeur in REGLAGES_PAR_DEFAUT.items():
+        cursor.execute("""
+            INSERT INTO reglages (cle, valeur)
+            VALUES (?, ?)
+            ON CONFLICT (cle) DO NOTHING
+        """, (cle, valeur))
 
     # Le kilométrage total retient la date de sa dernière mise à jour :
     # les sorties antérieures sont considérées comme déjà comptées.
@@ -216,6 +291,14 @@ class RemplacementRequest(BaseModel):
     notes: Optional[str] = "Intervention standard"
     cout: Optional[float] = Field(default=0.0, ge=0)
     date_remplacement: Optional[str] = None
+
+
+class ReglagesRequest(BaseModel):
+    terrain_route: float = Field(ge=0.5, le=5)
+    terrain_mixte: float = Field(ge=0.5, le=5)
+    terrain_chemin: float = Field(ge=0.5, le=5)
+    terrain_sentier: float = Field(ge=0.5, le=5)
+    poids_denivele: float = Field(ge=0, le=5)
 
 
 class ImportGpxRequest(BaseModel):
@@ -674,6 +757,44 @@ def accueil():
             <div id="sortiesList">
                 <div class="loading">Chargement des sorties...</div>
             </div>
+
+            <details style="margin-top: 20px;">
+                <summary style="cursor: pointer; font-weight: 600;">
+                    ⚙️ Réglages de l'usure
+                </summary>
+
+                <p class="form-help" style="margin-top: 10px;">
+                    Chaque sortie fait vieillir tes pièces plus ou moins vite
+                    selon le terrain. 1 = usure normale, 1,6 = usure 60 % plus
+                    rapide. Le dénivelé compte aussi : 0 = on l'ignore,
+                    1 = poids normal.
+                </p>
+
+                <label for="regRoute">Route / bitume</label>
+                <input type="text" inputmode="decimal" id="regRoute">
+
+                <label for="regMixte">Mixte</label>
+                <input type="text" inputmode="decimal" id="regMixte">
+
+                <label for="regChemin">Chemin / piste</label>
+                <input type="text" inputmode="decimal" id="regChemin">
+
+                <label for="regSentier">Sentier technique</label>
+                <input type="text" inputmode="decimal" id="regSentier">
+
+                <label for="regDenivele">Poids du dénivelé</label>
+                <input type="text" inputmode="decimal" id="regDenivele">
+
+                <button
+                    class="btn-primary"
+                    style="width:100%;"
+                    onclick="enregistrerReglages()"
+                >
+                    Enregistrer les réglages
+                </button>
+
+                <p class="form-help" id="reglagesMessage" style="margin-top: 10px;"></p>
+            </details>
         </div>
 
         <div class="bike-container">
@@ -866,6 +987,19 @@ def accueil():
 
                         card.appendChild(cardTop);
                         card.appendChild(statsRow);
+
+                        if (
+                            c.km_usure !== undefined &&
+                            Math.abs(c.km_usure - c.km_actuel) >= 1
+                        ) {
+                            const usureInfo = document.createElement('div');
+                            usureInfo.className = 'form-help';
+                            usureInfo.style.margin = '0 0 6px';
+                            usureInfo.textContent =
+                                `Usure estimée selon vos sorties : ${c.km_usure} km`;
+                            card.appendChild(usureInfo);
+                        }
+
                         card.appendChild(barBg);
                         card.appendChild(button);
 
@@ -874,6 +1008,7 @@ def accueil():
 
                     await chargerHistorique();
                     await chargerSorties();
+                    await chargerReglages();
 
                 } catch (e) {
                     console.error(e);
@@ -1316,6 +1451,82 @@ def accueil():
             }
 
 
+            const CHAMPS_REGLAGES = {
+                terrain_route: 'regRoute',
+                terrain_mixte: 'regMixte',
+                terrain_chemin: 'regChemin',
+                terrain_sentier: 'regSentier',
+                poids_denivele: 'regDenivele'
+            };
+
+
+            async function chargerReglages() {
+                try {
+                    const res = await fetch('/api/reglages');
+
+                    if (!res.ok) {
+                        return;
+                    }
+
+                    const reglages = await res.json();
+
+                    Object.entries(CHAMPS_REGLAGES).forEach(([cle, id]) => {
+                        const champ = document.getElementById(id);
+
+                        if (champ && reglages[cle] !== undefined) {
+                            champ.value = reglages[cle];
+                        }
+                    });
+
+                } catch (e) {
+                    console.error(e);
+                }
+            }
+
+
+            async function enregistrerReglages() {
+                const message = document.getElementById('reglagesMessage');
+                const corps = {};
+
+                for (const [cle, id] of Object.entries(CHAMPS_REGLAGES)) {
+                    const valeur = parseFloat(
+                        document.getElementById(id).value.replace(',', '.')
+                    );
+
+                    if (isNaN(valeur)) {
+                        message.textContent = "Vérifiez les nombres saisis.";
+                        return;
+                    }
+
+                    corps[cle] = valeur;
+                }
+
+                try {
+                    const res = await fetch('/api/reglages', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(corps)
+                    });
+
+                    if (!res.ok) {
+                        throw new Error(
+                            "Valeurs refusées : entre 0,5 et 5 pour les terrains, " +
+                            "entre 0 et 5 pour le dénivelé."
+                        );
+                    }
+
+                    message.textContent = '✅ Réglages enregistrés.';
+
+                    await chargerEtat();
+
+                } catch (e) {
+                    message.textContent = e.message || "Enregistrement impossible.";
+                }
+            }
+
+
             chargerEtat();
         </script>
     </body>
@@ -1347,6 +1558,21 @@ def obtenir_etat():
         cursor.execute("SELECT * FROM composants")
         rows = cursor.fetchall()
 
+        reglages = lire_reglages(cursor)
+
+        cursor.execute("""
+            SELECT debut, distance_km, denivele_pos, denivele_neg, terrain
+            FROM sorties
+        """)
+        sorties = cursor.fetchall()
+
+        cursor.execute("""
+            SELECT composant_id, MAX(date_remplacement)
+            FROM historique
+            GROUP BY composant_id
+        """)
+        dernier_entretien = {r[0]: r[1] for r in cursor.fetchall()}
+
         resultat = []
 
         for row in rows:
@@ -1356,10 +1582,26 @@ def obtenir_etat():
             # Kilométrage parcouru depuis le dernier entretien.
             km = max(0, km_global - km_depart)
 
+            # Usure estimée : on ajoute le "surplus" des sorties faites
+            # depuis le dernier entretien (terrain, dénivelé...).
+            # Sans sortie importée, l'usure reste égale aux km parcourus.
+            famille = famille_de(row["nom"])
+            depuis = dernier_entretien.get(row["id"])
+            surplus = 0.0
+
+            for s in sorties:
+                if depuis is None or s[0][:10] >= depuis:
+                    facteur = facteur_usure(
+                        famille, s[1], s[2], s[3], s[4] or "mixte", reglages
+                    )
+                    surplus += float(s[1] or 0) * (facteur - 1)
+
+            km_usure = max(0.0, km + surplus)
+
             # Le pourcentage n'est pas plafonné :
             # un composant en retard peut afficher 125 %, 150 %, etc.
             pourcentage = (
-                round((km / seuil) * 100)
+                round((km_usure / seuil) * 100)
                 if seuil > 0
                 else 0
             )
@@ -1368,10 +1610,11 @@ def obtenir_etat():
                 "id": row["id"],
                 "nom": row["nom"],
                 "km_actuel": km,
+                "km_usure": round(km_usure, 1),
                 "km_depart": km_depart,
                 "seuil_alerte": seuil,
                 "pourcentage_usure": pourcentage,
-                "alerte_entretien": km >= seuil if seuil > 0 else False,
+                "alerte_entretien": km_usure >= seuil if seuil > 0 else False,
                 "categorie": row["categorie"],
                 "pos_x": row["pos_x"],
                 "pos_y": row["pos_y"]
@@ -1653,12 +1896,15 @@ def sauvegarde():
         cursor.execute("SELECT * FROM sorties ORDER BY debut")
         sorties = [dict(r) for r in cursor.fetchall()]
 
+        reglages = lire_reglages(cursor)
+
         return {
             "date_sauvegarde": str(date.today()),
             "km_total": velo[0] if velo else None,
             "composants": composants,
             "historique": historique,
-            "sorties": sorties
+            "sorties": sorties,
+            "reglages": reglages
         }
 
     finally:
@@ -1816,6 +2062,47 @@ def supprimer_sortie(sortie_id: int):
             ajuster_km_total(cursor, -float(ligne[0] or 0))
 
         cursor.execute("DELETE FROM sorties WHERE id = ?", (sortie_id,))
+        conn.commit()
+
+        return {"statut": "success"}
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+
+# ============================================================
+# API : RÉGLAGES DE L'USURE
+# ============================================================
+
+@app.get("/api/reglages")
+def obtenir_reglages():
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        return lire_reglages(cursor)
+
+    finally:
+        conn.close()
+
+
+@app.post("/api/reglages")
+def enregistrer_reglages(data: ReglagesRequest):
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        for cle, valeur in data.model_dump().items():
+            cursor.execute("""
+                INSERT INTO reglages (cle, valeur)
+                VALUES (?, ?)
+                ON CONFLICT (cle) DO UPDATE SET valeur = excluded.valeur
+            """, (cle, valeur))
+
         conn.commit()
 
         return {"statut": "success"}
