@@ -2,14 +2,38 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 import db
+import gpx_import
+import json
+import math
 from typing import Optional
-from datetime import date
+from datetime import date, datetime, timezone
 
 app = FastAPI(title="VTTAE Entretien")
 
 # ============================================================
 # BASE DE DONNÉES
 # ============================================================
+
+def maintenant_utc():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def ajouter_colonne(cursor, table, colonne, definition):
+    """Ajoute une colonne à une table existante, si elle n'existe pas encore."""
+    if db.USE_PG:
+        cursor.execute(
+            f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {colonne} {definition}"
+        )
+        return
+
+    cursor.execute(f"PRAGMA table_info({table})")
+    existantes = [row[1] for row in cursor.fetchall()]
+
+    if colonne not in existantes:
+        cursor.execute(
+            f"ALTER TABLE {table} ADD COLUMN {colonne} {definition}"
+        )
+
 
 def init_db():
     conn = db.connect()
@@ -64,6 +88,36 @@ def init_db():
                 ALTER TABLE historique
                 ADD COLUMN km_intervention INTEGER
             """)
+
+    cursor.execute(f"""
+        CREATE TABLE IF NOT EXISTS sorties (
+            id {db.AUTO_ID},
+            nom TEXT,
+            debut TEXT NOT NULL UNIQUE,
+            sport TEXT,
+            distance_km DOUBLE PRECISION,
+            denivele_pos INTEGER,
+            denivele_neg INTEGER,
+            duree_s INTEGER,
+            vitesse_moy DOUBLE PRECISION,
+            alt_max INTEGER,
+            pente_moy_montee DOUBLE PRECISION,
+            terrain TEXT DEFAULT 'mixte',
+            notes TEXT,
+            km_compte INTEGER DEFAULT 0,
+            trace TEXT
+        )
+    """)
+
+    # Le kilométrage total retient la date de sa dernière mise à jour :
+    # les sorties antérieures sont considérées comme déjà comptées.
+    ajouter_colonne(cursor, "velo", "km_maj_le", "TEXT")
+    ajouter_colonne(cursor, "velo", "km_frac", "DOUBLE PRECISION DEFAULT 0")
+
+    cursor.execute(
+        "UPDATE velo SET km_maj_le = ? WHERE id = 1 AND km_maj_le IS NULL",
+        (maintenant_utc(),)
+    )
 
     # Création des composants uniquement si la table est vide.
     cursor.execute("SELECT COUNT(*) FROM composants")
@@ -162,6 +216,13 @@ class RemplacementRequest(BaseModel):
     notes: Optional[str] = "Intervention standard"
     cout: Optional[float] = Field(default=0.0, ge=0)
     date_remplacement: Optional[str] = None
+
+
+class ImportGpxRequest(BaseModel):
+    gpx: str = Field(min_length=50, max_length=3_000_000)
+    terrain: Optional[str] = "mixte"
+    notes: Optional[str] = None
+    nom: Optional[str] = None
 
 
 class HistoriqueRequest(BaseModel):
@@ -522,6 +583,12 @@ def accueil():
                 margin: -4px 0 10px;
             }
 
+            input[type="file"] {
+                width: 100%;
+                margin-bottom: 10px;
+                color: var(--text-muted);
+            }
+
             @media (max-width: 480px) {
                 body {
                     padding: 10px;
@@ -564,6 +631,48 @@ def accueil():
                 <button class="btn-primary" onclick="syncKm()">
                     Mettre à jour
                 </button>
+            </div>
+        </div>
+
+        <div class="history-section" style="margin-bottom: 20px;">
+            <h2>🚵 Sorties</h2>
+
+            <label for="gpxFile">Importer une sortie (fichier GPX de Komoot)</label>
+            <input
+                type="file"
+                id="gpxFile"
+                accept=".gpx,application/gpx+xml,text/xml"
+            >
+
+            <label for="gpxTerrain">Terrain</label>
+            <select id="gpxTerrain">
+                <option value="mixte">Mixte</option>
+                <option value="route">Route / bitume</option>
+                <option value="chemin">Chemin / piste</option>
+                <option value="sentier">Sentier technique</option>
+            </select>
+
+            <label for="gpxNotes">Notes (optionnel)</label>
+            <input
+                type="text"
+                id="gpxNotes"
+                placeholder="Ex. : sortie boueuse, pluie"
+            >
+
+            <button
+                class="btn-primary"
+                style="width:100%;"
+                onclick="importerGpx()"
+            >
+                Importer la sortie
+            </button>
+
+            <p class="form-help" id="gpxMessage" style="margin-top: 10px;"></p>
+
+            <h2 style="margin-top: 24px;">Mes sorties</h2>
+
+            <div id="sortiesList">
+                <div class="loading">Chargement des sorties...</div>
             </div>
         </div>
 
@@ -764,6 +873,7 @@ def accueil():
                     });
 
                     await chargerHistorique();
+                    await chargerSorties();
 
                 } catch (e) {
                     console.error(e);
@@ -988,6 +1098,224 @@ def accueil():
             }
 
 
+            const LIBELLES_TERRAIN = {
+                mixte: 'Mixte',
+                route: 'Route',
+                chemin: 'Chemin',
+                sentier: 'Sentier technique'
+            };
+
+
+            function formaterDuree(secondes) {
+                const minutesTotales = Math.round(secondes / 60);
+                const h = Math.floor(minutesTotales / 60);
+                const m = minutesTotales % 60;
+
+                return h > 0
+                    ? `${h} h ${String(m).padStart(2, '0')}`
+                    : `${m} min`;
+            }
+
+
+            function dessinerTrace(trace) {
+                const ns = 'http://www.w3.org/2000/svg';
+                const svg = document.createElementNS(ns, 'svg');
+
+                svg.setAttribute('viewBox', '0 0 100 60');
+                svg.setAttribute('width', '90');
+                svg.setAttribute('height', '54');
+                svg.style.flexShrink = '0';
+
+                if (!trace || trace.length < 2) {
+                    return svg;
+                }
+
+                const lats = trace.map(p => p[0]);
+                const lons = trace.map(p => p[1]);
+                const minLat = Math.min(...lats);
+                const maxLat = Math.max(...lats);
+                const minLon = Math.min(...lons);
+                const maxLon = Math.max(...lons);
+
+                const kx = Math.cos(((minLat + maxLat) / 2) * Math.PI / 180);
+                const largeur = ((maxLon - minLon) * kx) || 1e-6;
+                const hauteur = (maxLat - minLat) || 1e-6;
+                const echelle = Math.min(92 / largeur, 52 / hauteur);
+                const dx = (100 - largeur * echelle) / 2;
+                const dy = (60 - hauteur * echelle) / 2;
+
+                const points = trace.map(p => {
+                    const x = dx + (p[1] - minLon) * kx * echelle;
+                    const y = dy + (maxLat - p[0]) * echelle;
+                    return `${x.toFixed(1)},${y.toFixed(1)}`;
+                }).join(' ');
+
+                const ligne = document.createElementNS(ns, 'polyline');
+                ligne.setAttribute('points', points);
+                ligne.setAttribute('fill', 'none');
+                ligne.setAttribute('stroke', '#3b82f6');
+                ligne.setAttribute('stroke-width', '2');
+                ligne.setAttribute('stroke-linejoin', 'round');
+                ligne.setAttribute('stroke-linecap', 'round');
+
+                svg.appendChild(ligne);
+
+                return svg;
+            }
+
+
+            async function chargerSorties() {
+                const liste = document.getElementById('sortiesList');
+
+                try {
+                    const res = await fetch('/api/sorties');
+
+                    if (!res.ok) {
+                        throw new Error("Erreur lors du chargement des sorties.");
+                    }
+
+                    const sorties = await res.json();
+
+                    liste.innerHTML = '';
+
+                    if (sorties.length === 0) {
+                        const vide = document.createElement('p');
+                        vide.style.color = 'var(--text-muted)';
+                        vide.style.fontSize = '0.85rem';
+                        vide.textContent = 'Aucune sortie importée.';
+                        liste.appendChild(vide);
+                        return;
+                    }
+
+                    sorties.forEach(s => {
+                        const item = document.createElement('div');
+                        item.className = 'history-item';
+
+                        const details = document.createElement('div');
+                        details.className = 'history-details';
+
+                        const titre = document.createElement('strong');
+                        const jour = new Date(s.debut).toLocaleDateString('fr-FR');
+                        titre.textContent = `${s.nom} · ${jour}`;
+
+                        const ligne1 = document.createElement('div');
+                        ligne1.style.color = 'var(--text-muted)';
+                        ligne1.style.marginTop = '4px';
+                        ligne1.textContent =
+                            `${s.distance_km} km · ${s.denivele_pos} m D+ · ` +
+                            `${formaterDuree(s.duree_s)} · ${s.vitesse_moy} km/h`;
+
+                        const ligne2 = document.createElement('div');
+                        ligne2.style.color = 'var(--text-muted)';
+                        ligne2.textContent =
+                            (LIBELLES_TERRAIN[s.terrain] || s.terrain) +
+                            (s.notes ? ` · ${s.notes}` : '');
+
+                        const bouton = document.createElement('button');
+                        bouton.className = 'btn-action';
+                        bouton.style.marginTop = '8px';
+                        bouton.style.width = 'auto';
+                        bouton.style.padding = '6px 12px';
+                        bouton.textContent = '🗑️ Supprimer';
+                        bouton.addEventListener('click', () => {
+                            supprimerSortie(s.id);
+                        });
+
+                        details.appendChild(titre);
+                        details.appendChild(ligne1);
+                        details.appendChild(ligne2);
+                        details.appendChild(bouton);
+
+                        item.appendChild(details);
+                        item.appendChild(dessinerTrace(s.trace));
+
+                        liste.appendChild(item);
+                    });
+
+                } catch (e) {
+                    console.error(e);
+                    liste.innerHTML = '<p>Impossible de charger les sorties.</p>';
+                }
+            }
+
+
+            async function importerGpx() {
+                const fichier = document.getElementById('gpxFile').files[0];
+                const message = document.getElementById('gpxMessage');
+
+                if (!fichier) {
+                    message.textContent = "Choisissez d'abord un fichier GPX.";
+                    return;
+                }
+
+                message.textContent = 'Import en cours...';
+
+                try {
+                    const gpx = await fichier.text();
+
+                    const res = await fetch('/api/sorties/import', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            gpx: gpx,
+                            terrain: document.getElementById('gpxTerrain').value,
+                            notes: document.getElementById('gpxNotes').value.trim() || null
+                        })
+                    });
+
+                    const data = await res.json();
+
+                    if (!res.ok) {
+                        throw new Error(
+                            typeof data.detail === 'string'
+                                ? data.detail
+                                : "Fichier refusé."
+                        );
+                    }
+
+                    message.textContent =
+                        `✅ Sortie importée : ${data.distance_km} km, ` +
+                        `${data.denivele_pos} m D+. ` +
+                        (data.ajoute_au_total
+                            ? `Kilométrage total : ${data.km_total} km.`
+                            : "Cette sortie date d'avant votre dernière mise à jour " +
+                              "du kilométrage : elle n'a pas été ajoutée au total.");
+
+                    document.getElementById('gpxFile').value = '';
+                    document.getElementById('gpxNotes').value = '';
+
+                    await chargerEtat();
+
+                } catch (e) {
+                    message.textContent = e.message || "Import impossible.";
+                }
+            }
+
+
+            async function supprimerSortie(id) {
+                if (!confirm("Supprimer cette sortie ?")) {
+                    return;
+                }
+
+                try {
+                    const res = await fetch(`/api/sorties/${id}/supprimer`, {
+                        method: 'POST'
+                    });
+
+                    if (!res.ok) {
+                        throw new Error("Suppression impossible.");
+                    }
+
+                    await chargerEtat();
+
+                } catch (e) {
+                    alert(e.message || "Suppression impossible.");
+                }
+            }
+
+
             chargerEtat();
         </script>
     </body>
@@ -1190,9 +1518,9 @@ def synchroniser_kilometrage(data: SynchroRequest):
     try:
         cursor.execute("""
             UPDATE velo
-            SET km_total = ?
+            SET km_total = ?, km_frac = 0, km_maj_le = ?
             WHERE id = 1
-        """, (data.km_total,))
+        """, (data.km_total, maintenant_utc()))
 
         conn.commit()
 
@@ -1322,12 +1650,179 @@ def sauvegarde():
         cursor.execute("SELECT * FROM historique ORDER BY id")
         historique = [dict(r) for r in cursor.fetchall()]
 
+        cursor.execute("SELECT * FROM sorties ORDER BY debut")
+        sorties = [dict(r) for r in cursor.fetchall()]
+
         return {
             "date_sauvegarde": str(date.today()),
             "km_total": velo[0] if velo else None,
             "composants": composants,
-            "historique": historique
+            "historique": historique,
+            "sorties": sorties
         }
+
+    finally:
+        conn.close()
+
+
+# ============================================================
+# API : SORTIES (import GPX Komoot)
+# ============================================================
+
+TERRAINS = {"mixte", "route", "chemin", "sentier"}
+
+
+def ajuster_km_total(cursor, delta_km):
+    """Ajoute (ou retire) des km au total, en gardant les décimales à part."""
+    cursor.execute("SELECT km_total, km_frac FROM velo WHERE id = 1")
+    ligne = cursor.fetchone()
+
+    base = ligne[0] if ligne and ligne[0] is not None else 2700
+    frac = ligne[1] if ligne and ligne[1] is not None else 0.0
+
+    total = max(0.0, base + frac + delta_km)
+    entier = int(math.floor(total + 1e-9))
+
+    cursor.execute(
+        "UPDATE velo SET km_total = ?, km_frac = ? WHERE id = 1",
+        (entier, total - entier)
+    )
+
+    return entier
+
+
+@app.post("/api/sorties/import")
+def importer_sortie(data: ImportGpxRequest):
+    try:
+        s = gpx_import.analyser_gpx(data.gpx)
+    except gpx_import.GpxError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    terrain = (data.terrain or "mixte").lower()
+
+    if terrain not in TERRAINS:
+        terrain = "mixte"
+
+    nom = (data.nom or s["nom"] or "Sortie à vélo")[:120]
+    notes = (data.notes or "").strip()[:500] or None
+
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("SELECT id FROM sorties WHERE debut = ?", (s["debut"],))
+
+        if cursor.fetchone() is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="Cette sortie est déjà importée."
+            )
+
+        cursor.execute("SELECT km_maj_le FROM velo WHERE id = 1")
+        velo = cursor.fetchone()
+        derniere_maj = velo[0] if velo else None
+
+        # Une sortie faite après la dernière mise à jour du kilométrage
+        # s'ajoute au total ; une sortie plus ancienne est déjà comptée.
+        compte = 1 if (derniere_maj and s["debut"] > derniere_maj) else 0
+
+        cursor.execute("""
+            INSERT INTO sorties (
+                nom, debut, sport, distance_km, denivele_pos, denivele_neg,
+                duree_s, vitesse_moy, alt_max, pente_moy_montee,
+                terrain, notes, km_compte, trace
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            nom, s["debut"], s["sport"], s["distance_km"],
+            s["denivele_pos"], s["denivele_neg"], s["duree_s"],
+            s["vitesse_moy"], s["alt_max"], s["pente_moy_montee"],
+            terrain, notes, compte, s["trace"]
+        ))
+
+        if compte:
+            km_total = ajuster_km_total(cursor, s["distance_km"])
+        else:
+            cursor.execute("SELECT km_total FROM velo WHERE id = 1")
+            km_total = cursor.fetchone()[0]
+
+        conn.commit()
+
+        return {
+            "statut": "success",
+            "nom": nom,
+            "debut": s["debut"],
+            "distance_km": s["distance_km"],
+            "denivele_pos": s["denivele_pos"],
+            "duree_s": s["duree_s"],
+            "ajoute_au_total": bool(compte),
+            "km_total": km_total
+        }
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+
+@app.get("/api/sorties")
+def lister_sorties():
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("SELECT * FROM sorties ORDER BY debut DESC")
+
+        resultat = []
+
+        for row in cursor.fetchall():
+            sortie = dict(row)
+
+            try:
+                sortie["trace"] = json.loads(sortie["trace"] or "[]")
+            except ValueError:
+                sortie["trace"] = []
+
+            resultat.append(sortie)
+
+        return resultat
+
+    finally:
+        conn.close()
+
+
+@app.post("/api/sorties/{sortie_id}/supprimer")
+def supprimer_sortie(sortie_id: int):
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            "SELECT distance_km, km_compte FROM sorties WHERE id = ?",
+            (sortie_id,)
+        )
+        ligne = cursor.fetchone()
+
+        if ligne is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Sortie introuvable."
+            )
+
+        # Si la sortie avait été ajoutée au total, on retire ses km.
+        if ligne[1]:
+            ajuster_km_total(cursor, -float(ligne[0] or 0))
+
+        cursor.execute("DELETE FROM sorties WHERE id = ?", (sortie_id,))
+        conn.commit()
+
+        return {"statut": "success"}
+
+    except Exception:
+        conn.rollback()
+        raise
 
     finally:
         conn.close()
