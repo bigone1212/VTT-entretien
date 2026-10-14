@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 import db
@@ -9,6 +9,9 @@ from typing import Optional, List
 from datetime import date, datetime, timezone
 
 app = FastAPI(title="VTTAE Entretien")
+
+# Code d'accès de l'application (modifiable ici)
+CODE_ACCES = "Cube144"
 
 # ============================================================
 # BASE DE DONNÉES
@@ -21,6 +24,12 @@ REGLAGES_PAR_DEFAUT = {
     "terrain_sentier": 1.6,
     "poids_denivele": 1.0,
 }
+
+
+def verifier_auth(x_code_acces: Optional[str] = Header(default=None)):
+    """Vérifie le code d'accès envoyé par l'en-tête HTTP."""
+    if x_code_acces != CODE_ACCES:
+        raise HTTPException(status_code=401, detail="Code d'accès incorrect.")
 
 
 def lire_reglages(cursor):
@@ -164,7 +173,6 @@ def init_db():
         )
     """)
 
-    # Pour plusieurs photos, on stocke un tableau JSON de chaînes base64
     ajouter_colonne(cursor, "sorties", "photos", "TEXT")
 
     cursor.execute("""
@@ -352,6 +360,38 @@ def accueil():
                 -webkit-font-smoothing: antialiased;
             }
 
+            #authScreen {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: var(--bg-color);
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                z-index: 9999;
+                padding: 20px;
+            }
+
+            .auth-card {
+                background: var(--card-bg);
+                padding: 24px;
+                border-radius: 14px;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+                border: 1px solid rgba(255,255,255,0.05);
+                width: 100%;
+                max-width: 400px;
+                text-align: center;
+            }
+
+            .auth-card h2 {
+                margin-top: 0;
+                font-size: 1.2rem;
+                color: #fff;
+            }
+
             .header {
                 text-align: center;
                 margin-bottom: 20px;
@@ -396,6 +436,7 @@ def accueil():
             input[type="number"],
             input[type="text"],
             input[type="date"],
+            input[type="password"],
             select {
                 flex: 1;
                 min-width: 0;
@@ -713,6 +754,16 @@ def accueil():
     </head>
 
     <body>
+        <div id="authScreen">
+            <div class="auth-card">
+                <h2>🔐 Accès protégé</h2>
+                <p class="form-help">Entrez le code d'accès de l'application</p>
+                <input type="password" id="authInput" placeholder="Code secret" style="margin-bottom: 12px;">
+                <button class="btn-primary" style="width: 100%;" onclick="tenterConnexion()">Valider</button>
+                <p id="authError" style="color: var(--danger); font-size: 0.8rem; margin-top: 10px;"></p>
+            </div>
+        </div>
+
         <div class="header">
             <h1>🚲 Cube Stereo Hybrid</h1>
             <p id="veloInfo">Kilométrage total : chargement...</p>
@@ -896,9 +947,49 @@ def accueil():
         </div>
 
         <script>
+            function getHeaders() {
+                const code = sessionStorage.getItem('vtt_code') || '';
+                return {
+                    'Content-Type': 'application/json',
+                    'x-code-acces': code
+                };
+            }
+
+            async function tenterConnexion() {
+                const code = document.getElementById('authInput').value;
+                sessionStorage.setItem('vtt_code', code);
+                
+                try {
+                    const res = await fetch('/api/etat', { headers: getHeaders() });
+                    if (res.ok) {
+                        document.getElementById('authScreen').style.display = 'none';
+                        chargerEtat();
+                    } else {
+                        document.getElementById('authError').textContent = "Code incorrect.";
+                    }
+                } catch (e) {
+                    document.getElementById('authError').textContent = "Erreur de connexion.";
+                }
+            }
+
+            // Vérifie si un code est déjà en mémoire
+            if (sessionStorage.getItem('vtt_code')) {
+                fetch('/api/etat', { headers: getHeaders() }).then(res => {
+                    if (res.ok) {
+                        document.getElementById('authScreen').style.display = 'none';
+                        chargerEtat();
+                    }
+                });
+            }
+
             async function chargerEtat() {
                 try {
-                    const res = await fetch('/api/etat');
+                    const res = await fetch('/api/etat', { headers: getHeaders() });
+
+                    if (res.status === 401) {
+                        document.getElementById('authScreen').style.display = 'flex';
+                        return;
+                    }
 
                     if (!res.ok) {
                         throw new Error("Erreur lors du chargement des composants.");
@@ -1047,11 +1138,8 @@ def accueil():
 
             async function chargerHistorique() {
                 try {
-                    const res = await fetch('/api/historique');
-
-                    if (!res.ok) {
-                        throw new Error("Erreur lors du chargement de l'historique.");
-                    }
+                    const res = await fetch('/api/historique', { headers: getHeaders() });
+                    if (!res.ok) throw new Error();
 
                     const history = await res.json();
                     const listDiv = document.getElementById('historyList');
@@ -1107,8 +1195,6 @@ def accueil():
 
                 } catch (e) {
                     console.error(e);
-                    document.getElementById('historyList').innerHTML =
-                        '<p>Impossible de charger l’historique.</p>';
                 }
             }
 
@@ -1125,19 +1211,17 @@ def accueil():
                 try {
                     const res = await fetch('/api/sync', {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            km_total: km
-                        })
+                        headers: getHeaders(),
+                        body: JSON.stringify({ km_total: km })
                     });
 
-                    const data = await res.json();
-
-                    if (!res.ok) {
-                        throw new Error(data.detail || "Erreur de mise à jour.");
+                    if (res.status === 401) {
+                        document.getElementById('authScreen').style.display = 'flex';
+                        return;
                     }
+
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail);
 
                     input.value = '';
                     await chargerEtat();
@@ -1153,35 +1237,29 @@ def accueil():
                     return;
                 }
 
-                const aujourdhui =
-                    new Date().toISOString().split('T')[0];
+                const aujourdhui = new Date().toISOString().split('T')[0];
 
                 try {
-                    const res = await fetch(
-                        `/api/composants/${id}/remplacer`,
-                        {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                notes: "Intervention standard",
-                                cout: 0.0,
-                                date_remplacement: aujourdhui
-                            })
-                        }
-                    );
+                    const res = await fetch(`/api/composants/${id}/remplacer`, {
+                        method: 'POST',
+                        headers: getHeaders(),
+                        body: JSON.stringify({
+                            notes: "Intervention standard",
+                            cout: 0.0,
+                            date_remplacement: aujourdhui
+                        })
+                    });
 
-                    const data = await res.json();
-
-                    if (!res.ok) {
-                        throw new Error(data.detail || "Erreur lors de l'intervention.");
+                    if (res.status === 401) {
+                        document.getElementById('authScreen').style.display = 'flex';
+                        return;
                     }
 
+                    if (!res.ok) throw new Error();
                     await chargerEtat();
 
                 } catch (e) {
-                    alert(e.message || "Impossible d'enregistrer l'intervention.");
+                    alert("Impossible d'enregistrer l'intervention.");
                 }
             }
 
@@ -1220,9 +1298,7 @@ def accueil():
                 try {
                     const res = await fetch('/api/historique', {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
+                        headers: getHeaders(),
                         body: JSON.stringify({
                             composant_id,
                             date_remplacement,
@@ -1232,13 +1308,13 @@ def accueil():
                         })
                     });
 
-                    const data = await res.json();
-
-                    if (!res.ok) {
-                        throw new Error(
-                            data.detail || "Impossible d'enregistrer l'intervention."
-                        );
+                    if (res.status === 401) {
+                        document.getElementById('authScreen').style.display = 'flex';
+                        return;
                     }
+
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail);
 
                     document.getElementById('histDate').value = '';
                     document.getElementById('histKm').value = '';
@@ -1323,14 +1399,10 @@ def accueil():
                 const liste = document.getElementById('sortiesList');
 
                 try {
-                    const res = await fetch('/api/sorties');
-
-                    if (!res.ok) {
-                        throw new Error("Erreur lors du chargement des sorties.");
-                    }
+                    const res = await fetch('/api/sorties', { headers: getHeaders() });
+                    if (!res.ok) throw new Error();
 
                     const sorties = await res.json();
-
                     liste.innerHTML = '';
 
                     if (sorties.length === 0) {
@@ -1406,7 +1478,6 @@ def accueil():
 
                 } catch (e) {
                     console.error(e);
-                    liste.innerHTML = '<p>Impossible de charger les sorties.</p>';
                 }
             }
 
@@ -1438,9 +1509,7 @@ def accueil():
 
                     const res = await fetch('/api/sorties/import', {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
+                        headers: getHeaders(),
                         body: JSON.stringify({
                             gpx: gpx,
                             terrain: document.getElementById('gpxTerrain').value,
@@ -1449,15 +1518,13 @@ def accueil():
                         })
                     });
 
-                    const data = await res.json();
-
-                    if (!res.ok) {
-                        throw new Error(
-                            typeof data.detail === 'string'
-                                ? data.detail
-                                : "Fichier refusé."
-                        );
+                    if (res.status === 401) {
+                        document.getElementById('authScreen').style.display = 'flex';
+                        return;
                     }
+
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || "Fichier refusé.");
 
                     message.textContent =
                         `✅ Sortie importée : ${data.distance_km} km, ` +
@@ -1486,17 +1553,20 @@ def accueil():
 
                 try {
                     const res = await fetch(`/api/sorties/${id}/supprimer`, {
-                        method: 'POST'
+                        method: 'POST',
+                        headers: getHeaders()
                     });
 
-                    if (!res.ok) {
-                        throw new Error("Suppression impossible.");
+                    if (res.status === 401) {
+                        document.getElementById('authScreen').style.display = 'flex';
+                        return;
                     }
 
+                    if (!res.ok) throw new Error();
                     await chargerEtat();
 
                 } catch (e) {
-                    alert(e.message || "Suppression impossible.");
+                    alert("Suppression impossible.");
                 }
             }
 
@@ -1512,17 +1582,13 @@ def accueil():
 
             async function chargerReglages() {
                 try {
-                    const res = await fetch('/api/reglages');
-
-                    if (!res.ok) {
-                        return;
-                    }
+                    const res = await fetch('/api/reglages', { headers: getHeaders() });
+                    if (!res.ok) return;
 
                     const reglages = await res.json();
 
                     Object.entries(CHAMPS_REGLAGES).forEach(([cle, id]) => {
                         const champ = document.getElementById(id);
-
                         if (champ && reglages[cle] !== undefined) {
                             champ.value = reglages[cle];
                         }
@@ -1554,30 +1620,24 @@ def accueil():
                 try {
                     const res = await fetch('/api/reglages', {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
+                        headers: getHeaders(),
                         body: JSON.stringify(corps)
                     });
 
-                    if (!res.ok) {
-                        throw new Error(
-                            "Valeurs refusées : entre 0,5 et 5 pour les terrains, " +
-                            "entre 0 et 5 pour le dénivelé."
-                        );
+                    if (res.status === 401) {
+                        document.getElementById('authScreen').style.display = 'flex';
+                        return;
                     }
 
-                    message.textContent = '✅ Réglages enregistrés.';
+                    if (!res.ok) throw new Error();
 
+                    message.textContent = '✅ Réglages enregistrés.';
                     await chargerEtat();
 
                 } catch (e) {
-                    message.textContent = e.message || "Enregistrement impossible.";
+                    message.textContent = "Enregistrement impossible.";
                 }
             }
-
-
-            chargerEtat();
         </script>
     </body>
     </html>
@@ -1591,7 +1651,8 @@ def accueil():
 # ============================================================
 
 @app.get("/api/etat")
-def obtenir_etat():
+def obtenir_etat(x_code_acces: Optional[str] = Header(default=None)):
+    verifier_auth(x_code_acces)
     conn = db.connect()
     cursor = conn.cursor()
 
@@ -1678,7 +1739,8 @@ def obtenir_etat():
 # ============================================================
 
 @app.get("/api/historique")
-def obtenir_historique():
+def obtenir_historique(x_code_acces: Optional[str] = Header(default=None)):
+    verifier_auth(x_code_acces)
     conn = db.connect()
     cursor = conn.cursor()
 
@@ -1698,7 +1760,6 @@ def obtenir_historique():
         """)
 
         rows = cursor.fetchall()
-
         return [dict(row) for row in rows]
 
     finally:
@@ -1706,7 +1767,8 @@ def obtenir_historique():
 
 
 @app.post("/api/historique")
-def ajouter_historique(data: HistoriqueRequest):
+def ajouter_historique(data: HistoriqueRequest, x_code_acces: Optional[str] = Header(default=None)):
+    verifier_auth(x_code_acces)
     conn = db.connect()
     cursor = conn.cursor()
 
@@ -1783,7 +1845,8 @@ def ajouter_historique(data: HistoriqueRequest):
 
 
 @app.post("/api/sync")
-def synchroniser_kilometrage(data: SynchroRequest):
+def synchroniser_kilometrage(data: SynchroRequest, x_code_acces: Optional[str] = Header(default=None)):
+    verifier_auth(x_code_acces)
     conn = db.connect()
     cursor = conn.cursor()
 
@@ -1808,8 +1871,10 @@ def synchroniser_kilometrage(data: SynchroRequest):
 @app.post("/api/composants/{composant_id}/remplacer")
 def remplacer_composant(
     composant_id: int,
-    data: RemplacementRequest
+    data: RemplacementRequest,
+    x_code_acces: Optional[str] = Header(default=None)
 ):
+    verifier_auth(x_code_acces)
     conn = db.connect()
     cursor = conn.cursor()
 
@@ -1894,39 +1959,6 @@ def remplacer_composant(
         conn.close()
 
 
-@app.get("/api/sauvegarde")
-def sauvegarde():
-    conn = db.connect()
-    cursor = conn.cursor()
-
-    try:
-        cursor.execute("SELECT km_total FROM velo WHERE id = 1")
-        velo = cursor.fetchone()
-
-        cursor.execute("SELECT * FROM composants ORDER BY id")
-        composants = [dict(r) for r in cursor.fetchall()]
-
-        cursor.execute("SELECT * FROM historique ORDER BY id")
-        historique = [dict(r) for r in cursor.fetchall()]
-
-        cursor.execute("SELECT * FROM sorties ORDER BY debut")
-        sorties = [dict(r) for r in cursor.fetchall()]
-
-        reglages = lire_reglages(cursor)
-
-        return {
-            "date_sauvegarde": str(date.today()),
-            "km_total": velo[0] if velo else None,
-            "composants": composants,
-            "historique": historique,
-            "sorties": sorties,
-            "reglages": reglages
-        }
-
-    finally:
-        conn.close()
-
-
 TERRAINS = {"mixte", "route", "chemin", "sentier"}
 
 
@@ -1949,7 +1981,8 @@ def ajuster_km_total(cursor, delta_km):
 
 
 @app.post("/api/sorties/import")
-def importer_sortie(data: ImportGpxRequest):
+def importer_sortie(data: ImportGpxRequest, x_code_acces: Optional[str] = Header(default=None)):
+    verifier_auth(x_code_acces)
     try:
         s = gpx_import.analyser_gpx(data.gpx)
     except gpx_import.GpxError as e:
@@ -2024,7 +2057,8 @@ def importer_sortie(data: ImportGpxRequest):
 
 
 @app.get("/api/sorties")
-def lister_sorties():
+def lister_sorties(x_code_acces: Optional[str] = Header(default=None)):
+    verifier_auth(x_code_acces)
     conn = db.connect()
     cursor = conn.cursor()
 
@@ -2055,7 +2089,8 @@ def lister_sorties():
 
 
 @app.post("/api/sorties/{sortie_id}/supprimer")
-def supprimer_sortie(sortie_id: int):
+def supprimer_sortie(sortie_id: int, x_code_acces: Optional[str] = Header(default=None)):
+    verifier_auth(x_code_acces)
     conn = db.connect()
     cursor = conn.cursor()
 
@@ -2089,7 +2124,8 @@ def supprimer_sortie(sortie_id: int):
 
 
 @app.get("/api/reglages")
-def obtenir_reglages():
+def obtenir_reglages(x_code_acces: Optional[str] = Header(default=None)):
+    verifier_auth(x_code_acces)
     conn = db.connect()
     cursor = conn.cursor()
 
@@ -2101,7 +2137,8 @@ def obtenir_reglages():
 
 
 @app.post("/api/reglages")
-def enregistrer_reglages(data: ReglagesRequest):
+def enregistrer_reglages(data: ReglagesRequest, x_code_acces: Optional[str] = Header(default=None)):
+    verifier_auth(x_code_acces)
     conn = db.connect()
     cursor = conn.cursor()
 
