@@ -578,19 +578,20 @@ def remplacer_composant(composant_id: int, data: RemplacementRequest):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     
+    # 1. On récupère le kilométrage global actuel du vélo
     cursor.execute("SELECT km_total FROM velo WHERE id = 1")
     velo = cursor.fetchone()
     km_global = velo["km_total"] if velo else 0
     
-    # Met à jour le kilométrage de départ du composant
+    # 2. On fixe le point de départ du composant au km global actuel (ce qui remet l'usure à 0)
     cursor.execute("UPDATE composants SET km_depart = ? WHERE id = ?", (km_global, composant_id))
     
-    # Récupère la date envoyée ou utilise la date du jour par défaut
+    # 3. On prépare les données pour l'historique
     date_resp = data.date_remplacement if data.date_remplacement else str(date.today())
     notes_resp = data.notes if data.notes else "Intervention standard"
     cout_resp = data.cout if data.cout is not None else 0.0
     
-    # Enregistre l'intervention dans l'historique
+    # 4. On enregistre l'intervention dans l'historique
     cursor.execute(
         "INSERT INTO historique (composant_id, date_remplacement, cout, notes) VALUES (?, ?, ?, ?)",
         (composant_id, date_resp, cout_resp, notes_resp)
