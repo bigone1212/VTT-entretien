@@ -1,21 +1,18 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
-import sqlite3
+import db
 from typing import Optional
 from datetime import date
 
 app = FastAPI(title="VTTAE Entretien")
-
-DB_NAME = "vtt_entretien_v3.db"
-
 
 # ============================================================
 # BASE DE DONNÉES
 # ============================================================
 
 def init_db():
-    conn = sqlite3.connect(DB_NAME)
+    conn = db.connect()
     cursor = conn.cursor()
 
     cursor.execute("""
@@ -26,13 +23,14 @@ def init_db():
     """)
 
     cursor.execute("""
-        INSERT OR IGNORE INTO velo (id, km_total)
+        INSERT INTO velo (id, km_total)
         VALUES (1, 2700)
+        ON CONFLICT (id) DO NOTHING
     """)
 
-    cursor.execute("""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS composants (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id {db.AUTO_ID},
             nom TEXT NOT NULL,
             km_depart INTEGER DEFAULT 0,
             seuil_alerte INTEGER NOT NULL,
@@ -42,12 +40,12 @@ def init_db():
         )
     """)
 
-    cursor.execute("""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS historique (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id {db.AUTO_ID},
             composant_id INTEGER,
             date_remplacement TEXT,
-            cout REAL DEFAULT 0,
+            cout DOUBLE PRECISION DEFAULT 0,
             notes TEXT,
             km_intervention INTEGER,
             FOREIGN KEY (composant_id) REFERENCES composants (id)
@@ -56,14 +54,16 @@ def init_db():
 
     # Migration automatique pour les anciennes bases :
     # ajoute la colonne kilométrage si elle n'existe pas encore.
-    cursor.execute("PRAGMA table_info(historique)")
-    colonnes = [row[1] for row in cursor.fetchall()]
+    # (Inutile avec PostgreSQL : la colonne est créée dès le départ.)
+    if not db.USE_PG:
+        cursor.execute("PRAGMA table_info(historique)")
+        colonnes = [row[1] for row in cursor.fetchall()]
 
-    if "km_intervention" not in colonnes:
-        cursor.execute("""
-            ALTER TABLE historique
-            ADD COLUMN km_intervention INTEGER
-        """)
+        if "km_intervention" not in colonnes:
+            cursor.execute("""
+                ALTER TABLE historique
+                ADD COLUMN km_intervention INTEGER
+            """)
 
     # Création des composants uniquement si la table est vide.
     cursor.execute("SELECT COUNT(*) FROM composants")
@@ -72,7 +72,7 @@ def init_db():
         composants_initiaux = [
             (
                 "Chaîne Shimano XT (Remplacement)",
-                1200, 2000, "piece", 27, 76
+                1236, 2000, "piece", 27, 76
             ),
             (
                 "Nettoyage & Lubrification chaîne",
@@ -115,6 +115,33 @@ def init_db():
             )
             VALUES (?, ?, ?, ?, ?, ?)
         """, composants_initiaux)
+
+        # Les deux entretiens déjà enregistrés par Math, remis en place
+        # une seule fois, quand la base est toute neuve.
+        entretiens_connus = [
+            ("Chaîne Shimano XT (Remplacement)",
+             "2026-03-05", 1236, "Remplacement chaîne"),
+            ("Nettoyage & Lubrification chaîne",
+             "2026-10-01", 2445, "Nettoyage et lubrification"),
+        ]
+
+        for nom, jour, km, note in entretiens_connus:
+            cursor.execute(
+                "SELECT id FROM composants WHERE nom = ?", (nom,)
+            )
+            ligne = cursor.fetchone()
+
+            if ligne is not None:
+                cursor.execute("""
+                    INSERT INTO historique (
+                        composant_id,
+                        date_remplacement,
+                        cout,
+                        notes,
+                        km_intervention
+                    )
+                    VALUES (?, ?, ?, ?, ?)
+                """, (ligne[0], jour, 0.0, note, km))
 
     conn.commit()
     conn.close()
@@ -976,8 +1003,7 @@ def accueil():
 
 @app.get("/api/etat")
 def obtenir_etat():
-    conn = sqlite3.connect(DB_NAME)
-    conn.row_factory = sqlite3.Row
+    conn = db.connect()
     cursor = conn.cursor()
 
     try:
@@ -1038,8 +1064,7 @@ def obtenir_etat():
 
 @app.get("/api/historique")
 def obtenir_historique():
-    conn = sqlite3.connect(DB_NAME)
-    conn.row_factory = sqlite3.Row
+    conn = db.connect()
     cursor = conn.cursor()
 
     try:
@@ -1071,7 +1096,7 @@ def obtenir_historique():
 
 @app.post("/api/historique")
 def ajouter_historique(data: HistoriqueRequest):
-    conn = sqlite3.connect(DB_NAME)
+    conn = db.connect()
     cursor = conn.cursor()
 
     try:
@@ -1159,7 +1184,7 @@ def ajouter_historique(data: HistoriqueRequest):
 
 @app.post("/api/sync")
 def synchroniser_kilometrage(data: SynchroRequest):
-    conn = sqlite3.connect(DB_NAME)
+    conn = db.connect()
     cursor = conn.cursor()
 
     try:
@@ -1189,7 +1214,7 @@ def remplacer_composant(
     composant_id: int,
     data: RemplacementRequest
 ):
-    conn = sqlite3.connect(DB_NAME)
+    conn = db.connect()
     cursor = conn.cursor()
 
     try:
@@ -1273,6 +1298,36 @@ def remplacer_composant(
     except Exception:
         conn.rollback()
         raise
+
+    finally:
+        conn.close()
+
+
+# ============================================================
+# API : SAUVEGARDE COMPLÈTE (à ouvrir de temps en temps, puis Ctrl+S)
+# ============================================================
+
+@app.get("/api/sauvegarde")
+def sauvegarde():
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("SELECT km_total FROM velo WHERE id = 1")
+        velo = cursor.fetchone()
+
+        cursor.execute("SELECT * FROM composants ORDER BY id")
+        composants = [dict(r) for r in cursor.fetchall()]
+
+        cursor.execute("SELECT * FROM historique ORDER BY id")
+        historique = [dict(r) for r in cursor.fetchall()]
+
+        return {
+            "date_sauvegarde": str(date.today()),
+            "km_total": velo[0] if velo else None,
+            "composants": composants,
+            "historique": historique
+        }
 
     finally:
         conn.close()
