@@ -61,17 +61,14 @@ def facteur_usure(famille, distance_km, d_pos, d_neg, terrain, reglages):
     distance = max(float(distance_km or 0), 0.1)
     poids = reglages.get("poids_denivele", 1.0)
 
-    # Transmission : le dénivelé positif (montées) la fatigue.
     if famille == "transmission":
         montee = (d_pos or 0) / distance
         return coef_terrain * (1 + poids * montee / 100)
 
-    # Freins : c'est le dénivelé négatif (descentes) qui compte.
     if famille == "freins":
         descente = (d_neg or 0) / distance
         return coef_terrain * (1 + poids * descente / 100)
 
-    # Fourche, pneus : surtout le type de terrain.
     return coef_terrain
 
 
@@ -167,7 +164,6 @@ def init_db():
         )
     """)
 
-    # Ajout automatique de la colonne photo si elle n'existe pas
     ajouter_colonne(cursor, "sorties", "photo", "TEXT")
 
     cursor.execute("""
@@ -820,3 +816,1289 @@ def accueil():
 
         <div class="bike-container">
             <img
+                src="https://shop.roulezjeunesse.com/cdn/shop/files/CubeStereoHybridONE44EXC8001.jpg?v=1736521382&width=1220"
+                alt="Mon Cube Stereo Hybrid"
+                class="bike-img"
+            >
+
+            <div id="hotspotsContainer"></div>
+        </div>
+
+        <div id="composantsList" class="grid">
+            <div class="loading">Chargement des composants...</div>
+        </div>
+
+        <div class="history-section">
+            <h2>📜 Ajouter une ancienne intervention</h2>
+
+            <label for="histComposant">Composant concerné</label>
+            <select id="histComposant"></select>
+
+            <label for="histDate">Date de l'intervention</label>
+            <input type="date" id="histDate" required>
+
+            <label for="histKm">Kilométrage au moment de l'intervention</label>
+            <input
+                type="number"
+                id="histKm"
+                min="0"
+                step="1"
+                placeholder="Ex. : 2445"
+                required
+            >
+
+            <p class="form-help">
+                Ce kilométrage deviendra le point de départ du suivi
+                d'entretien du composant.
+            </p>
+
+            <label for="histCout">Coût en euros</label>
+            <input
+                type="number"
+                step="0.01"
+                min="0"
+                id="histCout"
+                placeholder="Coût en € (optionnel)"
+            >
+
+            <label for="histNotes">Notes</label>
+            <input
+                type="text"
+                id="histNotes"
+                placeholder="Ex. : entretien réalisé chez le bouclard"
+            >
+
+            <button
+                class="btn-primary"
+                style="width:100%;"
+                onclick="ajouterHistorique()"
+            >
+                Enregistrer l'intervention
+            </button>
+
+            <h2 style="margin-top: 24px;">
+                📋 Historique des interventions
+            </h2>
+
+            <div id="historyList">
+                <div class="loading">Chargement de l'historique...</div>
+            </div>
+        </div>
+
+        <script>
+            async function chargerEtat() {
+                try {
+                    const res = await fetch('/api/etat');
+
+                    if (!res.ok) {
+                        throw new Error("Erreur lors du chargement des composants.");
+                    }
+
+                    const data = await res.json();
+
+                    document.getElementById('veloInfo').innerText =
+                        `Kilométrage total : ${data.km_total} km`;
+
+                    const container =
+                        document.getElementById('composantsList');
+
+                    const hotspotsContainer =
+                        document.getElementById('hotspotsContainer');
+
+                    const selectComp =
+                        document.getElementById('histComposant');
+
+                    container.innerHTML = '';
+                    hotspotsContainer.innerHTML = '';
+                    selectComp.innerHTML = '';
+
+                    data.composants.forEach((c, index) => {
+                        let statusClass = 'ok';
+                        let hotspotClass = '';
+
+                        if (c.pourcentage_usure >= 100) {
+                            statusClass = 'warning';
+                            hotspotClass = 'warning';
+                        } else if (c.pourcentage_usure >= 85) {
+                            statusClass = 'near-warning';
+                            hotspotClass = 'near-warning';
+                        }
+
+                        const badgeText =
+                            c.pourcentage_usure >= 100
+                                ? `À faire · ${c.pourcentage_usure}%`
+                                : `${c.pourcentage_usure}%`;
+
+                        const btnLabel =
+                            c.categorie === 'maintenance'
+                                ? '🔧 Marquer fait'
+                                : '⚙️ Remplacer';
+
+                        const option = document.createElement('option');
+                        option.value = c.id;
+                        option.textContent = c.nom;
+                        selectComp.appendChild(option);
+
+                        const hotspot = document.createElement('div');
+                        hotspot.className = `hotspot ${hotspotClass}`;
+                        hotspot.style.top = `${c.pos_y}%`;
+                        hotspot.style.left = `${c.pos_x}%`;
+                        hotspot.title = `${c.nom} (${c.pourcentage_usure}%)`;
+                        hotspot.textContent = index + 1;
+
+                        hotspot.addEventListener('click', () => {
+                            remplacer(c.id, c.nom);
+                        });
+
+                        hotspotsContainer.appendChild(hotspot);
+
+                        const card = document.createElement('div');
+                        card.className = 'card';
+                        card.id = `card-${c.id}`;
+
+                        const cardTop = document.createElement('div');
+                        cardTop.className = 'card-top';
+
+                        const componentName = document.createElement('div');
+                        componentName.className = 'component-name';
+                        componentName.textContent =
+                            `📍 #${index + 1} - ${c.nom}`;
+
+                        const badge = document.createElement('div');
+                        badge.className = `badge ${statusClass}`;
+                        badge.textContent = badgeText;
+
+                        cardTop.appendChild(componentName);
+                        cardTop.appendChild(badge);
+
+                        const statsRow = document.createElement('div');
+                        statsRow.className = 'stats-row';
+
+                        const kmText = document.createElement('span');
+                        kmText.textContent =
+                            `Parcouru depuis l'intervention : ${c.km_actuel} km`;
+
+                        const thresholdText = document.createElement('span');
+                        thresholdText.textContent =
+                            `Seuil : ${c.seuil_alerte} km`;
+
+                        statsRow.appendChild(kmText);
+                        statsRow.appendChild(thresholdText);
+
+                        const barBg = document.createElement('div');
+                        barBg.className = 'bar-bg';
+
+                        const barFill = document.createElement('div');
+                        barFill.className = `bar-fill ${statusClass}`;
+                        barFill.style.width =
+                            `${Math.min(c.pourcentage_usure, 100)}%`;
+
+                        barBg.appendChild(barFill);
+
+                        const button = document.createElement('button');
+                        button.className = 'btn-action';
+                        button.textContent = btnLabel;
+                        button.addEventListener('click', () => {
+                            remplacer(c.id, c.nom);
+                        });
+
+                        card.appendChild(cardTop);
+                        card.appendChild(statsRow);
+
+                        if (
+                            c.km_usure !== undefined &&
+                            Math.abs(c.km_usure - c.km_actuel) >= 1
+                        ) {
+                            const usureInfo = document.createElement('div');
+                            usureInfo.className = 'form-help';
+                            usureInfo.style.margin = '0 0 6px';
+                            usureInfo.textContent =
+                                `Usure estimée selon vos sorties : ${c.km_usure} km`;
+                            card.appendChild(usureInfo);
+                        }
+
+                        card.appendChild(barBg);
+                        card.appendChild(button);
+
+                        container.appendChild(card);
+                    });
+
+                    await chargerHistorique();
+                    await chargerSorties();
+                    await chargerReglages();
+
+                } catch (e) {
+                    console.error(e);
+                    document.getElementById('composantsList').innerHTML =
+                        '<div class="loading">Impossible de charger les composants.</div>';
+                }
+            }
+
+
+            async function chargerHistorique() {
+                try {
+                    const res = await fetch('/api/historique');
+
+                    if (!res.ok) {
+                        throw new Error("Erreur lors du chargement de l'historique.");
+                    }
+
+                    const history = await res.json();
+                    const listDiv = document.getElementById('historyList');
+
+                    listDiv.innerHTML = '';
+
+                    if (history.length === 0) {
+                        listDiv.innerHTML = `
+                            <p style="color: var(--text-muted); font-size: 0.85rem;">
+                                Aucune intervention enregistrée.
+                            </p>
+                        `;
+                        return;
+                    }
+
+                    history.forEach(h => {
+                        const item = document.createElement('div');
+                        item.className = 'history-item';
+
+                        const details = document.createElement('div');
+                        details.className = 'history-details';
+
+                        const title = document.createElement('strong');
+                        title.textContent = h.composant_nom;
+
+                        const detailText = document.createElement('div');
+                        detailText.style.color = 'var(--text-muted)';
+                        detailText.style.marginTop = '4px';
+
+                        const kmText =
+                            h.km_intervention !== null &&
+                            h.km_intervention !== undefined
+                                ? `🚲 À ${h.km_intervention} km`
+                                : '🚲 Kilométrage non renseigné';
+
+                        detailText.textContent =
+                            `${h.notes || 'Intervention réalisée'} · ` +
+                            `${h.date_remplacement} · ${kmText}`;
+
+                        details.appendChild(title);
+                        details.appendChild(detailText);
+
+                        const cost = document.createElement('div');
+                        cost.className = 'history-cost';
+                        cost.textContent =
+                            h.cout > 0 ? `${h.cout} €` : '';
+
+                        item.appendChild(details);
+                        item.appendChild(cost);
+
+                        listDiv.appendChild(item);
+                    });
+
+                } catch (e) {
+                    console.error(e);
+                    document.getElementById('historyList').innerHTML =
+                        '<p>Impossible de charger l’historique.</p>';
+                }
+            }
+
+
+            async function syncKm() {
+                const input = document.getElementById('kmInput');
+                const km = parseInt(input.value, 10);
+
+                if (isNaN(km) || km < 0) {
+                    alert("Veuillez saisir un kilométrage valide.");
+                    return;
+                }
+
+                try {
+                    const res = await fetch('/api/sync', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            km_total: km
+                        })
+                    });
+
+                    const data = await res.json();
+
+                    if (!res.ok) {
+                        throw new Error(data.detail || "Erreur de mise à jour.");
+                    }
+
+                    input.value = '';
+                    await chargerEtat();
+
+                } catch (e) {
+                    alert(e.message || "Impossible de mettre à jour le kilométrage.");
+                }
+            }
+
+
+            async function remplacer(id, nom) {
+                if (!confirm(`Confirmer l'intervention pour : ${nom} ?`)) {
+                    return;
+                }
+
+                const aujourdhui =
+                    new Date().toISOString().split('T')[0];
+
+                try {
+                    const res = await fetch(
+                        `/api/composants/${id}/remplacer`,
+                        {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                notes: "Intervention standard",
+                                cout: 0.0,
+                                date_remplacement: aujourdhui
+                            })
+                        }
+                    );
+
+                    const data = await res.json();
+
+                    if (!res.ok) {
+                        throw new Error(data.detail || "Erreur lors de l'intervention.");
+                    }
+
+                    await chargerEtat();
+
+                } catch (e) {
+                    alert(e.message || "Impossible d'enregistrer l'intervention.");
+                }
+            }
+
+
+            async function ajouterHistorique() {
+                const composant_id = parseInt(
+                    document.getElementById('histComposant').value,
+                    10
+                );
+
+                const date_remplacement =
+                    document.getElementById('histDate').value;
+
+                const km_intervention = parseInt(
+                    document.getElementById('histKm').value,
+                    10
+                );
+
+                const cout =
+                    parseFloat(document.getElementById('histCout').value) || 0;
+
+                const notes =
+                    document.getElementById('histNotes').value.trim()
+                    || "Ancien entretien";
+
+                if (!date_remplacement) {
+                    alert("Veuillez sélectionner la date de l'intervention.");
+                    return;
+                }
+
+                if (isNaN(km_intervention) || km_intervention < 0) {
+                    alert("Veuillez saisir un kilométrage valide.");
+                    return;
+                }
+
+                try {
+                    const res = await fetch('/api/historique', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            composant_id,
+                            date_remplacement,
+                            km_intervention,
+                            cout,
+                            notes
+                        })
+                    });
+
+                    const data = await res.json();
+
+                    if (!res.ok) {
+                        throw new Error(
+                            data.detail || "Impossible d'enregistrer l'intervention."
+                        );
+                    }
+
+                    document.getElementById('histDate').value = '';
+                    document.getElementById('histKm').value = '';
+                    document.getElementById('histCout').value = '';
+                    document.getElementById('histNotes').value = '';
+
+                    await chargerEtat();
+
+                } catch (e) {
+                    alert(e.message || "Une erreur est survenue.");
+                }
+            }
+
+
+            const LIBELLES_TERRAIN = {
+                mixte: 'Mixte',
+                route: 'Route',
+                chemin: 'Chemin',
+                sentier: 'Sentier technique'
+            };
+
+
+            function formaterDuree(secondes) {
+                const minutesTotales = Math.round(secondes / 60);
+                const h = Math.floor(minutesTotales / 60);
+                const m = minutesTotales % 60;
+
+                return h > 0
+                    ? `${h} h ${String(m).padStart(2, '0')}`
+                    : `${m} min`;
+            }
+
+
+            function dessinerTrace(trace) {
+                const ns = 'http://www.w3.org/2000/svg';
+                const svg = document.createElementNS(ns, 'svg');
+
+                svg.setAttribute('viewBox', '0 0 100 60');
+                svg.setAttribute('width', '90');
+                svg.setAttribute('height', '54');
+                svg.style.flexShrink = '0';
+
+                if (!trace || trace.length < 2) {
+                    return svg;
+                }
+
+                const lats = trace.map(p => p[0]);
+                const lons = trace.map(p => p[1]);
+                const minLat = Math.min(...lats);
+                const maxLat = Math.max(...lats);
+                const minLon = Math.min(...lons);
+                const maxLon = Math.max(...lons);
+
+                const kx = Math.cos(((minLat + maxLat) / 2) * Math.PI / 180);
+                const largeur = ((maxLon - minLon) * kx) || 1e-6;
+                const hauteur = (maxLat - minLat) || 1e-6;
+                const echelle = Math.min(92 / largeur, 52 / hauteur);
+                const dx = (100 - largeur * echelle) / 2;
+                const dy = (60 - hauteur * echelle) / 2;
+
+                const points = trace.map(p => {
+                    const x = dx + (p[1] - minLon) * kx * echelle;
+                    const y = dy + (maxLat - p[0]) * echelle;
+                    return `${x.toFixed(1)},${y.toFixed(1)}`;
+                }).join(' ');
+
+                const ligne = document.createElementNS(ns, 'polyline');
+                ligne.setAttribute('points', points);
+                ligne.setAttribute('fill', 'none');
+                ligne.setAttribute('stroke', '#3b82f6');
+                ligne.setAttribute('stroke-width', '2');
+                ligne.setAttribute('stroke-linejoin', 'round');
+                ligne.setAttribute('stroke-linecap', 'round');
+
+                svg.appendChild(ligne);
+
+                return svg;
+            }
+
+
+            async function chargerSorties() {
+                const liste = document.getElementById('sortiesList');
+
+                try {
+                    const res = await fetch('/api/sorties');
+
+                    if (!res.ok) {
+                        throw new Error("Erreur lors du chargement des sorties.");
+                    }
+
+                    const sorties = await res.json();
+
+                    liste.innerHTML = '';
+
+                    if (sorties.length === 0) {
+                        const vide = document.createElement('p');
+                        vide.style.color = 'var(--text-muted)';
+                        vide.style.fontSize = '0.85rem';
+                        vide.textContent = 'Aucune sortie importée.';
+                        liste.appendChild(vide);
+                        return;
+                    }
+
+                    sorties.forEach(s => {
+                        const item = document.createElement('div');
+                        item.className = 'history-item';
+
+                        const details = document.createElement('div');
+                        details.className = 'history-details';
+
+                        const titre = document.createElement('strong');
+                        const jour = new Date(s.debut).toLocaleDateString('fr-FR');
+                        titre.textContent = `${s.nom} · ${jour}`;
+
+                        const ligne1 = document.createElement('div');
+                        ligne1.style.color = 'var(--text-muted)';
+                        ligne1.style.marginTop = '4px';
+                        ligne1.textContent =
+                            `${s.distance_km} km · ${s.denivele_pos} m D+ · ` +
+                            `${formaterDuree(s.duree_s)} · ${s.vitesse_moy} km/h`;
+
+                        const ligne2 = document.createElement('div');
+                        ligne2.style.color = 'var(--text-muted)';
+                        ligne2.textContent =
+                            (LIBELLES_TERRAIN[s.terrain] || s.terrain) +
+                            (s.notes ? ` · ${s.notes}` : '');
+
+                        const bouton = document.createElement('button');
+                        bouton.className = 'btn-action';
+                        bouton.style.marginTop = '8px';
+                        bouton.style.width = 'auto';
+                        bouton.style.padding = '6px 12px';
+                        bouton.textContent = '🗑️ Supprimer';
+                        bouton.addEventListener('click', () => {
+                            supprimerSortie(s.id);
+                        });
+
+                        details.appendChild(titre);
+                        details.appendChild(ligne1);
+                        details.appendChild(ligne2);
+                        details.appendChild(bouton);
+
+                        item.appendChild(details);
+
+                        const mediaDiv = document.createElement('div');
+                        mediaDiv.className = 'sortie-media';
+
+                        if (s.photo) {
+                            const img = document.createElement('img');
+                            img.src = s.photo;
+                            img.className = 'sortie-img';
+                            mediaDiv.appendChild(img);
+                        }
+
+                        mediaDiv.appendChild(dessinerTrace(s.trace));
+                        item.appendChild(mediaDiv);
+
+                        liste.appendChild(item);
+                    });
+
+                } catch (e) {
+                    console.error(e);
+                    liste.innerHTML = '<p>Impossible de charger les sorties.</p>';
+                }
+            }
+
+
+            async function importerGpx() {
+                const fichierGpx = document.getElementById('gpxFile').files[0];
+                const fichierPhoto = document.getElementById('gpxPhoto').files[0];
+                const message = document.getElementById('gpxMessage');
+
+                if (!fichierGpx) {
+                    message.textContent = "Choisissez d'abord un fichier GPX.";
+                    return;
+                }
+
+                message.textContent = 'Import en cours...';
+
+                try {
+                    const gpx = await fichierGpx.text();
+                    let photoBase64 = null;
+
+                    if (fichierPhoto) {
+                        photoBase64 = await new Promise((resolve) => {
+                            const reader = new FileReader();
+                            reader.onload = (e) => resolve(e.target.result);
+                            reader.readAsDataURL(fichierPhoto);
+                        });
+                    }
+
+                    const res = await fetch('/api/sorties/import', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            gpx: gpx,
+                            terrain: document.getElementById('gpxTerrain').value,
+                            notes: document.getElementById('gpxNotes').value.trim() || null,
+                            photo: photoBase64
+                        })
+                    });
+
+                    const data = await res.json();
+
+                    if (!res.ok) {
+                        throw new Error(
+                            typeof data.detail === 'string'
+                                ? data.detail
+                                : "Fichier refusé."
+                        );
+                    }
+
+                    message.textContent =
+                        `✅ Sortie importée : ${data.distance_km} km, ` +
+                        `${data.denivele_pos} m D+. ` +
+                        (data.ajoute_au_total
+                            ? `Kilométrage total : ${data.km_total} km.`
+                            : "Cette sortie date d'avant votre dernière mise à jour " +
+                              "du kilométrage : elle n'a pas été ajoutée au total.");
+
+                    document.getElementById('gpxFile').value = '';
+                    document.getElementById('gpxPhoto').value = '';
+                    document.getElementById('gpxNotes').value = '';
+
+                    await chargerEtat();
+
+                } catch (e) {
+                    message.textContent = e.message || "Import impossible.";
+                }
+            }
+
+
+            async function supprimerSortie(id) {
+                if (!confirm("Supprimer cette sortie ?")) {
+                    return;
+                }
+
+                try {
+                    const res = await fetch(`/api/sorties/${id}/supprimer`, {
+                        method: 'POST'
+                    });
+
+                    if (!res.ok) {
+                        throw new Error("Suppression impossible.");
+                    }
+
+                    await chargerEtat();
+
+                } catch (e) {
+                    alert(e.message || "Suppression impossible.");
+                }
+            }
+
+
+            const CHAMPS_REGLAGES = {
+                terrain_route: 'regRoute',
+                terrain_mixte: 'regMixte',
+                terrain_chemin: 'regChemin',
+                terrain_sentier: 'regSentier',
+                poids_denivele: 'regDenivele'
+            };
+
+
+            async function chargerReglages() {
+                try {
+                    const res = await fetch('/api/reglages');
+
+                    if (!res.ok) {
+                        return;
+                    }
+
+                    const reglages = await res.json();
+
+                    Object.entries(CHAMPS_REGLAGES).forEach(([cle, id]) => {
+                        const champ = document.getElementById(id);
+
+                        if (champ && reglages[cle] !== undefined) {
+                            champ.value = reglages[cle];
+                        }
+                    });
+
+                } catch (e) {
+                    console.error(e);
+                }
+            }
+
+
+            async function enregistrerReglages() {
+                const message = document.getElementById('reglagesMessage');
+                const corps = {};
+
+                for (const [cle, id] of Object.entries(CHAMPS_REGLAGES)) {
+                    const valeur = parseFloat(
+                        document.getElementById(id).value.replace(',', '.')
+                    );
+
+                    if (isNaN(valeur)) {
+                        message.textContent = "Vérifiez les nombres saisis.";
+                        return;
+                    }
+
+                    corps[cle] = valeur;
+                }
+
+                try {
+                    const res = await fetch('/api/reglages', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(corps)
+                    });
+
+                    if (!res.ok) {
+                        throw new Error(
+                            "Valeurs refusées : entre 0,5 et 5 pour les terrains, " +
+                            "entre 0 et 5 pour le dénivelé."
+                        );
+                    }
+
+                    message.textContent = '✅ Réglages enregistrés.';
+
+                    await chargerEtat();
+
+                } catch (e) {
+                    message.textContent = e.message || "Enregistrement impossible.";
+                }
+            }
+
+
+            chargerEtat();
+        </script>
+    </body>
+    </html>
+    """
+
+    return html_content
+
+
+# ============================================================
+# API : ÉTAT DU VÉLO ET POURCENTAGES D'USURE
+# ============================================================
+
+@app.get("/api/etat")
+def obtenir_etat():
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("SELECT km_total FROM velo WHERE id = 1")
+        velo = cursor.fetchone()
+
+        km_global = (
+            velo["km_total"]
+            if velo and velo["km_total"] is not None
+            else 2700
+        )
+
+        cursor.execute("SELECT * FROM composants")
+        rows = cursor.fetchall()
+
+        reglages = lire_reglages(cursor)
+
+        cursor.execute("""
+            SELECT debut, distance_km, denivele_pos, denivele_neg, terrain
+            FROM sorties
+        """)
+        sorties = cursor.fetchall()
+
+        cursor.execute("""
+            SELECT composant_id, MAX(date_remplacement)
+            FROM historique
+            GROUP BY composant_id
+        """)
+        dernier_entretien = {r[0]: r[1] for r in cursor.fetchall()}
+
+        resultat = []
+
+        for row in rows:
+            km_depart = row["km_depart"] or 0
+            seuil = row["seuil_alerte"] or 0
+
+            km = max(0, km_global - km_depart)
+
+            famille = famille_de(row["nom"])
+            depuis = dernier_entretien.get(row["id"])
+            surplus = 0.0
+
+            for s in sorties:
+                if depuis is None or s[0][:10] >= depuis:
+                    facteur = facteur_usure(
+                        famille, s[1], s[2], s[3], s[4] or "mixte", reglages
+                    )
+                    surplus += float(s[1] or 0) * (facteur - 1)
+
+            km_usure = max(0.0, km + surplus)
+
+            pourcentage = (
+                round((km_usure / seuil) * 100)
+                if seuil > 0
+                else 0
+            )
+
+            resultat.append({
+                "id": row["id"],
+                "nom": row["nom"],
+                "km_actuel": km,
+                "km_usure": round(km_usure, 1),
+                "km_depart": km_depart,
+                "seuil_alerte": seuil,
+                "pourcentage_usure": pourcentage,
+                "alerte_entretien": km_usure >= seuil if seuil > 0 else False,
+                "categorie": row["categorie"],
+                "pos_x": row["pos_x"],
+                "pos_y": row["pos_y"]
+            })
+
+        return {
+            "km_total": km_global,
+            "composants": resultat
+        }
+
+    finally:
+        conn.close()
+
+
+# ============================================================
+# API : HISTORIQUE DES INTERVENTIONS
+# ============================================================
+
+@app.get("/api/historique")
+def obtenir_historique():
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("""
+            SELECT
+                h.id,
+                h.composant_id,
+                c.nom AS composant_nom,
+                h.date_remplacement,
+                h.cout,
+                h.notes,
+                h.km_intervention
+            FROM historique h
+            JOIN composants c ON h.composant_id = c.id
+            ORDER BY h.id DESC
+        """)
+
+        rows = cursor.fetchall()
+
+        return [dict(row) for row in rows]
+
+    finally:
+        conn.close()
+
+
+@app.post("/api/historique")
+def ajouter_historique(data: HistoriqueRequest):
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            "SELECT id FROM composants WHERE id = ?",
+            (data.composant_id,)
+        )
+
+        if cursor.fetchone() is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Composant introuvable."
+            )
+
+        cursor.execute("SELECT km_total FROM velo WHERE id = 1")
+        velo = cursor.fetchone()
+
+        km_total = (
+            velo[0]
+            if velo and velo[0] is not None
+            else 2700
+        )
+
+        if data.km_intervention > km_total:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Le kilométrage de l'intervention ne peut pas "
+                    "dépasser celui du vélo."
+                )
+            )
+
+        cursor.execute("""
+            INSERT INTO historique (
+                composant_id,
+                date_remplacement,
+                cout,
+                notes,
+                km_intervention
+            )
+            VALUES (?, ?, ?, ?, ?)
+        """, (
+            data.composant_id,
+            data.date_remplacement,
+            data.cout or 0.0,
+            data.notes or "Ancien entretien",
+            data.km_intervention
+        ))
+
+        cursor.execute("""
+            UPDATE composants
+            SET km_depart = ?
+            WHERE id = ?
+        """, (
+            data.km_intervention,
+            data.composant_id
+        ))
+
+        conn.commit()
+
+        return {
+            "statut": "success",
+            "message": "Intervention enregistrée.",
+            "km_intervention": data.km_intervention
+        }
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+
+@app.post("/api/sync")
+def synchroniser_kilometrage(data: SynchroRequest):
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("""
+            UPDATE velo
+            SET km_total = ?, km_frac = 0, km_maj_le = ?
+            WHERE id = 1
+        """, (data.km_total, maintenant_utc()))
+
+        conn.commit()
+
+        return {
+            "statut": "success",
+            "km_total": data.km_total
+        }
+
+    finally:
+        conn.close()
+
+
+@app.post("/api/composants/{composant_id}/remplacer")
+def remplacer_composant(
+    composant_id: int,
+    data: RemplacementRequest
+):
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            "SELECT id FROM composants WHERE id = ?",
+            (composant_id,)
+        )
+
+        if cursor.fetchone() is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Composant introuvable."
+            )
+
+        cursor.execute("SELECT km_total FROM velo WHERE id = 1")
+        velo = cursor.fetchone()
+
+        km_global = (
+            velo[0]
+            if velo and velo[0] is not None
+            else 2700
+        )
+
+        date_resp = (
+            data.date_remplacement
+            if data.date_remplacement
+            else str(date.today())
+        )
+
+        notes_resp = (
+            data.notes
+            if data.notes
+            else "Intervention standard"
+        )
+
+        cout_resp = (
+            data.cout
+            if data.cout is not None
+            else 0.0
+        )
+
+        cursor.execute("""
+            UPDATE composants
+            SET km_depart = ?
+            WHERE id = ?
+        """, (
+            km_global,
+            composant_id
+        ))
+
+        cursor.execute("""
+            INSERT INTO historique (
+                composant_id,
+                date_remplacement,
+                cout,
+                notes,
+                km_intervention
+            )
+            VALUES (?, ?, ?, ?, ?)
+        """, (
+            composant_id,
+            date_resp,
+            cout_resp,
+            notes_resp,
+            km_global
+        ))
+
+        conn.commit()
+
+        return {
+            "statut": "success",
+            "message": "Intervention enregistrée.",
+            "km_intervention": km_global
+        }
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+
+@app.get("/api/sauvegarde")
+def sauvegarde():
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("SELECT km_total FROM velo WHERE id = 1")
+        velo = cursor.fetchone()
+
+        cursor.execute("SELECT * FROM composants ORDER BY id")
+        composants = [dict(r) for r in cursor.fetchall()]
+
+        cursor.execute("SELECT * FROM historique ORDER BY id")
+        historique = [dict(r) for r in cursor.fetchall()]
+
+        cursor.execute("SELECT * FROM sorties ORDER BY debut")
+        sorties = [dict(r) for r in cursor.fetchall()]
+
+        reglages = lire_reglages(cursor)
+
+        return {
+            "date_sauvegarde": str(date.today()),
+            "km_total": velo[0] if velo else None,
+            "composants": composants,
+            "historique": historique,
+            "sorties": sorties,
+            "reglages": reglages
+        }
+
+    finally:
+        conn.close()
+
+
+TERRAINS = {"mixte", "route", "chemin", "sentier"}
+
+
+def ajuster_km_total(cursor, delta_km):
+    cursor.execute("SELECT km_total, km_frac FROM velo WHERE id = 1")
+    ligne = cursor.fetchone()
+
+    base = ligne[0] if ligne and ligne[0] is not None else 2700
+    frac = ligne[1] if ligne and ligne[1] is not None else 0.0
+
+    total = max(0.0, base + frac + delta_km)
+    entier = int(math.floor(total + 1e-9))
+
+    cursor.execute(
+        "UPDATE velo SET km_total = ?, km_frac = ? WHERE id = 1",
+        (entier, total - entier)
+    )
+
+    return entier
+
+
+@app.post("/api/sorties/import")
+def importer_sortie(data: ImportGpxRequest):
+    try:
+        s = gpx_import.analyser_gpx(data.gpx)
+    except gpx_import.GpxError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    terrain = (data.terrain or "mixte").lower()
+
+    if terrain not in TERRAINS:
+        terrain = "mixte"
+
+    nom = (data.nom or s["nom"] or "Sortie à vélo")[:120]
+    notes = (data.notes or "").strip()[:500] or None
+    photo = data.photo
+
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("SELECT id FROM sorties WHERE debut = ?", (s["debut"],))
+
+        if cursor.fetchone() is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="Cette sortie est déjà importée."
+            )
+
+        cursor.execute("SELECT km_maj_le FROM velo WHERE id = 1")
+        velo = cursor.fetchone()
+        derniere_maj = velo[0] if velo else None
+
+        compte = 1 if (derniere_maj and s["debut"] > derniere_maj) else 0
+
+        cursor.execute("""
+            INSERT INTO sorties (
+                nom, debut, sport, distance_km, denivele_pos, denivele_neg,
+                duree_s, vitesse_moy, alt_max, pente_moy_montee,
+                terrain, notes, km_compte, trace, photo
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            nom, s["debut"], s["sport"], s["distance_km"],
+            s["denivele_pos"], s["denivele_neg"], s["duree_s"],
+            s["vitesse_moy"], s["alt_max"], s["pente_moy_montee"],
+            terrain, notes, compte, s["trace"], photo
+        ))
+
+        if compte:
+            km_total = ajuster_km_total(cursor, s["distance_km"])
+        else:
+            cursor.execute("SELECT km_total FROM velo WHERE id = 1")
+            km_total = cursor.fetchone()[0]
+
+        conn.commit()
+
+        return {
+            "statut": "success",
+            "nom": nom,
+            "debut": s["debut"],
+            "distance_km": s["distance_km"],
+            "denivele_pos": s["denivele_pos"],
+            "duree_s": s["duree_s"],
+            "ajoute_au_total": bool(compte),
+            "km_total": km_total
+        }
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+
+@app.get("/api/sorties")
+def lister_sorties():
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("SELECT * FROM sorties ORDER BY debut DESC")
+
+        resultat = []
+
+        for row in cursor.fetchall():
+            sortie = dict(row)
+
+            try:
+                sortie["trace"] = json.loads(sortie["trace"] or "[]")
+            except ValueError:
+                sortie["trace"] = []
+
+            resultat.append(sortie)
+
+        return resultat
+
+    finally:
+        conn.close()
+
+
+@app.post("/api/sorties/{sortie_id}/supprimer")
+def supprimer_sortie(sortie_id: int):
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            "SELECT distance_km, km_compte FROM sorties WHERE id = ?",
+            (sortie_id,)
+        )
+        ligne = cursor.fetchone()
+
+        if ligne is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Sortie introuvable."
+            )
+
+        if ligne[1]:
+            ajuster_km_total(cursor, -float(ligne[0] or 0))
+
+        cursor.execute("DELETE FROM sorties WHERE id = ?", (sortie_id,))
+        conn.commit()
+
+        return {"statut": "success"}
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+
+@app.get("/api/reglages")
+def obtenir_reglages():
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        return lire_reglages(cursor)
+
+    finally:
+        conn.close()
+
+
+@app.post("/api/reglages")
+def enregistrer_reglages(data: ReglagesRequest):
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        for cle, valeur in data.model_dump().items():
+            cursor.execute("""
+                INSERT INTO reglages (cle, valeur)
+                VALUES (?, ?)
+                ON CONFLICT (cle) DO UPDATE SET valeur = excluded.valeur
+            """, (cle, valeur))
+
+        conn.commit()
+
+        return {"statut": "success"}
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
