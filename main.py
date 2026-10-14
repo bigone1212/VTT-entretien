@@ -5,7 +5,7 @@ import db
 import gpx_import
 import json
 import math
-from typing import Optional
+from typing import Optional, List
 from datetime import date, datetime, timezone
 
 app = FastAPI(title="VTTAE Entretien")
@@ -164,7 +164,8 @@ def init_db():
         )
     """)
 
-    ajouter_colonne(cursor, "sorties", "photo", "TEXT")
+    # Pour plusieurs photos, on stocke un tableau JSON de chaînes base64
+    ajouter_colonne(cursor, "sorties", "photos", "TEXT")
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS reglages (
@@ -297,7 +298,7 @@ class ImportGpxRequest(BaseModel):
     terrain: Optional[str] = "mixte"
     notes: Optional[str] = None
     nom: Optional[str] = None
-    photo: Optional[str] = None
+    photos: Optional[List[str]] = None
 
 
 class HistoriqueRequest(BaseModel):
@@ -674,11 +675,19 @@ def accueil():
                 flex-shrink: 0;
             }
 
+            .photos-gallery {
+                display: flex;
+                gap: 4px;
+                flex-wrap: wrap;
+                max-width: 100px;
+                justify-content: flex-end;
+            }
+
             .sortie-img {
-                width: 90px;
-                height: 60px;
+                width: 43px;
+                height: 43px;
                 object-fit: cover;
-                border-radius: 6px;
+                border-radius: 4px;
                 border: 1px solid rgba(255,255,255,0.1);
             }
 
@@ -737,11 +746,12 @@ def accueil():
                 accept=".gpx,application/gpx+xml,text/xml"
             >
 
-            <label for="gpxPhoto">Photo souvenir (optionnel)</label>
+            <label for="gpxPhotos">Photos souvenirs (plusieurs possibles)</label>
             <input
                 type="file"
-                id="gpxPhoto"
+                id="gpxPhotos"
                 accept="image/*"
+                multiple
             >
 
             <label for="gpxTerrain">Terrain</label>
@@ -1376,11 +1386,16 @@ def accueil():
                         const mediaDiv = document.createElement('div');
                         mediaDiv.className = 'sortie-media';
 
-                        if (s.photo) {
-                            const img = document.createElement('img');
-                            img.src = s.photo;
-                            img.className = 'sortie-img';
-                            mediaDiv.appendChild(img);
+                        if (s.photos && s.photos.length > 0) {
+                            const gallery = document.createElement('div');
+                            gallery.className = 'photos-gallery';
+                            s.photos.forEach(pData => {
+                                const img = document.createElement('img');
+                                img.src = pData;
+                                img.className = 'sortie-img';
+                                gallery.appendChild(img);
+                            });
+                            mediaDiv.appendChild(gallery);
                         }
 
                         mediaDiv.appendChild(dessinerTrace(s.trace));
@@ -1398,7 +1413,7 @@ def accueil():
 
             async function importerGpx() {
                 const fichierGpx = document.getElementById('gpxFile').files[0];
-                const fichierPhoto = document.getElementById('gpxPhoto').files[0];
+                const fichiersPhotos = document.getElementById('gpxPhotos').files;
                 const message = document.getElementById('gpxMessage');
 
                 if (!fichierGpx) {
@@ -1410,14 +1425,15 @@ def accueil():
 
                 try {
                     const gpx = await fichierGpx.text();
-                    let photoBase64 = null;
+                    let photosList = [];
 
-                    if (fichierPhoto) {
-                        photoBase64 = await new Promise((resolve) => {
+                    for (let i = 0; i < fichiersPhotos.length; i++) {
+                        const base64 = await new Promise((resolve) => {
                             const reader = new FileReader();
                             reader.onload = (e) => resolve(e.target.result);
-                            reader.readAsDataURL(fichierPhoto);
+                            reader.readAsDataURL(fichiersPhotos[i]);
                         });
+                        photosList.push(base64);
                     }
 
                     const res = await fetch('/api/sorties/import', {
@@ -1429,7 +1445,7 @@ def accueil():
                             gpx: gpx,
                             terrain: document.getElementById('gpxTerrain').value,
                             notes: document.getElementById('gpxNotes').value.trim() || null,
-                            photo: photoBase64
+                            photos: photosList
                         })
                     });
 
@@ -1452,7 +1468,7 @@ def accueil():
                               "du kilométrage : elle n'a pas été ajoutée au total.");
 
                     document.getElementById('gpxFile').value = '';
-                    document.getElementById('gpxPhoto').value = '';
+                    document.getElementById('gpxPhotos').value = '';
                     document.getElementById('gpxNotes').value = '';
 
                     await chargerEtat();
@@ -1946,7 +1962,7 @@ def importer_sortie(data: ImportGpxRequest):
 
     nom = (data.nom or s["nom"] or "Sortie à vélo")[:120]
     notes = (data.notes or "").strip()[:500] or None
-    photo = data.photo
+    photos_json = json.dumps(data.photos) if data.photos else None
 
     conn = db.connect()
     cursor = conn.cursor()
@@ -1970,14 +1986,14 @@ def importer_sortie(data: ImportGpxRequest):
             INSERT INTO sorties (
                 nom, debut, sport, distance_km, denivele_pos, denivele_neg,
                 duree_s, vitesse_moy, alt_max, pente_moy_montee,
-                terrain, notes, km_compte, trace, photo
+                terrain, notes, km_compte, trace, photos
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             nom, s["debut"], s["sport"], s["distance_km"],
             s["denivele_pos"], s["denivele_neg"], s["duree_s"],
             s["vitesse_moy"], s["alt_max"], s["pente_moy_montee"],
-            terrain, notes, compte, s["trace"], photo
+            terrain, notes, compte, s["trace"], photos_json
         ))
 
         if compte:
@@ -2024,6 +2040,11 @@ def lister_sorties():
                 sortie["trace"] = json.loads(sortie["trace"] or "[]")
             except ValueError:
                 sortie["trace"] = []
+
+            try:
+                sortie["photos"] = json.loads(sortie["photos"] or "[]")
+            except ValueError:
+                sortie["photos"] = []
 
             resultat.append(sortie)
 
