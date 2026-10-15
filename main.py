@@ -358,6 +358,10 @@ class PhotoIn(BaseModel):
     photo: str = Field(max_length=1_500_000)
 
 
+class TerrainRequest(BaseModel):
+    terrain: str = Field(max_length=20)
+
+
 class ImportGpxRequest(BaseModel):
     gpx: str = Field(min_length=50, max_length=3_000_000)
     terrain: Optional[str] = "mixte"
@@ -882,12 +886,20 @@ def accueil():
         <div class="history-section" style="margin-bottom: 20px;">
             <h2>🚵 Sorties</h2>
 
-            <label for="gpxFile">Importer une sortie (fichier GPX de Komoot)</label>
+            <label for="gpxFile">Importer une ou plusieurs sorties (fichiers GPX de Komoot)</label>
             <input
                 type="file"
                 id="gpxFile"
                 accept=".gpx,application/gpx+xml,text/xml"
+                multiple
             >
+
+            <p class="form-help">
+                Plusieurs fichiers d'un coup sont possibles (30 maximum).
+                Le terrain et la note choisis ci-dessous s'appliquent à toutes
+                les sorties ; tu pourras corriger le terrain de chacune ensuite.
+                Les photos ne se joignent qu'à une seule sortie à la fois.
+            </p>
 
             <label for="gpxPhotos">Photos souvenirs (plusieurs possibles)</label>
             <input
@@ -914,10 +926,11 @@ def accueil():
 
             <button
                 class="btn-primary"
+                id="gpxBouton"
                 style="width:100%;"
                 onclick="importerGpx()"
             >
-                Importer la sortie
+                Importer
             </button>
 
             <p class="form-help" id="gpxMessage" style="margin-top: 10px;"></p>
@@ -1283,6 +1296,21 @@ def accueil():
                         details.appendChild(title);
                         details.appendChild(detailText);
 
+                        const boutonSuppr = document.createElement('button');
+                        boutonSuppr.className = 'btn-action';
+                        boutonSuppr.style.marginTop = '8px';
+                        boutonSuppr.style.width = 'auto';
+                        boutonSuppr.style.padding = '6px 12px';
+                        boutonSuppr.textContent = '🗑️ Supprimer';
+                        boutonSuppr.addEventListener('click', () => {
+                            supprimerIntervention(
+                                h.id,
+                                h.composant_nom,
+                                h.date_remplacement
+                            );
+                        });
+                        details.appendChild(boutonSuppr);
+
                         const cost = document.createElement('div');
                         cost.className = 'history-cost';
                         cost.textContent =
@@ -1296,6 +1324,41 @@ def accueil():
 
                 } catch (e) {
                     console.error(e);
+                }
+            }
+
+
+            async function supprimerIntervention(id, nom, jour) {
+                const confirmation = confirm(
+                    `Supprimer l'intervention « ${nom} » du ${jour} ? ` +
+                    `La pièce reviendra au point de départ de l'intervention ` +
+                    `précédente (ou à 0 km s'il n'y en a pas).`
+                );
+
+                if (!confirmation) {
+                    return;
+                }
+
+                try {
+                    const res = await fetch(`/api/historique/${id}/supprimer`, {
+                        method: 'POST',
+                        headers: getHeaders()
+                    });
+
+                    if (res.status === 401) {
+                        document.getElementById('authScreen').style.display = 'flex';
+                        return;
+                    }
+
+                    if (!res.ok) {
+                        throw new Error();
+                    }
+
+                    // Recharge tout : l'usure de la pièce change.
+                    await chargerEtat();
+
+                } catch (e) {
+                    alert("Suppression impossible.");
                 }
             }
 
@@ -1535,9 +1598,42 @@ def accueil():
 
                         const ligne2 = document.createElement('div');
                         ligne2.style.color = 'var(--text-muted)';
-                        ligne2.textContent =
-                            (LIBELLES_TERRAIN[s.terrain] || s.terrain) +
-                            (s.notes ? ` · ${s.notes}` : '');
+                        ligne2.style.display = 'flex';
+                        ligne2.style.flexWrap = 'wrap';
+                        ligne2.style.alignItems = 'center';
+                        ligne2.style.gap = '6px';
+                        ligne2.style.marginTop = '4px';
+
+                        const menuTerrain = document.createElement('select');
+                        menuTerrain.setAttribute('aria-label', 'Terrain de la sortie');
+                        menuTerrain.style.cssText =
+                            'width:auto;flex:0 0 auto;margin:0;padding:3px 6px;font-size:0.8rem;';
+
+                        const cles = Object.keys(LIBELLES_TERRAIN);
+
+                        if (!cles.includes(s.terrain)) {
+                            cles.push(s.terrain);
+                        }
+
+                        cles.forEach(cle => {
+                            const choix = document.createElement('option');
+                            choix.value = cle;
+                            choix.textContent = LIBELLES_TERRAIN[cle] || cle;
+                            menuTerrain.appendChild(choix);
+                        });
+
+                        menuTerrain.value = s.terrain;
+                        menuTerrain.addEventListener('change', () => {
+                            changerTerrain(s.id, menuTerrain.value, menuTerrain, s.terrain);
+                        });
+
+                        ligne2.appendChild(menuTerrain);
+
+                        if (s.notes) {
+                            const note = document.createElement('span');
+                            note.textContent = `· ${s.notes}`;
+                            ligne2.appendChild(note);
+                        }
 
                         const bouton = document.createElement('button');
                         bouton.className = 'btn-action';
@@ -1708,76 +1804,152 @@ def accueil():
             }
 
 
+            const MAX_FICHIERS_GPX = 30;
+
+
+            // Affiche des lignes de texte dans un élément (sans HTML : sûr).
+            function afficherLignes(element, lignes) {
+                element.replaceChildren();
+
+                lignes.forEach(texte => {
+                    const ligne = document.createElement('div');
+                    ligne.textContent = texte;
+                    element.appendChild(ligne);
+                });
+            }
+
+
+            function nombre(n, singulier, pluriel) {
+                return `${n} ${n > 1 ? pluriel : singulier}`;
+            }
+
+
+            function texteErreur(data, defaut) {
+                return data && typeof data.detail === 'string'
+                    ? data.detail
+                    : defaut;
+            }
+
+
+            // Envoie un fichier GPX au serveur et rend le statut et la réponse.
+            async function envoyerSortie(gpx, photos) {
+                const res = await fetch('/api/sorties/import', {
+                    method: 'POST',
+                    headers: getHeaders(),
+                    body: JSON.stringify({
+                        gpx: gpx,
+                        terrain: document.getElementById('gpxTerrain').value,
+                        notes: document.getElementById('gpxNotes').value.trim() || null,
+                        photos: photos
+                    })
+                });
+
+                let data = null;
+
+                try {
+                    data = await res.json();
+                } catch (e) {
+                    data = null;
+                }
+
+                return { status: res.status, data: data };
+            }
+
+
             async function importerGpx() {
-                const fichierGpx = document.getElementById('gpxFile').files[0];
+                const fichiersGpx = Array.from(document.getElementById('gpxFile').files);
                 const fichiersPhotos = document.getElementById('gpxPhotos').files;
                 const message = document.getElementById('gpxMessage');
+                const bouton = document.getElementById('gpxBouton');
 
-                if (!fichierGpx) {
-                    message.textContent = "Choisissez d'abord un fichier GPX.";
+                if (fichiersGpx.length === 0) {
+                    afficherLignes(message, ["Choisissez d'abord un fichier GPX."]);
                     return;
                 }
 
-                message.textContent = 'Import en cours...';
+                if (fichiersGpx.length > MAX_FICHIERS_GPX) {
+                    afficherLignes(message, [
+                        `${MAX_FICHIERS_GPX} fichiers maximum à la fois.`
+                    ]);
+                    return;
+                }
+
+                if (fichiersGpx.length > 1 && fichiersPhotos.length > 0) {
+                    afficherLignes(message, [
+                        "Les photos se joignent à une seule sortie à la fois : " +
+                        "retirez-les ou importez les sorties une par une."
+                    ]);
+                    return;
+                }
+
+                // Le bouton est bloqué pendant l'import : pas de double envoi.
+                bouton.disabled = true;
+
+                try {
+                    if (fichiersGpx.length === 1) {
+                        await importerUneSortie(fichiersGpx[0], fichiersPhotos, message);
+                    } else {
+                        await importerPlusieursSorties(fichiersGpx, message);
+                    }
+                } finally {
+                    bouton.disabled = false;
+                }
+            }
+
+
+            async function importerUneSortie(fichierGpx, fichiersPhotos, message) {
+                afficherLignes(message, ['Import en cours...']);
 
                 try {
                     const gpx = await fichierGpx.text();
-                    let photosList = [];
+                    const photosList = [];
 
                     if (fichiersPhotos.length > MAX_PHOTOS) {
-                        message.textContent =
-                            `${MAX_PHOTOS} photos maximum par sortie.`;
+                        afficherLignes(message, [
+                            `${MAX_PHOTOS} photos maximum par sortie.`
+                        ]);
                         return;
                     }
 
                     for (let i = 0; i < fichiersPhotos.length; i++) {
-                        message.textContent =
-                            `Préparation des photos (${i + 1}/${fichiersPhotos.length})...`;
+                        afficherLignes(message, [
+                            `Préparation des photos (${i + 1}/${fichiersPhotos.length})...`
+                        ]);
 
                         try {
                             photosList.push(await preparerPhoto(fichiersPhotos[i]));
                         } catch (e) {
-                            message.textContent =
+                            afficherLignes(message, [
                                 `La photo « ${fichiersPhotos[i].name} » ne peut pas être lue ` +
-                                `(format non pris en charge). Retirez-la ou choisissez un JPEG.`;
+                                `(format non pris en charge). Retirez-la ou choisissez un JPEG.`
+                            ]);
                             return;
                         }
                     }
 
-                    message.textContent = 'Import en cours...';
+                    afficherLignes(message, ['Import en cours...']);
 
-                    const res = await fetch('/api/sorties/import', {
-                        method: 'POST',
-                        headers: getHeaders(),
-                        body: JSON.stringify({
-                            gpx: gpx,
-                            terrain: document.getElementById('gpxTerrain').value,
-                            notes: document.getElementById('gpxNotes').value.trim() || null,
-                            photos: photosList
-                        })
-                    });
+                    const r = await envoyerSortie(gpx, photosList);
 
-                    if (res.status === 401) {
+                    if (r.status === 401) {
                         document.getElementById('authScreen').style.display = 'flex';
                         return;
                     }
 
-                    const data = await res.json();
-                    if (!res.ok) {
-                        throw new Error(
-                            typeof data.detail === 'string'
-                                ? data.detail
-                                : "Fichier refusé."
-                        );
+                    if (r.status < 200 || r.status >= 300) {
+                        throw new Error(texteErreur(r.data, "Fichier refusé."));
                     }
 
-                    message.textContent =
+                    const data = r.data;
+
+                    afficherLignes(message, [
                         `✅ Sortie importée : ${data.distance_km} km, ` +
                         `${data.denivele_pos} m D+. ` +
                         (data.ajoute_au_total
                             ? `Kilométrage total : ${data.km_total} km.`
                             : "Cette sortie date d'avant votre dernière mise à jour " +
-                              "du kilométrage : elle n'a pas été ajoutée au total.");
+                              "du kilométrage : elle n'a pas été ajoutée au total.")
+                    ]);
 
                     document.getElementById('gpxFile').value = '';
                     document.getElementById('gpxPhotos').value = '';
@@ -1786,7 +1958,170 @@ def accueil():
                     await chargerEtat();
 
                 } catch (e) {
-                    message.textContent = e.message || "Import impossible.";
+                    afficherLignes(message, [e.message || "Import impossible."]);
+                }
+            }
+
+
+            async function importerPlusieursSorties(fichiersGpx, message) {
+                const bilan = {
+                    traitees: 0,
+                    importees: 0,
+                    ajoutees: 0,
+                    anterieures: 0,
+                    deja: 0,
+                    refusees: [],
+                    kmTotal: null,
+                    interrompu: null
+                };
+
+                for (let i = 0; i < fichiersGpx.length; i++) {
+                    const fichier = fichiersGpx[i];
+
+                    afficherLignes(message, [
+                        `Import de la sortie ${i + 1}/${fichiersGpx.length}...`
+                    ]);
+
+                    let gpx;
+
+                    try {
+                        gpx = await fichier.text();
+                    } catch (e) {
+                        bilan.traitees++;
+                        bilan.refusees.push(`${fichier.name} : fichier illisible`);
+                        continue;
+                    }
+
+                    let r;
+
+                    try {
+                        r = await envoyerSortie(gpx, []);
+                    } catch (e) {
+                        bilan.interrompu = "connexion perdue";
+                        break;
+                    }
+
+                    if (r.status === 401) {
+                        document.getElementById('authScreen').style.display = 'flex';
+                        bilan.interrompu = "code d'accès à saisir de nouveau";
+                        break;
+                    }
+
+                    if (r.status === 503) {
+                        bilan.interrompu = "code d'accès non réglé sur le serveur";
+                        break;
+                    }
+
+                    bilan.traitees++;
+
+                    if (r.status === 409) {
+                        bilan.deja++;
+                    } else if (r.status >= 200 && r.status < 300) {
+                        bilan.importees++;
+                        bilan.kmTotal = r.data.km_total;
+
+                        if (r.data.ajoute_au_total) {
+                            bilan.ajoutees++;
+                        } else {
+                            bilan.anterieures++;
+                        }
+                    } else {
+                        const raison = r.status >= 500
+                            ? 'erreur du serveur'
+                            : texteErreur(r.data, 'fichier refusé');
+
+                        bilan.refusees.push(`${fichier.name} : ${raison}`);
+                    }
+                }
+
+                const lignes = [];
+
+                if (bilan.importees > 0) {
+                    let ligne =
+                        `✅ ${nombre(bilan.importees, 'sortie importée', 'sorties importées')}.`;
+
+                    if (bilan.ajoutees > 0) {
+                        ligne +=
+                            ` ${nombre(bilan.ajoutees, 'ajoutée', 'ajoutées')} ` +
+                            `au kilométrage total (${bilan.kmTotal} km).`;
+                    }
+
+                    if (bilan.anterieures > 0) {
+                        ligne +=
+                            ` ${nombre(bilan.anterieures, 'antérieure', 'antérieures')} ` +
+                            `à votre dernière mise à jour du kilométrage, ` +
+                            `donc déjà comptée${bilan.anterieures > 1 ? 's' : ''}.`;
+                    }
+
+                    lignes.push(ligne);
+                }
+
+                if (bilan.deja > 0) {
+                    lignes.push(
+                        `ℹ️ ${nombre(bilan.deja, 'sortie déjà présente', 'sorties déjà présentes')} ` +
+                        `(ignorée${bilan.deja > 1 ? 's' : ''}).`
+                    );
+                }
+
+                if (bilan.refusees.length > 0) {
+                    lignes.push(
+                        `⚠️ ${nombre(bilan.refusees.length, 'sortie refusée', 'sorties refusées')} :`
+                    );
+                    bilan.refusees.forEach(texte => lignes.push(`• ${texte}`));
+                }
+
+                if (bilan.interrompu) {
+                    lignes.push(
+                        `⛔ Import interrompu (${bilan.interrompu}) après ` +
+                        `${bilan.traitees}/${fichiersGpx.length} fichiers. ` +
+                        `Vous pouvez relancer : les sorties déjà importées seront ignorées.`
+                    );
+                }
+
+                if (lignes.length === 0) {
+                    lignes.push('Aucune sortie importée.');
+                }
+
+                afficherLignes(message, lignes);
+
+                // En cas d'interruption, la sélection est gardée pour relancer.
+                if (!bilan.interrompu) {
+                    document.getElementById('gpxFile').value = '';
+                    document.getElementById('gpxNotes').value = '';
+                }
+
+                await chargerEtat();
+            }
+
+
+            async function changerTerrain(id, terrain, menu, ancien) {
+                menu.disabled = true;
+
+                try {
+                    const res = await fetch(`/api/sorties/${id}/terrain`, {
+                        method: 'POST',
+                        headers: getHeaders(),
+                        body: JSON.stringify({ terrain: terrain })
+                    });
+
+                    if (res.status === 401) {
+                        menu.value = ancien;
+                        menu.disabled = false;
+                        document.getElementById('authScreen').style.display = 'flex';
+                        return;
+                    }
+
+                    if (!res.ok) {
+                        throw new Error();
+                    }
+
+                    // Recharge tout : l'usure des pièces change avec le terrain.
+                    await chargerEtat();
+
+                } catch (e) {
+                    menu.value = ancien;
+                    menu.disabled = false;
+                    alert("Changement de terrain impossible.");
                 }
             }
 
@@ -2089,6 +2424,72 @@ def ajouter_historique(data: HistoriqueRequest, x_code_acces: Optional[str] = He
         conn.close()
 
 
+@app.post("/api/historique/{historique_id}/supprimer")
+def supprimer_intervention(
+    historique_id: int,
+    x_code_acces: Optional[str] = Header(default=None)
+):
+    verifier_auth(x_code_acces)
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            "SELECT composant_id FROM historique WHERE id = ?",
+            (historique_id,)
+        )
+        ligne = cursor.fetchone()
+
+        if ligne is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Intervention introuvable."
+            )
+
+        composant_id = ligne[0]
+
+        cursor.execute(
+            "DELETE FROM historique WHERE id = ?",
+            (historique_id,)
+        )
+
+        km_depart = 0
+
+        if composant_id is not None:
+            # La pièce repart de la dernière intervention restante
+            # (la plus récemment saisie), ou de 0 s'il n'y en a plus.
+            cursor.execute("""
+                SELECT km_intervention
+                FROM historique
+                WHERE composant_id = ? AND km_intervention IS NOT NULL
+                ORDER BY id DESC
+                LIMIT 1
+            """, (composant_id,))
+            derniere = cursor.fetchone()
+
+            km_depart = derniere[0] if derniere else 0
+
+            cursor.execute(
+                "UPDATE composants SET km_depart = ? WHERE id = ?",
+                (km_depart, composant_id)
+            )
+
+        conn.commit()
+
+        return {
+            "statut": "success",
+            "composant_id": composant_id,
+            "km_depart": km_depart
+        }
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+
 @app.post("/api/sync")
 def synchroniser_kilometrage(data: SynchroRequest, x_code_acces: Optional[str] = Header(default=None)):
     verifier_auth(x_code_acces)
@@ -2381,6 +2782,43 @@ def supprimer_sortie(sortie_id: int, x_code_acces: Optional[str] = Header(defaul
         conn.commit()
 
         return {"statut": "success"}
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+
+@app.post("/api/sorties/{sortie_id}/terrain")
+def changer_terrain(
+    sortie_id: int,
+    data: TerrainRequest,
+    x_code_acces: Optional[str] = Header(default=None)
+):
+    verifier_auth(x_code_acces)
+    terrain = data.terrain.strip().lower()
+
+    if terrain not in TERRAINS:
+        raise HTTPException(status_code=400, detail="Terrain inconnu.")
+
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("SELECT id FROM sorties WHERE id = ?", (sortie_id,))
+
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Sortie introuvable.")
+
+        cursor.execute(
+            "UPDATE sorties SET terrain = ? WHERE id = ?",
+            (terrain, sortie_id)
+        )
+        conn.commit()
+
+        return {"statut": "success", "terrain": terrain}
 
     except Exception:
         conn.rollback()
