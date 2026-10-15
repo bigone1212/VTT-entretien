@@ -362,6 +362,10 @@ class TerrainRequest(BaseModel):
     terrain: str = Field(max_length=20)
 
 
+class AjoutPhotosRequest(BaseModel):
+    photos: List[PhotoIn] = Field(max_length=8)
+
+
 class ImportGpxRequest(BaseModel):
     gpx: str = Field(min_length=50, max_length=3_000_000)
     terrain: Optional[str] = "mixte"
@@ -1645,9 +1649,33 @@ def accueil():
                             supprimerSortie(s.id);
                         });
 
+                        const nbPhotos = s.photos ? s.photos.length : 0;
+                        const boutonPhotos = document.createElement('button');
+                        boutonPhotos.className = 'btn-action';
+                        boutonPhotos.style.marginTop = '8px';
+                        boutonPhotos.style.marginRight = '8px';
+                        boutonPhotos.style.width = 'auto';
+                        boutonPhotos.style.padding = '6px 12px';
+                        boutonPhotos.textContent = '📷 Ajouter des photos';
+                        boutonPhotos.disabled = nbPhotos >= MAX_PHOTOS;
+
+                        const choixPhotos = document.createElement('input');
+                        choixPhotos.type = 'file';
+                        choixPhotos.accept = 'image/*';
+                        choixPhotos.multiple = true;
+                        choixPhotos.style.display = 'none';
+                        choixPhotos.addEventListener('change', () => {
+                            ajouterPhotos(s.id, nbPhotos, choixPhotos, boutonPhotos);
+                        });
+                        boutonPhotos.addEventListener('click', () => {
+                            choixPhotos.click();
+                        });
+
                         details.appendChild(titre);
                         details.appendChild(ligne1);
                         details.appendChild(ligne2);
+                        details.appendChild(boutonPhotos);
+                        details.appendChild(choixPhotos);
                         details.appendChild(bouton);
 
                         item.appendChild(details);
@@ -2122,6 +2150,63 @@ def accueil():
                     menu.value = ancien;
                     menu.disabled = false;
                     alert("Changement de terrain impossible.");
+                }
+            }
+
+
+            async function ajouterPhotos(id, dejaLa, champ, bouton) {
+                const fichiers = Array.from(champ.files || []);
+                champ.value = '';
+
+                if (fichiers.length === 0) {
+                    return;
+                }
+
+                if (dejaLa + fichiers.length > MAX_PHOTOS) {
+                    alert(
+                        `${MAX_PHOTOS} photos maximum par sortie ` +
+                        `(il y en a déjà ${dejaLa}).`
+                    );
+                    return;
+                }
+
+                const texteBouton = bouton.textContent;
+                bouton.disabled = true;
+
+                try {
+                    const photos = [];
+
+                    for (let i = 0; i < fichiers.length; i++) {
+                        bouton.textContent =
+                            `Préparation ${i + 1}/${fichiers.length}...`;
+                        photos.push(await preparerPhoto(fichiers[i]));
+                    }
+
+                    bouton.textContent = 'Envoi...';
+
+                    const res = await fetch(`/api/sorties/${id}/photos`, {
+                        method: 'POST',
+                        headers: getHeaders(),
+                        body: JSON.stringify({ photos: photos })
+                    });
+
+                    if (res.status === 401) {
+                        bouton.textContent = texteBouton;
+                        bouton.disabled = false;
+                        document.getElementById('authScreen').style.display = 'flex';
+                        return;
+                    }
+
+                    if (!res.ok) {
+                        throw new Error();
+                    }
+
+                    await chargerEtat();
+
+                } catch (e) {
+                    bouton.textContent = texteBouton;
+                    bouton.disabled = false;
+                    alert("Ajout des photos impossible (photo illisible ou trop lourde ?).");
                 }
             }
 
@@ -2866,6 +2951,70 @@ def enregistrer_reglages(data: ReglagesRequest, x_code_acces: Optional[str] = He
     finally:
         conn.close()
 
+
+
+@app.post("/api/sorties/{sortie_id}/photos")
+def ajouter_photos(
+    sortie_id: int,
+    data: AjoutPhotosRequest,
+    x_code_acces: Optional[str] = Header(default=None)
+):
+    """Joint des photos à une sortie déjà importée (8 au total maximum)."""
+    verifier_auth(x_code_acces)
+
+    if not data.photos:
+        raise HTTPException(status_code=400, detail="Aucune photo reçue.")
+
+    nouvelles = []
+
+    for p in data.photos:
+        verifier_photo(p.mini, MAX_CHARS_MINIATURE)
+        verifier_photo(p.photo, MAX_CHARS_PHOTO)
+        nouvelles.append({"mini": p.mini, "photo": p.photo})
+
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            "SELECT photos FROM sorties WHERE id = ?",
+            (sortie_id,)
+        )
+        ligne = cursor.fetchone()
+
+        if ligne is None:
+            raise HTTPException(status_code=404, detail="Sortie introuvable.")
+
+        try:
+            existantes = json.loads(ligne[0] or "[]")
+        except ValueError:
+            existantes = []
+
+        if not isinstance(existantes, list):
+            existantes = []
+
+        if len(existantes) + len(nouvelles) > MAX_PHOTOS_PAR_SORTIE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{MAX_PHOTOS_PAR_SORTIE} photos maximum par sortie."
+            )
+
+        total = existantes + nouvelles
+
+        cursor.execute(
+            "UPDATE sorties SET photos = ? WHERE id = ?",
+            (json.dumps(total), sortie_id)
+        )
+        conn.commit()
+
+        return {"statut": "success", "nombre": len(total)}
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
 
 
 @app.get("/api/sorties/{sortie_id}/photos/{numero}")
