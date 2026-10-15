@@ -1,17 +1,28 @@
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
+import base64
 import db
 import gpx_import
+import hmac
 import json
 import math
+import os
+import time
 from typing import Optional, List
 from datetime import date, datetime, timezone
 
 app = FastAPI(title="VTTAE Entretien")
 
-# Code d'accès de l'application (modifiable ici)
-CODE_ACCES = "Cube144"
+# Code d'accès de l'application.
+# Il n'est PAS écrit ici : ce fichier est public sur GitHub.
+# Il se règle dans Render : Environment > variable CODE_ACCES.
+CODE_ACCES = os.environ.get("CODE_ACCES", "").strip()
+
+MAX_PHOTOS_PAR_SORTIE = 8
+MAX_CHARS_PHOTO = 700_000
+MAX_CHARS_MINIATURE = 60_000
+PREFIXE_JPEG = "data:image/jpeg;base64,"
 
 # ============================================================
 # BASE DE DONNÉES
@@ -26,10 +37,51 @@ REGLAGES_PAR_DEFAUT = {
 }
 
 
-def verifier_auth(x_code_acces: Optional[str] = Header(default=None)):
+def verifier_auth(x_code_acces=None):
     """Vérifie le code d'accès envoyé par l'en-tête HTTP."""
-    if x_code_acces != CODE_ACCES:
+    if not CODE_ACCES:
+        raise HTTPException(
+            status_code=503,
+            detail="Code d'accès non réglé sur le serveur."
+        )
+
+    envoye = (x_code_acces or "").encode("utf-8")
+
+    if not hmac.compare_digest(envoye, CODE_ACCES.encode("utf-8")):
+        time.sleep(0.5)
         raise HTTPException(status_code=401, detail="Code d'accès incorrect.")
+
+
+def verifier_photo(texte, max_chars):
+    """Vérifie qu'on reçoit bien une photo JPEG de taille raisonnable."""
+    if not texte.startswith(PREFIXE_JPEG) or len(texte) > max_chars:
+        raise HTTPException(
+            status_code=400,
+            detail="Photo refusée (JPEG de taille raisonnable attendu)."
+        )
+
+    try:
+        octets = base64.b64decode(texte[len(PREFIXE_JPEG):], validate=True)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Photo illisible.")
+
+    if not octets.startswith(b"\xff\xd8\xff"):
+        raise HTTPException(status_code=400, detail="Photo illisible.")
+
+
+def miniature_de(photo):
+    """Miniature d'une photo stockée (ancien format : texte seul)."""
+    if isinstance(photo, dict):
+        return photo.get("mini") or ""
+
+    return photo if isinstance(photo, str) else ""
+
+
+def photo_complete_de(photo):
+    if isinstance(photo, dict):
+        return photo.get("photo") or ""
+
+    return photo if isinstance(photo, str) else ""
 
 
 def lire_reglages(cursor):
@@ -301,12 +353,17 @@ class ReglagesRequest(BaseModel):
     poids_denivele: float = Field(ge=0, le=5)
 
 
+class PhotoIn(BaseModel):
+    mini: str = Field(max_length=200_000)
+    photo: str = Field(max_length=1_500_000)
+
+
 class ImportGpxRequest(BaseModel):
     gpx: str = Field(min_length=50, max_length=3_000_000)
     terrain: Optional[str] = "mixte"
     notes: Optional[str] = None
     nom: Optional[str] = None
-    photos: Optional[List[str]] = None
+    photos: Optional[List[PhotoIn]] = None
 
 
 class HistoriqueRequest(BaseModel):
@@ -732,6 +789,27 @@ def accueil():
                 border: 1px solid rgba(255,255,255,0.1);
             }
 
+            #lightbox {
+                display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.92);
+                z-index: 9000;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+            }
+
+            #lightbox img {
+                max-width: 96%;
+                max-height: 96%;
+                object-fit: contain;
+                border-radius: 6px;
+            }
+
             @media (max-width: 480px) {
                 body {
                     padding: 10px;
@@ -764,6 +842,10 @@ def accueil():
             </div>
         </div>
 
+        <div id="lightbox" onclick="fermerPhoto()">
+            <img id="lightboxImg" alt="Photo de la sortie">
+        </div>
+
         <div class="header">
             <h1>🚲 Cube Stereo Hybrid</h1>
             <p id="veloInfo">Kilométrage total : chargement...</p>
@@ -785,6 +867,16 @@ def accueil():
                     Mettre à jour
                 </button>
             </div>
+        </div>
+
+        <div style="max-width: 600px; margin: 0 auto 20px auto; text-align: right;">
+            <button
+                class="btn-action"
+                style="width: auto; padding: 6px 12px;"
+                onclick="telechargerSauvegarde()"
+            >
+                💾 Télécharger ma sauvegarde
+            </button>
         </div>
 
         <div class="history-section" style="margin-bottom: 20px;">
@@ -965,12 +1057,21 @@ def accueil():
                         document.getElementById('authScreen').style.display = 'none';
                         chargerEtat();
                     } else {
-                        document.getElementById('authError').textContent = "Code incorrect.";
+                        document.getElementById('authError').textContent =
+                            res.status === 503
+                                ? "Le code d'accès n'est pas encore réglé sur le serveur."
+                                : "Code incorrect.";
                     }
                 } catch (e) {
                     document.getElementById('authError').textContent = "Erreur de connexion.";
                 }
             }
+
+            document.getElementById('authInput').addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    tenterConnexion();
+                }
+            });
 
             // Vérifie si un code est déjà en mémoire
             if (sessionStorage.getItem('vtt_code')) {
@@ -1461,10 +1562,14 @@ def accueil():
                         if (s.photos && s.photos.length > 0) {
                             const gallery = document.createElement('div');
                             gallery.className = 'photos-gallery';
-                            s.photos.forEach(pData => {
+                            s.photos.forEach((pData, numero) => {
                                 const img = document.createElement('img');
                                 img.src = pData;
                                 img.className = 'sortie-img';
+                                img.style.cursor = 'pointer';
+                                img.addEventListener('click', () => {
+                                    ouvrirPhoto(s.id, numero, pData);
+                                });
                                 gallery.appendChild(img);
                             });
                             mediaDiv.appendChild(gallery);
@@ -1478,6 +1583,127 @@ def accueil():
 
                 } catch (e) {
                     console.error(e);
+                }
+            }
+
+
+            const MAX_PHOTOS = 8;
+
+
+            // Réduit une photo dans le navigateur avant l'envoi :
+            // une version moyenne (affichée au clic) et une miniature.
+            async function preparerPhoto(fichier) {
+                const image = await createImageBitmap(fichier);
+
+                const encoder = (cote, qualite) => {
+                    const echelle = Math.min(
+                        1,
+                        cote / Math.max(image.width, image.height)
+                    );
+                    const canvas = document.createElement('canvas');
+                    canvas.width = Math.max(1, Math.round(image.width * echelle));
+                    canvas.height = Math.max(1, Math.round(image.height * echelle));
+                    canvas.getContext('2d').drawImage(
+                        image, 0, 0, canvas.width, canvas.height
+                    );
+                    return canvas.toDataURL('image/jpeg', qualite);
+                };
+
+                let photo = '';
+
+                // On essaie des réglages de plus en plus légers
+                // jusqu'à passer sous la limite du serveur.
+                const essais = [[1280, 0.75], [1280, 0.6], [1024, 0.55], [800, 0.5]];
+
+                for (const [cote, qualite] of essais) {
+                    photo = encoder(cote, qualite);
+
+                    if (photo.length <= 650000) {
+                        break;
+                    }
+                }
+
+                const mini = encoder(240, 0.7);
+
+                if (image.close) {
+                    image.close();
+                }
+
+                if (
+                    !photo.startsWith('data:image/jpeg') ||
+                    photo.length > 700000
+                ) {
+                    throw new Error('photo');
+                }
+
+                return { mini: mini, photo: photo };
+            }
+
+
+            async function ouvrirPhoto(sortieId, numero, miniature) {
+                const fenetre = document.getElementById('lightbox');
+                const image = document.getElementById('lightboxImg');
+
+                // La miniature s'affiche tout de suite, la photo suit.
+                image.src = miniature;
+                fenetre.style.display = 'flex';
+
+                try {
+                    const res = await fetch(
+                        `/api/sorties/${sortieId}/photos/${numero}`,
+                        { headers: getHeaders() }
+                    );
+
+                    if (res.ok && fenetre.style.display === 'flex') {
+                        const data = await res.json();
+
+                        if (data.image) {
+                            image.src = data.image;
+                        }
+                    }
+                } catch (e) {
+                    console.error(e);
+                }
+            }
+
+
+            function fermerPhoto() {
+                document.getElementById('lightbox').style.display = 'none';
+                document.getElementById('lightboxImg').removeAttribute('src');
+            }
+
+
+            async function telechargerSauvegarde() {
+                try {
+                    const res = await fetch('/api/sauvegarde', {
+                        headers: getHeaders()
+                    });
+
+                    if (res.status === 401) {
+                        document.getElementById('authScreen').style.display = 'flex';
+                        return;
+                    }
+
+                    if (!res.ok) {
+                        throw new Error();
+                    }
+
+                    const blob = await res.blob();
+                    const lien = document.createElement('a');
+                    const adresse = URL.createObjectURL(blob);
+
+                    lien.href = adresse;
+                    lien.download =
+                        `sauvegarde_velo_${new Date().toISOString().slice(0, 10)}.json`;
+
+                    document.body.appendChild(lien);
+                    lien.click();
+                    lien.remove();
+
+                    setTimeout(() => URL.revokeObjectURL(adresse), 2000);
+
+                } catch (e) {
+                    alert("Sauvegarde impossible.");
                 }
             }
 
@@ -1498,14 +1724,27 @@ def accueil():
                     const gpx = await fichierGpx.text();
                     let photosList = [];
 
-                    for (let i = 0; i < fichiersPhotos.length; i++) {
-                        const base64 = await new Promise((resolve) => {
-                            const reader = new FileReader();
-                            reader.onload = (e) => resolve(e.target.result);
-                            reader.readAsDataURL(fichiersPhotos[i]);
-                        });
-                        photosList.push(base64);
+                    if (fichiersPhotos.length > MAX_PHOTOS) {
+                        message.textContent =
+                            `${MAX_PHOTOS} photos maximum par sortie.`;
+                        return;
                     }
+
+                    for (let i = 0; i < fichiersPhotos.length; i++) {
+                        message.textContent =
+                            `Préparation des photos (${i + 1}/${fichiersPhotos.length})...`;
+
+                        try {
+                            photosList.push(await preparerPhoto(fichiersPhotos[i]));
+                        } catch (e) {
+                            message.textContent =
+                                `La photo « ${fichiersPhotos[i].name} » ne peut pas être lue ` +
+                                `(format non pris en charge). Retirez-la ou choisissez un JPEG.`;
+                            return;
+                        }
+                    }
+
+                    message.textContent = 'Import en cours...';
 
                     const res = await fetch('/api/sorties/import', {
                         method: 'POST',
@@ -1524,7 +1763,13 @@ def accueil():
                     }
 
                     const data = await res.json();
-                    if (!res.ok) throw new Error(data.detail || "Fichier refusé.");
+                    if (!res.ok) {
+                        throw new Error(
+                            typeof data.detail === 'string'
+                                ? data.detail
+                                : "Fichier refusé."
+                        );
+                    }
 
                     message.textContent =
                         `✅ Sortie importée : ${data.distance_km} km, ` +
@@ -1995,7 +2240,22 @@ def importer_sortie(data: ImportGpxRequest, x_code_acces: Optional[str] = Header
 
     nom = (data.nom or s["nom"] or "Sortie à vélo")[:120]
     notes = (data.notes or "").strip()[:500] or None
-    photos_json = json.dumps(data.photos) if data.photos else None
+    photos = data.photos or []
+
+    if len(photos) > MAX_PHOTOS_PAR_SORTIE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{MAX_PHOTOS_PAR_SORTIE} photos maximum par sortie."
+        )
+
+    photos_stockees = []
+
+    for p in photos:
+        verifier_photo(p.mini, MAX_CHARS_MINIATURE)
+        verifier_photo(p.photo, MAX_CHARS_PHOTO)
+        photos_stockees.append({"mini": p.mini, "photo": p.photo})
+
+    photos_json = json.dumps(photos_stockees) if photos_stockees else None
 
     conn = db.connect()
     cursor = conn.cursor()
@@ -2076,9 +2336,16 @@ def lister_sorties(x_code_acces: Optional[str] = Header(default=None)):
                 sortie["trace"] = []
 
             try:
-                sortie["photos"] = json.loads(sortie["photos"] or "[]")
+                brutes = json.loads(sortie["photos"] or "[]")
             except ValueError:
-                sortie["photos"] = []
+                brutes = []
+
+            if not isinstance(brutes, list):
+                brutes = []
+
+            # La liste n'envoie que de petites miniatures :
+            # la photo complète se charge au clic.
+            sortie["photos"] = [miniature_de(p) for p in brutes]
 
             resultat.append(sortie)
 
@@ -2157,6 +2424,73 @@ def enregistrer_reglages(data: ReglagesRequest, x_code_acces: Optional[str] = He
     except Exception:
         conn.rollback()
         raise
+
+    finally:
+        conn.close()
+
+
+
+@app.get("/api/sorties/{sortie_id}/photos/{numero}")
+def obtenir_photo(
+    sortie_id: int,
+    numero: int,
+    x_code_acces: Optional[str] = Header(default=None)
+):
+    verifier_auth(x_code_acces)
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            "SELECT photos FROM sorties WHERE id = ?",
+            (sortie_id,)
+        )
+        ligne = cursor.fetchone()
+
+        if ligne is None:
+            raise HTTPException(status_code=404, detail="Sortie introuvable.")
+
+        try:
+            photos = json.loads(ligne[0] or "[]")
+        except ValueError:
+            photos = []
+
+        if not isinstance(photos, list) or not 0 <= numero < len(photos):
+            raise HTTPException(status_code=404, detail="Photo introuvable.")
+
+        return {"image": photo_complete_de(photos[numero])}
+
+    finally:
+        conn.close()
+
+
+@app.get("/api/sauvegarde")
+def sauvegarde(x_code_acces: Optional[str] = Header(default=None)):
+    verifier_auth(x_code_acces)
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("SELECT km_total FROM velo WHERE id = 1")
+        velo = cursor.fetchone()
+
+        cursor.execute("SELECT * FROM composants ORDER BY id")
+        composants = [dict(r) for r in cursor.fetchall()]
+
+        cursor.execute("SELECT * FROM historique ORDER BY id")
+        historique = [dict(r) for r in cursor.fetchall()]
+
+        cursor.execute("SELECT * FROM sorties ORDER BY debut")
+        sorties = [dict(r) for r in cursor.fetchall()]
+
+        return {
+            "date_sauvegarde": str(date.today()),
+            "km_total": velo[0] if velo else None,
+            "composants": composants,
+            "historique": historique,
+            "sorties": sorties,
+            "reglages": lire_reglages(cursor)
+        }
 
     finally:
         conn.close()
