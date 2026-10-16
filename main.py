@@ -811,6 +811,20 @@ def accueil():
                 cursor: pointer;
             }
 
+            #lightboxRetirer {
+                position: absolute;
+                bottom: 18px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: rgba(180, 30, 30, 0.9);
+                color: #fff;
+                border: none;
+                border-radius: 8px;
+                padding: 10px 18px;
+                font-size: 0.95rem;
+                cursor: pointer;
+            }
+
             #lightbox img {
                 max-width: 96%;
                 max-height: 96%;
@@ -852,6 +866,7 @@ def accueil():
 
         <div id="lightbox" onclick="fermerPhoto()">
             <img id="lightboxImg" alt="Photo de la sortie">
+            <button id="lightboxRetirer" type="button">🗑️ Retirer cette photo</button>
         </div>
 
         <div class="header">
@@ -1713,6 +1728,9 @@ def accueil():
 
             const MAX_PHOTOS = 8;
 
+            document.getElementById('lightboxRetirer')
+                .addEventListener('click', retirerPhotoOuverte);
+
 
             // Réduit une photo dans le navigateur avant l'envoi :
             // une version moyenne (affichée au clic) et une miniature.
@@ -1764,9 +1782,53 @@ def accueil():
             }
 
 
+            let photoOuverte = null;
+
+
+            async function retirerPhotoOuverte(evenement) {
+                // Ne pas fermer la fenêtre par le clic sur le bouton lui-même.
+                evenement.stopPropagation();
+
+                if (!photoOuverte) {
+                    return;
+                }
+
+                const { sortieId, numero } = photoOuverte;
+
+                if (!confirm("Retirer cette photo de la sortie ?")) {
+                    return;
+                }
+
+                try {
+                    const res = await fetch(
+                        `/api/sorties/${sortieId}/photos/${numero}/supprimer`,
+                        { method: 'POST', headers: getHeaders() }
+                    );
+
+                    if (res.status === 401) {
+                        fermerPhoto();
+                        document.getElementById('authScreen').style.display = 'flex';
+                        return;
+                    }
+
+                    if (!res.ok) {
+                        throw new Error();
+                    }
+
+                    fermerPhoto();
+                    await chargerEtat();
+
+                } catch (e) {
+                    alert("Impossible de retirer la photo.");
+                }
+            }
+
+
             async function ouvrirPhoto(sortieId, numero, miniature) {
                 const fenetre = document.getElementById('lightbox');
                 const image = document.getElementById('lightboxImg');
+
+                photoOuverte = { sortieId: sortieId, numero: numero };
 
                 // La miniature s'affiche tout de suite, la photo suit.
                 image.src = miniature;
@@ -1792,6 +1854,7 @@ def accueil():
 
 
             function fermerPhoto() {
+                photoOuverte = null;
                 document.getElementById('lightbox').style.display = 'none';
                 document.getElementById('lightboxImg').removeAttribute('src');
             }
@@ -3008,6 +3071,53 @@ def ajouter_photos(
         conn.commit()
 
         return {"statut": "success", "nombre": len(total)}
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+
+@app.post("/api/sorties/{sortie_id}/photos/{numero}/supprimer")
+def retirer_photo(
+    sortie_id: int,
+    numero: int,
+    x_code_acces: Optional[str] = Header(default=None)
+):
+    """Retire une seule photo d'une sortie (les autres restent)."""
+    verifier_auth(x_code_acces)
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            "SELECT photos FROM sorties WHERE id = ?",
+            (sortie_id,)
+        )
+        ligne = cursor.fetchone()
+
+        if ligne is None:
+            raise HTTPException(status_code=404, detail="Sortie introuvable.")
+
+        try:
+            photos = json.loads(ligne[0] or "[]")
+        except ValueError:
+            photos = []
+
+        if not isinstance(photos, list) or not 0 <= numero < len(photos):
+            raise HTTPException(status_code=404, detail="Photo introuvable.")
+
+        del photos[numero]
+
+        cursor.execute(
+            "UPDATE sorties SET photos = ? WHERE id = ?",
+            (json.dumps(photos) if photos else None, sortie_id)
+        )
+        conn.commit()
+
+        return {"statut": "success", "nombre": len(photos)}
 
     except Exception:
         conn.rollback()
