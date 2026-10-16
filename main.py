@@ -205,6 +205,10 @@ def init_db():
                 ADD COLUMN km_intervention INTEGER
             """)
 
+    # Kilométrage de la pièce juste AVANT l'intervention : permet de
+    # remettre la pièce exactement comme avant si on supprime la ligne.
+    ajouter_colonne(cursor, "historique", "km_avant", "INTEGER")
+
     cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS sorties (
             id {db.AUTO_ID},
@@ -2530,21 +2534,29 @@ def ajouter_historique(data: HistoriqueRequest, x_code_acces: Optional[str] = He
                 )
             )
 
+        cursor.execute(
+            "SELECT km_depart FROM composants WHERE id = ?",
+            (data.composant_id,)
+        )
+        km_avant = cursor.fetchone()[0] or 0
+
         cursor.execute("""
             INSERT INTO historique (
                 composant_id,
                 date_remplacement,
                 cout,
                 notes,
-                km_intervention
+                km_intervention,
+                km_avant
             )
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?)
         """, (
             data.composant_id,
             data.date_remplacement,
             data.cout or 0.0,
             data.notes or "Ancien entretien",
-            data.km_intervention
+            data.km_intervention,
+            km_avant
         ))
 
         cursor.execute("""
@@ -2583,7 +2595,7 @@ def supprimer_intervention(
 
     try:
         cursor.execute(
-            "SELECT composant_id FROM historique WHERE id = ?",
+            "SELECT composant_id, km_avant FROM historique WHERE id = ?",
             (historique_id,)
         )
         ligne = cursor.fetchone()
@@ -2595,32 +2607,57 @@ def supprimer_intervention(
             )
 
         composant_id = ligne[0]
+        km_avant = ligne[1]
 
         cursor.execute(
             "DELETE FROM historique WHERE id = ?",
             (historique_id,)
         )
 
-        km_depart = 0
+        cursor.execute("SELECT km_depart FROM composants WHERE id = ?", (composant_id,))
+        actuel = cursor.fetchone()
+        km_depart = (actuel[0] or 0) if actuel else 0
 
         if composant_id is not None:
-            # La pièce repart de la dernière intervention restante
-            # (la plus récemment saisie), ou de 0 s'il n'y en a plus.
             cursor.execute("""
-                SELECT km_intervention
+                SELECT id
                 FROM historique
-                WHERE composant_id = ? AND km_intervention IS NOT NULL
-                ORDER BY id DESC
+                WHERE composant_id = ? AND id > ?
+                ORDER BY id
                 LIMIT 1
-            """, (composant_id,))
-            derniere = cursor.fetchone()
+            """, (composant_id, historique_id))
+            suivante = cursor.fetchone()
 
-            km_depart = derniere[0] if derniere else 0
+            if suivante is None:
+                # C'était la dernière intervention saisie : la pièce
+                # revient exactement à l'état d'avant cette intervention.
+                if km_avant is not None:
+                    km_depart = km_avant
+                else:
+                    # Ligne ancienne, sans mémoire de l'état d'avant :
+                    # on reprend l'intervention précédente, ou 0.
+                    cursor.execute("""
+                        SELECT km_intervention
+                        FROM historique
+                        WHERE composant_id = ? AND km_intervention IS NOT NULL
+                        ORDER BY id DESC
+                        LIMIT 1
+                    """, (composant_id,))
+                    derniere = cursor.fetchone()
+                    km_depart = derniere[0] if derniere else 0
 
-            cursor.execute(
-                "UPDATE composants SET km_depart = ? WHERE id = ?",
-                (km_depart, composant_id)
-            )
+                cursor.execute(
+                    "UPDATE composants SET km_depart = ? WHERE id = ?",
+                    (km_depart, composant_id)
+                )
+            else:
+                # Une intervention plus récente existe : l'état actuel de
+                # la pièce ne change pas. On "recolle" la chaîne pour que
+                # supprimer la suivante revienne au bon état d'avant.
+                cursor.execute(
+                    "UPDATE historique SET km_avant = ? WHERE id = ?",
+                    (km_avant, suivante[0])
+                )
 
         conn.commit()
 
@@ -2711,6 +2748,12 @@ def remplacer_composant(
             else 0.0
         )
 
+        cursor.execute(
+            "SELECT km_depart FROM composants WHERE id = ?",
+            (composant_id,)
+        )
+        km_avant = cursor.fetchone()[0] or 0
+
         cursor.execute("""
             UPDATE composants
             SET km_depart = ?
@@ -2726,15 +2769,17 @@ def remplacer_composant(
                 date_remplacement,
                 cout,
                 notes,
-                km_intervention
+                km_intervention,
+                km_avant
             )
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?)
         """, (
             composant_id,
             date_resp,
             cout_resp,
             notes_resp,
-            km_global
+            km_global,
+            km_avant
         ))
 
         conn.commit()
