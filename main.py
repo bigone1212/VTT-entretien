@@ -1182,7 +1182,7 @@ def accueil():
                         hotspot.style.top = `${c.pos_y}%`;
                         hotspot.style.left = `${c.pos_x}%`;
                         hotspot.title = `${c.nom} (${c.pourcentage_usure}%)`;
-                        hotspot.textContent = index + 1;
+                        hotspot.textContent = c.numero || (index + 1);
 
                         hotspot.addEventListener('click', () => {
                             remplacer(c.id, c.nom);
@@ -1200,7 +1200,7 @@ def accueil():
                         const componentName = document.createElement('div');
                         componentName.className = 'component-name';
                         componentName.textContent =
-                            `📍 #${index + 1} - ${c.nom}`;
+                            `📍 #${c.numero || (index + 1)} - ${c.nom}`;
 
                         const badge = document.createElement('div');
                         badge.className = `badge ${statusClass}`;
@@ -2398,7 +2398,7 @@ def obtenir_etat(x_code_acces: Optional[str] = Header(default=None)):
             else 2700
         )
 
-        cursor.execute("SELECT * FROM composants")
+        cursor.execute("SELECT * FROM composants ORDER BY id")
         rows = cursor.fetchall()
 
         reglages = lire_reglages(cursor)
@@ -2445,6 +2445,7 @@ def obtenir_etat(x_code_acces: Optional[str] = Header(default=None)):
 
             resultat.append({
                 "id": row["id"],
+                "numero": len(resultat) + 1,
                 "nom": row["nom"],
                 "km_actuel": km,
                 "km_usure": round(km_usure, 1),
@@ -2456,6 +2457,10 @@ def obtenir_etat(x_code_acces: Optional[str] = Header(default=None)):
                 "pos_x": row["pos_x"],
                 "pos_y": row["pos_y"]
             })
+
+        # Liste des priorités : la pièce la plus usée en haut.
+        # Le numéro (repère sur le schéma du vélo) reste fixe.
+        resultat.sort(key=lambda r: (-r["pourcentage_usure"], r["id"]))
 
         return {
             "km_total": km_global,
