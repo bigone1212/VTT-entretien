@@ -854,6 +854,41 @@ def accueil():
                     gap: 4px;
                 }
             }
+
+            .onglets {
+                display: flex;
+                gap: 6px;
+                max-width: 600px;
+                margin: 0 auto 16px auto;
+                position: sticky;
+                top: 0;
+                z-index: 50;
+                padding: 8px 0;
+                background: var(--bg-color);
+            }
+
+            .onglet {
+                flex: 1;
+                padding: 10px 6px;
+                font-size: 0.9rem;
+                font-weight: 600;
+                color: var(--text-muted);
+                background: var(--card-bg);
+                border: 1px solid rgba(255,255,255,0.08);
+                border-radius: 10px;
+                cursor: pointer;
+            }
+
+            .onglet.actif {
+                color: #fff;
+                background: var(--accent);
+                border-color: var(--accent);
+            }
+
+            .page {
+                max-width: 600px;
+                margin: 0 auto;
+            }
         </style>
     </head>
 
@@ -876,6 +911,27 @@ def accueil():
         <div class="header">
             <h1>🚲 Cube Stereo Hybrid</h1>
             <p id="veloInfo">Kilométrage total : chargement...</p>
+        </div>
+
+        <nav class="onglets" id="onglets" aria-label="Pages de l'application">
+            <button type="button" class="onglet" id="onglet-entretien" onclick="location.hash='entretien'">🔧 Entretien</button>
+            <button type="button" class="onglet" id="onglet-historique" onclick="location.hash='historique'">📜 Historique</button>
+            <button type="button" class="onglet" id="onglet-sorties" onclick="location.hash='sorties'">🚵 Sorties</button>
+        </nav>
+
+        <div class="page" id="page-entretien">
+        <div class="bike-container">
+            <img
+                src="https://shop.roulezjeunesse.com/cdn/shop/files/CubeStereoHybridONE44EXC8001.jpg?v=1736521382&width=1220"
+                alt="Mon Cube Stereo Hybrid"
+                class="bike-img"
+            >
+
+            <div id="hotspotsContainer"></div>
+        </div>
+
+        <div id="composantsList" class="grid">
+            <div class="loading">Chargement des composants...</div>
         </div>
 
         <div class="sync-card">
@@ -906,6 +962,69 @@ def accueil():
             </button>
         </div>
 
+        </div>
+
+        <div class="page" id="page-historique" style="display:none;">
+        <div class="history-section">
+            <h2>📜 Ajouter une ancienne intervention</h2>
+
+            <label for="histComposant">Composant concerné</label>
+            <select id="histComposant"></select>
+
+            <label for="histDate">Date de l'intervention</label>
+            <input type="date" id="histDate" required>
+
+            <label for="histKm">Kilométrage au moment de l'intervention</label>
+            <input
+                type="number"
+                id="histKm"
+                min="0"
+                step="1"
+                placeholder="Ex. : 2445"
+                required
+            >
+
+            <p class="form-help">
+                Ce kilométrage deviendra le point de départ du suivi
+                d'entretien du composant.
+            </p>
+
+            <label for="histCout">Coût en euros</label>
+            <input
+                type="number"
+                step="0.01"
+                min="0"
+                id="histCout"
+                placeholder="Coût en € (optionnel)"
+            >
+
+            <label for="histNotes">Notes</label>
+            <input
+                type="text"
+                id="histNotes"
+                placeholder="Ex. : entretien réalisé chez le bouclard"
+            >
+
+            <button
+                class="btn-primary"
+                style="width:100%;"
+                onclick="ajouterHistorique()"
+            >
+                Enregistrer l'intervention
+            </button>
+
+            <h2 style="margin-top: 24px;">
+                📋 Historique des interventions
+            </h2>
+
+            <div id="historyList">
+                <div class="loading">Chargement de l'historique...</div>
+            </div>
+        </div>
+
+        </div>
+
+        <div class="page" id="page-sorties" style="display:none;">
         <div class="history-section" style="margin-bottom: 20px;">
             <h2>🚵 Sorties</h2>
 
@@ -1003,78 +1122,38 @@ def accueil():
             </details>
         </div>
 
-        <div class="bike-container">
-            <img
-                src="https://shop.roulezjeunesse.com/cdn/shop/files/CubeStereoHybridONE44EXC8001.jpg?v=1736521382&width=1220"
-                alt="Mon Cube Stereo Hybrid"
-                class="bike-img"
-            >
-
-            <div id="hotspotsContainer"></div>
-        </div>
-
-        <div id="composantsList" class="grid">
-            <div class="loading">Chargement des composants...</div>
-        </div>
-
-        <div class="history-section">
-            <h2>📜 Ajouter une ancienne intervention</h2>
-
-            <label for="histComposant">Composant concerné</label>
-            <select id="histComposant"></select>
-
-            <label for="histDate">Date de l'intervention</label>
-            <input type="date" id="histDate" required>
-
-            <label for="histKm">Kilométrage au moment de l'intervention</label>
-            <input
-                type="number"
-                id="histKm"
-                min="0"
-                step="1"
-                placeholder="Ex. : 2445"
-                required
-            >
-
-            <p class="form-help">
-                Ce kilométrage deviendra le point de départ du suivi
-                d'entretien du composant.
-            </p>
-
-            <label for="histCout">Coût en euros</label>
-            <input
-                type="number"
-                step="0.01"
-                min="0"
-                id="histCout"
-                placeholder="Coût en € (optionnel)"
-            >
-
-            <label for="histNotes">Notes</label>
-            <input
-                type="text"
-                id="histNotes"
-                placeholder="Ex. : entretien réalisé chez le bouclard"
-            >
-
-            <button
-                class="btn-primary"
-                style="width:100%;"
-                onclick="ajouterHistorique()"
-            >
-                Enregistrer l'intervention
-            </button>
-
-            <h2 style="margin-top: 24px;">
-                📋 Historique des interventions
-            </h2>
-
-            <div id="historyList">
-                <div class="loading">Chargement de l'historique...</div>
-            </div>
         </div>
 
         <script>
+            const PAGES = ['entretien', 'historique', 'sorties'];
+
+            function afficherPage() {
+                let nom = (location.hash || '').replace('#', '');
+
+                if (!PAGES.includes(nom)) {
+                    nom = 'entretien';
+                }
+
+                PAGES.forEach(p => {
+                    document.getElementById('page-' + p).style.display =
+                        p === nom ? 'block' : 'none';
+
+                    const bouton = document.getElementById('onglet-' + p);
+                    bouton.classList.toggle('actif', p === nom);
+
+                    if (p === nom) {
+                        bouton.setAttribute('aria-current', 'page');
+                    } else {
+                        bouton.removeAttribute('aria-current');
+                    }
+                });
+
+                window.scrollTo(0, 0);
+            }
+
+            window.addEventListener('hashchange', afficherPage);
+            afficherPage();
+
             function getHeaders() {
                 const code = sessionStorage.getItem('vtt_code') || '';
                 return {
