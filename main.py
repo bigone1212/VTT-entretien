@@ -1463,6 +1463,41 @@ def accueil():
                 font-size: 0.95rem;
             }
 
+            .component-name {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+
+            .component-name .nom { min-width: 0; }
+
+            .num {
+                flex-shrink: 0;
+                min-width: 30px;
+                height: 30px;
+                padding: 0 6px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                border-radius: 10px;
+                font-size: 0.82rem;
+                font-weight: 800;
+                color: #fff;
+                text-shadow: 0 1px 2px rgba(0,0,0,0.35);
+                background: linear-gradient(135deg, #35e0c8, #0a8f9c);
+                box-shadow: 0 2px 6px rgba(10,143,156,0.35);
+            }
+
+            .num.near-warning {
+                background: linear-gradient(135deg, #fbbf24, #d97706);
+                box-shadow: 0 2px 6px rgba(217,119,6,0.35);
+            }
+
+            .num.warning {
+                background: linear-gradient(135deg, #f87171, #dc2626);
+                box-shadow: 0 2px 6px rgba(220,38,38,0.35);
+            }
+
             .chevron { display: inline-flex; color: var(--text-muted); transition: transform 0.2s; }
             .card.ouverte .chevron { transform: rotate(180deg); }
 
@@ -2347,8 +2382,15 @@ def accueil():
 
                         const componentName = document.createElement('div');
                         componentName.className = 'component-name';
-                        componentName.textContent =
-                            `📍 #${c.numero || (index + 1)} - ${c.nom}`;
+
+                        const pastille = document.createElement('span');
+                        pastille.className = `num ${statusClass}`;
+                        pastille.textContent = c.numero || (index + 1);
+                        const libelle = document.createElement('span');
+                        libelle.className = 'nom';
+                        libelle.textContent = c.nom;
+                        componentName.appendChild(pastille);
+                        componentName.appendChild(libelle);
 
                         const badge = document.createElement('div');
                         badge.className = `badge ${statusClass}`;
