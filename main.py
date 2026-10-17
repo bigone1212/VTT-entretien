@@ -10,7 +10,7 @@ import math
 import os
 import time
 from typing import Optional, List
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 app = FastAPI(title="VTTAE Entretien")
 
@@ -371,7 +371,9 @@ class AjoutPhotosRequest(BaseModel):
 
 
 class ImportGpxRequest(BaseModel):
-    gpx: str = Field(min_length=50, max_length=3_000_000)
+    # Un fichier GPX ou TCX (texte), ou un fichier FIT (binaire en base64).
+    gpx: Optional[str] = Field(default=None, min_length=50, max_length=3_000_000)
+    fit: Optional[str] = Field(default=None, min_length=20, max_length=8_500_000)
     terrain: Optional[str] = "mixte"
     notes: Optional[str] = None
     nom: Optional[str] = None
@@ -1076,6 +1078,54 @@ def accueil():
             </button>
 
             <p class="form-help" id="gpxMessage" style="margin-top: 10px;"></p>
+
+            <details id="blocStrava" style="margin-top: 20px;">
+                <summary style="cursor: pointer; font-weight: 600;">
+                    📥 Importer depuis Strava (archive)
+                </summary>
+
+                <p class="form-help" style="margin-top: 10px;">
+                    Sur le site strava.com : Réglages → Mon compte →
+                    « Télécharger ou supprimer votre compte » →
+                    « Demander votre archive » (les libellés peuvent varier).
+                    Strava t'envoie un e-mail avec un lien : télécharge le
+                    fichier .zip, puis choisis-le ici. Le fichier est lu dans
+                    ton navigateur : seules les sorties choisies sont envoyées
+                    à l'application. Les photos ne sont pas reprises.
+                </p>
+
+                <label for="stravaZip">Archive Strava (.zip)</label>
+                <input type="file" id="stravaZip" accept=".zip,application/zip">
+
+                <div id="stravaChoix" style="display: none;">
+                    <label for="stravaVelo">Vélo (équipement Strava)</label>
+                    <select id="stravaVelo"></select>
+
+                    <label for="stravaType">Type d'activité</label>
+                    <select id="stravaType"></select>
+
+                    <label for="stravaTerrain">Terrain</label>
+                    <select id="stravaTerrain">
+                        <option value="mixte">Mixte</option>
+                        <option value="route">Route / bitume</option>
+                        <option value="chemin">Chemin / piste</option>
+                        <option value="sentier">Sentier technique</option>
+                    </select>
+
+                    <p class="form-help" id="stravaCompte"></p>
+
+                    <button
+                        class="btn-primary"
+                        id="stravaBouton"
+                        style="width:100%;"
+                        onclick="importerStrava()"
+                    >
+                        Importer ces sorties
+                    </button>
+                </div>
+
+                <p class="form-help" id="stravaMessage" style="margin-top: 10px;"></p>
+            </details>
 
             <h2 style="margin-top: 24px;">Mes sorties</h2>
 
@@ -2007,15 +2057,25 @@ def accueil():
 
             // Envoie un fichier GPX au serveur et rend le statut et la réponse.
             async function envoyerSortie(gpx, photos) {
+                return envoyerCharge(
+                    { gpx: gpx, photos: photos },
+                    {
+                        terrain: document.getElementById('gpxTerrain').value,
+                        notes: document.getElementById('gpxNotes').value.trim() || null
+                    }
+                );
+            }
+
+
+            // charge : { gpx } ou { fit } (+ nom, photos) ; reglages : { terrain, notes }
+            async function envoyerCharge(charge, reglages) {
                 const res = await fetch('/api/sorties/import', {
                     method: 'POST',
                     headers: getHeaders(),
-                    body: JSON.stringify({
-                        gpx: gpx,
-                        terrain: document.getElementById('gpxTerrain').value,
-                        notes: document.getElementById('gpxNotes').value.trim() || null,
-                        photos: photos
-                    })
+                    body: JSON.stringify(Object.assign({}, charge, {
+                        terrain: reglages.terrain,
+                        notes: reglages.notes
+                    }))
                 });
 
                 let data = null;
@@ -2138,6 +2198,29 @@ def accueil():
 
 
             async function importerPlusieursSorties(fichiersGpx, message) {
+                const elements = fichiersGpx.map(fichier => ({
+                    nom: fichier.name,
+                    charger: async () => ({ gpx: await fichier.text() })
+                }));
+
+                await importerLot(
+                    elements,
+                    message,
+                    {
+                        terrain: document.getElementById('gpxTerrain').value,
+                        notes: document.getElementById('gpxNotes').value.trim() || null
+                    },
+                    'fichiers',
+                    () => {
+                        document.getElementById('gpxFile').value = '';
+                        document.getElementById('gpxNotes').value = '';
+                    }
+                );
+            }
+
+
+            // elements : [{ nom, charger: async () => charge }]
+            async function importerLot(elements, message, reglages, mot, terminer) {
                 const bilan = {
                     traitees: 0,
                     importees: 0,
@@ -2149,27 +2232,27 @@ def accueil():
                     interrompu: null
                 };
 
-                for (let i = 0; i < fichiersGpx.length; i++) {
-                    const fichier = fichiersGpx[i];
+                for (let i = 0; i < elements.length; i++) {
+                    const element = elements[i];
 
                     afficherLignes(message, [
-                        `Import de la sortie ${i + 1}/${fichiersGpx.length}...`
+                        `Import de la sortie ${i + 1}/${elements.length}...`
                     ]);
 
-                    let gpx;
+                    let charge;
 
                     try {
-                        gpx = await fichier.text();
+                        charge = await element.charger();
                     } catch (e) {
                         bilan.traitees++;
-                        bilan.refusees.push(`${fichier.name} : fichier illisible`);
+                        bilan.refusees.push(`${element.nom} : fichier illisible`);
                         continue;
                     }
 
                     let r;
 
                     try {
-                        r = await envoyerSortie(gpx, []);
+                        r = await envoyerCharge(charge, reglages);
                     } catch (e) {
                         bilan.interrompu = "connexion perdue";
                         break;
@@ -2204,7 +2287,7 @@ def accueil():
                             ? 'erreur du serveur'
                             : texteErreur(r.data, 'fichier refusé');
 
-                        bilan.refusees.push(`${fichier.name} : ${raison}`);
+                        bilan.refusees.push(`${element.nom} : ${raison}`);
                     }
                 }
 
@@ -2247,7 +2330,7 @@ def accueil():
                 if (bilan.interrompu) {
                     lignes.push(
                         `⛔ Import interrompu (${bilan.interrompu}) après ` +
-                        `${bilan.traitees}/${fichiersGpx.length} fichiers. ` +
+                        `${bilan.traitees}/${elements.length} ${mot}. ` +
                         `Vous pouvez relancer : les sorties déjà importées seront ignorées.`
                     );
                 }
@@ -2259,9 +2342,8 @@ def accueil():
                 afficherLignes(message, lignes);
 
                 // En cas d'interruption, la sélection est gardée pour relancer.
-                if (!bilan.interrompu) {
-                    document.getElementById('gpxFile').value = '';
-                    document.getElementById('gpxNotes').value = '';
+                if (!bilan.interrompu && terminer) {
+                    terminer();
                 }
 
                 await chargerEtat();
@@ -2355,6 +2437,598 @@ def accueil():
                     alert("Ajout des photos impossible (photo illisible ou trop lourde ?).");
                 }
             }
+
+
+            // ============================================================
+            // Import de l'archive Strava (fichier .zip lu dans le navigateur)
+            // ============================================================
+
+            const MAX_SORTIES_STRAVA = 1000;
+            const TAILLE_MAX_ACTIVITE = 8 * 1024 * 1024;
+            const TAILLE_MAX_CSV = 80 * 1024 * 1024;
+            let archiveStrava = null;
+
+
+            async function lireOctets(fichier, debut, fin) {
+                return new Uint8Array(await fichier.slice(debut, fin).arrayBuffer());
+            }
+
+
+            async function decompresser(source, format) {
+                const blob = source instanceof Blob ? source : new Blob([source]);
+                const flux = blob.stream().pipeThrough(new DecompressionStream(format));
+                return new Uint8Array(await new Response(flux).arrayBuffer());
+            }
+
+
+            // Lit la liste des fichiers d'un zip sans le charger en entier.
+            async function lireEntreesZip(fichier) {
+                const tailleQueue = Math.min(fichier.size, 65535 + 22 + 20);
+                const queue = await lireOctets(
+                    fichier, fichier.size - tailleQueue, fichier.size
+                );
+                const vq = new DataView(queue.buffer);
+                let fin = -1;
+
+                for (let i = queue.length - 22; i >= 0; i--) {
+                    if (vq.getUint32(i, true) === 0x06054b50) {
+                        fin = i;
+                        break;
+                    }
+                }
+
+                if (fin < 0) {
+                    throw new Error('zip');
+                }
+
+                let total = vq.getUint16(fin + 10, true);
+                let tailleCd = vq.getUint32(fin + 12, true);
+                let debutCd = vq.getUint32(fin + 16, true);
+
+                if (total === 0xFFFF || tailleCd === 0xFFFFFFFF || debutCd === 0xFFFFFFFF) {
+                    const loc = fin - 20;
+
+                    if (loc < 0 || vq.getUint32(loc, true) !== 0x07064b50) {
+                        throw new Error('zip');
+                    }
+
+                    const decalage64 = Number(vq.getBigUint64(loc + 8, true));
+                    const e64 = await lireOctets(fichier, decalage64, decalage64 + 56);
+                    const v64 = new DataView(e64.buffer);
+
+                    if (v64.getUint32(0, true) !== 0x06064b50) {
+                        throw new Error('zip');
+                    }
+
+                    total = Number(v64.getBigUint64(32, true));
+                    tailleCd = Number(v64.getBigUint64(40, true));
+                    debutCd = Number(v64.getBigUint64(48, true));
+                }
+
+                const cd = await lireOctets(fichier, debutCd, debutCd + tailleCd);
+                const vc = new DataView(cd.buffer);
+                const decodeur = new TextDecoder('utf-8');
+                const entrees = new Map();
+                let p = 0;
+
+                while (p + 46 <= cd.length && vc.getUint32(p, true) === 0x02014b50) {
+                    const drapeaux = vc.getUint16(p + 8, true);
+                    const methode = vc.getUint16(p + 10, true);
+                    let tailleComp = vc.getUint32(p + 20, true);
+                    let tailleReelle = vc.getUint32(p + 24, true);
+                    const lNom = vc.getUint16(p + 28, true);
+                    const lExtra = vc.getUint16(p + 30, true);
+                    const lCom = vc.getUint16(p + 32, true);
+                    let decalage = vc.getUint32(p + 42, true);
+                    const nom = decodeur.decode(cd.subarray(p + 46, p + 46 + lNom));
+
+                    let q = p + 46 + lNom;
+                    const finExtra = q + lExtra;
+
+                    while (q + 4 <= finExtra) {
+                        const id = vc.getUint16(q, true);
+                        const longueur = vc.getUint16(q + 2, true);
+
+                        if (id === 1) {
+                            let r = q + 4;
+
+                            if (tailleReelle === 0xFFFFFFFF) {
+                                tailleReelle = Number(vc.getBigUint64(r, true));
+                                r += 8;
+                            }
+
+                            if (tailleComp === 0xFFFFFFFF) {
+                                tailleComp = Number(vc.getBigUint64(r, true));
+                                r += 8;
+                            }
+
+                            if (decalage === 0xFFFFFFFF) {
+                                decalage = Number(vc.getBigUint64(r, true));
+                            }
+                        }
+
+                        q += 4 + longueur;
+                    }
+
+                    entrees.set(nom, {
+                        nom: nom,
+                        methode: methode,
+                        tailleComp: tailleComp,
+                        tailleReelle: tailleReelle,
+                        decalage: decalage,
+                        chiffre: (drapeaux & 1) === 1
+                    });
+
+                    p += 46 + lNom + lExtra + lCom;
+                }
+
+                return entrees;
+            }
+
+
+            async function lireEntreeZip(fichier, entree, maximum) {
+                if (entree.chiffre || entree.tailleReelle > maximum) {
+                    throw new Error('entree');
+                }
+
+                const entete = await lireOctets(
+                    fichier, entree.decalage, entree.decalage + 30
+                );
+                const ve = new DataView(entete.buffer);
+
+                if (ve.getUint32(0, true) !== 0x04034b50) {
+                    throw new Error('zip');
+                }
+
+                const debut =
+                    entree.decalage + 30 +
+                    ve.getUint16(26, true) + ve.getUint16(28, true);
+                const blob = fichier.slice(debut, debut + entree.tailleComp);
+                let octets;
+
+                if (entree.methode === 0) {
+                    octets = new Uint8Array(await blob.arrayBuffer());
+                } else if (entree.methode === 8) {
+                    octets = await decompresser(blob, 'deflate-raw');
+                } else {
+                    throw new Error('methode');
+                }
+
+                if (octets.length > maximum) {
+                    throw new Error('entree');
+                }
+
+                return octets;
+            }
+
+
+            // Lit un fichier CSV (champs entre guillemets, retours à la ligne inclus).
+            function lireCsv(texte) {
+                const NL = String.fromCharCode(10);
+                const RC = String.fromCharCode(13);
+
+                if (texte.charCodeAt(0) === 0xFEFF) {
+                    texte = texte.slice(1);
+                }
+
+                const premiere = texte.slice(0, 2000).split(NL)[0];
+                const separateur =
+                    premiere.split(';').length > premiere.split(',').length ? ';' : ',';
+
+                const lignes = [];
+                let ligne = [];
+                let champ = '';
+                let guillemets = false;
+
+                for (let i = 0; i < texte.length; i++) {
+                    const c = texte[i];
+
+                    if (guillemets) {
+                        if (c === '"') {
+                            if (texte[i + 1] === '"') {
+                                champ += '"';
+                                i++;
+                            } else {
+                                guillemets = false;
+                            }
+                        } else {
+                            champ += c;
+                        }
+                    } else if (c === '"') {
+                        guillemets = true;
+                    } else if (c === separateur) {
+                        ligne.push(champ);
+                        champ = '';
+                    } else if (c === NL || c === RC) {
+                        if (c === RC && texte[i + 1] === NL) {
+                            i++;
+                        }
+
+                        ligne.push(champ);
+                        champ = '';
+
+                        if (ligne.length > 1 || ligne[0] !== '') {
+                            lignes.push(ligne);
+                        }
+
+                        ligne = [];
+                    } else {
+                        champ += c;
+                    }
+                }
+
+                if (champ !== '' || ligne.length > 0) {
+                    ligne.push(champ);
+                    lignes.push(ligne);
+                }
+
+                return lignes;
+            }
+
+
+            function ressembleActivite(valeur) {
+                const v = valeur.trim().toLowerCase();
+
+                return ['.gpx', '.fit', '.tcx', '.gpx.gz', '.fit.gz', '.tcx.gz']
+                    .some(fin => v.endsWith(fin));
+            }
+
+
+            function trouverEntree(entrees, chemin) {
+                if (entrees.has(chemin)) {
+                    return entrees.get(chemin);
+                }
+
+                const fin = '/' + chemin;
+
+                for (const [nom, entree] of entrees) {
+                    if (nom.endsWith(fin)) {
+                        return entree;
+                    }
+                }
+
+                return null;
+            }
+
+
+            // Repère les colonnes (même si l'export est dans une autre langue)
+            // et rend la liste des activités dont le fichier est dans l'archive.
+            function lireActivitesStrava(lignes, entrees) {
+                if (lignes.length < 2) {
+                    return [];
+                }
+
+                const entete = lignes[0].map(t => t.toLowerCase());
+                const rangees = lignes.slice(1);
+                let colFichier = -1;
+                let meilleur = 0;
+
+                for (let j = 0; j < entete.length; j++) {
+                    let n = 0;
+
+                    for (const r of rangees) {
+                        if (ressembleActivite(r[j] || '')) {
+                            n++;
+                        }
+                    }
+
+                    if (n > meilleur) {
+                        meilleur = n;
+                        colFichier = j;
+                    }
+                }
+
+                if (colFichier < 0) {
+                    return [];
+                }
+
+                const trouverCol = (mots, exclusions, defaut) => {
+                    for (let j = 0; j < entete.length; j++) {
+                        if (
+                            mots.some(m => entete[j].includes(m)) &&
+                            !exclusions.some(m => entete[j].includes(m))
+                        ) {
+                            return j;
+                        }
+                    }
+
+                    return defaut;
+                };
+
+                const colType = trouverCol(['type'], [], 3);
+                const colVelo = trouverCol(
+                    ['gear', 'équipement', 'equipement', 'ausrüstung', 'equipo',
+                     'attrezzatura', 'matériel', 'materiel'], [], 11
+                );
+                const colNom = trouverCol(
+                    ['name', 'nom'], ['file', 'fichier', 'dateiname'], 2
+                );
+
+                const activites = [];
+
+                for (const r of rangees) {
+                    const chemin = (r[colFichier] || '').trim();
+
+                    if (!ressembleActivite(chemin)) {
+                        continue;
+                    }
+
+                    const entree = trouverEntree(entrees, chemin);
+
+                    if (!entree) {
+                        continue;
+                    }
+
+                    activites.push({
+                        nom: (r[colNom] || '').trim(),
+                        type: (r[colType] || '').trim(),
+                        velo: (r[colVelo] || '').trim(),
+                        chemin: chemin,
+                        entree: entree
+                    });
+                }
+
+                return activites;
+            }
+
+
+            const SANS_VELO = '__sans_velo__';
+            const TOUT = '__tout__';
+
+
+            function remplirChoix(select, compteurs, libelleTout, libelleVide, preferee) {
+                select.replaceChildren();
+
+                const ajouter = (valeur, texte) => {
+                    const option = document.createElement('option');
+                    option.value = valeur;
+                    option.textContent = texte;
+                    select.appendChild(option);
+                };
+
+                const noms = Array.from(compteurs.keys())
+                    .filter(nom => nom !== '')
+                    .sort((a, b) => compteurs.get(b) - compteurs.get(a));
+
+                noms.forEach(nom => ajouter(nom, `${nom} (${compteurs.get(nom)})`));
+
+                if (compteurs.has('')) {
+                    ajouter(SANS_VELO, `${libelleVide} (${compteurs.get('')})`);
+                }
+
+                ajouter(TOUT, libelleTout);
+
+                const voulue = preferee ? noms.find(preferee) : null;
+                select.value = voulue || (noms.length > 0 ? noms[0] : TOUT);
+            }
+
+
+            function compter(activites, champ) {
+                const compteurs = new Map();
+
+                activites.forEach(a => {
+                    compteurs.set(a[champ], (compteurs.get(a[champ]) || 0) + 1);
+                });
+
+                return compteurs;
+            }
+
+
+            function selectionStrava() {
+                if (!archiveStrava) {
+                    return [];
+                }
+
+                const velo = document.getElementById('stravaVelo').value;
+                const type = document.getElementById('stravaType').value;
+
+                return archiveStrava.activites.filter(a => {
+                    const veloOk =
+                        velo === TOUT ||
+                        (velo === SANS_VELO ? a.velo === '' : a.velo === velo);
+                    const typeOk =
+                        type === TOUT ||
+                        (type === SANS_VELO ? a.type === '' : a.type === type);
+
+                    return veloOk && typeOk;
+                });
+            }
+
+
+            function majCompteStrava() {
+                const choisies = selectionStrava();
+                const total = archiveStrava ? archiveStrava.activites.length : 0;
+                const bouton = document.getElementById('stravaBouton');
+                let texte =
+                    `${nombre(choisies.length, 'sortie sera importée', 'sorties seront importées')} ` +
+                    `(sur ${total} dans l'archive).`;
+
+                if (choisies.length > MAX_SORTIES_STRAVA) {
+                    texte +=
+                        ` Seules les ${MAX_SORTIES_STRAVA} dernières seront importées ; ` +
+                        `relancez ensuite pour les suivantes.`;
+                }
+
+                document.getElementById('stravaCompte').textContent = texte;
+                bouton.disabled = choisies.length === 0;
+            }
+
+
+            async function chargerArchiveStrava() {
+                const message = document.getElementById('stravaMessage');
+                const choix = document.getElementById('stravaChoix');
+                const fichier = document.getElementById('stravaZip').files[0];
+
+                archiveStrava = null;
+                choix.style.display = 'none';
+                afficherLignes(message, []);
+
+                if (!fichier) {
+                    return;
+                }
+
+                if (typeof DecompressionStream === 'undefined') {
+                    afficherLignes(message, [
+                        "Ce navigateur est trop ancien pour lire l'archive. " +
+                        "Utilisez une version récente de Chrome, Safari ou Firefox."
+                    ]);
+                    return;
+                }
+
+                afficherLignes(message, ["Lecture de l'archive..."]);
+
+                try {
+                    const entrees = await lireEntreesZip(fichier);
+                    let csv = null;
+
+                    for (const [nom, entree] of entrees) {
+                        if (nom.toLowerCase().endsWith('activities.csv')) {
+                            csv = entree;
+                            break;
+                        }
+                    }
+
+                    if (!csv) {
+                        afficherLignes(message, [
+                            "Ce fichier ne ressemble pas à une archive Strava " +
+                            "(activities.csv introuvable)."
+                        ]);
+                        return;
+                    }
+
+                    const octets = await lireEntreeZip(fichier, csv, TAILLE_MAX_CSV);
+                    const lignes = lireCsv(new TextDecoder('utf-8').decode(octets));
+                    const activites = lireActivitesStrava(lignes, entrees);
+
+                    if (activites.length === 0) {
+                        afficherLignes(message, [
+                            "Aucune sortie avec fichier GPS trouvée dans cette archive."
+                        ]);
+                        return;
+                    }
+
+                    archiveStrava = { fichier: fichier, activites: activites };
+
+                    remplirChoix(
+                        document.getElementById('stravaVelo'),
+                        compter(activites, 'velo'),
+                        'Tous les vélos et sorties',
+                        'Sans vélo associé',
+                        nom => nom.toLowerCase().includes('cube')
+                    );
+
+                    remplirChoix(
+                        document.getElementById('stravaType'),
+                        compter(activites, 'type'),
+                        "Tous les types d'activité",
+                        'Sans type',
+                        null
+                    );
+
+                    // Par défaut : tous les types (le vélo choisi suffit à filtrer).
+                    document.getElementById('stravaType').value = TOUT;
+
+                    majCompteStrava();
+                    afficherLignes(message, []);
+                    choix.style.display = 'block';
+
+                } catch (e) {
+                    afficherLignes(message, [
+                        "Impossible de lire ce fichier : est-ce bien l'archive .zip de Strava ?"
+                    ]);
+                }
+            }
+
+
+            function versBase64(octets) {
+                let texte = '';
+
+                for (let i = 0; i < octets.length; i += 0x8000) {
+                    texte += String.fromCharCode.apply(
+                        null, octets.subarray(i, i + 0x8000)
+                    );
+                }
+
+                return btoa(texte);
+            }
+
+
+            async function chargerActiviteStrava(activite) {
+                let octets = await lireEntreeZip(
+                    archiveStrava.fichier, activite.entree, TAILLE_MAX_ACTIVITE
+                );
+                let nom = activite.chemin.toLowerCase();
+
+                if (octets.length > 2 && octets[0] === 0x1f && octets[1] === 0x8b) {
+                    octets = await decompresser(octets, 'gzip');
+                }
+
+                if (nom.endsWith('.gz')) {
+                    nom = nom.slice(0, -3);
+                }
+
+                const charge = { nom: activite.nom ? activite.nom.slice(0, 120) : null };
+
+                if (nom.endsWith('.fit')) {
+                    charge.fit = versBase64(octets);
+                } else {
+                    charge.gpx = new TextDecoder('utf-8').decode(octets);
+                }
+
+                return charge;
+            }
+
+
+            async function importerStrava() {
+                const message = document.getElementById('stravaMessage');
+                const bouton = document.getElementById('stravaBouton');
+                let choisies = selectionStrava();
+
+                if (choisies.length === 0) {
+                    afficherLignes(message, ["Aucune sortie à importer avec ces choix."]);
+                    return;
+                }
+
+                if (choisies.length > MAX_SORTIES_STRAVA) {
+                    choisies = choisies.slice(choisies.length - MAX_SORTIES_STRAVA);
+                }
+
+                const elements = choisies.map(activite => ({
+                    nom: activite.nom || activite.chemin,
+                    charger: () => chargerActiviteStrava(activite)
+                }));
+
+                bouton.disabled = true;
+                document.getElementById('stravaZip').disabled = true;
+
+                try {
+                    await importerLot(
+                        elements,
+                        message,
+                        {
+                            terrain: document.getElementById('stravaTerrain').value,
+                            notes: null
+                        },
+                        'sorties',
+                        () => {
+                            document.getElementById('stravaZip').value = '';
+                            archiveStrava = null;
+                            document.getElementById('stravaChoix').style.display = 'none';
+                        }
+                    );
+                } finally {
+                    document.getElementById('stravaZip').disabled = false;
+                    bouton.disabled = archiveStrava === null;
+                }
+            }
+
+
+            document.getElementById('stravaZip')
+                .addEventListener('change', chargerArchiveStrava);
+            document.getElementById('stravaVelo')
+                .addEventListener('change', majCompteStrava);
+            document.getElementById('stravaType')
+                .addEventListener('change', majCompteStrava);
 
 
             async function supprimerSortie(id) {
@@ -2906,8 +3580,20 @@ def ajuster_km_total(cursor, delta_km):
 @app.post("/api/sorties/import")
 def importer_sortie(data: ImportGpxRequest, x_code_acces: Optional[str] = Header(default=None)):
     verifier_auth(x_code_acces)
+
+    if not data.gpx and not data.fit:
+        raise HTTPException(status_code=400, detail="Aucun fichier reçu.")
+
     try:
-        s = gpx_import.analyser_gpx(data.gpx)
+        if data.fit:
+            try:
+                octets = base64.b64decode(data.fit, validate=True)
+            except ValueError:
+                raise gpx_import.GpxError("Fichier FIT illisible.")
+
+            s = gpx_import.analyser_activite(octets=octets)
+        else:
+            s = gpx_import.analyser_activite(texte=data.gpx)
     except gpx_import.GpxError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -2946,6 +3632,27 @@ def importer_sortie(data: ImportGpxRequest, x_code_acces: Optional[str] = Header
                 status_code=409,
                 detail="Cette sortie est déjà importée."
             )
+
+        # Même sortie importée depuis une autre source (Komoot puis Strava) :
+        # l'heure de départ peut différer de quelques secondes ou minutes.
+        depart = datetime.strptime(s["debut"], "%Y-%m-%dT%H:%M:%SZ")
+        format_heure = "%Y-%m-%dT%H:%M:%SZ"
+        cursor.execute(
+            "SELECT distance_km FROM sorties WHERE debut >= ? AND debut <= ?",
+            (
+                (depart - timedelta(minutes=10)).strftime(format_heure),
+                (depart + timedelta(minutes=10)).strftime(format_heure),
+            )
+        )
+
+        for proche in cursor.fetchall():
+            ecart = abs((proche[0] or 0) - s["distance_km"])
+
+            if ecart <= max(0.3, 0.1 * s["distance_km"]):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Cette sortie est déjà importée."
+                )
 
         cursor.execute("SELECT km_maj_le FROM velo WHERE id = 1")
         velo = cursor.fetchone()
