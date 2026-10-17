@@ -489,16 +489,22 @@ def accueil():
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-        <title>Cube Stereo - Suivi Entretien</title>
+        <title>Maillon - Entretien VTT</title>
+        <meta name="theme-color" content="#0b171c">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-title" content="Maillon">
+        <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%2335e0c8'/><stop offset='1' stop-color='%230a8f9c'/></linearGradient></defs><rect width='96' height='96' rx='24' fill='url(%23g)'/><g fill='none' stroke-linecap='round'><rect x='14' y='34' width='42' height='22' rx='11' transform='rotate(-32 35 45)' stroke='%2306262b' stroke-width='9'/><rect x='40' y='42' width='42' height='22' rx='11' transform='rotate(-32 61 53)' stroke='%2306262b' stroke-width='9'/><rect x='14' y='34' width='42' height='22' rx='11' transform='rotate(-32 35 45)' stroke='white' stroke-width='5'/><rect x='40' y='42' width='42' height='22' rx='11' transform='rotate(-32 61 53)' stroke='white' stroke-width='5'/></g></svg>">
 
         <style>
             :root {
-                --bg-color: #12141c;
-                --card-bg: #1e222d;
-                --text-color: #f8f9fa;
-                --text-muted: #94a3b8;
-                --accent: #3b82f6;
-                --accent-hover: #2563eb;
+                --bg-color: #0b171c;
+                --card-bg: #13252c;
+                --text-color: #eef6f4;
+                --text-muted: #8fa9b0;
+                --accent: #2dd4bf;
+                --accent-hover: #5eead4;
+                --on-accent: #04231f;
+                --nav-h: 68px;
                 --success: #10b981;
                 --danger: #ef4444;
                 --warning: #f59e0b;
@@ -509,12 +515,12 @@ def accueil():
             }
 
             body {
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
-                    Roboto, Helvetica, Arial, sans-serif;
+                font-family: ui-rounded, "SF Pro Rounded", "Segoe UI Variable",
+                    "Segoe UI", system-ui, Roboto, Helvetica, Arial, sans-serif;
                 background-color: var(--bg-color);
                 color: var(--text-color);
                 margin: 0;
-                padding: 16px;
+                padding: 0 16px calc(var(--nav-h) + 28px + env(safe-area-inset-bottom));
                 -webkit-font-smoothing: antialiased;
             }
 
@@ -551,20 +557,58 @@ def accueil():
             }
 
             .header {
-                text-align: center;
-                margin-bottom: 20px;
+                position: sticky;
+                top: 0;
+                z-index: 40;
+                max-width: 600px;
+                margin: 0 auto 14px auto;
+                padding: 12px 0;
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                background: linear-gradient(var(--bg-color) 75%, rgba(11,23,28,0));
+            }
+
+            .logo {
+                width: 40px;
+                height: 40px;
+                flex-shrink: 0;
+                border-radius: 11px;
+                box-shadow: 0 4px 14px rgba(45,212,191,0.25);
+            }
+
+            .header-titres {
+                flex: 1;
+                min-width: 0;
             }
 
             .header h1 {
-                font-size: 1.4rem;
-                margin: 0 0 4px 0;
+                font-size: 1.3rem;
+                font-weight: 800;
+                letter-spacing: -0.03em;
+                line-height: 1.1;
+                margin: 0;
                 color: #fff;
             }
 
-            .header p {
-                font-size: 0.85rem;
+            .header-velo {
+                font-size: 0.78rem;
                 color: var(--text-muted);
-                margin: 0;
+                margin: 2px 0 0 0;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            .km-pill {
+                flex-shrink: 0;
+                font-size: 0.85rem;
+                font-weight: 700;
+                color: var(--accent);
+                background: rgba(45,212,191,0.12);
+                border: 1px solid rgba(45,212,191,0.3);
+                border-radius: 999px;
+                padding: 6px 12px;
             }
 
             .sync-card {
@@ -582,8 +626,6 @@ def accueil():
                 font-size: 0.75rem;
                 color: var(--text-muted);
                 margin-bottom: 6px;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
             }
 
             .sync-row {
@@ -598,9 +640,9 @@ def accueil():
             select {
                 flex: 1;
                 min-width: 0;
-                background: #0f1117;
-                border: 1px solid #2a303c;
-                border-radius: 8px;
+                background: #0a1317;
+                border: 1px solid #23393f;
+                border-radius: 12px;
                 padding: 10px;
                 color: #fff;
                 font-size: 1rem;
@@ -616,9 +658,9 @@ def accueil():
 
             button.btn-primary {
                 background: var(--accent);
-                color: white;
+                color: var(--on-accent);
                 border: none;
-                border-radius: 8px;
+                border-radius: 12px;
                 padding: 10px 16px;
                 font-weight: 600;
                 cursor: pointer;
@@ -698,8 +740,8 @@ def accueil():
                 align-items: center;
                 justify-content: center;
                 font-size: 0.7rem;
-                font-weight: bold;
-                color: white;
+                font-weight: 800;
+                color: var(--on-accent);
                 transition: transform 0.2s;
             }
 
@@ -751,7 +793,7 @@ def accueil():
 
             .card {
                 background: var(--card-bg);
-                border-radius: 14px;
+                border-radius: 20px;
                 padding: 16px;
                 box-shadow: 0 4px 12px rgba(0,0,0,0.2);
                 border: 1px solid rgba(255,255,255,0.05);
@@ -804,9 +846,9 @@ def accueil():
             }
 
             .bar-bg {
-                background: #0f1117;
+                background: #0a1317;
                 border-radius: 6px;
-                height: 6px;
+                height: 8px;
                 width: 100%;
                 overflow: hidden;
                 margin-bottom: 12px;
@@ -833,7 +875,7 @@ def accueil():
                 border: 1px solid rgba(255,255,255,0.1);
                 width: 100%;
                 padding: 8px;
-                border-radius: 8px;
+                border-radius: 12px;
                 font-size: 0.85rem;
                 cursor: pointer;
             }
@@ -981,33 +1023,66 @@ def accueil():
             }
 
             .onglets {
-                display: flex;
-                gap: 6px;
-                max-width: 600px;
-                margin: 0 auto 16px auto;
-                position: sticky;
-                top: 0;
+                position: fixed;
+                left: 0;
+                right: 0;
+                bottom: 0;
                 z-index: 50;
-                padding: 8px 0;
-                background: var(--bg-color);
+                display: flex;
+                justify-content: center;
+                gap: 0;
+                height: calc(var(--nav-h) + env(safe-area-inset-bottom));
+                padding: 6px 8px env(safe-area-inset-bottom);
+                background: rgba(14, 29, 35, 0.94);
+                -webkit-backdrop-filter: blur(14px);
+                backdrop-filter: blur(14px);
+                border-top: 1px solid rgba(255,255,255,0.07);
             }
 
             .onglet {
                 flex: 1;
-                padding: 10px 6px;
-                font-size: 0.9rem;
+                max-width: 200px;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 3px;
+                padding: 0;
+                font: inherit;
+                font-size: 0.72rem;
                 font-weight: 600;
                 color: var(--text-muted);
-                background: var(--card-bg);
-                border: 1px solid rgba(255,255,255,0.08);
-                border-radius: 10px;
+                background: none;
+                border: none;
                 cursor: pointer;
             }
 
+            .onglet svg {
+                width: 24px;
+                height: 24px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 1.9;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+                box-sizing: content-box;
+                padding: 4px 18px;
+                border-radius: 999px;
+                transition: background 0.2s;
+            }
+
             .onglet.actif {
-                color: #fff;
-                background: var(--accent);
-                border-color: var(--accent);
+                color: var(--accent);
+            }
+
+            .onglet.actif svg {
+                background: rgba(45,212,191,0.16);
+            }
+
+            .onglet:focus-visible {
+                outline: 2px solid var(--accent);
+                outline-offset: -4px;
+                border-radius: 12px;
             }
 
             .page {
@@ -1020,8 +1095,9 @@ def accueil():
     <body>
         <div id="authScreen">
             <div class="auth-card">
-                <h2>🔐 Accès protégé</h2>
-                <p class="form-help">Entrez le code d'accès de l'application</p>
+                <svg class="logo" style="width:64px;height:64px;border-radius:18px;margin-bottom:12px" role="img" aria-label="Maillon"><use href="#logo-maillon"/></svg>
+                <h2>Maillon</h2>
+                <p class="form-help">Entrez votre code d'accès</p>
                 <input type="password" id="authInput" placeholder="Code secret" style="margin-bottom: 12px;">
                 <button class="btn-primary" style="width: 100%;" onclick="tenterConnexion()">Valider</button>
                 <p id="authError" style="color: var(--danger); font-size: 0.8rem; margin-top: 10px;"></p>
@@ -1033,15 +1109,37 @@ def accueil():
             <button id="lightboxRetirer" type="button">🗑️ Retirer cette photo</button>
         </div>
 
-        <div class="header">
-            <h1>🚲 Cube Stereo Hybrid</h1>
-            <p id="veloInfo">Kilométrage total : chargement...</p>
-        </div>
+        <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+            <defs>
+                <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0" stop-color="#35e0c8"/>
+                    <stop offset="1" stop-color="#0a8f9c"/>
+                </linearGradient>
+            </defs>
+            <symbol id="logo-maillon" viewBox="0 0 96 96">
+                <rect width="96" height="96" rx="24" fill="url(#lg)"/>
+                <g fill="none" stroke-linecap="round">
+                    <rect x="14" y="34" width="42" height="22" rx="11" transform="rotate(-32 35 45)" stroke="#06262b" stroke-width="9"/>
+                    <rect x="40" y="42" width="42" height="22" rx="11" transform="rotate(-32 61 53)" stroke="#06262b" stroke-width="9"/>
+                    <rect x="14" y="34" width="42" height="22" rx="11" transform="rotate(-32 35 45)" stroke="#fff" stroke-width="5"/>
+                    <rect x="40" y="42" width="42" height="22" rx="11" transform="rotate(-32 61 53)" stroke="#fff" stroke-width="5"/>
+                </g>
+            </symbol>
+        </svg>
+
+        <header class="header">
+            <svg class="logo" role="img" aria-label="Maillon"><use href="#logo-maillon"/></svg>
+            <div class="header-titres">
+                <h1>Maillon</h1>
+                <p class="header-velo">Cube Stereo Hybrid ONE44</p>
+            </div>
+            <span class="km-pill" id="veloInfo">… km</span>
+        </header>
 
         <nav class="onglets" id="onglets" aria-label="Pages de l'application">
-            <button type="button" class="onglet" id="onglet-entretien" onclick="location.hash='entretien'">🔧 Entretien</button>
-            <button type="button" class="onglet" id="onglet-historique" onclick="location.hash='historique'">📜 Historique</button>
-            <button type="button" class="onglet" id="onglet-sorties" onclick="location.hash='sorties'">🚵 Sorties</button>
+            <button type="button" class="onglet" id="onglet-entretien" onclick="location.hash='entretien'"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>Entretien</button>
+            <button type="button" class="onglet" id="onglet-historique" onclick="location.hash='historique'"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Historique</button>
+            <button type="button" class="onglet" id="onglet-sorties" onclick="location.hash='sorties'"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h8a3 3 0 0 0 0-6H8a3 3 0 0 1 0-6h8"/></svg>Sorties</button>
         </nav>
 
         <div class="page" id="page-entretien">
@@ -1487,7 +1585,7 @@ def accueil():
                     const data = await res.json();
 
                     document.getElementById('veloInfo').innerText =
-                        `Kilométrage total : ${data.km_total} km`;
+                        `${Number(data.km_total).toLocaleString('fr-FR')} km`;
 
                     const container =
                         document.getElementById('composantsList');
