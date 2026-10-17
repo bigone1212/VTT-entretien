@@ -1504,6 +1504,15 @@ def accueil():
             .card .bar-bg { height: 8px; margin: 10px 0 0; }
             .card.ouverte .bar-bg { margin-bottom: 12px; }
 
+            .card.masquee { display: none; }
+
+            .btn-voir-plus {
+                width: 100%;
+                padding: 12px;
+                font-size: 0.9rem;
+                justify-content: center;
+            }
+
             .card-detail { display: none; padding-top: 4px; }
             .card.ouverte .card-detail { display: block; }
 
@@ -2167,6 +2176,7 @@ def accueil():
             remplirBouton(document.getElementById('mrAnnuler'), 'fermer', 'Annuler');
 
             const cartesOuvertes = new Set();
+            let vertesVisibles = false;
             let placementActif = false;
             let placementId = null;
 
@@ -2181,14 +2191,16 @@ def accueil():
             function majBoutonDeplier() {
                 const b = document.getElementById('btnToutDeplier');
                 if (!b) return;
-                const total = document.querySelectorAll('#composantsList .card').length;
-                const tout = total > 0 && cartesOuvertes.size >= total;
+                const cartes = document.querySelectorAll('#composantsList .card:not(.masquee)');
+                const total = cartes.length;
+                const ouvertes = document.querySelectorAll('#composantsList .card.ouverte:not(.masquee)').length;
+                const tout = total > 0 && ouvertes >= total;
                 remplirBouton(b, tout ? 'haut' : 'bas', tout ? 'Tout replier' : 'Tout déplier');
             }
 
             function toutDeplier() {
-                const cartes = document.querySelectorAll('#composantsList .card');
-                const tout = cartesOuvertes.size >= cartes.length;
+                const cartes = document.querySelectorAll('#composantsList .card:not(.masquee)');
+                const tout = document.querySelectorAll('#composantsList .card.ouverte:not(.masquee)').length >= cartes.length;
                 cartes.forEach(card => {
                     const id = Number(card.id.replace('card-', ''));
                     card.classList.toggle('ouverte', !tout);
@@ -2505,6 +2517,10 @@ def accueil():
                             cardTop.setAttribute('aria-expanded', 'true');
                         }
 
+                        if (!vertesVisibles && c.pourcentage_usure < 85) {
+                            card.classList.add('masquee');
+                        }
+
                         container.appendChild(card);
                     });
 
@@ -2519,6 +2535,27 @@ def accueil():
                     entete.appendChild(titreListe);
                     entete.appendChild(bTout);
                     container.insertBefore(entete, container.firstChild);
+
+                    const nbVertes = data.composants.filter(c => c.pourcentage_usure < 85).length;
+                    titreListe.textContent = vertesVisibles || nbVertes === 0
+                        ? `${data.composants.length} pièces à suivre`
+                        : `${data.composants.length - nbVertes} à surveiller · ${nbVertes} en bon état`;
+
+                    if (nbVertes > 0) {
+                        const bVertes = document.createElement('button');
+                        bVertes.type = 'button';
+                        bVertes.id = 'btnVertes';
+                        bVertes.className = 'btn-voir-plus';
+                        remplirBouton(bVertes, vertesVisibles ? 'haut' : 'bas',
+                            vertesVisibles
+                                ? 'Masquer les pièces en bon état'
+                                : `Voir les ${nbVertes} pièces en bon état`);
+                        bVertes.addEventListener('click', () => {
+                            vertesVisibles = !vertesVisibles;
+                            chargerEtat();
+                        });
+                        container.appendChild(bVertes);
+                    }
                     majBoutonDeplier();
 
                     await chargerReglagesVelo();
