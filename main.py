@@ -730,7 +730,7 @@ def accueil():
                 position: absolute;
                 width: 24px;
                 height: 24px;
-                background: var(--accent);
+                background: #0d8a7c;
                 border: 2px solid #fff;
                 border-radius: 50%;
                 transform: translate(-50%, -50%);
@@ -741,7 +741,8 @@ def accueil():
                 justify-content: center;
                 font-size: 0.7rem;
                 font-weight: 800;
-                color: var(--on-accent);
+                color: #fff;
+                text-shadow: 0 1px 2px rgba(0,0,0,0.45);
                 transition: transform 0.2s;
             }
 
