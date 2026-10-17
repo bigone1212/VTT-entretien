@@ -501,11 +501,11 @@ def accueil():
                 --card-bg: #13252c;
                 --text-color: #eef6f4;
                 --text-muted: #8fa9b0;
-                --accent: #2dd4bf;
-                --accent-hover: #5eead4;
+                --accent: #35e0c8;
+                --accent-hover: #6ff0dc;
                 --on-accent: #04231f;
                 --nav-h: 68px;
-                --success: #10b981;
+                --success: #35e0c8;
                 --danger: #ef4444;
                 --warning: #f59e0b;
             }
@@ -574,7 +574,7 @@ def accueil():
                 height: 40px;
                 flex-shrink: 0;
                 border-radius: 11px;
-                box-shadow: 0 4px 14px rgba(45,212,191,0.25);
+                box-shadow: 0 4px 14px rgba(53,224,200,0.25);
             }
 
             .header-titres {
@@ -605,8 +605,8 @@ def accueil():
                 font-size: 0.85rem;
                 font-weight: 700;
                 color: var(--accent);
-                background: rgba(45,212,191,0.12);
-                border: 1px solid rgba(45,212,191,0.3);
+                background: rgba(53,224,200,0.12);
+                border: 1px solid rgba(53,224,200,0.3);
                 border-radius: 999px;
                 padding: 6px 12px;
             }
@@ -730,7 +730,7 @@ def accueil():
                 position: absolute;
                 width: 24px;
                 height: 24px;
-                background: #0d8a7c;
+                background: linear-gradient(135deg, #35e0c8, #0a8f9c);
                 border: 2px solid #fff;
                 border-radius: 50%;
                 transform: translate(-50%, -50%);
@@ -823,7 +823,7 @@ def accueil():
             }
 
             .badge.ok {
-                background: rgba(16, 185, 129, 0.15);
+                background: rgba(53, 224, 200, 0.15);
                 color: var(--success);
             }
 
@@ -1077,7 +1077,7 @@ def accueil():
             }
 
             .onglet.actif svg {
-                background: rgba(45,212,191,0.16);
+                background: rgba(53,224,200,0.16);
             }
 
             .onglet:focus-visible {
