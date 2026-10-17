@@ -191,11 +191,24 @@ COMPOSANTS_V2 = [
 ]
 
 
+# Contrôles réguliers (pression, réglages) à faire souvent.
+COMPOSANTS_V3 = [
+    ("Pneus - pression et état (contrôle)", 0, 14, "maintenance", 92, 74),
+    ("Fourche - pression et SAG (contrôle)", 0, 30, "maintenance", 80, 38),
+    ("Amortisseur - pression et SAG (contrôle)", 0, 30, "maintenance", 41, 50),
+]
+
+
 def migrer_composants_v2(cursor):
-    """Ajoute une seule fois les nouveaux entretiens (sans toucher à l'existant)."""
+    ajouter_composants_une_fois(cursor, "migration_composants_v2", COMPOSANTS_V2)
+    ajouter_composants_une_fois(cursor, "migration_composants_v3", COMPOSANTS_V3)
+
+
+def ajouter_composants_une_fois(cursor, marqueur, liste):
+    """Ajoute une seule fois de nouveaux entretiens (sans toucher à l'existant)."""
     cursor.execute(
         "SELECT valeur FROM reglages WHERE cle = ?",
-        ("migration_composants_v2",)
+        (marqueur,)
     )
 
     if cursor.fetchone() is not None:
@@ -204,7 +217,7 @@ def migrer_composants_v2(cursor):
     cursor.execute("SELECT nom FROM composants")
     existants = {r[0] for r in cursor.fetchall()}
 
-    for nom, km, jours, categorie, x, y in COMPOSANTS_V2:
+    for nom, km, jours, categorie, x, y in liste:
         if nom in existants:
             continue
 
@@ -219,7 +232,7 @@ def migrer_composants_v2(cursor):
         INSERT INTO reglages (cle, valeur)
         VALUES (?, 1)
         ON CONFLICT (cle) DO NOTHING
-    """, ("migration_composants_v2",))
+    """, (marqueur,))
 
 
 def init_db():
