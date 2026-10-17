@@ -784,7 +784,7 @@ def accueil():
 
             .mr-ligne span { color: var(--text-muted); }
             .mr-ligne b { color: #fff; font-weight: 700; }
-            .mr-ligne input { width: 110px; padding: 6px 8px; text-align: right; }
+            .mr-ligne input[type="text"] { width: 120px; flex: none; margin: 0; padding: 8px 10px; text-align: right; }
 
             .placement-bar {
                 max-width: 600px;
@@ -1186,6 +1186,174 @@ def accueil():
                 max-width: 600px;
                 margin: 0 auto;
             }
+
+            /* ---- Habillage des cartes, barres et boutons ---- */
+            .ico {
+                width: 16px;
+                height: 16px;
+                flex-shrink: 0;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 2;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+
+            .card {
+                position: relative;
+                padding: 16px 16px 14px 20px;
+                overflow: hidden;
+            }
+
+            .card::before {
+                content: "";
+                position: absolute;
+                left: 0;
+                top: 0;
+                bottom: 0;
+                width: 5px;
+                background: linear-gradient(180deg, #35e0c8, #0a8f9c);
+            }
+
+            .card.near-warning::before { background: linear-gradient(180deg, #fbbf24, #d97706); }
+            .card.warning::before { background: linear-gradient(180deg, #f87171, #dc2626); }
+
+            .component-name { line-height: 1.3; }
+
+            .badge {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                font-size: 0.74rem;
+                padding: 4px 10px;
+                white-space: nowrap;
+            }
+
+            .badge::before {
+                content: "";
+                width: 7px;
+                height: 7px;
+                border-radius: 50%;
+                background: currentColor;
+            }
+
+            .bar-bg {
+                position: relative;
+                height: 12px;
+                border-radius: 999px;
+                background: #08121a;
+                box-shadow: inset 0 1px 3px rgba(0,0,0,0.6);
+                margin: 8px 0 14px;
+            }
+
+            .bar-bg::after {
+                content: "";
+                position: absolute;
+                top: 2px;
+                bottom: 2px;
+                left: 85%;
+                width: 2px;
+                border-radius: 2px;
+                background: rgba(255,255,255,0.22);
+            }
+
+            .bar-fill {
+                border-radius: 999px;
+                background: linear-gradient(90deg, #0a8f9c, #35e0c8);
+                box-shadow: 0 0 10px rgba(53,224,200,0.45);
+            }
+
+            .bar-fill.near-warning {
+                background: linear-gradient(90deg, #d97706, #fbbf24);
+                box-shadow: 0 0 10px rgba(251,191,36,0.4);
+            }
+
+            .bar-fill.warning {
+                background: linear-gradient(90deg, #dc2626, #f87171);
+                box-shadow: 0 0 10px rgba(248,113,113,0.45);
+            }
+
+            button.btn-action {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+                padding: 11px;
+                font: inherit;
+                font-size: 0.9rem;
+                font-weight: 700;
+                color: var(--accent);
+                background: rgba(53,224,200,0.1);
+                border: 1px solid rgba(53,224,200,0.35);
+                border-radius: 12px;
+                transition: background 0.15s, transform 0.1s;
+            }
+
+            button.btn-action:hover { background: rgba(53,224,200,0.2); }
+            button.btn-action:active { transform: scale(0.98); }
+
+            .card.warning button.btn-action,
+            .card.near-warning button.btn-action {
+                color: #04231f;
+                background: linear-gradient(135deg, #35e0c8, #0a8f9c);
+                border-color: transparent;
+            }
+
+            .card-tools { margin-top: 10px; gap: 8px; }
+
+            .card-tools button,
+            .placement-bar button,
+            .mr-titre button,
+            .mr-actions button,
+            .btn-voir-plus {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 6px;
+                font: inherit;
+                font-size: 0.82rem;
+                font-weight: 600;
+                color: var(--text-muted);
+                background: rgba(255,255,255,0.04);
+                border: 1px solid rgba(255,255,255,0.1);
+                border-radius: 999px;
+                padding: 7px 14px;
+                cursor: pointer;
+                transition: background 0.15s, color 0.15s;
+            }
+
+            .card-tools button:hover,
+            .placement-bar button:hover,
+            .mr-titre button:hover,
+            .mr-actions button:hover,
+            .btn-voir-plus:hover {
+                background: rgba(255,255,255,0.1);
+                color: #fff;
+            }
+
+            .card-tools button.danger:hover {
+                background: rgba(239,68,68,0.15);
+                color: #f87171;
+                border-color: rgba(239,68,68,0.4);
+            }
+
+            .placement-bar button.actif {
+                color: #04231f;
+                background: linear-gradient(135deg, #35e0c8, #0a8f9c);
+                border-color: transparent;
+            }
+
+            .mr-actions button.mr-ok {
+                color: #04231f;
+                background: linear-gradient(135deg, #35e0c8, #0a8f9c);
+                border-color: transparent;
+            }
+
+            .btn-voir-plus {
+                width: 100%;
+                padding: 12px;
+                font-size: 0.9rem;
+            }
         </style>
     </head>
 
@@ -1252,7 +1420,7 @@ def accueil():
         </div>
 
         <div class="placement-bar">
-            <button type="button" id="btnPlacer" onclick="basculerPlacement()">📍 Placer les repères</button>
+            <button type="button" id="btnPlacer" onclick="basculerPlacement()"></button>
             <span class="form-help" id="placementAide" style="display:none; margin:0;">
                 Touchez un numéro, puis touchez son emplacement exact sur la photo.
             </span>
@@ -1296,13 +1464,13 @@ def accueil():
         <section class="mes-reglages" id="mesReglages" aria-label="Mes réglages">
             <div class="mr-titre">
                 <strong>🎚️ Mes réglages</strong>
-                <button type="button" id="mrModifier" onclick="modifierReglagesVelo()">✏️ Modifier</button>
+                <button type="button" id="mrModifier" onclick="modifierReglagesVelo()"></button>
             </div>
             <div id="mrContenu"></div>
             <div class="form-help" id="mrDate" style="margin:8px 0 0;"></div>
             <div class="mr-actions" id="mrActions" style="display:none;">
-                <button type="button" class="mr-ok" onclick="enregistrerReglagesVelo()">Enregistrer</button>
-                <button type="button" onclick="annulerReglagesVelo()">Annuler</button>
+                <button type="button" class="mr-ok" id="mrOk" onclick="enregistrerReglagesVelo()"></button>
+                <button type="button" id="mrAnnuler" onclick="annulerReglagesVelo()"></button>
             </div>
         </section>
         </div>
@@ -1601,6 +1769,24 @@ def accueil():
                 { titre: '📝 Remarque', champs: [
                     ['notes', 'Note libre'] ] }
             ];
+            const ICONES = {
+                cle: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
+                echange: '<path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 21v-5h5"/>',
+                crayon: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+                poubelle: '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/>',
+                repere: '<path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',
+                valider: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+                fermer: '<path d="M6 6l12 12M18 6L6 18"/>',
+                bas: '<path d="M6 9l6 6 6-6"/>',
+                haut: '<path d="M6 15l6-6 6 6"/>'
+            };
+
+            function remplirBouton(el, icone, texte) {
+                el.innerHTML = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">'
+                    + ICONES[icone] + '</svg><span></span>';
+                el.lastChild.textContent = texte;
+            }
+
             let mrValeurs = {};
             let mrMaj = null;
             let mrEdition = false;
@@ -1630,7 +1816,7 @@ def accueil():
                             inp.id = 'mr-' + cle;
                             inp.maxLength = 200;
                             inp.value = mrValeurs[cle] || '';
-                            if (cle === 'notes') inp.style.width = '200px';
+                            if (cle === 'notes') { inp.style.width = '100%'; inp.style.flex = '1'; inp.style.maxWidth = '200px'; }
                             ligne.appendChild(inp);
                         } else {
                             const v = document.createElement('b');
@@ -1645,7 +1831,7 @@ def accueil():
                 document.getElementById('mrActions').style.display =
                     mrEdition ? 'flex' : 'none';
                 document.getElementById('mrModifier').style.display =
-                    mrEdition ? 'none' : 'inline-block';
+                    mrEdition ? 'none' : 'inline-flex';
 
                 let txt = '';
                 if (mrMaj) {
@@ -1704,6 +1890,11 @@ def accueil():
                 }
             }
 
+            remplirBouton(document.getElementById('btnPlacer'), 'repere', 'Placer les repères');
+            remplirBouton(document.getElementById('mrModifier'), 'crayon', 'Modifier');
+            remplirBouton(document.getElementById('mrOk'), 'valider', 'Enregistrer');
+            remplirBouton(document.getElementById('mrAnnuler'), 'fermer', 'Annuler');
+
             let listeDeployee = false;
             let placementActif = false;
             let placementId = null;
@@ -1712,8 +1903,10 @@ def accueil():
             function basculerPlacement() {
                 placementActif = !placementActif;
                 placementId = null;
-                document.getElementById('btnPlacer').textContent =
-                    placementActif ? '✅ Terminer le placement' : '📍 Placer les repères';
+                const bp = document.getElementById('btnPlacer');
+                remplirBouton(bp, placementActif ? 'valider' : 'repere',
+                    placementActif ? 'Terminer le placement' : 'Placer les repères');
+                bp.classList.toggle('actif', placementActif);
                 document.getElementById('placementAide').style.display =
                     placementActif ? 'inline' : 'none';
                 document.querySelector('.bike-container').classList.toggle('placement', placementActif);
@@ -1843,15 +2036,18 @@ def accueil():
                             hotspotClass = 'near-warning';
                         }
 
-                        const badgeText =
-                            c.pourcentage_usure >= 100
-                                ? `À faire · ${c.pourcentage_usure}%`
+                        const pctAffiche =
+                            c.pourcentage_usure > 999
+                                ? '999%+'
                                 : `${c.pourcentage_usure}%`;
 
-                        const btnLabel =
-                            c.categorie === 'maintenance'
-                                ? '🔧 Marquer fait'
-                                : '⚙️ Remplacer';
+                        const badgeText =
+                            c.pourcentage_usure >= 100
+                                ? `À faire · ${pctAffiche}`
+                                : pctAffiche;
+
+                        const estMaintenance = c.categorie === 'maintenance';
+                        const btnLabel = estMaintenance ? 'Marquer fait' : 'Remplacer';
 
                         const option = document.createElement('option');
                         option.value = c.id;
@@ -1880,7 +2076,7 @@ def accueil():
                         hotspotsContainer.appendChild(hotspot);
 
                         const card = document.createElement('div');
-                        card.className = 'card';
+                        card.className = `card ${statusClass}`;
                         card.id = `card-${c.id}`;
 
                         const cardTop = document.createElement('div');
@@ -1937,7 +2133,7 @@ def accueil():
 
                         const button = document.createElement('button');
                         button.className = 'btn-action';
-                        button.textContent = btnLabel;
+                        remplirBouton(button, estMaintenance ? 'cle' : 'echange', btnLabel);
                         button.addEventListener('click', () => {
                             remplacer(c.id, c.nom);
                         });
@@ -1966,12 +2162,13 @@ def accueil():
 
                         const bSeuils = document.createElement('button');
                         bSeuils.type = 'button';
-                        bSeuils.textContent = '✏️ Seuils';
+                        remplirBouton(bSeuils, 'crayon', 'Seuils');
                         bSeuils.addEventListener('click', () => modifierSeuils(c));
 
                         const bRetirer = document.createElement('button');
                         bRetirer.type = 'button';
-                        bRetirer.textContent = '🗑️ Retirer';
+                        bRetirer.className = 'danger';
+                        remplirBouton(bRetirer, 'poubelle', 'Retirer');
                         bRetirer.addEventListener('click', () => retirerComposant(c));
 
                         outils.appendChild(bSeuils);
@@ -1998,9 +2195,10 @@ def accueil():
                         voir.type = 'button';
                         voir.className = 'btn-voir-plus';
                         voir.id = 'btnVoirPlus';
-                        voir.textContent = listeDeployee
-                            ? 'Réduire la liste'
-                            : `Voir les ${nbMasquees} autres pièces`;
+                        remplirBouton(voir, listeDeployee ? 'haut' : 'bas',
+                            listeDeployee
+                                ? 'Réduire la liste'
+                                : `Voir les ${nbMasquees} autres pièces`);
                         voir.addEventListener('click', () => {
                             listeDeployee = !listeDeployee;
                             chargerEtat();
