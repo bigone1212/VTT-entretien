@@ -754,6 +754,7 @@ def accueil():
             }
 
             .mr-actions { display: flex; gap: 8px; margin-top: 12px; }
+            .mr-actions button { scroll-margin-bottom: 110px; }
             .mr-actions button.mr-ok {
                 background: var(--accent);
                 color: var(--on-accent);
@@ -1101,7 +1102,7 @@ def accueil():
 
             @media (max-width: 480px) {
                 body {
-                    padding: 10px;
+                    padding: 0 12px calc(var(--nav-h) + 28px + env(safe-area-inset-bottom));
                 }
 
                 .sync-row {
@@ -1235,6 +1236,7 @@ def accueil():
         <nav class="onglets" id="onglets" aria-label="Pages de l'application">
             <button type="button" class="onglet" id="onglet-entretien" onclick="location.hash='entretien'"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>Entretien</button>
             <button type="button" class="onglet" id="onglet-historique" onclick="location.hash='historique'"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Historique</button>
+            <button type="button" class="onglet" id="onglet-reglages" onclick="location.hash='reglages'"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>Réglages</button>
             <button type="button" class="onglet" id="onglet-sorties" onclick="location.hash='sorties'"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h8a3 3 0 0 0 0-6H8a3 3 0 0 1 0-6h8"/></svg>Sorties</button>
         </nav>
 
@@ -1255,19 +1257,6 @@ def accueil():
                 Touchez un numéro, puis touchez son emplacement exact sur la photo.
             </span>
         </div>
-
-        <section class="mes-reglages" id="mesReglages" aria-label="Mes réglages">
-            <div class="mr-titre">
-                <strong>🎚️ Mes réglages</strong>
-                <button type="button" id="mrModifier" onclick="modifierReglagesVelo()">✏️ Modifier</button>
-            </div>
-            <div id="mrContenu"></div>
-            <div class="form-help" id="mrDate" style="margin:8px 0 0;"></div>
-            <div class="mr-actions" id="mrActions" style="display:none;">
-                <button type="button" class="mr-ok" onclick="enregistrerReglagesVelo()">Enregistrer</button>
-                <button type="button" onclick="annulerReglagesVelo()">Annuler</button>
-            </div>
-        </section>
 
         <div id="composantsList" class="grid">
             <div class="loading">Chargement des composants...</div>
@@ -1301,6 +1290,21 @@ def accueil():
             </button>
         </div>
 
+        </div>
+
+        <div class="page" id="page-reglages" style="display:none;">
+        <section class="mes-reglages" id="mesReglages" aria-label="Mes réglages">
+            <div class="mr-titre">
+                <strong>🎚️ Mes réglages</strong>
+                <button type="button" id="mrModifier" onclick="modifierReglagesVelo()">✏️ Modifier</button>
+            </div>
+            <div id="mrContenu"></div>
+            <div class="form-help" id="mrDate" style="margin:8px 0 0;"></div>
+            <div class="mr-actions" id="mrActions" style="display:none;">
+                <button type="button" class="mr-ok" onclick="enregistrerReglagesVelo()">Enregistrer</button>
+                <button type="button" onclick="annulerReglagesVelo()">Annuler</button>
+            </div>
+        </section>
         </div>
 
         <div class="page" id="page-historique" style="display:none;">
@@ -1512,7 +1516,7 @@ def accueil():
         </div>
 
         <script>
-            const PAGES = ['entretien', 'historique', 'sorties'];
+            const PAGES = ['entretien', 'historique', 'reglages', 'sorties'];
 
             function afficherPage() {
                 let nom = (location.hash || '').replace('#', '');
