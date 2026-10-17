@@ -101,16 +101,23 @@ def famille_de(nom):
     """Famille d'une pièce, déduite de son nom."""
     nom = (nom or "").lower()
 
-    if "plaquette" in nom or "frein" in nom:
+    if "plaquette" in nom or "frein" in nom or "disque" in nom:
         return "freins"
 
-    if "fourche" in nom or "amortisseur" in nom:
+    if "fourche" in nom or "amortisseur" in nom or "suspension" in nom:
         return "suspension"
 
     if "pneu" in nom:
         return "pneu"
 
-    return "transmission"
+    if any(m in nom for m in (
+        "chaîne", "chaine", "cassette", "plateau", "galet",
+        "dérailleur", "derailleur", "transmission"
+    )):
+        return "transmission"
+
+    # Entretiens liés au temps ou sans lien direct avec le terrain.
+    return "autre"
 
 
 def facteur_usure(famille, distance_km, d_pos, d_neg, terrain, reglages):
@@ -129,6 +136,9 @@ def facteur_usure(famille, distance_km, d_pos, d_neg, terrain, reglages):
     if famille == "freins":
         descente = (d_neg or 0) / distance
         return coef_terrain * (1 + poids * descente / 100)
+
+    if famille == "autre":
+        return 1.0
 
     return coef_terrain
 
@@ -152,6 +162,64 @@ def ajouter_colonne(cursor, table, colonne, definition):
         cursor.execute(
             f"ALTER TABLE {table} ADD COLUMN {colonne} {definition}"
         )
+
+
+DATE_ACHAT_PAR_DEFAUT = "2025-11-18"   # livraison du vélo (facture)
+
+# Entretiens ajoutés pour le Cube Stereo Hybrid ONE44 EXC 800 (2025).
+# (nom, seuil en km (0 = aucun), seuil en jours (0 = aucun), catégorie, x %, y %)
+COMPOSANTS_V2 = [
+    ("Disque de frein avant (203 mm)", 4000, 0, "piece", 79, 58),
+    ("Disque de frein arrière (203 mm)", 4000, 0, "piece", 16, 67),
+    ("Purge du liquide de frein (avant + arrière)", 0, 365, "maintenance", 57, 15),
+    ("Plateau (pédalier ACID 34/36 dents)", 5000, 0, "piece", 43, 66),
+    ("Galets de dérailleur arrière", 4000, 0, "piece", 21, 73),
+    ("Câble et gaine de dérailleur", 0, 365, "maintenance", 30, 66),
+    ("Pédales (graissage et jeu)", 0, 365, "maintenance", 45, 75),
+    ("Pneu avant / tubeless", 3500, 0, "piece", 93, 63),
+    ("Liquide préventif tubeless (2 pneus)", 0, 120, "maintenance", 87, 82),
+    ("Roulements de moyeux (avant + arrière)", 5000, 365, "maintenance", 76, 68),
+    ("Rayons et voile des roues (contrôle)", 0, 180, "maintenance", 84, 48),
+    ("Amortisseur Fox - Entretien 50h", 800, 0, "maintenance", 44, 44),
+    ("Amortisseur Fox - Révision complète 200h", 3200, 0, "maintenance", 48, 50),
+    ("Roulements de suspension (biellettes)", 3000, 365, "maintenance", 35, 56),
+    ("Jeu de direction (contrôle et graissage)", 5000, 365, "maintenance", 65, 20),
+    ("Tige de selle télescopique (nettoyage et graissage)", 1600, 0, "maintenance", 33, 20),
+    ("Contrôle des serrages (potence, cintre, roues, pédalier)", 0, 180, "maintenance", 63, 12),
+    ("Contrôle annuel Bosch (moteur + logiciel)", 0, 365, "maintenance", 37, 70),
+    ("Batterie PowerTube 800 (contacts et état)", 0, 180, "maintenance", 55, 45),
+]
+
+
+def migrer_composants_v2(cursor):
+    """Ajoute une seule fois les nouveaux entretiens (sans toucher à l'existant)."""
+    cursor.execute(
+        "SELECT valeur FROM reglages WHERE cle = ?",
+        ("migration_composants_v2",)
+    )
+
+    if cursor.fetchone() is not None:
+        return
+
+    cursor.execute("SELECT nom FROM composants")
+    existants = {r[0] for r in cursor.fetchall()}
+
+    for nom, km, jours, categorie, x, y in COMPOSANTS_V2:
+        if nom in existants:
+            continue
+
+        cursor.execute("""
+            INSERT INTO composants (
+                nom, km_depart, seuil_alerte, seuil_jours, categorie, pos_x, pos_y
+            )
+            VALUES (?, 0, ?, ?, ?, ?, ?)
+        """, (nom, km, jours, categorie, x, y))
+
+    cursor.execute("""
+        INSERT INTO reglages (cle, valeur)
+        VALUES (?, 1)
+        ON CONFLICT (cle) DO NOTHING
+    """, ("migration_composants_v2",))
 
 
 def init_db():
@@ -245,6 +313,13 @@ def init_db():
             ON CONFLICT (cle) DO NOTHING
         """, (cle, valeur))
 
+    ajouter_colonne(cursor, "composants", "seuil_jours", "INTEGER DEFAULT 0")
+    ajouter_colonne(cursor, "velo", "date_achat", "TEXT")
+    cursor.execute(
+        "UPDATE velo SET date_achat = ? WHERE id = 1 AND date_achat IS NULL",
+        (DATE_ACHAT_PAR_DEFAUT,)
+    )
+
     ajouter_colonne(cursor, "velo", "km_maj_le", "TEXT")
     ajouter_colonne(cursor, "velo", "km_frac", "DOUBLE PRECISION DEFAULT 0")
 
@@ -328,6 +403,8 @@ def init_db():
                     VALUES (?, ?, ?, ?, ?)
                 """, (ligne[0], jour, 0.0, note, km))
 
+    migrer_composants_v2(cursor)
+
     conn.commit()
     conn.close()
 
@@ -355,6 +432,16 @@ class ReglagesRequest(BaseModel):
     terrain_chemin: float = Field(ge=0.5, le=5)
     terrain_sentier: float = Field(ge=0.5, le=5)
     poids_denivele: float = Field(ge=0, le=5)
+
+
+class SeuilsRequest(BaseModel):
+    seuil_alerte: int = Field(ge=0, le=200000)
+    seuil_jours: int = Field(ge=0, le=3650)
+
+
+class PositionRequest(BaseModel):
+    pos_x: int = Field(ge=0, le=100)
+    pos_y: int = Field(ge=0, le=100)
 
 
 class PhotoIn(BaseModel):
@@ -560,6 +647,42 @@ def accueil():
                 object-fit: contain;
                 display: block;
             }
+
+            .placement-bar {
+                max-width: 600px;
+                margin: -8px auto 16px auto;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                align-items: center;
+                justify-content: center;
+            }
+
+            .placement-bar button, .card-tools button, .btn-voir-plus {
+                background: transparent;
+                color: var(--text-muted, #94a3b8);
+                border: 1px solid rgba(148,163,184,0.4);
+                border-radius: 8px;
+                padding: 6px 10px;
+                font-size: 0.8rem;
+                cursor: pointer;
+            }
+
+            .card-tools {
+                display: flex;
+                gap: 8px;
+                margin-top: 8px;
+            }
+
+            .btn-voir-plus {
+                width: 100%;
+                padding: 12px;
+                margin: 4px 0 16px;
+                font-size: 0.95rem;
+            }
+
+            .bike-container.placement { outline: 3px dashed var(--accent); cursor: crosshair; }
+            .hotspot.choisi { outline: 3px solid #fff; transform: translate(-50%, -50%) scale(1.35); z-index: 5; }
 
             .hotspot {
                 position: absolute;
@@ -932,6 +1055,13 @@ def accueil():
             <div id="hotspotsContainer"></div>
         </div>
 
+        <div class="placement-bar">
+            <button type="button" id="btnPlacer" onclick="basculerPlacement()">📍 Placer les repères</button>
+            <span class="form-help" id="placementAide" style="display:none; margin:0;">
+                Touchez un numéro, puis touchez son emplacement exact sur la photo.
+            </span>
+        </div>
+
         <div id="composantsList" class="grid">
             <div class="loading">Chargement des composants...</div>
         </div>
@@ -1248,6 +1378,99 @@ def accueil():
                 });
             }
 
+            let listeDeployee = false;
+            let placementActif = false;
+            let placementId = null;
+            const NB_VISIBLES = 8;
+
+            function basculerPlacement() {
+                placementActif = !placementActif;
+                placementId = null;
+                document.getElementById('btnPlacer').textContent =
+                    placementActif ? '✅ Terminer le placement' : '📍 Placer les repères';
+                document.getElementById('placementAide').style.display =
+                    placementActif ? 'inline' : 'none';
+                document.querySelector('.bike-container').classList.toggle('placement', placementActif);
+                document.querySelectorAll('.hotspot').forEach(h => h.classList.remove('choisi'));
+            }
+
+            async function deplacerRepere(event) {
+                if (!placementActif || placementId === null) return;
+                if (event.target.classList.contains('hotspot')) return;
+
+                const rect = event.currentTarget.getBoundingClientRect();
+                const x = Math.round((event.clientX - rect.left) / rect.width * 100);
+                const y = Math.round((event.clientY - rect.top) / rect.height * 100);
+
+                try {
+                    const res = await fetch(`/api/composants/${placementId}/position`, {
+                        method: 'POST',
+                        headers: getHeaders(),
+                        body: JSON.stringify({
+                            pos_x: Math.max(0, Math.min(100, x)),
+                            pos_y: Math.max(0, Math.min(100, y))
+                        })
+                    });
+                    if (!res.ok) throw new Error();
+                    const garde = placementId;
+                    await chargerEtat();
+                    placementId = garde;
+                    document.querySelectorAll('.hotspot').forEach(h => {
+                        h.classList.toggle('choisi', Number(h.dataset.id) === garde);
+                    });
+                } catch (e) {
+                    alert("Impossible de déplacer le repère.");
+                }
+            }
+
+            async function modifierSeuils(c) {
+                const km = prompt(
+                    `Seuil en km pour « ${c.nom} » (0 = aucun) :`,
+                    c.seuil_alerte || 0
+                );
+                if (km === null) return;
+                const jours = prompt(
+                    `Seuil en jours pour « ${c.nom} » (0 = aucun) :`,
+                    c.seuil_jours || 0
+                );
+                if (jours === null) return;
+
+                try {
+                    const res = await fetch(`/api/composants/${c.id}/seuils`, {
+                        method: 'POST',
+                        headers: getHeaders(),
+                        body: JSON.stringify({
+                            seuil_alerte: parseInt(km, 10) || 0,
+                            seuil_jours: parseInt(jours, 10) || 0
+                        })
+                    });
+                    if (!res.ok) {
+                        const err = await res.json().catch(() => ({}));
+                        alert(err.detail || "Seuils refusés.");
+                        return;
+                    }
+                    await chargerEtat();
+                } catch (e) {
+                    alert("Impossible de modifier les seuils.");
+                }
+            }
+
+            async function retirerComposant(c) {
+                if (!confirm(`Retirer « ${c.nom} » de la liste ? Son historique sera aussi supprimé.`)) {
+                    return;
+                }
+                try {
+                    const res = await fetch(`/api/composants/${c.id}/supprimer`, {
+                        method: 'POST',
+                        headers: getHeaders()
+                    });
+                    if (!res.ok) throw new Error();
+                    await chargerEtat();
+                } catch (e) {
+                    alert("Impossible de retirer cette pièce.");
+                }
+            }
+
             async function chargerEtat() {
                 try {
                     const res = await fetch('/api/etat', { headers: getHeaders() });
@@ -1278,6 +1501,9 @@ def accueil():
                     container.innerHTML = '';
                     hotspotsContainer.innerHTML = '';
                     selectComp.innerHTML = '';
+
+                    const boite = document.querySelector('.bike-container');
+                    boite.onclick = deplacerRepere;
 
                     data.composants.forEach((c, index) => {
                         let statusClass = 'ok';
@@ -1312,8 +1538,16 @@ def accueil():
                         hotspot.style.left = `${c.pos_x}%`;
                         hotspot.title = `${c.nom} (${c.pourcentage_usure}%)`;
                         hotspot.textContent = c.numero || (index + 1);
+                        hotspot.dataset.id = c.id;
 
                         hotspot.addEventListener('click', () => {
+                            if (placementActif) {
+                                placementId = c.id;
+                                document.querySelectorAll('.hotspot').forEach(h => {
+                                    h.classList.toggle('choisi', h === hotspot);
+                                });
+                                return;
+                            }
                             remplacer(c.id, c.nom);
                         });
 
@@ -1341,16 +1575,29 @@ def accueil():
                         const statsRow = document.createElement('div');
                         statsRow.className = 'stats-row';
 
-                        const kmText = document.createElement('span');
-                        kmText.textContent =
-                            `Parcouru depuis l'intervention : ${c.km_actuel} km`;
+                        if (c.seuil_alerte > 0) {
+                            const kmText = document.createElement('span');
+                            kmText.textContent =
+                                `Parcouru depuis l'intervention : ${c.km_actuel} km`;
 
-                        const thresholdText = document.createElement('span');
-                        thresholdText.textContent =
-                            `Seuil : ${c.seuil_alerte} km`;
+                            const thresholdText = document.createElement('span');
+                            thresholdText.textContent =
+                                `Seuil : ${c.seuil_alerte} km`;
 
-                        statsRow.appendChild(kmText);
-                        statsRow.appendChild(thresholdText);
+                            statsRow.appendChild(kmText);
+                            statsRow.appendChild(thresholdText);
+                        }
+
+                        if (c.seuil_jours > 0) {
+                            const jTxt = document.createElement('span');
+                            jTxt.textContent =
+                                `Temps écoulé : ${c.jours_ecoules} j`;
+                            const jSeuil = document.createElement('span');
+                            jSeuil.textContent =
+                                `Tous les ${c.seuil_jours} j`;
+                            statsRow.appendChild(jTxt);
+                            statsRow.appendChild(jSeuil);
+                        }
 
                         const barBg = document.createElement('div');
                         barBg.className = 'bar-bg';
@@ -1373,6 +1620,7 @@ def accueil():
                         card.appendChild(statsRow);
 
                         if (
+                            c.seuil_alerte > 0 &&
                             c.km_usure !== undefined &&
                             Math.abs(c.km_usure - c.km_actuel) >= 1
                         ) {
@@ -1387,8 +1635,52 @@ def accueil():
                         card.appendChild(barBg);
                         card.appendChild(button);
 
+                        const outils = document.createElement('div');
+                        outils.className = 'card-tools';
+
+                        const bSeuils = document.createElement('button');
+                        bSeuils.type = 'button';
+                        bSeuils.textContent = '✏️ Seuils';
+                        bSeuils.addEventListener('click', () => modifierSeuils(c));
+
+                        const bRetirer = document.createElement('button');
+                        bRetirer.type = 'button';
+                        bRetirer.textContent = '🗑️ Retirer';
+                        bRetirer.addEventListener('click', () => retirerComposant(c));
+
+                        outils.appendChild(bSeuils);
+                        outils.appendChild(bRetirer);
+                        card.appendChild(outils);
+
+                        if (
+                            !listeDeployee &&
+                            index >= NB_VISIBLES &&
+                            c.pourcentage_usure < 85
+                        ) {
+                            card.style.display = 'none';
+                            card.classList.add('carte-masquee');
+                        }
+
                         container.appendChild(card);
                     });
+
+                    const nbMasquees =
+                        container.querySelectorAll('.carte-masquee').length;
+
+                    if (nbMasquees > 0 || listeDeployee) {
+                        const voir = document.createElement('button');
+                        voir.type = 'button';
+                        voir.className = 'btn-voir-plus';
+                        voir.id = 'btnVoirPlus';
+                        voir.textContent = listeDeployee
+                            ? 'Réduire la liste'
+                            : `Voir les ${nbMasquees} autres pièces`;
+                        voir.addEventListener('click', () => {
+                            listeDeployee = !listeDeployee;
+                            chargerEtat();
+                        });
+                        container.appendChild(voir);
+                    }
 
                     await chargerHistorique();
                     await chargerSorties();
@@ -3151,10 +3443,15 @@ def obtenir_etat(x_code_acces: Optional[str] = Header(default=None)):
             else 2700
         )
 
+        cursor.execute("SELECT date_achat FROM velo WHERE id = 1")
+        ligne_achat = cursor.fetchone()
+        date_achat = ligne_achat[0] if ligne_achat and ligne_achat[0] else DATE_ACHAT_PAR_DEFAUT
+
         cursor.execute("SELECT * FROM composants ORDER BY id")
         rows = cursor.fetchall()
 
         reglages = lire_reglages(cursor)
+        aujourdhui = date.today()
 
         cursor.execute("""
             SELECT debut, distance_km, denivele_pos, denivele_neg, terrain
@@ -3190,11 +3487,26 @@ def obtenir_etat(x_code_acces: Optional[str] = Header(default=None)):
 
             km_usure = max(0.0, km + surplus)
 
-            pourcentage = (
+            pourcentage_km = (
                 round((km_usure / seuil) * 100)
                 if seuil > 0
                 else 0
             )
+
+            seuil_jours = row["seuil_jours"] or 0
+            jours_ecoules = None
+            pourcentage_jours = 0
+
+            if seuil_jours > 0:
+                try:
+                    reference = date.fromisoformat((depuis or date_achat)[:10])
+                except ValueError:
+                    reference = date.fromisoformat(DATE_ACHAT_PAR_DEFAUT)
+
+                jours_ecoules = max(0, (aujourdhui - reference).days)
+                pourcentage_jours = round(jours_ecoules / seuil_jours * 100)
+
+            pourcentage = max(pourcentage_km, pourcentage_jours)
 
             resultat.append({
                 "id": row["id"],
@@ -3205,7 +3517,9 @@ def obtenir_etat(x_code_acces: Optional[str] = Header(default=None)):
                 "km_depart": km_depart,
                 "seuil_alerte": seuil,
                 "pourcentage_usure": pourcentage,
-                "alerte_entretien": km_usure >= seuil if seuil > 0 else False,
+                "seuil_jours": seuil_jours,
+                "jours_ecoules": jours_ecoules,
+                "alerte_entretien": pourcentage >= 100,
                 "categorie": row["categorie"],
                 "pos_x": row["pos_x"],
                 "pos_y": row["pos_y"]
@@ -3575,6 +3889,110 @@ def ajuster_km_total(cursor, delta_km):
     )
 
     return entier
+
+
+@app.post("/api/composants/{composant_id}/seuils")
+def modifier_seuils(
+    composant_id: int,
+    data: SeuilsRequest,
+    x_code_acces: Optional[str] = Header(default=None)
+):
+    verifier_auth(x_code_acces)
+
+    if data.seuil_alerte == 0 and data.seuil_jours == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Indiquez au moins un seuil (en km ou en jours)."
+        )
+
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("SELECT id FROM composants WHERE id = ?", (composant_id,))
+
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Composant introuvable.")
+
+        cursor.execute(
+            "UPDATE composants SET seuil_alerte = ?, seuil_jours = ? WHERE id = ?",
+            (data.seuil_alerte, data.seuil_jours, composant_id)
+        )
+        conn.commit()
+
+        return {"statut": "success"}
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+
+@app.post("/api/composants/{composant_id}/position")
+def deplacer_repere(
+    composant_id: int,
+    data: PositionRequest,
+    x_code_acces: Optional[str] = Header(default=None)
+):
+    verifier_auth(x_code_acces)
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("SELECT id FROM composants WHERE id = ?", (composant_id,))
+
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Composant introuvable.")
+
+        cursor.execute(
+            "UPDATE composants SET pos_x = ?, pos_y = ? WHERE id = ?",
+            (data.pos_x, data.pos_y, composant_id)
+        )
+        conn.commit()
+
+        return {"statut": "success"}
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+
+@app.post("/api/composants/{composant_id}/supprimer")
+def retirer_composant(
+    composant_id: int,
+    x_code_acces: Optional[str] = Header(default=None)
+):
+    """Retire une pièce de la liste, avec son historique."""
+    verifier_auth(x_code_acces)
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("SELECT id FROM composants WHERE id = ?", (composant_id,))
+
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Composant introuvable.")
+
+        cursor.execute(
+            "DELETE FROM historique WHERE composant_id = ?",
+            (composant_id,)
+        )
+        cursor.execute("DELETE FROM composants WHERE id = ?", (composant_id,))
+        conn.commit()
+
+        return {"statut": "success"}
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
 
 
 @app.post("/api/sorties/import")
