@@ -9,7 +9,7 @@ import json
 import math
 import os
 import time
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import date, datetime, timedelta, timezone
 
 app = FastAPI(title="VTTAE Entretien")
@@ -326,6 +326,14 @@ def init_db():
             ON CONFLICT (cle) DO NOTHING
         """, (cle, valeur))
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS mes_reglages (
+            cle TEXT PRIMARY KEY,
+            valeur TEXT NOT NULL,
+            maj_le TEXT
+        )
+    """)
+
     ajouter_colonne(cursor, "composants", "seuil_jours", "INTEGER DEFAULT 0")
     ajouter_colonne(cursor, "velo", "date_achat", "TEXT")
     cursor.execute(
@@ -445,6 +453,18 @@ class ReglagesRequest(BaseModel):
     terrain_chemin: float = Field(ge=0.5, le=5)
     terrain_sentier: float = Field(ge=0.5, le=5)
     poids_denivele: float = Field(ge=0, le=5)
+
+
+MES_REGLAGES_CLES = {
+    "pneu_av", "pneu_ar",
+    "fourche_psi", "fourche_sag", "fourche_detente", "fourche_bagues",
+    "amorto_psi", "amorto_sag", "amorto_detente", "amorto_bagues",
+    "notes",
+}
+
+
+class MesReglagesRequest(BaseModel):
+    valeurs: Dict[str, str]
 
 
 class SeuilsRequest(BaseModel):
@@ -702,6 +722,68 @@ def accueil():
                 object-fit: contain;
                 display: block;
             }
+
+            .mes-reglages {
+                max-width: 600px;
+                margin: 0 auto 20px auto;
+                background: var(--card-bg);
+                border: 1px solid rgba(255,255,255,0.05);
+                border-radius: 14px;
+                padding: 14px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            }
+
+            .mr-titre {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+                margin-bottom: 10px;
+            }
+
+            .mr-titre strong { font-size: 1rem; }
+
+            .mr-titre button, .mr-actions button {
+                background: transparent;
+                color: var(--text-muted);
+                border: 1px solid rgba(148,163,184,0.4);
+                border-radius: 8px;
+                padding: 6px 10px;
+                font-size: 0.8rem;
+                cursor: pointer;
+            }
+
+            .mr-actions { display: flex; gap: 8px; margin-top: 12px; }
+            .mr-actions button.mr-ok {
+                background: var(--accent);
+                color: var(--on-accent);
+                border-color: var(--accent);
+                font-weight: 700;
+            }
+
+            .mr-groupe {
+                padding: 10px 0;
+                border-top: 1px solid rgba(255,255,255,0.07);
+            }
+
+            .mr-groupe h3 {
+                margin: 0 0 6px;
+                font-size: 0.9rem;
+                color: var(--accent);
+            }
+
+            .mr-ligne {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 10px;
+                font-size: 0.88rem;
+                padding: 3px 0;
+            }
+
+            .mr-ligne span { color: var(--text-muted); }
+            .mr-ligne b { color: #fff; font-weight: 700; }
+            .mr-ligne input { width: 110px; padding: 6px 8px; text-align: right; }
 
             .placement-bar {
                 max-width: 600px;
@@ -1174,6 +1256,19 @@ def accueil():
             </span>
         </div>
 
+        <section class="mes-reglages" id="mesReglages" aria-label="Mes réglages">
+            <div class="mr-titre">
+                <strong>🎚️ Mes réglages</strong>
+                <button type="button" id="mrModifier" onclick="modifierReglagesVelo()">✏️ Modifier</button>
+            </div>
+            <div id="mrContenu"></div>
+            <div class="form-help" id="mrDate" style="margin:8px 0 0;"></div>
+            <div class="mr-actions" id="mrActions" style="display:none;">
+                <button type="button" class="mr-ok" onclick="enregistrerReglagesVelo()">Enregistrer</button>
+                <button type="button" onclick="annulerReglagesVelo()">Annuler</button>
+            </div>
+        </section>
+
         <div id="composantsList" class="grid">
             <div class="loading">Chargement des composants...</div>
         </div>
@@ -1490,6 +1585,121 @@ def accueil():
                 });
             }
 
+            const MR_GROUPES = [
+                { titre: '🛞 Pneus', champs: [
+                    ['pneu_av', 'Avant (bar)'], ['pneu_ar', 'Arrière (bar)'] ] },
+                { titre: '🔱 Fourche', champs: [
+                    ['fourche_psi', 'Pression (psi)'], ['fourche_sag', 'SAG (%)'],
+                    ['fourche_detente', 'Détente (clics)'], ['fourche_bagues', 'Bagues de volume'] ] },
+                { titre: '🌀 Amortisseur', champs: [
+                    ['amorto_psi', 'Pression (psi)'], ['amorto_sag', 'SAG (%)'],
+                    ['amorto_detente', 'Détente (clics)'], ['amorto_bagues', 'Bagues de volume'] ] },
+                { titre: '📝 Remarque', champs: [
+                    ['notes', 'Note libre'] ] }
+            ];
+            let mrValeurs = {};
+            let mrMaj = null;
+            let mrEdition = false;
+
+            function afficherReglagesVelo() {
+                const zone = document.getElementById('mrContenu');
+                zone.innerHTML = '';
+
+                MR_GROUPES.forEach(g => {
+                    const bloc = document.createElement('div');
+                    bloc.className = 'mr-groupe';
+                    const h = document.createElement('h3');
+                    h.textContent = g.titre;
+                    bloc.appendChild(h);
+
+                    g.champs.forEach(([cle, libelle]) => {
+                        const ligne = document.createElement('div');
+                        ligne.className = 'mr-ligne';
+                        const l = document.createElement('span');
+                        l.textContent = libelle;
+                        ligne.appendChild(l);
+
+                        if (mrEdition) {
+                            const inp = document.createElement('input');
+                            inp.type = 'text';
+                            inp.inputMode = cle === 'notes' ? 'text' : 'decimal';
+                            inp.id = 'mr-' + cle;
+                            inp.maxLength = 200;
+                            inp.value = mrValeurs[cle] || '';
+                            if (cle === 'notes') inp.style.width = '200px';
+                            ligne.appendChild(inp);
+                        } else {
+                            const v = document.createElement('b');
+                            v.textContent = mrValeurs[cle] || '—';
+                            ligne.appendChild(v);
+                        }
+                        bloc.appendChild(ligne);
+                    });
+                    zone.appendChild(bloc);
+                });
+
+                document.getElementById('mrActions').style.display =
+                    mrEdition ? 'flex' : 'none';
+                document.getElementById('mrModifier').style.display =
+                    mrEdition ? 'none' : 'inline-block';
+
+                let txt = '';
+                if (mrMaj) {
+                    const p = mrMaj.split('-');
+                    txt = `Mis à jour le ${p[2]}/${p[1]}/${p[0]}`;
+                } else if (!mrEdition) {
+                    txt = 'Aucune valeur notée pour le moment.';
+                }
+                document.getElementById('mrDate').textContent = txt;
+            }
+
+            async function chargerReglagesVelo() {
+                try {
+                    const res = await fetch('/api/mes-reglages', { headers: getHeaders() });
+                    if (!res.ok) throw new Error();
+                    const d = await res.json();
+                    mrValeurs = d.valeurs || {};
+                    mrMaj = d.maj_le || null;
+                } catch (e) {
+                    mrValeurs = {};
+                }
+                if (!mrEdition) afficherReglagesVelo();
+            }
+
+            function modifierReglagesVelo() {
+                mrEdition = true;
+                afficherReglagesVelo();
+            }
+
+            function annulerReglagesVelo() {
+                mrEdition = false;
+                afficherReglagesVelo();
+            }
+
+            async function enregistrerReglagesVelo() {
+                const valeurs = {};
+                MR_GROUPES.forEach(g => g.champs.forEach(([cle]) => {
+                    valeurs[cle] = document.getElementById('mr-' + cle).value;
+                }));
+
+                try {
+                    const res = await fetch('/api/mes-reglages', {
+                        method: 'POST',
+                        headers: getHeaders(),
+                        body: JSON.stringify({ valeurs })
+                    });
+                    if (res.status === 401) {
+                        document.getElementById('authScreen').style.display = 'flex';
+                        return;
+                    }
+                    if (!res.ok) throw new Error();
+                    mrEdition = false;
+                    await chargerReglagesVelo();
+                } catch (e) {
+                    alert("Impossible d'enregistrer les réglages.");
+                }
+            }
+
             let listeDeployee = false;
             let placementActif = false;
             let placementId = null;
@@ -1794,6 +2004,7 @@ def accueil():
                         container.appendChild(voir);
                     }
 
+                    await chargerReglagesVelo();
                     await chargerHistorique();
                     await chargerSorties();
                     await chargerReglages();
@@ -4001,6 +4212,74 @@ def ajuster_km_total(cursor, delta_km):
     )
 
     return entier
+
+
+@app.get("/api/mes-reglages")
+def lire_mes_reglages(x_code_acces: Optional[str] = Header(default=None)):
+    verifier_auth(x_code_acces)
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("SELECT cle, valeur, maj_le FROM mes_reglages")
+        valeurs = {}
+        maj = None
+
+        for ligne in cursor.fetchall():
+            valeurs[ligne[0]] = ligne[1]
+
+            if ligne[2] and (maj is None or ligne[2] > maj):
+                maj = ligne[2]
+
+        return {"valeurs": valeurs, "maj_le": maj}
+
+    finally:
+        conn.close()
+
+
+@app.post("/api/mes-reglages")
+def enregistrer_mes_reglages(
+    data: MesReglagesRequest,
+    x_code_acces: Optional[str] = Header(default=None)
+):
+    verifier_auth(x_code_acces)
+
+    for cle, valeur in data.valeurs.items():
+        if cle not in MES_REGLAGES_CLES:
+            raise HTTPException(status_code=400, detail="Réglage inconnu : " + cle)
+
+        if len(valeur.strip()) > 200:
+            raise HTTPException(status_code=400, detail="Valeur trop longue.")
+
+    aujourdhui = date.today().isoformat()
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        for cle, valeur in data.valeurs.items():
+            valeur = valeur.strip()
+
+            if valeur == "":
+                cursor.execute("DELETE FROM mes_reglages WHERE cle = ?", (cle,))
+                continue
+
+            cursor.execute("""
+                INSERT INTO mes_reglages (cle, valeur, maj_le)
+                VALUES (?, ?, ?)
+                ON CONFLICT (cle) DO UPDATE
+                SET valeur = excluded.valeur, maj_le = excluded.maj_le
+            """, (cle, valeur, aujourdhui))
+
+        conn.commit()
+
+        return {"statut": "success"}
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
 
 
 @app.post("/api/composants/{composant_id}/seuils")
