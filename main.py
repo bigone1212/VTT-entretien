@@ -524,6 +524,16 @@ def accueil():
 
         <title>Maillon - Entretien VTT</title>
         <meta name="theme-color" content="#0b171c">
+        <script>
+            (function () {
+                try {
+                    var t = localStorage.getItem('maillon_theme');
+                    if (t === 'light' || t === 'dark') {
+                        document.documentElement.setAttribute('data-theme', t);
+                    }
+                } catch (e) {}
+            })();
+        </script>
         <meta name="apple-mobile-web-app-capable" content="yes">
         <meta name="apple-mobile-web-app-title" content="Maillon">
         <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%2335e0c8'/><stop offset='1' stop-color='%230a8f9c'/></linearGradient></defs><rect width='96' height='96' rx='24' fill='url(%23g)'/><g fill='none' stroke-linecap='round'><rect x='14' y='34' width='42' height='22' rx='11' transform='rotate(-32 35 45)' stroke='%2306262b' stroke-width='9'/><rect x='40' y='42' width='42' height='22' rx='11' transform='rotate(-32 61 53)' stroke='%2306262b' stroke-width='9'/><rect x='14' y='34' width='42' height='22' rx='11' transform='rotate(-32 35 45)' stroke='white' stroke-width='5'/><rect x='40' y='42' width='42' height='22' rx='11' transform='rotate(-32 61 53)' stroke='white' stroke-width='5'/></g></svg>">
@@ -540,6 +550,20 @@ def accueil():
                 --nav-h: 68px;
                 --success: #35e0c8;
                 --danger: #ef4444;
+                --line: rgba(255,255,255,0.05);
+                --line2: rgba(255,255,255,0.1);
+                --line3: rgba(255,255,255,0.07);
+                --fill: rgba(255,255,255,0.05);
+                --fill2: rgba(255,255,255,0.1);
+                --tick: rgba(255,255,255,0.22);
+                --sh: 0 4px 12px rgba(0,0,0,0.3);
+                --field: #0a1317;
+                --field-line: #23393f;
+                --inset: rgba(0,0,0,0.6);
+                --nav-bg: rgba(14, 29, 35, 0.94);
+                --bg-fade: rgba(11,23,28,0);
+                --strong: #ffffff;
+                color-scheme: dark;
                 --warning: #f59e0b;
             }
 
@@ -576,8 +600,8 @@ def accueil():
                 background: var(--card-bg);
                 padding: 24px;
                 border-radius: 14px;
-                box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-                border: 1px solid rgba(255,255,255,0.05);
+                box-shadow: var(--sh);
+                border: 1px solid var(--line);
                 width: 100%;
                 max-width: 400px;
                 text-align: center;
@@ -586,7 +610,7 @@ def accueil():
             .auth-card h2 {
                 margin-top: 0;
                 font-size: 1.2rem;
-                color: #fff;
+                color: var(--strong);
             }
 
             .header {
@@ -599,7 +623,7 @@ def accueil():
                 display: flex;
                 align-items: center;
                 gap: 12px;
-                background: linear-gradient(var(--bg-color) 75%, rgba(11,23,28,0));
+                background: linear-gradient(var(--bg-color) 75%, var(--bg-fade));
             }
 
             .logo {
@@ -621,7 +645,7 @@ def accueil():
                 letter-spacing: -0.03em;
                 line-height: 1.1;
                 margin: 0;
-                color: #fff;
+                color: var(--strong);
             }
 
             .header-velo {
@@ -649,8 +673,8 @@ def accueil():
                 padding: 14px;
                 border-radius: 14px;
                 margin: 0 auto 20px auto;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-                border: 1px solid rgba(255,255,255,0.05);
+                box-shadow: var(--sh);
+                border: 1px solid var(--line);
                 max-width: 600px;
             }
 
@@ -673,11 +697,11 @@ def accueil():
             select {
                 flex: 1;
                 min-width: 0;
-                background: #0a1317;
-                border: 1px solid #23393f;
+                background: var(--field);
+                border: 1px solid var(--field-line);
                 border-radius: 12px;
                 padding: 10px;
-                color: #fff;
+                color: var(--strong);
                 font-size: 1rem;
                 outline: none;
                 width: 100%;
@@ -712,8 +736,8 @@ def accueil():
                 background: #ffffff;
                 border-radius: 14px;
                 overflow: hidden;
-                border: 1px solid rgba(255,255,255,0.05);
-                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                border: 1px solid var(--line);
+                box-shadow: var(--sh);
             }
 
             .bike-img {
@@ -727,10 +751,10 @@ def accueil():
                 max-width: 600px;
                 margin: 0 auto 20px auto;
                 background: var(--card-bg);
-                border: 1px solid rgba(255,255,255,0.05);
+                border: 1px solid var(--line);
                 border-radius: 14px;
                 padding: 14px;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                box-shadow: var(--sh);
             }
 
             .mr-titre {
@@ -764,7 +788,7 @@ def accueil():
 
             .mr-groupe {
                 padding: 10px 0;
-                border-top: 1px solid rgba(255,255,255,0.07);
+                border-top: 1px solid var(--line3);
             }
 
             .mr-groupe h3 {
@@ -783,7 +807,7 @@ def accueil():
             }
 
             .mr-ligne span { color: var(--text-muted); }
-            .mr-ligne b { color: #fff; font-weight: 700; }
+            .mr-ligne b { color: var(--strong); font-weight: 700; }
             .mr-ligne input[type="text"] { width: 120px; flex: none; margin: 0; padding: 8px 10px; text-align: right; }
 
             .placement-bar {
@@ -892,8 +916,8 @@ def accueil():
                 background: var(--card-bg);
                 border-radius: 20px;
                 padding: 16px;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-                border: 1px solid rgba(255,255,255,0.05);
+                box-shadow: var(--sh);
+                border: 1px solid var(--line);
             }
 
             .card-top {
@@ -907,7 +931,7 @@ def accueil():
             .component-name {
                 font-weight: 600;
                 font-size: 1rem;
-                color: #fff;
+                color: var(--strong);
             }
 
             .badge {
@@ -943,7 +967,7 @@ def accueil():
             }
 
             .bar-bg {
-                background: #0a1317;
+                background: var(--field);
                 border-radius: 6px;
                 height: 8px;
                 width: 100%;
@@ -967,9 +991,9 @@ def accueil():
             }
 
             button.btn-action {
-                background: rgba(255,255,255,0.05);
+                background: var(--fill);
                 color: var(--text-color);
-                border: 1px solid rgba(255,255,255,0.1);
+                border: 1px solid var(--line2);
                 width: 100%;
                 padding: 8px;
                 border-radius: 12px;
@@ -978,7 +1002,7 @@ def accueil():
             }
 
             button.btn-action:hover {
-                background: rgba(255,255,255,0.1);
+                background: var(--fill2);
             }
 
             .history-section {
@@ -987,20 +1011,20 @@ def accueil():
                 background: var(--card-bg);
                 border-radius: 14px;
                 padding: 16px;
-                border: 1px solid rgba(255,255,255,0.05);
-                box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+                border: 1px solid var(--line);
+                box-shadow: var(--sh);
             }
 
             .history-section h2 {
                 font-size: 1.1rem;
                 margin-top: 0;
-                color: #fff;
+                color: var(--strong);
             }
 
             .history-item {
                 font-size: 0.85rem;
                 padding: 10px 0;
-                border-bottom: 1px solid rgba(255,255,255,0.05);
+                border-bottom: 1px solid var(--line);
                 display: flex;
                 justify-content: space-between;
                 gap: 12px;
@@ -1062,7 +1086,7 @@ def accueil():
                 height: 43px;
                 object-fit: cover;
                 border-radius: 4px;
-                border: 1px solid rgba(255,255,255,0.1);
+                border: 1px solid var(--line2);
             }
 
             #lightbox {
@@ -1130,10 +1154,10 @@ def accueil():
                 gap: 0;
                 height: calc(var(--nav-h) + env(safe-area-inset-bottom));
                 padding: 6px 8px env(safe-area-inset-bottom);
-                background: rgba(14, 29, 35, 0.94);
+                background: var(--nav-bg);
                 -webkit-backdrop-filter: blur(14px);
                 backdrop-filter: blur(14px);
-                border-top: 1px solid rgba(255,255,255,0.07);
+                border-top: 1px solid var(--line3);
             }
 
             .onglet {
@@ -1241,8 +1265,8 @@ def accueil():
                 position: relative;
                 height: 12px;
                 border-radius: 999px;
-                background: #08121a;
-                box-shadow: inset 0 1px 3px rgba(0,0,0,0.6);
+                background: var(--field);
+                box-shadow: inset 0 1px 3px var(--inset);
                 margin: 8px 0 14px;
             }
 
@@ -1254,7 +1278,7 @@ def accueil():
                 left: 85%;
                 width: 2px;
                 border-radius: 2px;
-                background: rgba(255,255,255,0.22);
+                background: var(--tick);
             }
 
             .bar-fill {
@@ -1314,8 +1338,8 @@ def accueil():
                 font-size: 0.82rem;
                 font-weight: 600;
                 color: var(--text-muted);
-                background: rgba(255,255,255,0.04);
-                border: 1px solid rgba(255,255,255,0.1);
+                background: var(--fill);
+                border: 1px solid var(--line2);
                 border-radius: 999px;
                 padding: 7px 14px;
                 cursor: pointer;
@@ -1327,8 +1351,50 @@ def accueil():
             .mr-titre button:hover,
             .mr-actions button:hover,
             .btn-voir-plus:hover {
-                background: rgba(255,255,255,0.1);
-                color: #fff;
+                background: var(--fill2);
+                color: var(--strong);
+            }
+
+            .apparence {
+                max-width: 600px;
+                margin: 0 auto 16px auto;
+                background: var(--card-bg);
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                padding: 14px;
+                box-shadow: var(--sh);
+            }
+
+            .apparence strong { display: block; margin-bottom: 10px; }
+
+            .segments {
+                display: flex;
+                gap: 4px;
+                padding: 4px;
+                background: var(--fill);
+                border-radius: 999px;
+            }
+
+            .segments button {
+                flex: 1;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 6px;
+                font: inherit;
+                font-size: 0.85rem;
+                font-weight: 600;
+                color: var(--text-muted);
+                background: transparent;
+                border: none;
+                border-radius: 999px;
+                padding: 9px 6px;
+                cursor: pointer;
+            }
+
+            .segments button.actif {
+                color: #04231f;
+                background: linear-gradient(135deg, #35e0c8, #0a8f9c);
             }
 
             .card-tools button.danger:hover {
@@ -1354,7 +1420,64 @@ def accueil():
                 padding: 12px;
                 font-size: 0.9rem;
             }
-        </style>
+        
+            /* ---- Mode jour : suit le réglage du téléphone, ou choix manuel ---- */
+            @media (prefers-color-scheme: light) {
+            :root:not([data-theme="dark"]):not([data-theme="light"]) {
+                --bg-color: #eef4f3;
+                --card-bg: #ffffff;
+                --text-color: #16282e;
+                --text-muted: #5b727a;
+                --accent: #0a8f9c;
+                --accent-hover: #0a7d8a;
+                --on-accent: #ffffff;
+                --success: #0a8f9c;
+                --danger: #dc2626;
+                --warning: #b45309;
+                --line: rgba(20,60,70,0.10);
+                --line2: rgba(20,60,70,0.16);
+                --line3: rgba(20,60,70,0.12);
+                --fill: rgba(20,60,70,0.05);
+                --fill2: rgba(20,60,70,0.10);
+                --tick: rgba(20,60,70,0.28);
+                --sh: 0 4px 14px rgba(20,60,70,0.12);
+                --field: #e3ecea;
+                --field-line: #c3d3d0;
+                --inset: rgba(20,60,70,0.18);
+                --nav-bg: rgba(255,255,255,0.94);
+                --bg-fade: rgba(238,244,243,0);
+                --strong: #0b171c;
+                color-scheme: light;
+            }
+            }
+
+            :root[data-theme="light"] {
+                --bg-color: #eef4f3;
+                --card-bg: #ffffff;
+                --text-color: #16282e;
+                --text-muted: #5b727a;
+                --accent: #0a8f9c;
+                --accent-hover: #0a7d8a;
+                --on-accent: #ffffff;
+                --success: #0a8f9c;
+                --danger: #dc2626;
+                --warning: #b45309;
+                --line: rgba(20,60,70,0.10);
+                --line2: rgba(20,60,70,0.16);
+                --line3: rgba(20,60,70,0.12);
+                --fill: rgba(20,60,70,0.05);
+                --fill2: rgba(20,60,70,0.10);
+                --tick: rgba(20,60,70,0.28);
+                --sh: 0 4px 14px rgba(20,60,70,0.12);
+                --field: #e3ecea;
+                --field-line: #c3d3d0;
+                --inset: rgba(20,60,70,0.18);
+                --nav-bg: rgba(255,255,255,0.94);
+                --bg-fade: rgba(238,244,243,0);
+                --strong: #0b171c;
+                color-scheme: light;
+            }
+</style>
     </head>
 
     <body>
@@ -1461,6 +1584,14 @@ def accueil():
         </div>
 
         <div class="page" id="page-reglages" style="display:none;">
+        <section class="apparence" aria-label="Apparence">
+            <strong>Apparence</strong>
+            <div class="segments" id="segmentsTheme">
+                <button type="button" data-theme-choix="auto"></button>
+                <button type="button" data-theme-choix="light"></button>
+                <button type="button" data-theme-choix="dark"></button>
+            </div>
+        </section>
         <section class="mes-reglages" id="mesReglages" aria-label="Mes réglages">
             <div class="mr-titre">
                 <strong>🎚️ Mes réglages</strong>
@@ -1785,6 +1916,57 @@ def accueil():
                 el.innerHTML = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">'
                     + ICONES[icone] + '</svg><span></span>';
                 el.lastChild.textContent = texte;
+            }
+
+            ICONES.soleil = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>';
+            ICONES.lune = '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>';
+            ICONES.auto = '<circle cx="12" cy="12" r="9"/><path d="M12 3v18"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/>';
+
+            function themeChoisi() {
+                try {
+                    const t = localStorage.getItem('maillon_theme');
+                    if (t === 'light' || t === 'dark') return t;
+                } catch (e) {}
+                return 'auto';
+            }
+
+            function appliquerTheme(choix) {
+                const racine = document.documentElement;
+                if (choix === 'light' || choix === 'dark') {
+                    racine.setAttribute('data-theme', choix);
+                } else {
+                    racine.removeAttribute('data-theme');
+                }
+                try {
+                    if (choix === 'auto') {
+                        localStorage.removeItem('maillon_theme');
+                    } else {
+                        localStorage.setItem('maillon_theme', choix);
+                    }
+                } catch (e) {}
+
+                const clair = choix === 'light' ||
+                    (choix === 'auto' && window.matchMedia &&
+                     window.matchMedia('(prefers-color-scheme: light)').matches);
+                const meta = document.querySelector('meta[name="theme-color"]');
+                if (meta) meta.setAttribute('content', clair ? '#eef4f3' : '#0b171c');
+
+                document.querySelectorAll('#segmentsTheme button').forEach(b => {
+                    b.classList.toggle('actif', b.dataset.themeChoix === choix);
+                });
+            }
+
+            document.querySelectorAll('#segmentsTheme button').forEach(b => {
+                const choix = b.dataset.themeChoix;
+                remplirBouton(b, choix === 'light' ? 'soleil' : choix === 'dark' ? 'lune' : 'auto',
+                    choix === 'light' ? 'Jour' : choix === 'dark' ? 'Nuit' : 'Auto');
+                b.addEventListener('click', () => appliquerTheme(choix));
+            });
+            appliquerTheme(themeChoisi());
+            if (window.matchMedia) {
+                window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
+                    if (themeChoisi() === 'auto') appliquerTheme('auto');
+                });
             }
 
             let mrValeurs = {};
