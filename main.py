@@ -522,7 +522,7 @@ def accueil():
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-        <title>Maillon - Entretien VTT</title>
+        <title>Maillons - Entretien VTT</title>
         <meta name="theme-color" content="#0b171c">
         <script>
             (function () {
@@ -535,7 +535,7 @@ def accueil():
             })();
         </script>
         <meta name="apple-mobile-web-app-capable" content="yes">
-        <meta name="apple-mobile-web-app-title" content="Maillon">
+        <meta name="apple-mobile-web-app-title" content="Maillons">
         <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%2335e0c8'/><stop offset='1' stop-color='%230a8f9c'/></linearGradient></defs><rect width='96' height='96' rx='24' fill='url(%23g)'/><g fill='none' stroke-linecap='round'><rect x='14' y='34' width='42' height='22' rx='11' transform='rotate(-32 35 45)' stroke='%2306262b' stroke-width='9'/><rect x='40' y='42' width='42' height='22' rx='11' transform='rotate(-32 61 53)' stroke='%2306262b' stroke-width='9'/><rect x='14' y='34' width='42' height='22' rx='11' transform='rotate(-32 35 45)' stroke='white' stroke-width='5'/><rect x='40' y='42' width='42' height='22' rx='11' transform='rotate(-32 61 53)' stroke='white' stroke-width='5'/></g></svg>">
 
         <style>
@@ -1581,8 +1581,8 @@ def accueil():
     <body>
         <div id="authScreen">
             <div class="auth-card">
-                <svg class="logo" style="width:64px;height:64px;border-radius:18px;margin-bottom:12px" role="img" aria-label="Maillon"><use href="#logo-maillon"/></svg>
-                <h2>Maillon</h2>
+                <svg class="logo" style="width:64px;height:64px;border-radius:18px;margin-bottom:12px" role="img" aria-label="Maillons"><use href="#logo-maillon"/></svg>
+                <h2>Maillons</h2>
                 <p class="form-help">Entrez votre code d'accès</p>
                 <input type="password" id="authInput" placeholder="Code secret" style="margin-bottom: 12px;">
                 <button class="btn-primary" style="width: 100%;" onclick="tenterConnexion()">Valider</button>
@@ -1614,9 +1614,9 @@ def accueil():
         </svg>
 
         <header class="header">
-            <svg class="logo" role="img" aria-label="Maillon"><use href="#logo-maillon"/></svg>
+            <svg class="logo" role="img" aria-label="Maillons"><use href="#logo-maillon"/></svg>
             <div class="header-titres">
-                <h1>Maillon</h1>
+                <h1>Maillons</h1>
                 <p class="header-velo">Cube Stereo Hybrid ONE44</p>
             </div>
             <span class="km-pill" id="veloInfo">… km</span>
