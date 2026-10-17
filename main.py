@@ -1415,11 +1415,65 @@ def accueil():
                 border-color: transparent;
             }
 
-            .btn-voir-plus {
-                width: 100%;
-                padding: 12px;
-                font-size: 0.9rem;
+            .liste-entete {
+                grid-column: 1 / -1;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+                padding: 0 2px;
             }
+
+            .liste-entete strong { font-size: 0.95rem; }
+
+            .liste-entete button {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                font: inherit;
+                font-size: 0.82rem;
+                font-weight: 600;
+                color: var(--text-muted);
+                background: var(--fill);
+                border: 1px solid var(--line2);
+                border-radius: 999px;
+                padding: 7px 14px;
+                cursor: pointer;
+            }
+
+            /* Cartes repliables : une ligne + barre, le détail s'ouvre au toucher */
+            .card { padding: 12px 14px 12px 18px; }
+
+            .card .card-top {
+                align-items: center;
+                margin-bottom: 0;
+                cursor: pointer;
+                -webkit-tap-highlight-color: transparent;
+            }
+
+            .card .card-top:focus-visible {
+                outline: 2px solid var(--accent);
+                outline-offset: 3px;
+                border-radius: 8px;
+            }
+
+            .component-name {
+                flex: 1;
+                min-width: 0;
+                font-size: 0.95rem;
+            }
+
+            .chevron { display: inline-flex; color: var(--text-muted); transition: transform 0.2s; }
+            .card.ouverte .chevron { transform: rotate(180deg); }
+
+            .card .bar-bg { height: 8px; margin: 10px 0 0; }
+            .card.ouverte .bar-bg { margin-bottom: 12px; }
+
+            .card-detail { display: none; padding-top: 4px; }
+            .card.ouverte .card-detail { display: block; }
+
+            .card .card-top { flex-direction: row; }
+            .card .badge { padding: 3px 9px; }
         
             /* ---- Mode jour : suit le réglage du téléphone, ou choix manuel ---- */
             @media (prefers-color-scheme: light) {
@@ -2077,10 +2131,37 @@ def accueil():
             remplirBouton(document.getElementById('mrOk'), 'valider', 'Enregistrer');
             remplirBouton(document.getElementById('mrAnnuler'), 'fermer', 'Annuler');
 
-            let listeDeployee = false;
+            const cartesOuvertes = new Set();
             let placementActif = false;
             let placementId = null;
-            const NB_VISIBLES = 8;
+
+            function basculerCarte(card, id) {
+                const ouverte = !card.classList.contains('ouverte');
+                card.classList.toggle('ouverte', ouverte);
+                card.querySelector('.card-top').setAttribute('aria-expanded', String(ouverte));
+                if (ouverte) cartesOuvertes.add(id); else cartesOuvertes.delete(id);
+                majBoutonDeplier();
+            }
+
+            function majBoutonDeplier() {
+                const b = document.getElementById('btnToutDeplier');
+                if (!b) return;
+                const total = document.querySelectorAll('#composantsList .card').length;
+                const tout = total > 0 && cartesOuvertes.size >= total;
+                remplirBouton(b, tout ? 'haut' : 'bas', tout ? 'Tout replier' : 'Tout déplier');
+            }
+
+            function toutDeplier() {
+                const cartes = document.querySelectorAll('#composantsList .card');
+                const tout = cartesOuvertes.size >= cartes.length;
+                cartes.forEach(card => {
+                    const id = Number(card.id.replace('card-', ''));
+                    card.classList.toggle('ouverte', !tout);
+                    card.querySelector('.card-top').setAttribute('aria-expanded', String(!tout));
+                    if (tout) cartesOuvertes.delete(id); else cartesOuvertes.add(id);
+                });
+                majBoutonDeplier();
+            }
 
             function basculerPlacement() {
                 placementActif = !placementActif;
@@ -2320,8 +2401,29 @@ def accueil():
                             remplacer(c.id, c.nom);
                         });
 
+                        const chevron = document.createElement('span');
+                        chevron.className = 'chevron';
+                        chevron.innerHTML = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">'
+                            + ICONES.bas + '</svg>';
+                        cardTop.appendChild(chevron);
+                        cardTop.setAttribute('role', 'button');
+                        cardTop.setAttribute('tabindex', '0');
+                        cardTop.setAttribute('aria-expanded', 'false');
+                        cardTop.addEventListener('click', () => basculerCarte(card, c.id));
+                        cardTop.addEventListener('keydown', (ev) => {
+                            if (ev.key === 'Enter' || ev.key === ' ') {
+                                ev.preventDefault();
+                                basculerCarte(card, c.id);
+                            }
+                        });
+
+                        const detail = document.createElement('div');
+                        detail.className = 'card-detail';
+
                         card.appendChild(cardTop);
-                        card.appendChild(statsRow);
+                        card.appendChild(barBg);
+                        card.appendChild(detail);
+                        detail.appendChild(statsRow);
 
                         if (
                             c.seuil_alerte > 0 &&
@@ -2333,11 +2435,10 @@ def accueil():
                             usureInfo.style.margin = '0 0 6px';
                             usureInfo.textContent =
                                 `Usure estimée selon vos sorties : ${c.km_usure} km`;
-                            card.appendChild(usureInfo);
+                            detail.appendChild(usureInfo);
                         }
 
-                        card.appendChild(barBg);
-                        card.appendChild(button);
+                        detail.appendChild(button);
 
                         const outils = document.createElement('div');
                         outils.className = 'card-tools';
@@ -2355,38 +2456,28 @@ def accueil():
 
                         outils.appendChild(bSeuils);
                         outils.appendChild(bRetirer);
-                        card.appendChild(outils);
+                        detail.appendChild(outils);
 
-                        if (
-                            !listeDeployee &&
-                            index >= NB_VISIBLES &&
-                            c.pourcentage_usure < 85
-                        ) {
-                            card.style.display = 'none';
-                            card.classList.add('carte-masquee');
+                        if (cartesOuvertes.has(c.id)) {
+                            card.classList.add('ouverte');
+                            cardTop.setAttribute('aria-expanded', 'true');
                         }
 
                         container.appendChild(card);
                     });
 
-                    const nbMasquees =
-                        container.querySelectorAll('.carte-masquee').length;
-
-                    if (nbMasquees > 0 || listeDeployee) {
-                        const voir = document.createElement('button');
-                        voir.type = 'button';
-                        voir.className = 'btn-voir-plus';
-                        voir.id = 'btnVoirPlus';
-                        remplirBouton(voir, listeDeployee ? 'haut' : 'bas',
-                            listeDeployee
-                                ? 'Réduire la liste'
-                                : `Voir les ${nbMasquees} autres pièces`);
-                        voir.addEventListener('click', () => {
-                            listeDeployee = !listeDeployee;
-                            chargerEtat();
-                        });
-                        container.appendChild(voir);
-                    }
+                    const entete = document.createElement('div');
+                    entete.className = 'liste-entete';
+                    const titreListe = document.createElement('strong');
+                    titreListe.textContent = `${data.composants.length} pièces à suivre`;
+                    const bTout = document.createElement('button');
+                    bTout.type = 'button';
+                    bTout.id = 'btnToutDeplier';
+                    bTout.addEventListener('click', toutDeplier);
+                    entete.appendChild(titreListe);
+                    entete.appendChild(bTout);
+                    container.insertBefore(entete, container.firstChild);
+                    majBoutonDeplier();
 
                     await chargerReglagesVelo();
                     await chargerHistorique();
