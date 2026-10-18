@@ -1153,6 +1153,44 @@ def accueil():
                 cursor: pointer;
             }
 
+            .lb-nav {
+                position: absolute;
+                top: 50%;
+                transform: translateY(-50%);
+                width: 46px;
+                height: 46px;
+                display: none;
+                align-items: center;
+                justify-content: center;
+                color: #fff;
+                background: rgba(255,255,255,0.16);
+                border: 1px solid rgba(255,255,255,0.25);
+                border-radius: 50%;
+                cursor: pointer;
+                z-index: 2;
+                -webkit-backdrop-filter: blur(6px);
+                backdrop-filter: blur(6px);
+            }
+
+            .lb-nav:hover { background: rgba(255,255,255,0.28); }
+            .lb-nav .ico { width: 24px; height: 24px; stroke-width: 2.4; }
+            .lb-prec { left: 10px; }
+            .lb-suiv { right: 10px; }
+
+            #lightboxCompteur {
+                position: absolute;
+                top: 16px;
+                left: 50%;
+                transform: translateX(-50%);
+                display: none;
+                color: #fff;
+                font-size: 0.85rem;
+                font-weight: 700;
+                background: rgba(0,0,0,0.5);
+                border-radius: 999px;
+                padding: 5px 14px;
+            }
+
             #lightbox img {
                 max-width: 96%;
                 max-height: 96%;
@@ -1746,8 +1784,11 @@ def accueil():
             </div>
         </div>
 
-        <div id="lightbox" onclick="fermerPhoto()">
+        <div id="lightbox" onclick="if (Date.now() - Number(this.dataset.balayage || 0) > 400) fermerPhoto()">
+            <button id="lightboxPrec" class="lb-nav lb-prec" type="button" aria-label="Photo précédente"></button>
             <img id="lightboxImg" alt="Photo de la sortie">
+            <button id="lightboxSuiv" class="lb-nav lb-suiv" type="button" aria-label="Photo suivante"></button>
+            <div id="lightboxCompteur" aria-live="polite"></div>
             <button id="lightboxRetirer" type="button">🗑️ Retirer cette photo</button>
         </div>
 
@@ -3497,7 +3538,7 @@ def accueil():
                                 img.className = 'sortie-img';
                                 img.style.cursor = 'pointer';
                                 img.addEventListener('click', () => {
-                                    ouvrirPhoto(s.id, numero, pData);
+                                    ouvrirPhoto(s.id, numero, s.photos);
                                 });
                                 gallery.appendChild(img);
                             });
@@ -3573,6 +3614,8 @@ def accueil():
 
 
             let photoOuverte = null;
+            let jetonPhoto = 0;
+            const photosCompletes = {};
 
 
             async function retirerPhotoOuverte(evenement) {
@@ -3605,6 +3648,10 @@ def accueil():
                         throw new Error();
                     }
 
+                    Object.keys(photosCompletes).forEach(k => {
+                        if (k.startsWith(sortieId + '-')) delete photosCompletes[k];
+                    });
+
                     fermerPhoto();
                     await chargerEtat();
 
@@ -3614,15 +3661,33 @@ def accueil():
             }
 
 
-            async function ouvrirPhoto(sortieId, numero, miniature) {
+            async function ouvrirPhoto(sortieId, numero, miniatures) {
+                const liste = Array.isArray(miniatures) ? miniatures : [miniatures];
+                photoOuverte = { sortieId: sortieId, numero: numero, miniatures: liste };
+                document.getElementById('lightbox').style.display = 'flex';
+                await afficherPhotoOuverte();
+            }
+
+            async function afficherPhotoOuverte() {
+                if (!photoOuverte) return;
+
                 const fenetre = document.getElementById('lightbox');
                 const image = document.getElementById('lightboxImg');
+                const { sortieId, numero, miniatures } = photoOuverte;
+                const total = miniatures.length;
+                const jeton = ++jetonPhoto;
+                const cle = sortieId + '-' + numero;
 
-                photoOuverte = { sortieId: sortieId, numero: numero };
+                document.getElementById('lightboxPrec').style.display = total > 1 ? 'flex' : 'none';
+                document.getElementById('lightboxSuiv').style.display = total > 1 ? 'flex' : 'none';
+                const compteur = document.getElementById('lightboxCompteur');
+                compteur.style.display = total > 1 ? 'block' : 'none';
+                compteur.textContent = `${numero + 1} / ${total}`;
 
-                // La miniature s'affiche tout de suite, la photo suit.
-                image.src = miniature;
-                fenetre.style.display = 'flex';
+                // La photo déjà chargée ou la miniature s'affiche tout de suite.
+                image.src = photosCompletes[cle] || miniatures[numero];
+
+                if (photosCompletes[cle]) return;
 
                 try {
                     const res = await fetch(
@@ -3630,11 +3695,15 @@ def accueil():
                         { headers: getHeaders() }
                     );
 
-                    if (res.ok && fenetre.style.display === 'flex') {
+                    if (res.ok) {
                         const data = await res.json();
 
                         if (data.image) {
-                            image.src = data.image;
+                            photosCompletes[cle] = data.image;
+
+                            if (jeton === jetonPhoto && fenetre.style.display === 'flex') {
+                                image.src = data.image;
+                            }
                         }
                     }
                 } catch (e) {
@@ -3642,12 +3711,61 @@ def accueil():
                 }
             }
 
+            function changerPhoto(pas, evenement) {
+                if (evenement) evenement.stopPropagation();
+                if (!photoOuverte) return;
+
+                const total = photoOuverte.miniatures.length;
+                if (total < 2) return;
+
+                photoOuverte.numero = (photoOuverte.numero + pas + total) % total;
+                afficherPhotoOuverte();
+            }
 
             function fermerPhoto() {
                 photoOuverte = null;
+                jetonPhoto++;
                 document.getElementById('lightbox').style.display = 'none';
                 document.getElementById('lightboxImg').removeAttribute('src');
             }
+
+            (function brancherNavigationPhotos() {
+                const prec = document.getElementById('lightboxPrec');
+                const suiv = document.getElementById('lightboxSuiv');
+                const chevron = (d) => '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="' + d + '"/></svg>';
+                prec.innerHTML = chevron('M15 5l-7 7 7 7');
+                suiv.innerHTML = chevron('M9 5l7 7-7 7');
+                prec.addEventListener('click', (e) => changerPhoto(-1, e));
+                suiv.addEventListener('click', (e) => changerPhoto(1, e));
+
+                document.addEventListener('keydown', (e) => {
+                    if (!photoOuverte) return;
+                    if (e.key === 'ArrowLeft') changerPhoto(-1);
+                    else if (e.key === 'ArrowRight') changerPhoto(1);
+                    else if (e.key === 'Escape') fermerPhoto();
+                });
+
+                // Balayage du doigt : vers la gauche = photo suivante.
+                const fenetre = document.getElementById('lightbox');
+                let departX = null;
+                let departY = null;
+                fenetre.addEventListener('touchstart', (e) => {
+                    if (e.touches.length !== 1) { departX = null; return; }
+                    departX = e.touches[0].clientX;
+                    departY = e.touches[0].clientY;
+                }, { passive: true });
+                fenetre.addEventListener('touchend', (e) => {
+                    if (departX === null || !e.changedTouches.length) return;
+                    const dx = e.changedTouches[0].clientX - departX;
+                    const dy = e.changedTouches[0].clientY - departY;
+                    departX = null;
+                    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+                        changerPhoto(dx < 0 ? 1 : -1);
+                        // Le balayage ne doit pas fermer la fenêtre.
+                        fenetre.dataset.balayage = String(Date.now());
+                    }
+                });
+            })();
 
 
             async function telechargerSauvegarde() {
