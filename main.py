@@ -346,6 +346,7 @@ def init_db():
     """)
 
     ajouter_colonne(cursor, "sorties", "photos", "TEXT")
+    ajouter_colonne(cursor, "sorties", "videos", "TEXT")
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS reglages (
@@ -520,6 +521,14 @@ class PhotoIn(BaseModel):
 
 class TerrainRequest(BaseModel):
     terrain: str = Field(max_length=20)
+
+
+MAX_VIDEOS_PAR_SORTIE = 10
+
+
+class VideoRequest(BaseModel):
+    url: str = Field(max_length=500)
+    titre: Optional[str] = Field(default="", max_length=80)
 
 
 class AjoutPhotosRequest(BaseModel):
@@ -1579,6 +1588,95 @@ def accueil():
             .card.ouverte .bar-bg { margin-bottom: 12px; }
 
             .card.masquee { display: none; }
+
+            .videos-liste {
+                flex: 0 0 100%;
+                min-width: 0;
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                margin: 10px 0;
+            }
+
+            .video-carte {
+                position: relative;
+                background: var(--fill);
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                overflow: hidden;
+            }
+
+            .video-lien {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                padding: 8px 44px 8px 8px;
+                color: var(--text-color);
+                text-decoration: none;
+            }
+
+            .video-vignette {
+                position: relative;
+                flex-shrink: 0;
+                width: 112px;
+                aspect-ratio: 16 / 9;
+                border-radius: 8px;
+                overflow: hidden;
+                background: linear-gradient(135deg, #123a44, #0a8f9c);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            .video-vignette img {
+                position: absolute;
+                inset: 0;
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+            }
+
+            .video-play {
+                position: relative;
+                width: 30px;
+                height: 30px;
+                border-radius: 50%;
+                background: rgba(0,0,0,0.6);
+                color: #fff;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            .video-play svg { width: 16px; height: 16px; margin-left: 2px; }
+
+            .video-texte {
+                display: flex;
+                flex-direction: column;
+                min-width: 0;
+                gap: 2px;
+            }
+
+            .video-texte strong { font-size: 0.9rem; overflow-wrap: anywhere; }
+            .video-texte small { color: var(--text-muted); font-size: 0.76rem; }
+
+            .video-retirer {
+                position: absolute;
+                top: 6px;
+                right: 6px;
+                width: 32px;
+                height: 32px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: var(--text-muted);
+                background: transparent;
+                border: none;
+                border-radius: 50%;
+                cursor: pointer;
+            }
+
+            .video-retirer:hover { background: var(--fill2); color: var(--strong); }
 
             .guide {
                 margin: 4px 0 12px;
@@ -3520,8 +3618,22 @@ def accueil():
                         details.appendChild(titre);
                         details.appendChild(ligne1);
                         details.appendChild(ligne2);
+                        const nbVideos = s.videos ? s.videos.length : 0;
+                        const boutonVideo = document.createElement('button');
+                        boutonVideo.className = 'btn-action';
+                        boutonVideo.style.marginTop = '8px';
+                        boutonVideo.style.marginRight = '8px';
+                        boutonVideo.style.width = 'auto';
+                        boutonVideo.style.padding = '6px 12px';
+                        boutonVideo.textContent = '🎬 Ajouter une vidéo';
+                        boutonVideo.disabled = nbVideos >= MAX_VIDEOS;
+                        boutonVideo.addEventListener('click', () => {
+                            ajouterVideo(s.id);
+                        });
+
                         details.appendChild(boutonPhotos);
                         details.appendChild(choixPhotos);
+                        details.appendChild(boutonVideo);
                         details.appendChild(bouton);
 
                         item.appendChild(details);
@@ -3545,8 +3657,18 @@ def accueil():
                             mediaDiv.appendChild(gallery);
                         }
 
+                        if (s.videos && s.videos.length > 0) {
+                            const zoneVideos = document.createElement('div');
+                            zoneVideos.className = 'videos-liste';
+                            s.videos.forEach((v, numero) => {
+                                zoneVideos.appendChild(carteVideo(s.id, v, numero));
+                            });
+                            item.style.flexWrap = 'wrap';
+                            item.appendChild(zoneVideos);
+                        }
+
                         mediaDiv.appendChild(dessinerTrace(s.trace));
-                        item.appendChild(mediaDiv);
+                        item.insertBefore(mediaDiv, item.querySelector('.videos-liste'));
 
                         liste.appendChild(item);
                     });
@@ -3558,6 +3680,141 @@ def accueil():
 
 
             const MAX_PHOTOS = 8;
+            const MAX_VIDEOS = 10;
+
+            // Identifiant d'une vidéo YouTube (youtu.be, watch?v=, shorts, embed), sinon null.
+            function idYoutube(adresse) {
+                try {
+                    const u = new URL(adresse);
+                    const hote = u.hostname.replace('www.', '').replace('m.', '');
+                    let id = null;
+                    if (hote === 'youtu.be') {
+                        id = u.pathname.split('/')[1];
+                    } else if (hote === 'youtube.com' || hote === 'music.youtube.com') {
+                        const parties = u.pathname.split('/');
+                        if (parties[1] === 'shorts' || parties[1] === 'embed' || parties[1] === 'live') {
+                            id = parties[2];
+                        } else {
+                            id = u.searchParams.get('v');
+                        }
+                    }
+                    return id && /^[A-Za-z0-9_-]{6,15}$/.test(id) ? id : null;
+                } catch (e) {
+                    return null;
+                }
+            }
+
+            function nomDeSite(adresse) {
+                try {
+                    return new URL(adresse).hostname.replace('www.', '');
+                } catch (e) {
+                    return adresse;
+                }
+            }
+
+            function carteVideo(sortieId, v, numero) {
+                const bloc = document.createElement('div');
+                bloc.className = 'video-carte';
+
+                const lien = document.createElement('a');
+                lien.href = v.url;
+                lien.target = '_blank';
+                lien.rel = 'noopener noreferrer';
+                lien.className = 'video-lien';
+
+                const vignette = document.createElement('span');
+                vignette.className = 'video-vignette';
+                const id = idYoutube(v.url);
+                if (id) {
+                    const img = document.createElement('img');
+                    img.alt = '';
+                    img.loading = 'lazy';
+                    img.src = 'https://i.ytimg.com/vi/' + id + '/hqdefault.jpg';
+                    img.addEventListener('error', () => img.remove());
+                    vignette.appendChild(img);
+                }
+                const play = document.createElement('span');
+                play.className = 'video-play';
+                play.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>';
+                vignette.appendChild(play);
+
+                const texte = document.createElement('span');
+                texte.className = 'video-texte';
+                const titre = document.createElement('strong');
+                titre.textContent = v.titre || 'Vidéo de la sortie';
+                const site = document.createElement('small');
+                site.textContent = nomDeSite(v.url);
+                texte.appendChild(titre);
+                texte.appendChild(site);
+
+                lien.appendChild(vignette);
+                lien.appendChild(texte);
+
+                const retirer = document.createElement('button');
+                retirer.type = 'button';
+                retirer.className = 'video-retirer';
+                retirer.setAttribute('aria-label', 'Retirer cette vidéo');
+                retirer.innerHTML = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+                retirer.addEventListener('click', () => retirerVideo(sortieId, numero));
+
+                bloc.appendChild(lien);
+                bloc.appendChild(retirer);
+                return bloc;
+            }
+
+            async function ajouterVideo(sortieId) {
+                const url = prompt(
+                    "Colle le lien de la vidéo (YouTube, Google Photos, Drive...) :"
+                );
+                if (url === null || url.trim() === '') return;
+
+                const titre = prompt("Titre (facultatif) :", '');
+                if (titre === null) return;
+
+                try {
+                    const res = await fetch(`/api/sorties/${sortieId}/videos`, {
+                        method: 'POST',
+                        headers: getHeaders(),
+                        body: JSON.stringify({ url: url.trim(), titre: titre.trim() })
+                    });
+
+                    if (res.status === 401) {
+                        document.getElementById('authScreen').style.display = 'flex';
+                        return;
+                    }
+
+                    if (!res.ok) {
+                        const err = await res.json().catch(() => ({}));
+                        alert(typeof err.detail === 'string' ? err.detail : "Lien refusé.");
+                        return;
+                    }
+
+                    await chargerEtat();
+
+                } catch (e) {
+                    alert("Impossible d'ajouter la vidéo.");
+                }
+            }
+
+            async function retirerVideo(sortieId, numero) {
+                if (!confirm("Retirer cette vidéo de la sortie ? (la vidéo elle-même n'est pas supprimée)")) {
+                    return;
+                }
+                try {
+                    const res = await fetch(
+                        `/api/sorties/${sortieId}/videos/${numero}/supprimer`,
+                        { method: 'POST', headers: getHeaders() }
+                    );
+                    if (res.status === 401) {
+                        document.getElementById('authScreen').style.display = 'flex';
+                        return;
+                    }
+                    if (!res.ok) throw new Error();
+                    await chargerEtat();
+                } catch (e) {
+                    alert("Impossible de retirer la vidéo.");
+                }
+            }
 
             document.getElementById('lightboxRetirer')
                 .addEventListener('click', retirerPhotoOuverte);
@@ -5708,6 +5965,8 @@ def lister_sorties(x_code_acces: Optional[str] = Header(default=None)):
             # la photo complète se charge au clic.
             sortie["photos"] = [miniature_de(p) for p in brutes]
 
+            sortie["videos"] = lire_videos(sortie.get("videos"))
+
             resultat.append(sortie)
 
         return resultat
@@ -5826,6 +6085,126 @@ def enregistrer_reglages(data: ReglagesRequest, x_code_acces: Optional[str] = He
     finally:
         conn.close()
 
+
+
+def lire_videos(texte):
+    """Liste des liens vidéo d'une sortie (liste vide si rien ou illisible)."""
+    try:
+        videos = json.loads(texte or "[]")
+    except ValueError:
+        return []
+
+    if not isinstance(videos, list):
+        return []
+
+    return [
+        {"url": str(v.get("url", "")), "titre": str(v.get("titre", ""))}
+        for v in videos
+        if isinstance(v, dict) and v.get("url")
+    ]
+
+
+@app.post("/api/sorties/{sortie_id}/videos")
+def ajouter_video(
+    sortie_id: int,
+    data: VideoRequest,
+    x_code_acces: Optional[str] = Header(default=None)
+):
+    """Ajoute le lien d'une vidéo (YouTube, Google Photos...) à une sortie."""
+    verifier_auth(x_code_acces)
+
+    url = data.url.strip()
+    titre = (data.titre or "").strip()
+
+    if not url.lower().startswith("https://") or len(url) < 12:
+        raise HTTPException(
+            status_code=400,
+            detail="Le lien doit commencer par https://"
+        )
+
+    if any(c.isspace() for c in url) or "<" in url or ">" in url or '"' in url:
+        raise HTTPException(status_code=400, detail="Lien non valide.")
+
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            "SELECT videos FROM sorties WHERE id = ?",
+            (sortie_id,)
+        )
+        ligne = cursor.fetchone()
+
+        if ligne is None:
+            raise HTTPException(status_code=404, detail="Sortie introuvable.")
+
+        videos = lire_videos(ligne[0])
+
+        if len(videos) >= MAX_VIDEOS_PAR_SORTIE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{MAX_VIDEOS_PAR_SORTIE} vidéos maximum par sortie."
+            )
+
+        videos.append({"url": url, "titre": titre})
+
+        cursor.execute(
+            "UPDATE sorties SET videos = ? WHERE id = ?",
+            (json.dumps(videos), sortie_id)
+        )
+        conn.commit()
+
+        return {"statut": "success", "nombre": len(videos)}
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+
+@app.post("/api/sorties/{sortie_id}/videos/{numero}/supprimer")
+def retirer_video(
+    sortie_id: int,
+    numero: int,
+    x_code_acces: Optional[str] = Header(default=None)
+):
+    verifier_auth(x_code_acces)
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            "SELECT videos FROM sorties WHERE id = ?",
+            (sortie_id,)
+        )
+        ligne = cursor.fetchone()
+
+        if ligne is None:
+            raise HTTPException(status_code=404, detail="Sortie introuvable.")
+
+        videos = lire_videos(ligne[0])
+
+        if not 0 <= numero < len(videos):
+            raise HTTPException(status_code=404, detail="Vidéo introuvable.")
+
+        del videos[numero]
+
+        cursor.execute(
+            "UPDATE sorties SET videos = ? WHERE id = ?",
+            (json.dumps(videos), sortie_id)
+        )
+        conn.commit()
+
+        return {"statut": "success", "nombre": len(videos)}
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
 
 
 @app.post("/api/sorties/{sortie_id}/photos")
