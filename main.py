@@ -1542,6 +1542,60 @@ def accueil():
 
             .card.masquee { display: none; }
 
+            .guide {
+                margin: 4px 0 12px;
+                background: var(--fill);
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                padding: 0 12px;
+            }
+
+            .guide summary {
+                cursor: pointer;
+                padding: 10px 0;
+                font-size: 0.86rem;
+                font-weight: 700;
+                color: var(--accent);
+            }
+
+            .guide[open] summary { border-bottom: 1px solid var(--line3); margin-bottom: 8px; }
+
+            .guide p, .guide ol {
+                font-size: 0.85rem;
+                line-height: 1.45;
+                margin: 0 0 8px;
+            }
+
+            .guide ol { padding-left: 20px; }
+            .guide li { margin-bottom: 4px; }
+
+            .guide-niveau {
+                display: inline-block;
+                font-size: 0.74rem;
+                font-weight: 700;
+                color: var(--text-muted);
+                background: var(--fill2);
+                border-radius: 999px;
+                padding: 2px 10px;
+                margin-bottom: 8px;
+            }
+
+            .guide .guide-outils { color: var(--text-muted); font-size: 0.8rem; }
+
+            .guide-video {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                margin: 2px 0 12px;
+                padding: 8px 14px;
+                font-size: 0.84rem;
+                font-weight: 700;
+                color: #fff;
+                background: #d62b2b;
+                border-radius: 999px;
+                text-decoration: none;
+            }
+
             .verifs {
                 max-width: 600px;
                 margin: 0 auto 16px auto;
@@ -2284,6 +2338,214 @@ def accueil():
             remplirBouton(document.getElementById('mrAnnuler'), 'fermer', 'Annuler');
 
             const cartesOuvertes = new Set();
+
+            // [difficulté, à quoi ça sert, étapes, outils, recherche YouTube]
+            const GUIDES = {
+                "Chaîne Shimano XT (Remplacement)": ["Moyen",
+                    "Une chaîne étirée use la cassette et le plateau. La changer à temps coûte bien moins cher que de changer toute la transmission.",
+                    ["Mesurer l'usure avec un testeur de chaîne (remplacer vers 0,5 %).", "Ouvrir l'ancienne chaîne au maillon rapide ou à l'extracteur.", "Couper la neuve à la même longueur et la monter.", "Fermer le maillon rapide, graisser, vérifier les vitesses."],
+                    "Testeur d'usure, pince à maillon rapide, extracteur de chaîne",
+                    "changer chaine Shimano 12 vitesses VTT"],
+                "Nettoyage & Lubrification chaîne": ["Facile",
+                    "Une chaîne propre et huilée dure bien plus longtemps et passe les vitesses sans bruit.",
+                    ["Dégraisser la chaîne avec une brosse et un dégraissant.", "Rincer à l'eau douce, sans jet haute pression, puis sécher.", "Mettre une goutte de lubrifiant sur chaque maillon.", "Attendre quelques minutes et essuyer l'excédent."],
+                    "Dégraissant, brosse, chiffon, lubrifiant pour chaîne",
+                    "nettoyer et lubrifier chaîne vélo VTT"],
+                "Plaquettes de frein avant (N04C)": ["Moyen",
+                    "Les plaquettes usées freinent mal et abîment le disque. Il faut les changer avant qu'il ne reste moins d'un millimètre de matière.",
+                    ["Retirer la roue et la goupille ou la vis qui retient les plaquettes.", "Sortir les plaquettes et repousser doucement les pistons avec un levier plastique.", "Monter les plaquettes neuves, remettre la goupille.", "Remonter la roue, pomper le levier, puis roder avec une vingtaine de freinages."],
+                    "Plaquettes compatibles, levier plastique ou démonte-pneu, alcool isopropylique",
+                    "changer plaquettes frein Shimano VTT"],
+                "Plaquettes de frein arrière": ["Moyen",
+                    "Mêmes principes qu'à l'avant. L'arrière s'use souvent plus vite sur un vélo électrique, plus lourd.",
+                    ["Retirer la roue arrière et la goupille des plaquettes.", "Sortir les anciennes plaquettes, repousser les pistons.", "Monter les neuves, remettre la goupille.", "Remonter la roue, pomper le levier et roder les plaquettes."],
+                    "Plaquettes compatibles, levier plastique, alcool isopropylique",
+                    "changer plaquettes frein arrière VTT Shimano"],
+                "Fourche Fox 36 - Entretien 50h": ["Atelier",
+                    "Toutes les 50 heures, Fox conseille de nettoyer et regraisser les joints et la chambre d'air. Ça garde la fourche souple et évite l'usure prématurée.",
+                    ["Dépressuriser la fourche et déposer les bas de fourreaux.", "Nettoyer les joints racleurs et les tubes.", "Renouveler l'huile des bas de fourreaux et regraisser les joints.", "Remonter, remettre la pression, noter les réglages."],
+                    "Kit d'entretien Fox, huile Fox, clés spéciales : à faire en atelier si tu n'as pas l'outillage",
+                    "Fox 36 entretien 50 heures lower leg service"],
+                "Fourche Fox 36 - Révision lourde 200h": ["Atelier",
+                    "La révision complète, toutes les 200 heures, remplace l'huile de cartouche et les pièces d'usure. C'est un travail d'atelier.",
+                    ["Faire démonter la fourche par un atelier spécialisé Fox.", "Demander le changement de l'huile de la cartouche et de la chambre d'air.", "Faire contrôler les bagues et les joints.", "Reprendre les réglages de pression et de détente."],
+                    "Atelier spécialisé Fox",
+                    "Fox 36 révision complète 200 heures"],
+                "Cassette Shimano XT 12-speed": ["Moyen",
+                    "Les dents de la cassette s'usent. Une cassette usée fait sauter la chaîne sous l'effort. Elle se change souvent avec la chaîne.",
+                    ["Retirer la roue arrière.", "Dévisser l'écrou de cassette avec l'outil, en bloquant la cassette avec un fouet.", "Monter la cassette neuve sur le corps de roue libre.", "Serrer l'écrou, remonter la roue, régler le dérailleur."],
+                    "Clé à cassette, fouet à chaîne, graisse",
+                    "changer cassette Shimano 12 vitesses VTT"],
+                "Pneu arrière / tubeless": ["Moyen",
+                    "Le pneu arrière s'use le plus vite. Des crampons arrondis ou des coupures profondes demandent de le changer.",
+                    ["Dégonfler et décoller le pneu, vider le liquide préventif.", "Nettoyer la jante, vérifier le fond de jante.", "Monter le pneu neuf, ajouter le liquide préventif, gonfler d'un coup.", "Régler la pression, faire un tour de vélo et revérifier."],
+                    "Démonte-pneus, pompe ou compresseur, liquide préventif, clé de valve",
+                    "changer pneu tubeless VTT montage"],
+                "Disque de frein avant (203 mm)": ["Moyen",
+                    "Un disque trop mince chauffe et se déforme. L'épaisseur minimale est gravée dessus, souvent autour de 1,5 mm.",
+                    ["Mesurer l'épaisseur avec un pied à coulisse.", "Retirer la roue, dévisser les 6 vis Torx ou le verrou Centerlock.", "Monter le disque neuf, serrer au couple indiqué.", "Changer les plaquettes en même temps et roder."],
+                    "Pied à coulisse, clé Torx T25, clé Centerlock si besoin",
+                    "changer disque de frein VTT 6 vis Centerlock"],
+                "Disque de frein arrière (203 mm)": ["Moyen",
+                    "Même contrôle qu'à l'avant. Un disque voilé ou trop fin se remplace, pas de réparation.",
+                    ["Mesurer l'épaisseur avec un pied à coulisse.", "Retirer la roue, dévisser le disque.", "Monter le disque neuf et serrer au couple indiqué.", "Changer les plaquettes en même temps et roder."],
+                    "Pied à coulisse, clé Torx T25, clé Centerlock si besoin",
+                    "changer disque de frein arrière VTT"],
+                "Purge du liquide de frein (avant + arrière)": ["Atelier",
+                    "Le liquide de frein vieillit et peut perdre en efficacité. Une purge par an garde un levier ferme. Les freins Shimano utilisent de l'huile minérale, jamais de DOT.",
+                    ["Prévoir un kit de purge Shimano et l'huile minérale.", "Purger chaque frein en suivant la méthode du fabricant.", "Nettoyer au dégraissant frein, jamais d'huile sur les plaquettes.", "Contrôler la fermeté du levier."],
+                    "Kit de purge Shimano, huile minérale, seringue : à faire en atelier si tu débutes",
+                    "purge frein Shimano huile minérale VTT"],
+                "Plateau (pédalier ACID 34/36 dents)": ["Atelier",
+                    "Un plateau aux dents crochues fait sauter la chaîne. Sur un moteur Bosch, le plateau se démonte avec un outil adapté.",
+                    ["Regarder la forme des dents : crochues ou pointues, il faut changer.", "Retirer le plateau avec l'outil prévu pour ton moteur.", "Monter le plateau neuf du même nombre de dents.", "Serrer au couple, régler la ligne de chaîne."],
+                    "Outil de plateau compatible Bosch, clé dynamométrique : atelier conseillé",
+                    "changer plateau moteur Bosch VTT électrique"],
+                "Galets de dérailleur arrière": ["Moyen",
+                    "Les galets guident la chaîne. Usés ou avec du jeu, ils bruitent et font mal passer les vitesses.",
+                    ["Regarder si les dents sont pointues ou si le galet ballotte.", "Dévisser les vis de la chape.", "Remplacer les deux galets, graisser les axes.", "Remonter la chape et tester les vitesses."],
+                    "Clés Allen, graisse, galets compatibles",
+                    "changer galets dérailleur Shimano"],
+                "Câble et gaine de dérailleur": ["Moyen",
+                    "Un câble qui frotte rend les vitesses lentes ou imprécises. Il se change environ une fois par an.",
+                    ["Mettre la chaîne sur le plus petit pignon.", "Retirer l'ancien câble et la gaine.", "Poser le nouveau câble et la nouvelle gaine, graisser le passage.", "Retendre et régler la tension du câble."],
+                    "Pince coupe-câble, clés Allen, graisse",
+                    "changer câble et gaine dérailleur VTT"],
+                "Pédales (graissage et jeu)": ["Facile",
+                    "Des pédales sans jeu et bien graissées tournent mieux et durent plus longtemps.",
+                    ["Vérifier le jeu en bougeant la pédale à la main.", "Retirer la pédale (le pas de vis est inversé à gauche).", "Nettoyer et graisser l'axe et le filetage.", "Remonter et serrer."],
+                    "Clé de 15 mm ou clé Allen de 8 mm, graisse",
+                    "démonter et graisser pédales VTT"],
+                "Pneu avant / tubeless": ["Moyen",
+                    "Même contrôle qu'à l'arrière. Le pneu avant s'use moins vite mais l'état des crampons compte pour l'adhérence en virage.",
+                    ["Regarder les crampons et les flancs (coupures, craquelures).", "Remplacer si les crampons sont arrondis ou s'il y a une hernie.", "Remettre du liquide préventif.", "Régler la pression."],
+                    "Démonte-pneus, pompe ou compresseur, liquide préventif",
+                    "changer pneu tubeless VTT montage"],
+                "Liquide préventif tubeless (2 pneus)": ["Facile",
+                    "Le liquide sèche avec le temps et ne bouche plus les crevaisons. On le renouvelle tous les deux à quatre mois.",
+                    ["Dégonfler et retirer la valve, ou décoller un côté du pneu.", "Vider le vieux liquide et nettoyer les restes séchés.", "Ajouter la dose recommandée sur le flacon.", "Regonfler, secouer la roue pour répartir le liquide."],
+                    "Liquide préventif, outil de valve, pompe",
+                    "ajouter liquide préventif tubeless VTT"],
+                "Roulements de moyeux (avant + arrière)": ["Atelier",
+                    "Des roulements usés font du jeu ou du bruit dans la roue. Un entretien régulier évite de changer le moyeu.",
+                    ["Soulever la roue et la faire tourner : bruit, résistance, jeu ?", "Faire démonter le moyeu et nettoyer les roulements.", "Regraisser ou changer les roulements.", "Régler le jeu et remonter."],
+                    "Extracteur de roulements, graisse : atelier conseillé",
+                    "entretien roulements moyeu VTT"],
+                "Rayons et voile des roues (contrôle)": ["Facile",
+                    "Un rayon détendu ou une roue voilée fragilise la roue. Un contrôle régulier évite la casse.",
+                    ["Faire tourner la roue, regarder si elle frotte.", "Pincer les rayons deux par deux : ils doivent sonner pareil.", "Resserrer légèrement un rayon lâche si tu sais le faire.", "Sinon, passer chez un atelier pour dévoiler."],
+                    "Clé à rayons si besoin",
+                    "vérifier tension rayons roue VTT"],
+                "Amortisseur Fox - Entretien 50h": ["Atelier",
+                    "Toutes les 50 heures, l'entretien de la chambre d'air garde l'amortisseur souple et sans fuite.",
+                    ["Dépressuriser l'amortisseur.", "Démonter le manchon d'air et nettoyer.", "Remplacer l'huile et regraisser les joints.", "Remonter, remettre la pression et noter les réglages."],
+                    "Kit d'entretien Fox, pompe à amortisseur : atelier conseillé",
+                    "Fox Float amortisseur entretien 50 heures air can service"],
+                "Amortisseur Fox - Révision complète 200h": ["Atelier",
+                    "La révision complète, toutes les 200 heures, remplace l'huile et les joints. Travail d'atelier spécialisé.",
+                    ["Faire démonter l'amortisseur par un atelier Fox.", "Demander la révision complète.", "Remonter et refaire les réglages.", "Noter les nouvelles valeurs dans Mes réglages."],
+                    "Atelier spécialisé Fox",
+                    "Fox Float amortisseur révision complète 200 heures"],
+                "Roulements de suspension (biellettes)": ["Moyen",
+                    "Les roulements des articulations du cadre prennent l'eau et la boue. Ils font du jeu ou des claquements s'ils sont usés.",
+                    ["Bloquer la roue arrière et la secouer de côté : y a-t-il du jeu ?", "Retirer les vis et sortir l'axe.", "Nettoyer, regraisser ou changer les roulements.", "Remonter et serrer au couple du fabricant."],
+                    "Clés Allen, clé dynamométrique, graisse, extracteur de roulements",
+                    "changer roulements suspension VTT biellette"],
+                "Jeu de direction (contrôle et graissage)": ["Moyen",
+                    "Un jeu dans la direction se sent au freinage et abîme les roulements. Un réglage rapide règle souvent le problème.",
+                    ["Serrer le frein avant et balancer le vélo d'avant en arrière : y a-t-il un claquement ?", "Desserrer les vis de potence, régler la vis de la coiffe, resserrer.", "Si ça accroche, démonter, nettoyer et regraisser.", "Remonter la potence, vérifier l'alignement."],
+                    "Clés Allen, clé dynamométrique, graisse",
+                    "régler jeu de direction VTT"],
+                "Tige de selle télescopique (nettoyage et graissage)": ["Moyen",
+                    "Sale ou sans graisse, la tige monte et descend moins bien. Un nettoyage régulier des joints prolonge sa durée de vie.",
+                    ["Essuyer le tube, relever le joint racleur.", "Mettre quelques gouttes d'huile adaptée.", "Appuyer et relâcher la tige plusieurs fois.", "Si elle reste molle, faire une purge ou passer en atelier."],
+                    "Chiffon, huile pour joints, clés Allen",
+                    "entretien tige de selle télescopique VTT"],
+                "Pneus - pression et état (contrôle)": ["Facile",
+                    "La bonne pression améliore l'adhérence, le confort et protège les jantes. Elle dépend de ton poids et du terrain.",
+                    ["Mesurer la pression avec un manomètre précis, pneus froids.", "Chercher coupures, épines plantées et usure.", "Ajuster la pression, noter les valeurs dans Mes réglages.", "Remplacer le pneu s'il y a une hernie ou une coupure profonde."],
+                    "Manomètre ou pompe avec jauge",
+                    "pression pneus VTT tubeless comment régler"],
+                "Fourche - pression et SAG (contrôle)": ["Facile",
+                    "Le SAG est l'enfoncement de la fourche sous ton poids, vélo à l'arrêt. Il détermine le confort et l'efficacité de la suspension.",
+                    ["Mettre la pression avec une pompe à suspension, selon ton poids.", "Faire glisser le joint de SAG, monter sur le vélo en position de pédalage.", "Descendre sans bouger et mesurer l'enfoncement (souvent autour de 20 à 25 %).", "Ajuster la pression, noter dans Mes réglages."],
+                    "Pompe à suspension, joint de SAG, règle",
+                    "régler SAG fourche VTT Fox"],
+                "Amortisseur - pression et SAG (contrôle)": ["Facile",
+                    "Même principe qu'avec la fourche. L'amortisseur arrière se règle en général un peu plus mou que la fourche.",
+                    ["Mettre la pression avec une pompe à suspension, selon ton poids.", "Monter en position de pédalage avec le joint de SAG sur le tube.", "Descendre et mesurer l'enfoncement (souvent autour de 25 à 30 %).", "Ajuster et noter les valeurs dans Mes réglages."],
+                    "Pompe à suspension, joint de SAG, règle",
+                    "régler SAG amortisseur arrière VTT"],
+                "Contrôle des serrages (potence, cintre, roues, pédalier)": ["Facile",
+                    "Les vibrations desserrent les vis. Un contrôle régulier évite de mauvaises surprises en roulant.",
+                    ["Vérifier chaque vis avec une clé dynamométrique réglée.", "Respecter les valeurs gravées sur les pièces ou celles du manuel Cube.", "Contrôler potence, cintre, roues, pédalier, étriers, tige de selle.", "Ne jamais serrer plus que le couple indiqué."],
+                    "Clé dynamométrique, jeu de clés Allen et Torx",
+                    "contrôle serrage couple VTT clé dynamométrique"],
+                "Contrôle annuel Bosch (moteur + logiciel)": ["Atelier",
+                    "Chez un revendeur Bosch, l'outil de diagnostic lit les erreurs, met à jour le logiciel et contrôle le moteur et la batterie.",
+                    ["Prendre rendez-vous chez un revendeur Cube ou Bosch.", "Demander le diagnostic complet et la mise à jour du logiciel.", "Faire noter les kilomètres et les éventuelles erreurs.", "Garder la facture."],
+                    "Revendeur agréé Bosch",
+                    "Bosch eBike diagnostic revendeur contrôle annuel"],
+                "Batterie PowerTube 800 (contacts et état)": ["Facile",
+                    "Des contacts propres et une batterie en bon état assurent la charge et l'autonomie. Ne jamais ouvrir la batterie.",
+                    ["Retirer la batterie, regarder les contacts et le boîtier.", "Nettoyer les contacts avec un chiffon sec.", "Contrôler le verrou et l'absence de choc ou de gonflement.", "Pour un stockage long, la laisser entre 30 et 60 % de charge."],
+                    "Chiffon sec",
+                    "entretien batterie Bosch PowerTube vélo électrique"]
+            };
+
+            function lienYoutube(nom) {
+                const g = GUIDES[nom];
+                const q = g ? g[4] : (nom + ' entretien VTT');
+                return 'https://www.youtube.com/results?search_query=' + encodeURIComponent(q);
+            }
+
+            function blocGuide(nom) {
+                const g = GUIDES[nom];
+                const det = document.createElement('details');
+                det.className = 'guide';
+                const sum = document.createElement('summary');
+                sum.textContent = 'Comment faire';
+                det.appendChild(sum);
+
+                if (g) {
+                    const niv = document.createElement('div');
+                    niv.className = 'guide-niveau';
+                    niv.textContent = 'Difficulté : ' + g[0];
+                    det.appendChild(niv);
+
+                    const quoi = document.createElement('p');
+                    quoi.textContent = g[1];
+                    det.appendChild(quoi);
+
+                    const ol = document.createElement('ol');
+                    g[2].forEach(t => {
+                        const li = document.createElement('li');
+                        li.textContent = t;
+                        ol.appendChild(li);
+                    });
+                    det.appendChild(ol);
+
+                    const outils = document.createElement('p');
+                    outils.className = 'guide-outils';
+                    outils.textContent = 'Outils : ' + g[3];
+                    det.appendChild(outils);
+                } else {
+                    const p = document.createElement('p');
+                    p.textContent = 'Pas de fiche pour cette pièce. Une recherche vidéo est disponible.';
+                    det.appendChild(p);
+                }
+
+                const a = document.createElement('a');
+                a.className = 'guide-video';
+                a.href = lienYoutube(nom);
+                a.target = '_blank';
+                a.rel = 'noopener noreferrer';
+                a.innerHTML = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor"/></svg><span></span>';
+                a.lastChild.textContent = 'Voir des vidéos sur YouTube';
+                det.appendChild(a);
+                return det;
+            }
+
             let vertesVisibles = false;
             let verifChoisie = null;
 
@@ -2366,6 +2628,8 @@ def accueil():
                     : `Seuil : ${v.seuil_alerte} km`;
                 detail.appendChild(nom);
                 detail.appendChild(info);
+
+                detail.appendChild(blocGuide(v.nom));
 
                 const bFait = document.createElement('button');
                 bFait.className = 'btn-action';
@@ -2710,6 +2974,7 @@ def accueil():
                             detail.appendChild(usureInfo);
                         }
 
+                        detail.appendChild(blocGuide(c.nom));
                         detail.appendChild(button);
 
                         const outils = document.createElement('div');
