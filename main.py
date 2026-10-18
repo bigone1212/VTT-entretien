@@ -202,6 +202,41 @@ COMPOSANTS_V3 = [
 def migrer_composants_v2(cursor):
     ajouter_composants_une_fois(cursor, "migration_composants_v2", COMPOSANTS_V2)
     ajouter_composants_une_fois(cursor, "migration_composants_v3", COMPOSANTS_V3)
+    marquer_verifications_une_fois(cursor)
+
+
+# Contrôles réguliers : affichés en pastilles sous la photo, pas dans la liste.
+NOMS_VERIFICATIONS = (
+    "Pneus - pression et état (contrôle)",
+    "Fourche - pression et SAG (contrôle)",
+    "Amortisseur - pression et SAG (contrôle)",
+    "Rayons et voile des roues (contrôle)",
+    "Contrôle des serrages (potence, cintre, roues, pédalier)",
+    "Contrôle annuel Bosch (moteur + logiciel)",
+    "Batterie PowerTube 800 (contacts et état)",
+)
+
+
+def marquer_verifications_une_fois(cursor):
+    cursor.execute(
+        "SELECT valeur FROM reglages WHERE cle = ?",
+        ("migration_verifications_v1",)
+    )
+
+    if cursor.fetchone() is not None:
+        return
+
+    for nom in NOMS_VERIFICATIONS:
+        cursor.execute(
+            "UPDATE composants SET verification = 1 WHERE nom = ?",
+            (nom,)
+        )
+
+    cursor.execute("""
+        INSERT INTO reglages (cle, valeur)
+        VALUES (?, 1)
+        ON CONFLICT (cle) DO NOTHING
+    """, ("migration_verifications_v1",))
 
 
 def ajouter_composants_une_fois(cursor, marqueur, liste):
@@ -335,6 +370,7 @@ def init_db():
     """)
 
     ajouter_colonne(cursor, "composants", "seuil_jours", "INTEGER DEFAULT 0")
+    ajouter_colonne(cursor, "composants", "verification", "INTEGER DEFAULT 0")
     ajouter_colonne(cursor, "velo", "date_achat", "TEXT")
     cursor.execute(
         "UPDATE velo SET date_achat = ? WHERE id = 1 AND date_achat IS NULL",
@@ -1506,6 +1542,72 @@ def accueil():
 
             .card.masquee { display: none; }
 
+            .verifs {
+                max-width: 600px;
+                margin: 0 auto 16px auto;
+                background: var(--card-bg);
+                border: 1px solid var(--line);
+                border-radius: 18px;
+                padding: 12px 14px;
+                box-shadow: var(--sh);
+            }
+
+            .verifs-titre {
+                display: flex;
+                align-items: baseline;
+                justify-content: space-between;
+                gap: 8px;
+                margin-bottom: 10px;
+            }
+
+            .verifs-titre strong { font-size: 0.95rem; }
+            .verifs-titre .form-help { margin: 0; }
+
+            .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+
+            .chip {
+                display: inline-flex;
+                align-items: center;
+                gap: 7px;
+                font: inherit;
+                font-size: 0.82rem;
+                font-weight: 600;
+                color: var(--text-color);
+                background: var(--fill);
+                border: 1px solid var(--line2);
+                border-radius: 999px;
+                padding: 7px 12px 7px 10px;
+                cursor: pointer;
+            }
+
+            .chip::before {
+                content: "";
+                width: 9px;
+                height: 9px;
+                border-radius: 50%;
+                background: linear-gradient(135deg, #35e0c8, #0a8f9c);
+            }
+
+            .chip.near-warning::before { background: linear-gradient(135deg, #fbbf24, #d97706); }
+            .chip.warning::before { background: linear-gradient(135deg, #f87171, #dc2626); }
+            .chip small { font-size: 0.74rem; font-weight: 600; color: var(--text-muted); }
+            .chip.warning small { color: var(--danger); }
+            .chip.near-warning small { color: var(--warning); }
+
+            .chip.choisie {
+                border-color: var(--accent);
+                background: rgba(53,224,200,0.12);
+            }
+
+            .verif-detail {
+                margin-top: 12px;
+                padding-top: 10px;
+                border-top: 1px solid var(--line3);
+            }
+
+            .verif-detail .vd-nom { font-weight: 700; font-size: 0.95rem; margin-bottom: 4px; }
+            .verif-detail .vd-info { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 8px; }
+
             .btn-voir-plus {
                 width: 100%;
                 padding: 12px;
@@ -1646,6 +1748,12 @@ def accueil():
                 Touchez un numéro, puis touchez son emplacement exact sur la photo.
             </span>
         </div>
+
+        <section class="verifs" id="verifs" style="display:none;" aria-label="Vérifications">
+            <div class="verifs-titre"><strong>Vérifications</strong><span class="form-help" id="verifsInfo"></span></div>
+            <div class="chips" id="verifsChips"></div>
+            <div class="verif-detail" id="verifDetail" style="display:none;"></div>
+        </section>
 
         <div id="composantsList" class="grid">
             <div class="loading">Chargement des composants...</div>
@@ -2177,6 +2285,110 @@ def accueil():
 
             const cartesOuvertes = new Set();
             let vertesVisibles = false;
+            let verifChoisie = null;
+
+            function nomCourt(nom) {
+                return nom.split(' - ')[0].split(' (')[0];
+            }
+
+            function texteDelai(c) {
+                if (!(c.seuil_jours > 0) || c.jours_ecoules === null) return '';
+                const reste = c.seuil_jours - c.jours_ecoules;
+                return reste >= 0 ? `${reste} j` : `+${-reste} j`;
+            }
+
+            function afficherVerifications(verifs) {
+                const zone = document.getElementById('verifs');
+                const chips = document.getElementById('verifsChips');
+                const detail = document.getElementById('verifDetail');
+                chips.innerHTML = '';
+                detail.style.display = 'none';
+
+                if (verifs.length === 0) {
+                    zone.style.display = 'none';
+                    return;
+                }
+                zone.style.display = 'block';
+
+                const aFaire = verifs.filter(v => v.pourcentage_usure >= 100).length;
+                document.getElementById('verifsInfo').textContent =
+                    aFaire > 0 ? `${aFaire} à faire` : 'Tout est à jour';
+
+                verifs.sort((a, b) => b.pourcentage_usure - a.pourcentage_usure || a.id - b.id);
+
+                verifs.forEach(v => {
+                    const etat = v.pourcentage_usure >= 100 ? 'warning'
+                        : v.pourcentage_usure >= 85 ? 'near-warning' : 'ok';
+                    const chip = document.createElement('button');
+                    chip.type = 'button';
+                    chip.className = `chip ${etat}`;
+                    chip.dataset.id = v.id;
+                    chip.appendChild(document.createTextNode(nomCourt(v.nom)));
+                    const delai = texteDelai(v);
+                    if (delai) {
+                        const pt = document.createElement('small');
+                        pt.textContent = delai;
+                        chip.appendChild(pt);
+                    }
+                    chip.addEventListener('click', () => {
+                        verifChoisie = verifChoisie === v.id ? null : v.id;
+                        montrerDetailVerification(verifs);
+                    });
+                    chips.appendChild(chip);
+                });
+
+                if (verifChoisie !== null && !verifs.some(v => v.id === verifChoisie)) {
+                    verifChoisie = null;
+                }
+                montrerDetailVerification(verifs);
+            }
+
+            function montrerDetailVerification(verifs) {
+                const detail = document.getElementById('verifDetail');
+                document.querySelectorAll('#verifsChips .chip').forEach(ch => {
+                    ch.classList.toggle('choisie', Number(ch.dataset.id) === verifChoisie);
+                });
+
+                const v = verifs.find(x => x.id === verifChoisie);
+                if (!v) {
+                    detail.style.display = 'none';
+                    return;
+                }
+
+                detail.innerHTML = '';
+                const nom = document.createElement('div');
+                nom.className = 'vd-nom';
+                nom.textContent = v.nom;
+                const info = document.createElement('div');
+                info.className = 'vd-info';
+                info.textContent = v.seuil_jours > 0
+                    ? `Fait il y a ${v.jours_ecoules} j · à refaire tous les ${v.seuil_jours} j`
+                    : `Seuil : ${v.seuil_alerte} km`;
+                detail.appendChild(nom);
+                detail.appendChild(info);
+
+                const bFait = document.createElement('button');
+                bFait.className = 'btn-action';
+                remplirBouton(bFait, 'cle', 'Marquer fait');
+                bFait.addEventListener('click', () => remplacer(v.id, v.nom));
+                detail.appendChild(bFait);
+
+                const outils = document.createElement('div');
+                outils.className = 'card-tools';
+                const bSeuils = document.createElement('button');
+                bSeuils.type = 'button';
+                remplirBouton(bSeuils, 'crayon', 'Seuils');
+                bSeuils.addEventListener('click', () => modifierSeuils(v));
+                const bRetirer = document.createElement('button');
+                bRetirer.type = 'button';
+                bRetirer.className = 'danger';
+                remplirBouton(bRetirer, 'poubelle', 'Retirer');
+                bRetirer.addEventListener('click', () => retirerComposant(v));
+                outils.appendChild(bSeuils);
+                outils.appendChild(bRetirer);
+                detail.appendChild(outils);
+                detail.style.display = 'block';
+            }
             let placementActif = false;
             let placementId = null;
 
@@ -2333,6 +2545,7 @@ def accueil():
 
                     const boite = document.querySelector('.bike-container');
                     boite.onclick = deplacerRepere;
+                    const verifs = [];
 
                     data.composants.forEach((c, index) => {
                         let statusClass = 'ok';
@@ -2363,6 +2576,11 @@ def accueil():
                         option.value = c.id;
                         option.textContent = c.nom;
                         selectComp.appendChild(option);
+
+                        if (c.verification) {
+                            verifs.push(c);
+                            return;
+                        }
 
                         const hotspot = document.createElement('div');
                         hotspot.className = `hotspot ${hotspotClass}`;
@@ -2524,10 +2742,13 @@ def accueil():
                         container.appendChild(card);
                     });
 
+                    afficherVerifications(verifs);
+
+                    const nbPieces = data.composants.filter(c => !c.verification).length;
                     const entete = document.createElement('div');
                     entete.className = 'liste-entete';
                     const titreListe = document.createElement('strong');
-                    titreListe.textContent = `${data.composants.length} pièces à suivre`;
+                    titreListe.textContent = `${nbPieces} pièces à suivre`;
                     const bTout = document.createElement('button');
                     bTout.type = 'button';
                     bTout.id = 'btnToutDeplier';
@@ -2536,10 +2757,12 @@ def accueil():
                     entete.appendChild(bTout);
                     container.insertBefore(entete, container.firstChild);
 
-                    const nbVertes = data.composants.filter(c => c.pourcentage_usure < 85).length;
+                    const nbVertes = data.composants.filter(
+                        c => !c.verification && c.pourcentage_usure < 85
+                    ).length;
                     titreListe.textContent = vertesVisibles || nbVertes === 0
-                        ? `${data.composants.length} pièces à suivre`
-                        : `${data.composants.length - nbVertes} à surveiller · ${nbVertes} en bon état`;
+                        ? `${nbPieces} pièces à suivre`
+                        : `${nbPieces - nbVertes} à surveiller · ${nbVertes} en bon état`;
 
                     if (nbVertes > 0) {
                         const bVertes = document.createElement('button');
@@ -4385,9 +4608,16 @@ def obtenir_etat(x_code_acces: Optional[str] = Header(default=None)):
 
             pourcentage = max(pourcentage_km, pourcentage_jours)
 
+            est_verification = bool(row["verification"])
+            numero = None
+
+            if not est_verification:
+                numero = sum(1 for r in resultat if not r["verification"]) + 1
+
             resultat.append({
                 "id": row["id"],
-                "numero": len(resultat) + 1,
+                "numero": numero,
+                "verification": est_verification,
                 "nom": row["nom"],
                 "km_actuel": km,
                 "km_usure": round(km_usure, 1),
