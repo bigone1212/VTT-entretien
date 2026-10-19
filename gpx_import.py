@@ -13,7 +13,7 @@ TAILLE_MAX = 3_000_000       # caractères
 VITESSE_MAX_KMH = 80         # au-delà : saut GPS, on ignore le point
 SEUIL_DENIVELE_M = 3         # on ignore les micro-variations d'altitude
 PAUSE_S = 60                 # intervalle plus long : pause, pas du roulage
-POINTS_TRACE = 120           # nombre de points gardés pour dessiner le parcours
+POINTS_TRACE = 400           # nombre de points gardés pour dessiner le parcours
 
 
 class GpxError(ValueError):

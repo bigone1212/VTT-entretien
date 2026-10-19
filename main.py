@@ -1589,6 +1589,95 @@ def accueil():
 
             .card.masquee { display: none; }
 
+            .vue3d {
+                position: fixed;
+                inset: 0;
+                z-index: 9500;
+                background: #0b171c;
+                color: #fff;
+            }
+
+            #carte3d { position: absolute; inset: 0; }
+
+            .v3d-haut {
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                z-index: 3;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+                padding: calc(10px + env(safe-area-inset-top)) 12px 10px;
+                background: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0));
+            }
+
+            .v3d-haut strong { font-size: 0.95rem; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
+
+            .v3d-bas {
+                position: absolute;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                z-index: 3;
+                padding: 28px 12px calc(12px + env(safe-area-inset-bottom));
+                background: linear-gradient(rgba(0,0,0,0), rgba(0,0,0,0.7));
+            }
+
+            .v3d-bas input[type="range"] {
+                width: 100%;
+                margin: 0 0 10px;
+                accent-color: #35e0c8;
+            }
+
+            .v3d-boutons { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+
+            .vue3d button {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                font: inherit;
+                font-size: 0.82rem;
+                font-weight: 700;
+                color: #fff;
+                background: rgba(20,40,48,0.78);
+                border: 1px solid rgba(255,255,255,0.25);
+                border-radius: 999px;
+                padding: 8px 14px;
+                cursor: pointer;
+                -webkit-backdrop-filter: blur(6px);
+                backdrop-filter: blur(6px);
+            }
+
+            .vue3d button.actif { background: linear-gradient(135deg, #35e0c8, #0a8f9c); color: #04231f; border-color: transparent; }
+            .vue3d button.enreg { background: #dc2626; border-color: transparent; }
+            #v3dFermer { width: 38px; height: 38px; padding: 0; justify-content: center; }
+
+            .v3d-info {
+                margin-top: 8px;
+                text-align: center;
+                font-size: 0.78rem;
+                color: rgba(255,255,255,0.85);
+                text-shadow: 0 1px 3px rgba(0,0,0,0.7);
+            }
+
+            .v3d-message {
+                position: absolute;
+                z-index: 4;
+                left: 50%;
+                top: 45%;
+                transform: translate(-50%, -50%);
+                width: min(86%, 380px);
+                text-align: center;
+                font-size: 0.92rem;
+                line-height: 1.4;
+                padding: 16px;
+                border-radius: 14px;
+                background: rgba(10,25,31,0.92);
+                border: 1px solid rgba(255,255,255,0.2);
+            }
+
             .videos-liste {
                 flex: 0 0 100%;
                 min-width: 0;
@@ -1879,6 +1968,26 @@ def accueil():
                 <input type="password" id="authInput" placeholder="Code secret" style="margin-bottom: 12px;">
                 <button class="btn-primary" style="width: 100%;" onclick="tenterConnexion()">Valider</button>
                 <p id="authError" style="color: var(--danger); font-size: 0.8rem; margin-top: 10px;"></p>
+            </div>
+        </div>
+
+        <div id="vue3d" class="vue3d" style="display:none;" role="dialog" aria-label="Survol 3D du parcours">
+            <div id="carte3d"></div>
+            <div class="v3d-haut">
+                <strong id="v3dTitre"></strong>
+                <button type="button" id="v3dFermer" aria-label="Fermer"></button>
+            </div>
+            <div class="v3d-message" id="v3dMessage" style="display:none;"></div>
+            <div class="v3d-bas">
+                <input type="range" id="v3dProgres" min="0" max="1000" value="0" aria-label="Avancement du parcours">
+                <div class="v3d-boutons">
+                    <button type="button" id="v3dLecture"></button>
+                    <button type="button" id="v3dVitesse"></button>
+                    <button type="button" id="v3dInclinaison"></button>
+                    <button type="button" id="v3dFond"></button>
+                    <button type="button" id="v3dEnreg"></button>
+                </div>
+                <div class="v3d-info" id="v3dInfo"></div>
             </div>
         </div>
 
@@ -2317,6 +2426,12 @@ def accueil():
                 el.lastChild.textContent = texte;
             }
 
+            ICONES.lecture = '<path d="M8 5v14l11-7z" fill="currentColor"/>';
+            ICONES.pause = '<path d="M8 5v14M16 5v14"/>';
+            ICONES.vitesse = '<path d="M5 6l6 6-6 6M13 6l6 6-6 6"/>';
+            ICONES.incl = '<path d="M3 18l9-12 9 12z"/>';
+            ICONES.fond = '<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>';
+            ICONES.enreg = '<circle cx="12" cy="12" r="6" fill="currentColor"/>';
             ICONES.soleil = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>';
             ICONES.lune = '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>';
             ICONES.auto = '<circle cx="12" cy="12" r="9"/><path d="M12 3v18"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/>';
@@ -3631,9 +3746,22 @@ def accueil():
                             ajouterVideo(s.id);
                         });
 
+                        const bouton3d = document.createElement('button');
+                        bouton3d.className = 'btn-action';
+                        bouton3d.style.marginTop = '8px';
+                        bouton3d.style.marginRight = '8px';
+                        bouton3d.style.width = 'auto';
+                        bouton3d.style.padding = '6px 12px';
+                        bouton3d.textContent = '🏔️ Survol 3D';
+                        bouton3d.disabled = !s.trace || s.trace.length < 2;
+                        bouton3d.addEventListener('click', () => {
+                            ouvrirV3d(s);
+                        });
+
                         details.appendChild(boutonPhotos);
                         details.appendChild(choixPhotos);
                         details.appendChild(boutonVideo);
+                        details.appendChild(bouton3d);
                         details.appendChild(bouton);
 
                         item.appendChild(details);
@@ -3681,6 +3809,490 @@ def accueil():
 
             const MAX_PHOTOS = 8;
             const MAX_VIDEOS = 10;
+
+            // ---------- Survol 3D ----------
+            const MAPLIBRE_JS = [
+                'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js',
+                'https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js'
+            ];
+            const MAPLIBRE_CSS = 'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css';
+            const INCLINAISONS = [45, 60, 75];
+            const VITESSES = [1, 2, 4];
+
+            const v3d = {
+                carte: null, pts: [], cum: [], total: 0, f: 0, jouer: false,
+                vitesse: 1, inclinaison: 60, cap: 0, dernier: 0, raf: 0,
+                fond: 'sat', enregistreur: null, morceaux: [], titre: '',
+                dureeBase: 60, prete: false, compteImages: 0
+            };
+
+            function chargerScript(url) {
+                return new Promise((resolve, reject) => {
+                    const sc = document.createElement('script');
+                    sc.src = url;
+                    sc.async = true;
+                    sc.onload = () => resolve();
+                    sc.onerror = () => { sc.remove(); reject(new Error('script')); };
+                    document.head.appendChild(sc);
+                });
+            }
+
+            async function chargerMapLibre() {
+                if (window.maplibregl) return;
+
+                if (!document.getElementById('maplibreCss')) {
+                    const l = document.createElement('link');
+                    l.id = 'maplibreCss';
+                    l.rel = 'stylesheet';
+                    l.href = MAPLIBRE_CSS;
+                    document.head.appendChild(l);
+                }
+
+                for (const url of MAPLIBRE_JS) {
+                    try {
+                        await chargerScript(url);
+                        if (window.maplibregl) return;
+                    } catch (e) {
+                        console.error(e);
+                    }
+                }
+                throw new Error('maplibre');
+            }
+
+            function distanceM(a, b) {
+                const R = 6371000;
+                const rad = Math.PI / 180;
+                const dLat = (b[1] - a[1]) * rad;
+                const dLon = (b[0] - a[0]) * rad;
+                const h = Math.sin(dLat / 2) ** 2 +
+                    Math.cos(a[1] * rad) * Math.cos(b[1] * rad) * Math.sin(dLon / 2) ** 2;
+                return 2 * R * Math.asin(Math.sqrt(h));
+            }
+
+            function capEntre(a, b) {
+                const rad = Math.PI / 180;
+                const y = Math.sin((b[0] - a[0]) * rad) * Math.cos(b[1] * rad);
+                const x = Math.cos(a[1] * rad) * Math.sin(b[1] * rad) -
+                    Math.sin(a[1] * rad) * Math.cos(b[1] * rad) * Math.cos((b[0] - a[0]) * rad);
+                return (Math.atan2(y, x) / rad + 360) % 360;
+            }
+
+            function ecartAngle(cible, actuel) {
+                return ((cible - actuel + 540) % 360) - 180;
+            }
+
+            // Point du parcours à la distance d (en mètres) depuis le départ.
+            function pointA(d) {
+                const pts = v3d.pts;
+                const cum = v3d.cum;
+                if (d <= 0) return pts[0].slice();
+                if (d >= v3d.total) return pts[pts.length - 1].slice();
+                let bas = 0;
+                let haut = cum.length - 1;
+                while (haut - bas > 1) {
+                    const milieu = (bas + haut) >> 1;
+                    if (cum[milieu] <= d) bas = milieu; else haut = milieu;
+                }
+                const seg = cum[haut] - cum[bas];
+                const t = seg > 0 ? (d - cum[bas]) / seg : 0;
+                return [
+                    pts[bas][0] + (pts[haut][0] - pts[bas][0]) * t,
+                    pts[bas][1] + (pts[haut][1] - pts[bas][1]) * t
+                ];
+            }
+
+            function preparerParcours(trace) {
+                // La trace est enregistrée en [latitude, longitude] ; la carte veut [longitude, latitude].
+                const pts = trace
+                    .filter(p => Array.isArray(p) && p.length >= 2)
+                    .map(p => [p[1], p[0]]);
+                v3d.pts = pts;
+                v3d.cum = [0];
+                for (let i = 1; i < pts.length; i++) {
+                    v3d.cum.push(v3d.cum[i - 1] + distanceM(pts[i - 1], pts[i]));
+                }
+                v3d.total = v3d.cum[v3d.cum.length - 1];
+                v3d.dureeBase = Math.min(180, Math.max(45, (v3d.total / 1000) * 5));
+            }
+
+            function messageV3d(texte) {
+                const m = document.getElementById('v3dMessage');
+                if (!texte) {
+                    m.style.display = 'none';
+                    return;
+                }
+                m.textContent = texte;
+                m.style.display = 'block';
+            }
+
+            function majBoutonsV3d() {
+                remplirBouton(document.getElementById('v3dLecture'),
+                    v3d.jouer ? 'pause' : 'lecture', v3d.jouer ? 'Pause' : 'Lecture');
+                document.getElementById('v3dLecture').classList.toggle('actif', !v3d.jouer);
+                remplirBouton(document.getElementById('v3dVitesse'), 'vitesse', `×${v3d.vitesse}`);
+                remplirBouton(document.getElementById('v3dInclinaison'), 'incl', `${v3d.inclinaison}°`);
+                remplirBouton(document.getElementById('v3dFond'), 'fond',
+                    v3d.fond === 'sat' ? 'Satellite' : 'Plan');
+                const enr = document.getElementById('v3dEnreg');
+                const en_cours = !!v3d.enregistreur;
+                remplirBouton(enr, 'enreg', en_cours ? 'Arrêter et enregistrer' : 'Enregistrer');
+                enr.classList.toggle('enreg', en_cours);
+            }
+
+            function dessinerAvancement() {
+                const carte = v3d.carte;
+                if (!carte || !v3d.prete) return;
+
+                const d = v3d.f * v3d.total;
+                const pos = pointA(d);
+                const fait = [];
+                for (let i = 0; i < v3d.pts.length && v3d.cum[i] <= d; i++) {
+                    fait.push(v3d.pts[i]);
+                }
+                fait.push(pos);
+
+                const srcFait = carte.getSource('v3d-fait');
+                if (srcFait) {
+                    srcFait.setData({
+                        type: 'Feature',
+                        geometry: { type: 'LineString', coordinates: fait.length > 1 ? fait : [pos, pos] }
+                    });
+                }
+                const srcPos = carte.getSource('v3d-pos');
+                if (srcPos) {
+                    srcPos.setData({
+                        type: 'Feature',
+                        geometry: { type: 'Point', coordinates: pos }
+                    });
+                }
+                document.getElementById('v3dProgres').value = String(Math.round(v3d.f * 1000));
+                document.getElementById('v3dInfo').textContent =
+                    `${(d / 1000).toFixed(1)} km sur ${(v3d.total / 1000).toFixed(1)} km`;
+            }
+
+            // Place la caméra derrière le point courant, orientée vers la suite du parcours.
+            function placerCamera(dt, brusque) {
+                const carte = v3d.carte;
+                if (!carte || !v3d.prete) return;
+
+                const d = v3d.f * v3d.total;
+                const centre = pointA(d);
+                const avance = Math.min(600, Math.max(120, v3d.total * 0.03));
+                const devant = pointA(Math.min(v3d.total, d + avance));
+                const arriere = pointA(Math.max(0, d - avance * 0.5));
+                let cible = v3d.cap;
+                if (distanceM(arriere, devant) > 5) {
+                    cible = capEntre(arriere, devant);
+                }
+
+                if (brusque) {
+                    v3d.cap = cible;
+                } else {
+                    const facteur = 1 - Math.exp(-dt * 2.5);
+                    v3d.cap = (v3d.cap + ecartAngle(cible, v3d.cap) * facteur + 360) % 360;
+                }
+
+                carte.jumpTo({
+                    center: centre,
+                    bearing: v3d.cap,
+                    pitch: v3d.inclinaison,
+                    zoom: 14.6
+                });
+            }
+
+            function imageV3d(t) {
+                v3d.raf = 0;
+                if (!v3d.jouer) return;
+
+                const dt = Math.min(0.1, Math.max(0, (t - v3d.dernier) / 1000));
+                v3d.dernier = t;
+                v3d.f = Math.min(1, v3d.f + (dt * v3d.vitesse) / v3d.dureeBase);
+
+                placerCamera(dt, false);
+                v3d.compteImages++;
+                if (v3d.compteImages % 2 === 0 || v3d.f >= 1) dessinerAvancement();
+
+                if (v3d.f >= 1) {
+                    v3d.jouer = false;
+                    if (v3d.enregistreur) arreterEnregistrement(true);
+                    majBoutonsV3d();
+                    return;
+                }
+                v3d.raf = requestAnimationFrame(imageV3d);
+            }
+
+            function lectureV3d(jouer) {
+                if (!v3d.prete) return;
+                if (jouer && v3d.f >= 1) v3d.f = 0;
+                v3d.jouer = jouer;
+                if (jouer) {
+                    messageV3d('');
+                    v3d.dernier = performance.now();
+                    placerCamera(0, v3d.f === 0);
+                    dessinerAvancement();
+                    if (!v3d.raf) v3d.raf = requestAnimationFrame(imageV3d);
+                } else if (v3d.raf) {
+                    cancelAnimationFrame(v3d.raf);
+                    v3d.raf = 0;
+                }
+                majBoutonsV3d();
+            }
+
+            function arreterEnregistrement(sauver) {
+                const rec = v3d.enregistreur;
+                if (!rec) return;
+                v3d.enregistreur = null;
+                v3d.sauverVideo = sauver;
+                try {
+                    if (rec.state !== 'inactive') rec.stop();
+                } catch (e) {
+                    console.error(e);
+                }
+                majBoutonsV3d();
+            }
+
+            function demarrerEnregistrement() {
+                const canvas = v3d.carte && v3d.carte.getCanvas ? v3d.carte.getCanvas() : null;
+                const types = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+                const type = window.MediaRecorder
+                    ? types.find(t => MediaRecorder.isTypeSupported(t))
+                    : null;
+
+                if (!canvas || !canvas.captureStream || !type) {
+                    messageV3d("L'enregistrement n'est pas pris en charge par ce navigateur. Utilise l'enregistrement d'écran de ton téléphone pendant le survol.");
+                    return;
+                }
+
+                const flux = canvas.captureStream(30);
+                const rec = new MediaRecorder(flux, { mimeType: type, videoBitsPerSecond: 6000000 });
+                v3d.morceaux = [];
+                v3d.sauverVideo = false;
+                rec.ondataavailable = (e) => {
+                    if (e.data && e.data.size > 0) v3d.morceaux.push(e.data);
+                };
+                rec.onstop = () => {
+                    if (!v3d.sauverVideo || v3d.morceaux.length === 0) return;
+                    const blob = new Blob(v3d.morceaux, { type: type });
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(blob);
+                    a.download = `survol-3d-${v3d.titre}.webm`;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+                    messageV3d('Vidéo enregistrée dans tes téléchargements.');
+                    setTimeout(() => messageV3d(''), 3500);
+                };
+
+                v3d.enregistreur = rec;
+                v3d.f = 0;
+                rec.start(1000);
+                lectureV3d(true);
+            }
+
+            function creerCarte(conteneur) {
+                const maplibregl = window.maplibregl;
+                const carte = new maplibregl.Map({
+                    container: conteneur,
+                    style: {
+                        version: 8,
+                        sources: {
+                            sat: {
+                                type: 'raster',
+                                tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+                                tileSize: 256,
+                                maxzoom: 19,
+                                attribution: 'Imagerie © Esri, Maxar, Earthstar Geographics'
+                            },
+                            plan: {
+                                type: 'raster',
+                                tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+                                tileSize: 256,
+                                maxzoom: 19,
+                                attribution: '© contributeurs OpenStreetMap'
+                            }
+                        },
+                        layers: [
+                            { id: 'fond-sat', type: 'raster', source: 'sat' },
+                            { id: 'fond-plan', type: 'raster', source: 'plan', layout: { visibility: 'none' } }
+                        ]
+                    },
+                    center: v3d.pts[0],
+                    zoom: 12,
+                    pitch: 45,
+                    maxPitch: 85,
+                    attributionControl: true
+                });
+                return carte;
+            }
+
+            function installerCouches() {
+                const carte = v3d.carte;
+                carte.addSource('dem', {
+                    type: 'raster-dem',
+                    tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
+                    encoding: 'terrarium',
+                    tileSize: 256,
+                    maxzoom: 15,
+                    attribution: 'Relief : AWS Terrain Tiles'
+                });
+                carte.setTerrain({ source: 'dem', exaggeration: 1.4 });
+
+                const ligne = { type: 'Feature', geometry: { type: 'LineString', coordinates: v3d.pts } };
+                carte.addSource('v3d-trace', { type: 'geojson', data: ligne });
+                carte.addLayer({
+                    id: 'v3d-trace-contour', type: 'line', source: 'v3d-trace',
+                    layout: { 'line-cap': 'round', 'line-join': 'round' },
+                    paint: { 'line-color': '#04231f', 'line-width': 7, 'line-opacity': 0.55 }
+                });
+                carte.addLayer({
+                    id: 'v3d-trace-ligne', type: 'line', source: 'v3d-trace',
+                    layout: { 'line-cap': 'round', 'line-join': 'round' },
+                    paint: { 'line-color': '#ffffff', 'line-width': 4, 'line-opacity': 0.9 }
+                });
+
+                carte.addSource('v3d-fait', {
+                    type: 'geojson',
+                    data: { type: 'Feature', geometry: { type: 'LineString', coordinates: [v3d.pts[0], v3d.pts[0]] } }
+                });
+                carte.addLayer({
+                    id: 'v3d-fait-ligne', type: 'line', source: 'v3d-fait',
+                    layout: { 'line-cap': 'round', 'line-join': 'round' },
+                    paint: { 'line-color': '#35e0c8', 'line-width': 5 }
+                });
+
+                carte.addSource('v3d-pos', {
+                    type: 'geojson',
+                    data: { type: 'Feature', geometry: { type: 'Point', coordinates: v3d.pts[0] } }
+                });
+                carte.addLayer({
+                    id: 'v3d-pos-point', type: 'circle', source: 'v3d-pos',
+                    paint: {
+                        'circle-radius': 8, 'circle-color': '#ef4444',
+                        'circle-stroke-color': '#ffffff', 'circle-stroke-width': 3
+                    }
+                });
+            }
+
+            function vueEnsemble() {
+                const carte = v3d.carte;
+                const bornes = new window.maplibregl.LngLatBounds(v3d.pts[0], v3d.pts[0]);
+                v3d.pts.forEach(p => bornes.extend(p));
+                carte.fitBounds(bornes, { padding: 60, pitch: 45, bearing: 0, duration: 0 });
+            }
+
+            function fermerV3d() {
+                if (v3d.enregistreur) arreterEnregistrement(false);
+                v3d.jouer = false;
+                if (v3d.raf) {
+                    cancelAnimationFrame(v3d.raf);
+                    v3d.raf = 0;
+                }
+                if (v3d.carte) {
+                    try { v3d.carte.remove(); } catch (e) { console.error(e); }
+                    v3d.carte = null;
+                }
+                v3d.prete = false;
+                document.getElementById('vue3d').style.display = 'none';
+                messageV3d('');
+            }
+
+            async function ouvrirV3d(sortie) {
+                if (!sortie.trace || sortie.trace.length < 2) {
+                    alert("Cette sortie n'a pas de parcours GPS pour le survol 3D.");
+                    return;
+                }
+
+                fermerV3d();
+                preparerParcours(sortie.trace);
+                v3d.f = 0;
+                v3d.vitesse = 1;
+                v3d.fond = 'sat';
+                v3d.compteImages = 0;
+                v3d.titre = (sortie.debut || '').slice(0, 10);
+                const jour = new Date(sortie.debut).toLocaleDateString('fr-FR');
+                document.getElementById('v3dTitre').textContent = `${sortie.nom} · ${jour}`;
+                document.getElementById('v3dProgres').value = '0';
+                document.getElementById('v3dInfo').textContent = '';
+                document.getElementById('vue3d').style.display = 'block';
+                majBoutonsV3d();
+                messageV3d('Chargement de la carte 3D…');
+
+                try {
+                    await chargerMapLibre();
+                } catch (e) {
+                    messageV3d("Impossible de charger la carte 3D. Vérifie ta connexion internet puis réessaie.");
+                    return;
+                }
+
+                if (document.getElementById('vue3d').style.display === 'none') return;
+
+                try {
+                    v3d.carte = creerCarte(document.getElementById('carte3d'));
+                    v3d.carte.on('load', () => {
+                        if (!v3d.carte) return;
+                        installerCouches();
+                        vueEnsemble();
+                        v3d.prete = true;
+                        v3d.cap = capEntre(v3d.pts[0], pointA(Math.min(v3d.total, 300)));
+                        messageV3d('Appuie sur Lecture pour lancer le survol.');
+                        dessinerAvancement();
+                    });
+                    v3d.carte.on('error', (e) => console.error(e && e.error ? e.error : e));
+                } catch (e) {
+                    console.error(e);
+                    messageV3d("Ton navigateur ne peut pas afficher la carte 3D (WebGL indisponible).");
+                }
+            }
+
+            (function brancherV3d() {
+                const bouton = (id, fn) => document.getElementById(id).addEventListener('click', fn);
+                remplirBouton(document.getElementById('v3dFermer'), 'fermer', '');
+                majBoutonsV3d();
+
+                bouton('v3dFermer', fermerV3d);
+                bouton('v3dLecture', () => lectureV3d(!v3d.jouer));
+                bouton('v3dVitesse', () => {
+                    v3d.vitesse = VITESSES[(VITESSES.indexOf(v3d.vitesse) + 1) % VITESSES.length];
+                    majBoutonsV3d();
+                });
+                bouton('v3dInclinaison', () => {
+                    v3d.inclinaison = INCLINAISONS[(INCLINAISONS.indexOf(v3d.inclinaison) + 1) % INCLINAISONS.length];
+                    if (!v3d.jouer) placerCamera(0, true);
+                    majBoutonsV3d();
+                });
+                bouton('v3dFond', () => {
+                    v3d.fond = v3d.fond === 'sat' ? 'plan' : 'sat';
+                    if (v3d.carte && v3d.prete) {
+                        v3d.carte.setLayoutProperty('fond-sat', 'visibility', v3d.fond === 'sat' ? 'visible' : 'none');
+                        v3d.carte.setLayoutProperty('fond-plan', 'visibility', v3d.fond === 'plan' ? 'visible' : 'none');
+                    }
+                    majBoutonsV3d();
+                });
+                bouton('v3dEnreg', () => {
+                    if (!v3d.prete) return;
+                    if (v3d.enregistreur) {
+                        arreterEnregistrement(true);
+                    } else {
+                        demarrerEnregistrement();
+                    }
+                });
+                document.getElementById('v3dProgres').addEventListener('input', (e) => {
+                    if (!v3d.prete) return;
+                    v3d.f = Number(e.target.value) / 1000;
+                    messageV3d('');
+                    placerCamera(0, true);
+                    dessinerAvancement();
+                });
+                document.addEventListener('keydown', (e) => {
+                    if (document.getElementById('vue3d').style.display === 'none') return;
+                    if (e.key === 'Escape') fermerV3d();
+                    else if (e.key === ' ' && e.target === document.body) {
+                        e.preventDefault();
+                        lectureV3d(!v3d.jouer);
+                    }
+                });
+            })();
 
             // Identifiant d'une vidéo YouTube (youtu.be, watch?v=, shorts, embed), sinon null.
             function idYoutube(adresse) {
