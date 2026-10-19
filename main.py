@@ -4035,7 +4035,8 @@ def accueil():
                 const total = profil.cum[profil.cum.length - 1];
                 const mini = Math.min(...profil.alt);
                 const maxi = Math.max(...profil.alt);
-                const etendue = Math.max(30, maxi - mini);
+                // Échelle verticale limitée : une sortie peu pentue ne doit pas ressembler à une montagne.
+                const etendue = Math.max(60, maxi - mini, total / 16);
                 const x = (d) => margeG + (d / total) * (largeur - margeG);
                 const y = (a) => 8 + (1 - (a - mini) / etendue) * (hautGraph - 16);
 
@@ -4149,7 +4150,7 @@ def accueil():
 
                 const largeur = Math.max(300, Math.min(900, zone.clientWidth || 340));
                 const paysage = window.innerHeight < 520 && window.innerWidth > window.innerHeight;
-                const hauteur = paysage ? 170 : (largeur > 600 ? 340 : 280);
+                const hauteur = paysage ? 170 : (largeur > 600 ? 300 : 220);
                 const g = construireProfil(s, profil, largeur, hauteur, true);
                 zone.appendChild(g.svg);
 
@@ -5043,7 +5044,7 @@ def accueil():
                     maxzoom: 15,
                     attribution: 'Relief : AWS Terrain Tiles'
                 });
-                carte.setTerrain({ source: 'dem', exaggeration: 1.4 });
+                carte.setTerrain({ source: 'dem', exaggeration: 1.0 });
 
                 if (v3d.autres.length) {
                     carte.addSource('v3d-autres', {
@@ -5059,7 +5060,7 @@ def accueil():
                             'line-cap': 'round', 'line-join': 'round',
                             visibility: v3d.voirAutres ? 'visible' : 'none'
                         },
-                        paint: { 'line-color': '#ffb020', 'line-width': 3, 'line-opacity': 0.85 }
+                        paint: { 'line-color': '#ffffff', 'line-width': 3, 'line-opacity': 0.9 }
                     });
                 }
 
