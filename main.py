@@ -4217,7 +4217,7 @@ def accueil():
                 vitesse: 1, inclinaison: 60, cap: 0, dernier: 0, raf: 0,
                 fond: 'sat', enregistreur: null, morceaux: [], titre: '',
                 dureeBase: 60, prete: false, compteImages: 0,
-                tps: [], alts: [], surfaces: '', pentes: [], mode: 'pente', autres: [], voirAutres: true, photos: [], marqueurs: [], prochaine: 0, sortieId: 0, minuteur: 0
+                tps: [], decalage: 0, alts: [], surfaces: '', pentes: [], mode: 'pente', autres: [], voirAutres: true, photos: [], marqueurs: [], prochaine: 0, sortieId: 0, minuteur: 0
             };
 
             function chargerScript(url) {
@@ -4521,12 +4521,44 @@ def accueil():
                     v3d.cap = (v3d.cap + ecartAngle(cible, v3d.cap) * facteur + 360) % 360;
                 }
 
+                const hauteur = document.getElementById('carte3d').clientHeight || 600;
+
+                // Recentre le point de suivi : on mesure où il apparait à l'écran
+                // (relief compris) et on décale la vue pour le ramener vers 52 % de la hauteur.
+                if (typeof carte.project === 'function' && !brusque) {
+                    try {
+                        const ecran = carte.project(centre);
+                        if (ecran && isFinite(ecran.y)) {
+                            const erreur = hauteur * 0.52 - ecran.y;
+                            if (Math.abs(erreur) > 3) {
+                                v3d.decalage = Math.max(-hauteur, Math.min(hauteur * 1.6, v3d.decalage + erreur * 0.8));
+                            }
+                        }
+                    } catch (e) {
+                        console.error(e);
+                    }
+                }
+
                 carte.jumpTo({
                     center: centre,
                     bearing: v3d.cap,
                     pitch: v3d.inclinaison,
-                    zoom: 14.6
+                    zoom: 14.6,
+                    padding: { top: v3d.decalage, bottom: 0, left: 0, right: 0 }
                 });
+
+                // Mesure juste après le déplacement : sert de correction immédiate à l'arrêt ou au curseur.
+                if (brusque && typeof carte.project === 'function') {
+                    try {
+                        const ecran = carte.project(centre);
+                        if (ecran && isFinite(ecran.y)) {
+                            const erreur = hauteur * 0.52 - ecran.y;
+                            v3d.decalage = Math.max(-hauteur, Math.min(hauteur * 1.6, v3d.decalage + erreur * 0.8));
+                        }
+                    } catch (e) {
+                        console.error(e);
+                    }
+                }
             }
 
             function imageV3d(t) {
@@ -4806,6 +4838,7 @@ def accueil():
                 v3d.sortieId = sortie.id;
                 v3d.photos = placerPhotos(sortie);
                 v3d.voirAutres = true;
+                v3d.decalage = 0;
                 v3d.mode = 'pente';
                 v3d.surfaces = sortie.surfaces || '';
                 v3d.autres = sortiesConnues
