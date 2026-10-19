@@ -1751,6 +1751,31 @@ def accueil():
                 vertical-align: middle;
             }
 
+            .fenetre-profil {
+                position: fixed;
+                inset: 0;
+                z-index: 9600;
+                align-items: center;
+                justify-content: center;
+                padding: 12px;
+                background: rgba(0,0,0,0.6);
+            }
+
+            .fp-boite {
+                width: min(100%, 940px);
+                max-height: 94vh;
+                overflow: auto;
+                padding: 14px;
+                border-radius: 16px;
+                background: var(--card-bg);
+                border: 1px solid var(--line);
+            }
+
+            .fp-haut { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+            #fpFermer { width: 38px; height: 38px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid var(--line); background: var(--fill); color: var(--strong); cursor: pointer; }
+            #fpGraph svg { width: 100%; height: auto; display: block; border-radius: 10px; background: var(--fill); }
+            .fp-info { margin: 10px 0 4px; font-weight: 700; font-size: 0.9rem; min-height: 1.3em; }
+
             .profil-sortie {
                 flex: 0 0 100%;
                 margin-top: 10px;
@@ -2066,6 +2091,18 @@ def accueil():
                 <input type="password" id="authInput" placeholder="Code secret" style="margin-bottom: 12px;">
                 <button class="btn-primary" style="width: 100%;" onclick="tenterConnexion()">Valider</button>
                 <p id="authError" style="color: var(--danger); font-size: 0.8rem; margin-top: 10px;"></p>
+            </div>
+        </div>
+
+        <div id="fenetreProfil" class="fenetre-profil" style="display:none;" role="dialog" aria-label="Profil de la sortie">
+            <div class="fp-boite">
+                <div class="fp-haut">
+                    <strong id="fpTitre"></strong>
+                    <button type="button" id="fpFermer" aria-label="Fermer"></button>
+                </div>
+                <div id="fpGraph"></div>
+                <div class="fp-info" id="fpInfo"></div>
+                <div id="fpLegendes"></div>
             </div>
         </div>
 
@@ -3912,68 +3949,225 @@ def accueil():
                 return l;
             }
 
-            // Profil d'altitude coloré par difficulté (pente) + bande du type de chemin.
-            function dessinerProfil(s) {
-                const profil = analyserProfil(s.trace);
-                if (!profil) return null;
+            // Pas des repères kilométriques selon la longueur de la sortie.
+            function pasKm(totalM) {
+                if (totalM <= 3000) return 0.5;
+                if (totalM <= 8000) return 1;
+                if (totalM <= 15000) return 2;
+                if (totalM <= 40000) return 5;
+                return 10;
+            }
 
+            // Dessine le profil (pente en couleurs, type de chemin, repères en km).
+            // `grand` : version de la fenêtre (axe des altitudes, plus de place).
+            function construireProfil(s, profil, largeur, hauteur, grand) {
                 const ns = 'http://www.w3.org/2000/svg';
-                const L = 600;
-                const H = 150;
-                const hautGraph = 110;
+                const codes = s.surfaces && s.surfaces.length === s.trace.length ? s.surfaces : null;
+                const police = grand ? 12 : 16;
+                const margeG = grand ? 48 : 0;
+                const hautBande = codes ? (grand ? 16 : 20) : 0;
+                const bas = hautBande + (codes ? 10 : 0) + police + 8;
+                const hautGraph = hauteur - bas;
                 const total = profil.cum[profil.cum.length - 1];
                 const mini = Math.min(...profil.alt);
                 const maxi = Math.max(...profil.alt);
                 const etendue = Math.max(30, maxi - mini);
-                const x = (d) => (d / total) * L;
-                const y = (a) => 6 + (1 - (a - mini) / etendue) * (hautGraph - 12);
+                const x = (d) => margeG + (d / total) * (largeur - margeG);
+                const y = (a) => 8 + (1 - (a - mini) / etendue) * (hautGraph - 16);
 
                 const svg = document.createElementNS(ns, 'svg');
-                svg.setAttribute('viewBox', `0 0 ${L} ${H}`);
+                svg.setAttribute('viewBox', `0 0 ${largeur} ${hauteur}`);
                 svg.setAttribute('role', 'img');
                 svg.setAttribute('aria-label', 'Profil de pente de la sortie');
 
-                for (let i = 0; i < profil.pentes.length; i++) {
-                    const poly = document.createElementNS(ns, 'polygon');
-                    const x0 = x(profil.cum[i]);
-                    const x1 = x(profil.cum[i + 1]) + 0.6;
-                    poly.setAttribute('points',
-                        `${x0},${hautGraph} ${x0},${y(profil.alt[i])} ${x1},${y(profil.alt[i + 1])} ${x1},${hautGraph}`);
-                    poly.setAttribute('fill', couleurPente(profil.pentes[i]));
-                    svg.appendChild(poly);
+                const ajouter = (nom, attrs, parent) => {
+                    const el = document.createElementNS(ns, nom);
+                    Object.keys(attrs).forEach(k => el.setAttribute(k, attrs[k]));
+                    (parent || svg).appendChild(el);
+                    return el;
+                };
+                const texte = (contenu, attrs) => {
+                    const t = ajouter('text', attrs);
+                    t.setAttribute('font-size', police);
+                    t.style.fill = 'var(--text-muted)';
+                    t.textContent = contenu;
+                    return t;
+                };
+
+                for (let k = 0; k < profil.pentes.length; k++) {
+                    const x0 = x(profil.cum[k]);
+                    const x1 = x(profil.cum[k + 1]) + 0.6;
+                    ajouter('polygon', {
+                        points: `${x0},${hautGraph} ${x0},${y(profil.alt[k])} ${x1},${y(profil.alt[k + 1])} ${x1},${hautGraph}`,
+                        fill: couleurPente(profil.pentes[k])
+                    });
                 }
 
-                const codes = s.surfaces && s.surfaces.length === s.trace.length ? s.surfaces : null;
                 if (codes) {
-                    for (let i = 0; i < codes.length - 1; i++) {
-                        const r = document.createElementNS(ns, 'rect');
-                        r.setAttribute('x', x(profil.cum[i]));
-                        r.setAttribute('y', hautGraph + 10);
-                        r.setAttribute('width', x(profil.cum[i + 1]) - x(profil.cum[i]) + 0.6);
-                        r.setAttribute('height', 22);
-                        r.setAttribute('fill', (TYPES_CHEMIN[codes[i]] || TYPES_CHEMIN.u).couleur);
-                        svg.appendChild(r);
+                    for (let k = 0; k < codes.length - 1; k++) {
+                        ajouter('rect', {
+                            x: x(profil.cum[k]),
+                            y: hautGraph + 8,
+                            width: x(profil.cum[k + 1]) - x(profil.cum[k]) + 0.6,
+                            height: hautBande,
+                            fill: (TYPES_CHEMIN[codes[k]] || TYPES_CHEMIN.u).couleur
+                        });
                     }
                 }
 
-                const bloc = document.createElement('div');
-                bloc.className = 'profil-sortie';
-                bloc.appendChild(svg);
+                // Repères kilométriques
+                const pas = pasKm(total) * 1000;
+                const baseAxe = hauteur - 5;
+                for (let d = pas; d < total * 0.88; d += pas) {
+                    const xx = x(d);
+                    ajouter('line', {
+                        x1: xx, x2: xx, y1: 0, y2: hautGraph + (codes ? 8 + hautBande : 4),
+                        stroke: 'rgba(255,255,255,0.7)', 'stroke-width': 1, 'stroke-dasharray': '3 3'
+                    });
+                    const km = d / 1000;
+                    texte(Number.isInteger(km) ? `${km} km` : `${km.toFixed(1)} km`,
+                        { x: xx, y: baseAxe, 'text-anchor': 'middle' });
+                }
+                texte('0', { x: x(0) + (grand ? 0 : 2), y: baseAxe, 'text-anchor': grand ? 'middle' : 'start' });
+                texte(`${(total / 1000).toFixed(1)} km`, { x: largeur - 2, y: baseAxe, 'text-anchor': 'end' });
 
-                const info = document.createElement('div');
-                info.className = 'profil-legende';
-                info.textContent = `Altitude ${Math.round(mini)} à ${Math.round(maxi)} m sur ${(total / 1000).toFixed(1)} km`;
-                bloc.appendChild(info);
-                bloc.appendChild(legendeProfil(COULEURS_PENTE.map(c => ({ couleur: c.couleur, texte: c.nom }))));
+                if (grand) {
+                    [mini, (mini + maxi) / 2, maxi].forEach(a => {
+                        ajouter('line', {
+                            x1: margeG, x2: largeur, y1: y(a), y2: y(a),
+                            stroke: 'rgba(255,255,255,0.25)', 'stroke-width': 1
+                        });
+                        texte(`${Math.round(a)} m`, { x: margeG - 4, y: y(a) + 4, 'text-anchor': 'end' });
+                    });
+                }
 
+                return { svg: svg, x: x, total: total, codes: codes, mini: mini, maxi: maxi, margeG: margeG };
+            }
+
+            function legendesProfil(s, profil) {
+                const zone = document.createElement('div');
+                zone.appendChild(legendeProfil(COULEURS_PENTE.map(c => ({ couleur: c.couleur, texte: c.nom }))));
+                const codes = s.surfaces && s.surfaces.length === s.trace.length ? s.surfaces : null;
                 if (codes) {
-                    bloc.appendChild(legendeProfil(
+                    zone.appendChild(legendeProfil(
                         resumeChemins(codes, profil.cum).map(r => ({
                             couleur: TYPES_CHEMIN[r.code].couleur,
                             texte: `${TYPES_CHEMIN[r.code].nom} ${r.part} %`
                         }))
                     ));
-                } else {
+                }
+                return zone;
+            }
+
+            function indiceA(cum, d) {
+                let bas = 0;
+                let haut = cum.length - 1;
+                while (haut - bas > 1) {
+                    const m = (bas + haut) >> 1;
+                    if (cum[m] <= d) bas = m; else haut = m;
+                }
+                return bas;
+            }
+
+            // Fenêtre plein écran : profil agrandi, on touche le graphique pour lire chaque point.
+            function ouvrirProfil(s) {
+                const profil = analyserProfil(s.trace);
+                if (!profil) return;
+
+                const fenetre = document.getElementById('fenetreProfil');
+                const zone = document.getElementById('fpGraph');
+                const info = document.getElementById('fpInfo');
+                const jour = new Date(s.debut).toLocaleDateString('fr-FR');
+                document.getElementById('fpTitre').textContent = `${s.nom} · ${jour}`;
+                zone.textContent = '';
+                fenetre.style.display = 'flex';
+
+                const largeur = Math.max(300, Math.min(900, zone.clientWidth || 340));
+                const hauteur = largeur > 600 ? 340 : 280;
+                const g = construireProfil(s, profil, largeur, hauteur, true);
+                zone.appendChild(g.svg);
+
+                const resume = [
+                    `${(g.total / 1000).toFixed(1)} km`,
+                    `${s.denivele_pos} m D+`,
+                    `${s.denivele_neg} m D-`,
+                    `pente max ${Math.round(Math.max(...profil.pentes.map(Math.abs)))} %`
+                ].join(' · ');
+                info.textContent = `${resume} — touche le graphique pour lire un point`;
+
+                const NS = 'http://www.w3.org/2000/svg';
+                const curseur = document.createElementNS(NS, 'line');
+                curseur.setAttribute('y1', 0);
+                curseur.setAttribute('y2', hauteur);
+                curseur.setAttribute('stroke', '#ffffff');
+                curseur.setAttribute('stroke-width', 2);
+                curseur.style.display = 'none';
+                g.svg.appendChild(curseur);
+
+                const lire = (evenement) => {
+                    const boite = g.svg.getBoundingClientRect();
+                    const px = ((evenement.clientX - boite.left) / boite.width) * largeur;
+                    const d = Math.max(0, Math.min(g.total, ((px - g.margeG) / (largeur - g.margeG)) * g.total));
+                    const k = indiceA(profil.cum, d);
+                    const pente = profil.pentes[Math.min(k, profil.pentes.length - 1)];
+                    const fleche = pente > 0.5 ? '↑' : (pente < -0.5 ? '↓' : '→');
+                    let ligne = `${(d / 1000).toFixed(1)} km · ${Math.round(profil.alt[k])} m · pente ${Math.round(Math.abs(pente))} % ${fleche}`;
+                    if (g.codes) {
+                        ligne += ` · ${(TYPES_CHEMIN[g.codes[k]] || TYPES_CHEMIN.u).nom}`;
+                    }
+                    info.textContent = ligne;
+                    const xx = g.x(d);
+                    curseur.setAttribute('x1', xx);
+                    curseur.setAttribute('x2', xx);
+                    curseur.style.display = '';
+                };
+                g.svg.style.touchAction = 'none';
+                g.svg.addEventListener('pointerdown', lire);
+                g.svg.addEventListener('pointermove', (e) => {
+                    if (e.buttons || e.pointerType === 'touch') lire(e);
+                });
+                g.svg.addEventListener('mousemove', lire);
+
+                const leg = document.getElementById('fpLegendes');
+                leg.textContent = '';
+                leg.appendChild(legendesProfil(s, profil));
+            }
+
+            function fermerProfil() {
+                document.getElementById('fenetreProfil').style.display = 'none';
+            }
+
+            (function brancherProfil() {
+                remplirBouton(document.getElementById('fpFermer'), 'fermer', '');
+                document.getElementById('fpFermer').addEventListener('click', fermerProfil);
+                document.getElementById('fenetreProfil').addEventListener('click', (e) => {
+                    if (e.target.id === 'fenetreProfil') fermerProfil();
+                });
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape') fermerProfil();
+                });
+            })();
+
+            // Profil d'une sortie dans la liste : repères en km, clic = fenêtre agrandie.
+            function dessinerProfil(s) {
+                const profil = analyserProfil(s.trace);
+                if (!profil) return null;
+
+                const g = construireProfil(s, profil, 600, 175, false);
+                g.svg.style.cursor = 'pointer';
+                g.svg.addEventListener('click', () => ouvrirProfil(s));
+
+                const bloc = document.createElement('div');
+                bloc.className = 'profil-sortie';
+                bloc.appendChild(g.svg);
+
+                const info = document.createElement('div');
+                info.className = 'profil-legende';
+                info.textContent = `Altitude ${Math.round(g.mini)} à ${Math.round(g.maxi)} m sur ${(g.total / 1000).toFixed(1)} km · touche le profil pour l'agrandir`;
+                bloc.appendChild(info);
+                bloc.appendChild(legendesProfil(s, profil));
+
+                if (!g.codes) {
                     const bouton = document.createElement('button');
                     bouton.className = 'btn-action';
                     bouton.style.width = 'auto';
