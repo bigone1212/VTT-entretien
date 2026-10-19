@@ -150,10 +150,15 @@ def _tracer(points):
         pas = (len(points) - 1) / (POINTS_TRACE - 1)
         choisis = [points[round(i * pas)] for i in range(POINTS_TRACE)]
 
-    # 3e valeur : secondes écoulées depuis le départ (pour placer les photos).
+    # 3e valeur : secondes depuis le départ (photos) ; 4e : altitude en mètres (pente).
     depart = points[0][3]
     return [
-        [round(p[0], 5), round(p[1], 5), round((p[3] - depart).total_seconds())]
+        [
+            round(p[0], 5),
+            round(p[1], 5),
+            round((p[3] - depart).total_seconds()),
+            round(p[2], 1) if p[2] is not None else None,
+        ]
         for p in choisis
     ]
 

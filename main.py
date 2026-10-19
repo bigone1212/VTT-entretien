@@ -347,6 +347,7 @@ def init_db():
 
     ajouter_colonne(cursor, "sorties", "photos", "TEXT")
     ajouter_colonne(cursor, "sorties", "videos", "TEXT")
+    ajouter_colonne(cursor, "sorties", "surfaces", "TEXT")
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS reglages (
@@ -1726,6 +1727,39 @@ def accueil():
                 box-shadow: 0 2px 8px rgba(0,0,0,0.5);
             }
 
+            .v3d-legende {
+                position: absolute;
+                z-index: 3;
+                left: 12px;
+                top: calc(58px + env(safe-area-inset-top));
+                display: flex;
+                flex-direction: column;
+                gap: 3px;
+                padding: 8px 10px;
+                border-radius: 10px;
+                font-size: 0.72rem;
+                font-weight: 700;
+                background: rgba(10,25,31,0.72);
+            }
+
+            .v3d-legende span i {
+                display: inline-block;
+                width: 14px;
+                height: 5px;
+                border-radius: 3px;
+                margin-right: 6px;
+                vertical-align: middle;
+            }
+
+            .profil-sortie {
+                flex: 0 0 100%;
+                margin-top: 10px;
+            }
+
+            .profil-sortie svg { width: 100%; height: auto; display: block; border-radius: 8px; background: var(--fill); }
+            .profil-legende { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; font-size: 0.74rem; color: var(--text-muted); }
+            .profil-legende i { display: inline-block; width: 12px; height: 6px; border-radius: 3px; margin-right: 4px; vertical-align: middle; }
+
             .v3d-message {
                 position: absolute;
                 z-index: 4;
@@ -2041,6 +2075,7 @@ def accueil():
                 <strong id="v3dTitre"></strong>
                 <button type="button" id="v3dFermer" aria-label="Fermer"></button>
             </div>
+            <div class="v3d-legende" id="v3dLegende"></div>
             <div class="v3d-photo" id="v3dPhoto" style="display:none;">
                 <img id="v3dPhotoImg" alt="Photo de la sortie">
             </div>
@@ -2053,6 +2088,7 @@ def accueil():
                     <button type="button" id="v3dInclinaison"></button>
                     <button type="button" id="v3dFond"></button>
                     <button type="button" id="v3dAutres"></button>
+                    <button type="button" id="v3dCouleur"></button>
                     <button type="button" id="v3dEnreg"></button>
                 </div>
                 <div class="v3d-info" id="v3dInfo"></div>
@@ -3690,6 +3726,285 @@ def accueil():
             }
 
 
+            // ---------- Pente et type de chemin ----------
+            const COULEURS_PENTE = [
+                { max: 4, couleur: '#22c55e', nom: 'moins de 4 %' },
+                { max: 8, couleur: '#facc15', nom: '4 à 8 %' },
+                { max: 12, couleur: '#f97316', nom: '8 à 12 %' },
+                { max: 16, couleur: '#ef4444', nom: '12 à 16 %' },
+                { max: 1000, couleur: '#7f1d1d', nom: 'plus de 16 %' }
+            ];
+            const TYPES_CHEMIN = {
+                r: { couleur: '#94a3b8', nom: 'Route' },
+                v: { couleur: '#38bdf8', nom: 'Piste cyclable' },
+                c: { couleur: '#d4a24c', nom: 'Chemin / piste' },
+                s: { couleur: '#8b5a2b', nom: 'Sentier' },
+                u: { couleur: '#475569', nom: 'Inconnu' }
+            };
+
+            function couleurPente(pourcent) {
+                const a = Math.abs(pourcent);
+                return COULEURS_PENTE.find(c => a < c.max).couleur;
+            }
+
+            function distanceLatLon(a, b) {
+                const rad = Math.PI / 180;
+                const dLat = (b[0] - a[0]) * rad;
+                const dLon = (b[1] - a[1]) * rad;
+                const h = Math.sin(dLat / 2) ** 2 +
+                    Math.cos(a[0] * rad) * Math.cos(b[0] * rad) * Math.sin(dLon / 2) ** 2;
+                return 2 * 6371000 * Math.asin(Math.sqrt(h));
+            }
+
+            // Calcule distances cumulées, altitudes lissées et pente (en %) de chaque tronçon.
+            function analyserProfil(trace) {
+                if (!Array.isArray(trace) || trace.length < 3) return null;
+                if (trace.some(p => !Array.isArray(p) || typeof p[3] !== 'number')) return null;
+
+                const n = trace.length;
+                const cum = [0];
+                for (let i = 1; i < n; i++) {
+                    cum.push(cum[i - 1] + distanceLatLon(trace[i - 1], trace[i]));
+                }
+                if (cum[n - 1] < 100) return null;
+
+                const brut = trace.map(p => p[3]);
+                const alt = brut.map((_, i) => {
+                    let somme = 0;
+                    let nb = 0;
+                    for (let j = Math.max(0, i - 2); j <= Math.min(n - 1, i + 2); j++) {
+                        somme += brut[j];
+                        nb++;
+                    }
+                    return somme / nb;
+                });
+
+                const pentes = [];
+                for (let i = 0; i < n - 1; i++) {
+                    let a = i;
+                    let b = i + 1;
+                    while (cum[b] - cum[a] < 120 && (a > 0 || b < n - 1)) {
+                        if (a > 0) a--;
+                        if (cum[b] - cum[a] < 120 && b < n - 1) b++;
+                    }
+                    const d = cum[b] - cum[a];
+                    pentes.push(d > 0 ? ((alt[b] - alt[a]) / d) * 100 : 0);
+                }
+                return { cum: cum, alt: alt, pentes: pentes };
+            }
+
+            function classerChemin(tags) {
+                const route = tags.highway || '';
+                const surface = tags.surface || '';
+                const dur = ['asphalt', 'paved', 'concrete', 'paving_stones', 'sett', 'chipseal', 'concrete:plates', 'concrete:lanes'];
+                const meuble = ['unpaved', 'gravel', 'fine_gravel', 'compacted', 'dirt', 'ground', 'earth', 'grass', 'sand', 'mud', 'pebblestone', 'rock', 'woodchips', 'grass_paver'];
+
+                if (route === 'cycleway') return 'v';
+                if (dur.includes(surface)) return 'r';
+                if (meuble.includes(surface)) {
+                    return ['path', 'footway', 'bridleway', 'steps'].includes(route) ? 's' : 'c';
+                }
+                if (['motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'unclassified', 'residential', 'service', 'living_street', 'road'].includes(route)) return 'r';
+                if (route === 'track') return 'c';
+                if (['path', 'footway', 'bridleway', 'steps'].includes(route)) return 's';
+                return 'u';
+            }
+
+            // Interroge OpenStreetMap (Overpass) et attribue un type de chemin à chaque point du tracé.
+            async function chercherTypesChemin(trace) {
+                const lats = trace.map(p => p[0]);
+                const lons = trace.map(p => p[1]);
+                const marge = 0.0004;
+                const sud = Math.min(...lats) - marge;
+                const nord = Math.max(...lats) + marge;
+                const ouest = Math.min(...lons) - marge;
+                const est = Math.max(...lons) + marge;
+                if ((nord - sud) > 0.5 || (est - ouest) > 0.7) {
+                    throw new Error('trop grand');
+                }
+
+                const requete = `[out:json][timeout:40];way["highway"](${sud},${ouest},${nord},${est});out tags geom qt;`;
+                const serveurs = [
+                    'https://overpass-api.de/api/interpreter',
+                    'https://overpass.kumi.systems/api/interpreter'
+                ];
+                let donnees = null;
+
+                for (const url of serveurs) {
+                    try {
+                        const res = await fetch(url, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                            body: 'data=' + encodeURIComponent(requete)
+                        });
+                        if (res.ok) {
+                            donnees = await res.json();
+                            break;
+                        }
+                    } catch (e) {
+                        console.error(e);
+                    }
+                }
+                if (!donnees || !Array.isArray(donnees.elements)) throw new Error('overpass');
+
+                const lat0 = (sud + nord) / 2;
+                const kx = Math.cos(lat0 * Math.PI / 180) * 111320;
+                const ky = 110540;
+                const voies = donnees.elements
+                    .filter(e => e.geometry && e.geometry.length > 1 && e.tags)
+                    .map(e => ({
+                        code: classerChemin(e.tags),
+                        pts: e.geometry.map(g => [g.lon * kx, g.lat * ky])
+                    }));
+
+                const distSegment = (px, py, a, b) => {
+                    const dx = b[0] - a[0];
+                    const dy = b[1] - a[1];
+                    const l2 = dx * dx + dy * dy;
+                    let t = l2 > 0 ? ((px - a[0]) * dx + (py - a[1]) * dy) / l2 : 0;
+                    t = Math.max(0, Math.min(1, t));
+                    return Math.hypot(px - (a[0] + t * dx), py - (a[1] + t * dy));
+                };
+
+                let codes = '';
+                for (const p of trace) {
+                    const px = p[1] * kx;
+                    const py = p[0] * ky;
+                    let meilleur = 'u';
+                    let ecart = 30;
+                    for (const v of voies) {
+                        for (let i = 0; i < v.pts.length - 1; i++) {
+                            const a = v.pts[i];
+                            const b = v.pts[i + 1];
+                            if (px < Math.min(a[0], b[0]) - 30 || px > Math.max(a[0], b[0]) + 30 ||
+                                py < Math.min(a[1], b[1]) - 30 || py > Math.max(a[1], b[1]) + 30) continue;
+                            const d = distSegment(px, py, a, b);
+                            if (d < ecart) { ecart = d; meilleur = v.code; }
+                        }
+                    }
+                    codes += meilleur;
+                }
+                return codes;
+            }
+
+            function resumeChemins(codes, cum) {
+                const total = {};
+                for (let i = 0; i < codes.length - 1; i++) {
+                    total[codes[i]] = (total[codes[i]] || 0) + (cum[i + 1] - cum[i]);
+                }
+                const somme = cum[cum.length - 1] || 1;
+                return Object.keys(TYPES_CHEMIN)
+                    .filter(k => total[k])
+                    .map(k => ({ code: k, part: Math.round((total[k] / somme) * 100) }));
+            }
+
+            function legendeProfil(elements) {
+                const l = document.createElement('div');
+                l.className = 'profil-legende';
+                elements.forEach(e => {
+                    const sp = document.createElement('span');
+                    const i = document.createElement('i');
+                    i.style.background = e.couleur;
+                    sp.appendChild(i);
+                    sp.appendChild(document.createTextNode(e.texte));
+                    l.appendChild(sp);
+                });
+                return l;
+            }
+
+            // Profil d'altitude coloré par difficulté (pente) + bande du type de chemin.
+            function dessinerProfil(s) {
+                const profil = analyserProfil(s.trace);
+                if (!profil) return null;
+
+                const ns = 'http://www.w3.org/2000/svg';
+                const L = 600;
+                const H = 150;
+                const hautGraph = 110;
+                const total = profil.cum[profil.cum.length - 1];
+                const mini = Math.min(...profil.alt);
+                const maxi = Math.max(...profil.alt);
+                const etendue = Math.max(30, maxi - mini);
+                const x = (d) => (d / total) * L;
+                const y = (a) => 6 + (1 - (a - mini) / etendue) * (hautGraph - 12);
+
+                const svg = document.createElementNS(ns, 'svg');
+                svg.setAttribute('viewBox', `0 0 ${L} ${H}`);
+                svg.setAttribute('role', 'img');
+                svg.setAttribute('aria-label', 'Profil de pente de la sortie');
+
+                for (let i = 0; i < profil.pentes.length; i++) {
+                    const poly = document.createElementNS(ns, 'polygon');
+                    const x0 = x(profil.cum[i]);
+                    const x1 = x(profil.cum[i + 1]) + 0.6;
+                    poly.setAttribute('points',
+                        `${x0},${hautGraph} ${x0},${y(profil.alt[i])} ${x1},${y(profil.alt[i + 1])} ${x1},${hautGraph}`);
+                    poly.setAttribute('fill', couleurPente(profil.pentes[i]));
+                    svg.appendChild(poly);
+                }
+
+                const codes = s.surfaces && s.surfaces.length === s.trace.length ? s.surfaces : null;
+                if (codes) {
+                    for (let i = 0; i < codes.length - 1; i++) {
+                        const r = document.createElementNS(ns, 'rect');
+                        r.setAttribute('x', x(profil.cum[i]));
+                        r.setAttribute('y', hautGraph + 10);
+                        r.setAttribute('width', x(profil.cum[i + 1]) - x(profil.cum[i]) + 0.6);
+                        r.setAttribute('height', 22);
+                        r.setAttribute('fill', (TYPES_CHEMIN[codes[i]] || TYPES_CHEMIN.u).couleur);
+                        svg.appendChild(r);
+                    }
+                }
+
+                const bloc = document.createElement('div');
+                bloc.className = 'profil-sortie';
+                bloc.appendChild(svg);
+
+                const info = document.createElement('div');
+                info.className = 'profil-legende';
+                info.textContent = `Altitude ${Math.round(mini)} à ${Math.round(maxi)} m sur ${(total / 1000).toFixed(1)} km`;
+                bloc.appendChild(info);
+                bloc.appendChild(legendeProfil(COULEURS_PENTE.map(c => ({ couleur: c.couleur, texte: c.nom }))));
+
+                if (codes) {
+                    bloc.appendChild(legendeProfil(
+                        resumeChemins(codes, profil.cum).map(r => ({
+                            couleur: TYPES_CHEMIN[r.code].couleur,
+                            texte: `${TYPES_CHEMIN[r.code].nom} ${r.part} %`
+                        }))
+                    ));
+                } else {
+                    const bouton = document.createElement('button');
+                    bouton.className = 'btn-action';
+                    bouton.style.width = 'auto';
+                    bouton.style.padding = '6px 12px';
+                    bouton.style.marginTop = '8px';
+                    bouton.textContent = 'Analyser le type de chemin';
+                    bouton.addEventListener('click', async () => {
+                        bouton.disabled = true;
+                        bouton.textContent = 'Analyse en cours...';
+                        try {
+                            const codesTrouves = await chercherTypesChemin(s.trace);
+                            const res = await fetch(`/api/sorties/${s.id}/surfaces`, {
+                                method: 'POST',
+                                headers: getHeaders(),
+                                body: JSON.stringify({ codes: codesTrouves })
+                            });
+                            if (!res.ok) throw new Error();
+                            await chargerSorties();
+                        } catch (e) {
+                            console.error(e);
+                            bouton.disabled = false;
+                            bouton.textContent = 'Analyser le type de chemin';
+                            alert("Analyse impossible pour le moment (service de cartes OpenStreetMap indisponible ou parcours trop grand). Réessaie plus tard.");
+                        }
+                    });
+                    bloc.appendChild(bouton);
+                }
+
+                return bloc;
+            }
+
             let sortiesConnues = [];
 
             async function chargerSorties() {
@@ -3869,6 +4184,12 @@ def accueil():
                         mediaDiv.appendChild(dessinerTrace(s.trace));
                         item.insertBefore(mediaDiv, item.querySelector('.videos-liste'));
 
+                        const blocProfil = dessinerProfil(s);
+                        if (blocProfil) {
+                            item.style.flexWrap = 'wrap';
+                            item.appendChild(blocProfil);
+                        }
+
                         liste.appendChild(item);
                     });
 
@@ -3896,7 +4217,7 @@ def accueil():
                 vitesse: 1, inclinaison: 60, cap: 0, dernier: 0, raf: 0,
                 fond: 'sat', enregistreur: null, morceaux: [], titre: '',
                 dureeBase: 60, prete: false, compteImages: 0,
-                tps: [], autres: [], voirAutres: true, photos: [], marqueurs: [], prochaine: 0, sortieId: 0, minuteur: 0
+                tps: [], alts: [], surfaces: '', pentes: [], mode: 'pente', autres: [], voirAutres: true, photos: [], marqueurs: [], prochaine: 0, sortieId: 0, minuteur: 0
             };
 
             function chargerScript(url) {
@@ -3979,6 +4300,8 @@ def accueil():
                 const valides = trace.filter(p => Array.isArray(p) && p.length >= 2);
                 const pts = valides.map(p => [p[1], p[0]]);
                 v3d.tps = valides.map(p => (typeof p[2] === 'number' ? p[2] : null));
+                const profil = valides.length === trace.length ? analyserProfil(trace) : null;
+                v3d.pentes = profil ? profil.pentes : [];
                 v3d.pts = pts;
                 v3d.cum = [0];
                 for (let i = 1; i < pts.length; i++) {
@@ -4131,6 +4454,10 @@ def accueil():
                 remplirBouton(document.getElementById('v3dInclinaison'), 'incl', `${v3d.inclinaison}°`);
                 remplirBouton(document.getElementById('v3dFond'), 'fond',
                     v3d.fond === 'sat' ? 'Satellite' : 'Plan');
+                const couleur = document.getElementById('v3dCouleur');
+                const aTerrain = v3d.surfaces && v3d.surfaces.length === v3d.pts.length;
+                couleur.style.display = (v3d.pentes.length && aTerrain) ? '' : 'none';
+                remplirBouton(couleur, 'incl', v3d.mode === 'pente' ? 'Couleurs : pente' : 'Couleurs : terrain');
                 const autres = document.getElementById('v3dAutres');
                 remplirBouton(autres, 'incl', 'Mes parcours');
                 autres.classList.toggle('actif', v3d.voirAutres);
@@ -4330,6 +4657,48 @@ def accueil():
                 return carte;
             }
 
+            function couleurSegment(i) {
+                if (v3d.mode === 'terrain' && v3d.surfaces && v3d.surfaces.length === v3d.pts.length) {
+                    return (TYPES_CHEMIN[v3d.surfaces[i]] || TYPES_CHEMIN.u).couleur;
+                }
+                if (v3d.pentes.length > i) return couleurPente(v3d.pentes[i]);
+                return '#ffffff';
+            }
+
+            function donneesTrace() {
+                const features = [];
+                for (let i = 0; i < v3d.pts.length - 1; i++) {
+                    features.push({
+                        type: 'Feature',
+                        properties: { c: couleurSegment(i) },
+                        geometry: { type: 'LineString', coordinates: [v3d.pts[i], v3d.pts[i + 1]] }
+                    });
+                }
+                return { type: 'FeatureCollection', features: features };
+            }
+
+            function majLegendeV3d() {
+                const el = document.getElementById('v3dLegende');
+                el.textContent = '';
+                let lignes = [];
+                if (v3d.mode === 'terrain') {
+                    lignes = Object.keys(TYPES_CHEMIN)
+                        .filter(k => v3d.surfaces.includes(k))
+                        .map(k => ({ couleur: TYPES_CHEMIN[k].couleur, texte: TYPES_CHEMIN[k].nom }));
+                } else if (v3d.pentes.length) {
+                    lignes = COULEURS_PENTE.map(c => ({ couleur: c.couleur, texte: c.nom }));
+                }
+                el.style.display = lignes.length ? 'flex' : 'none';
+                lignes.forEach(l => {
+                    const sp = document.createElement('span');
+                    const i = document.createElement('i');
+                    i.style.background = l.couleur;
+                    sp.appendChild(i);
+                    sp.appendChild(document.createTextNode(l.texte));
+                    el.appendChild(sp);
+                });
+            }
+
             function installerCouches() {
                 const carte = v3d.carte;
                 carte.addSource('dem', {
@@ -4360,8 +4729,7 @@ def accueil():
                     });
                 }
 
-                const ligne = { type: 'Feature', geometry: { type: 'LineString', coordinates: v3d.pts } };
-                carte.addSource('v3d-trace', { type: 'geojson', data: ligne });
+                carte.addSource('v3d-trace', { type: 'geojson', data: donneesTrace() });
                 carte.addLayer({
                     id: 'v3d-trace-contour', type: 'line', source: 'v3d-trace',
                     layout: { 'line-cap': 'round', 'line-join': 'round' },
@@ -4370,7 +4738,7 @@ def accueil():
                 carte.addLayer({
                     id: 'v3d-trace-ligne', type: 'line', source: 'v3d-trace',
                     layout: { 'line-cap': 'round', 'line-join': 'round' },
-                    paint: { 'line-color': '#ffffff', 'line-width': 4, 'line-opacity': 0.9 }
+                    paint: { 'line-color': ['get', 'c'], 'line-width': 5, 'line-opacity': 1 }
                 });
 
                 carte.addSource('v3d-fait', {
@@ -4380,7 +4748,7 @@ def accueil():
                 carte.addLayer({
                     id: 'v3d-fait-ligne', type: 'line', source: 'v3d-fait',
                     layout: { 'line-cap': 'round', 'line-join': 'round' },
-                    paint: { 'line-color': '#35e0c8', 'line-width': 5 }
+                    paint: { 'line-color': '#ffffff', 'line-width': 1.6, 'line-opacity': 0.95 }
                 });
 
                 carte.addSource('v3d-pos', {
@@ -4390,8 +4758,8 @@ def accueil():
                 carte.addLayer({
                     id: 'v3d-pos-point', type: 'circle', source: 'v3d-pos',
                     paint: {
-                        'circle-radius': 8, 'circle-color': '#ef4444',
-                        'circle-stroke-color': '#ffffff', 'circle-stroke-width': 3
+                        'circle-radius': 8, 'circle-color': '#ffffff',
+                        'circle-stroke-color': '#0a8f9c', 'circle-stroke-width': 4
                     }
                 });
             }
@@ -4438,6 +4806,8 @@ def accueil():
                 v3d.sortieId = sortie.id;
                 v3d.photos = placerPhotos(sortie);
                 v3d.voirAutres = true;
+                v3d.mode = 'pente';
+                v3d.surfaces = sortie.surfaces || '';
                 v3d.autres = sortiesConnues
                     .filter(o => o.id !== sortie.id && Array.isArray(o.trace) && o.trace.length >= 2)
                     .map(o => o.trace.map(p => [p[1], p[0]]));
@@ -4464,6 +4834,8 @@ def accueil():
                         if (!v3d.carte) return;
                         installerCouches();
                         poserMarqueursV3d();
+                        majLegendeV3d();
+                        majBoutonsV3d();
                         vueEnsemble();
                         v3d.prete = true;
                         v3d.cap = capEntre(v3d.pts[0], pointA(Math.min(v3d.total, 300)));
@@ -4501,6 +4873,13 @@ def accueil():
                         v3d.carte.setLayoutProperty('fond-sat', 'visibility', v3d.fond === 'sat' ? 'visible' : 'none');
                         v3d.carte.setLayoutProperty('fond-plan', 'visibility', v3d.fond === 'plan' ? 'visible' : 'none');
                     }
+                    majBoutonsV3d();
+                });
+                bouton('v3dCouleur', () => {
+                    v3d.mode = v3d.mode === 'pente' ? 'terrain' : 'pente';
+                    const src = v3d.carte && v3d.carte.getSource('v3d-trace');
+                    if (src) src.setData(donneesTrace());
+                    majLegendeV3d();
                     majBoutonsV3d();
                 });
                 bouton('v3dAutres', () => {
@@ -7096,6 +7475,49 @@ def lire_videos(texte):
         for v in videos
         if isinstance(v, dict) and v.get("url")
     ]
+
+
+class SurfacesRequest(BaseModel):
+    # Une lettre par point du tracé : r route, v piste cyclable,
+    # c chemin/piste, s sentier, u inconnu.
+    codes: str = Field(min_length=2, max_length=1000)
+
+
+@app.post("/api/sorties/{sortie_id}/surfaces")
+def enregistrer_surfaces(
+    sortie_id: int,
+    data: SurfacesRequest,
+    x_code_acces: Optional[str] = Header(default=None)
+):
+    """Enregistre le type de chemin (route, sentier...) le long du tracé."""
+    verifier_auth(x_code_acces)
+
+    if any(c not in "rvcsu" for c in data.codes):
+        raise HTTPException(status_code=400, detail="Codes non valides.")
+
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("SELECT id FROM sorties WHERE id = ?", (sortie_id,))
+
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Sortie introuvable.")
+
+        cursor.execute(
+            "UPDATE sorties SET surfaces = ? WHERE id = ?",
+            (data.codes, sortie_id)
+        )
+        conn.commit()
+
+        return {"statut": "success"}
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
 
 
 @app.post("/api/sorties/{sortie_id}/videos")
