@@ -598,7 +598,7 @@ def accueil():
 
     <head>
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 
         <title>Maillons - Entretien VTT</title>
         <meta name="theme-color" content="#0b171c">
@@ -2080,69 +2080,68 @@ def accueil():
                 color-scheme: light;
             }
             /* ---- Téléphone à l'horizontale : barre de navigation sur le côté ---- */
-            @media (orientation: landscape) and (max-height: 520px) {
-                :root { --nav-w: 78px; }
+            /* appliqué par le script (classe « paysage ») : suit aussi la rotation de l'écran */
+            :root.paysage { --nav-w: 78px; }
 
-                body {
-                    padding: 0 calc(16px + env(safe-area-inset-right)) 24px
-                        calc(var(--nav-w) + 14px + env(safe-area-inset-left));
-                }
-
-                .header {
-                    position: static;
-                    max-width: 900px;
-                    margin-bottom: 8px;
-                    padding: 8px 0;
-                    background: none;
-                }
-
-                .page { max-width: 900px; }
-
-                .onglets {
-                    top: 0;
-                    right: auto;
-                    bottom: 0;
-                    left: 0;
-                    width: calc(var(--nav-w) + env(safe-area-inset-left));
-                    height: auto;
-                    flex-direction: column;
-                    justify-content: center;
-                    gap: 4px;
-                    padding: 6px 0 6px env(safe-area-inset-left);
-                    border-top: none;
-                    border-right: 1px solid var(--line3);
-                }
-
-                .onglet {
-                    flex: 0 1 auto;
-                    max-width: none;
-                    padding: 4px 0;
-                }
-
-                .onglet svg { padding: 3px 14px; }
-
-                .bike-container {
-                    max-width: none;
-                    width: min(100%, 900px, calc((100vh - 24px) * 16 / 9));
-                    margin-bottom: 14px;
-                }
-
-                .fenetre-profil { padding: 6px; }
-                .fp-boite { padding: 10px; max-height: 98vh; }
-                .fp-haut { margin-bottom: 6px; }
-
-                .v3d-haut { padding-top: calc(6px + env(safe-area-inset-top)); padding-bottom: 6px; }
-                .v3d-bas { padding: 14px calc(12px + env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left)); }
-                .v3d-bas input[type="range"] { margin-bottom: 6px; }
-                .vue3d button { padding: 5px 11px; font-size: 0.78rem; }
-                .v3d-info { margin-top: 4px; }
-                .v3d-legende { top: calc(46px + env(safe-area-inset-top)); left: calc(12px + env(safe-area-inset-left)); padding: 5px 8px; font-size: 0.68rem; }
-                .v3d-photo { top: calc(46px + env(safe-area-inset-top)); left: auto; right: calc(12px + env(safe-area-inset-right)); transform: none; }
-                .v3d-photo img { max-width: 40vw; max-height: 52vh; }
-                .v3d-message { top: 40%; }
-
-                #lightbox img { max-height: 92%; }
+            :root.paysage body {
+                padding: 0 calc(16px + env(safe-area-inset-right)) 24px
+                    calc(var(--nav-w) + 14px + env(safe-area-inset-left));
             }
+
+            :root.paysage .header {
+                position: static;
+                max-width: 900px;
+                margin-bottom: 8px;
+                padding: 8px 0;
+                background: none;
+            }
+
+            :root.paysage .page { max-width: 900px; }
+
+            :root.paysage .onglets {
+                top: 0;
+                right: auto;
+                bottom: 0;
+                left: 0;
+                width: calc(var(--nav-w) + env(safe-area-inset-left));
+                height: auto;
+                flex-direction: column;
+                justify-content: center;
+                gap: 4px;
+                padding: 6px 0 6px env(safe-area-inset-left);
+                border-top: none;
+                border-right: 1px solid var(--line3);
+            }
+
+            :root.paysage .onglet {
+                flex: 0 1 auto;
+                max-width: none;
+                padding: 4px 0;
+            }
+
+            :root.paysage .onglet svg { padding: 3px 14px; }
+
+            :root.paysage .bike-container {
+                max-width: none;
+                width: min(100%, 900px, calc((100vh - 24px) * 16 / 9));
+                margin-bottom: 14px;
+            }
+
+            :root.paysage .fenetre-profil { padding: 6px; }
+            :root.paysage .fp-boite { padding: 10px; max-height: 98vh; }
+            :root.paysage .fp-haut { margin-bottom: 6px; }
+
+            :root.paysage .v3d-haut { padding-top: calc(6px + env(safe-area-inset-top)); padding-bottom: 6px; }
+            :root.paysage .v3d-bas { padding: 14px calc(12px + env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left)); }
+            :root.paysage .v3d-bas input[type="range"] { margin-bottom: 6px; }
+            :root.paysage .vue3d button { padding: 5px 11px; font-size: 0.78rem; }
+            :root.paysage .v3d-info { margin-top: 4px; }
+            :root.paysage .v3d-legende { top: calc(46px + env(safe-area-inset-top)); left: calc(12px + env(safe-area-inset-left)); padding: 5px 8px; font-size: 0.68rem; }
+            :root.paysage .v3d-photo { top: calc(46px + env(safe-area-inset-top)); left: auto; right: calc(12px + env(safe-area-inset-right)); transform: none; }
+            :root.paysage .v3d-photo img { max-width: 40vw; max-height: 52vh; }
+            :root.paysage .v3d-message { top: 40%; }
+
+            :root.paysage #lightbox img { max-height: 92%; }
 
         </style>
     </head>
@@ -4138,6 +4137,7 @@ def accueil():
             function ouvrirProfil(s) {
                 const profil = analyserProfil(s.trace);
                 if (!profil) return;
+                profilAffiche = s;
 
                 const fenetre = document.getElementById('fenetreProfil');
                 const zone = document.getElementById('fpGraph');
@@ -4200,8 +4200,50 @@ def accueil():
             }
 
             function fermerProfil() {
+                profilAffiche = null;
                 document.getElementById('fenetreProfil').style.display = 'none';
             }
+
+            // Suit l'orientation de l'écran (le téléphone peut tourner à tout moment).
+            let profilAffiche = null;
+
+            function classeOrientation() {
+                const paysage = window.innerWidth > window.innerHeight && window.innerHeight <= 520;
+                document.documentElement.classList.toggle('paysage', paysage);
+            }
+
+            function majOrientation() {
+                classeOrientation();
+
+                try {
+                    if (profilAffiche && document.getElementById('fenetreProfil').style.display !== 'none') {
+                        ouvrirProfil(profilAffiche);
+                    }
+                    if (v3d.carte && typeof v3d.carte.resize === 'function') {
+                        v3d.carte.resize();
+                    }
+                } catch (e) {
+                    console.error(e);
+                }
+            }
+
+            function surRotation() {
+                majOrientation();
+                // Selon les téléphones, la nouvelle taille d'écran arrive avec un peu de retard.
+                setTimeout(majOrientation, 150);
+                setTimeout(majOrientation, 450);
+            }
+
+            window.addEventListener('resize', surRotation);
+            window.addEventListener('orientationchange', surRotation);
+            if (window.visualViewport) {
+                window.visualViewport.addEventListener('resize', surRotation);
+            }
+            if (window.matchMedia) {
+                const suivi = window.matchMedia('(orientation: landscape)');
+                if (suivi.addEventListener) suivi.addEventListener('change', surRotation);
+            }
+            classeOrientation();
 
             (function brancherProfil() {
                 remplirBouton(document.getElementById('fpFermer'), 'fermer', '');
