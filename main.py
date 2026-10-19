@@ -517,6 +517,38 @@ class PositionRequest(BaseModel):
 class PhotoIn(BaseModel):
     mini: str = Field(max_length=200_000)
     photo: str = Field(max_length=1_500_000)
+    # Lieu et heure de prise de vue (lus dans la photo, facultatifs).
+    lat: Optional[float] = Field(default=None, ge=-90, le=90)
+    lon: Optional[float] = Field(default=None, ge=-180, le=180)
+    heure: Optional[str] = Field(default=None, max_length=30)
+
+
+def photo_a_stocker(p):
+    """Photo + lieu/heure de prise de vue, si on les connait."""
+    stockee = {"mini": p.mini, "photo": p.photo}
+
+    if p.lat is not None and p.lon is not None:
+        stockee["lat"] = round(p.lat, 6)
+        stockee["lon"] = round(p.lon, 6)
+
+    if p.heure:
+        stockee["heure"] = p.heure
+
+    return stockee
+
+
+def position_de(photo):
+    """Lieu et heure d'une photo stockée (vide pour les anciennes photos)."""
+    if not isinstance(photo, dict):
+        return None
+
+    position = {}
+
+    for cle in ("lat", "lon", "heure"):
+        if photo.get(cle) is not None:
+            position[cle] = photo[cle]
+
+    return position or None
 
 
 class TerrainRequest(BaseModel):
@@ -1662,6 +1694,38 @@ def accueil():
                 text-shadow: 0 1px 3px rgba(0,0,0,0.7);
             }
 
+            .v3d-photo {
+                position: absolute;
+                z-index: 4;
+                top: calc(64px + env(safe-area-inset-top));
+                left: 50%;
+                transform: translateX(-50%);
+                padding: 6px;
+                border-radius: 14px;
+                background: rgba(255,255,255,0.95);
+                box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+                cursor: pointer;
+            }
+
+            .v3d-photo img {
+                display: block;
+                max-width: min(78vw, 420px);
+                max-height: 38vh;
+                border-radius: 9px;
+            }
+
+            .v3d-marqueur {
+                width: 30px;
+                height: 30px;
+                padding: 0;
+                justify-content: center;
+                font-size: 15px;
+                border-radius: 50%;
+                background: linear-gradient(135deg, #35e0c8, #0a8f9c);
+                border: 2px solid #fff;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+            }
+
             .v3d-message {
                 position: absolute;
                 z-index: 4;
@@ -1976,6 +2040,9 @@ def accueil():
             <div class="v3d-haut">
                 <strong id="v3dTitre"></strong>
                 <button type="button" id="v3dFermer" aria-label="Fermer"></button>
+            </div>
+            <div class="v3d-photo" id="v3dPhoto" style="display:none;">
+                <img id="v3dPhotoImg" alt="Photo de la sortie">
             </div>
             <div class="v3d-message" id="v3dMessage" style="display:none;"></div>
             <div class="v3d-bas">
@@ -3816,6 +3883,7 @@ def accueil():
                 'https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js'
             ];
             const MAPLIBRE_CSS = 'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css';
+            let jetonV3d = 0;
             const INCLINAISONS = [45, 60, 75];
             const VITESSES = [1, 2, 4];
 
@@ -3823,7 +3891,8 @@ def accueil():
                 carte: null, pts: [], cum: [], total: 0, f: 0, jouer: false,
                 vitesse: 1, inclinaison: 60, cap: 0, dernier: 0, raf: 0,
                 fond: 'sat', enregistreur: null, morceaux: [], titre: '',
-                dureeBase: 60, prete: false, compteImages: 0
+                dureeBase: 60, prete: false, compteImages: 0,
+                tps: [], photos: [], marqueurs: [], prochaine: 0, sortieId: 0, minuteur: 0
             };
 
             function chargerScript(url) {
@@ -3903,9 +3972,9 @@ def accueil():
 
             function preparerParcours(trace) {
                 // La trace est enregistrée en [latitude, longitude] ; la carte veut [longitude, latitude].
-                const pts = trace
-                    .filter(p => Array.isArray(p) && p.length >= 2)
-                    .map(p => [p[1], p[0]]);
+                const valides = trace.filter(p => Array.isArray(p) && p.length >= 2);
+                const pts = valides.map(p => [p[1], p[0]]);
+                v3d.tps = valides.map(p => (typeof p[2] === 'number' ? p[2] : null));
                 v3d.pts = pts;
                 v3d.cum = [0];
                 for (let i = 1; i < pts.length; i++) {
@@ -3913,6 +3982,131 @@ def accueil():
                 }
                 v3d.total = v3d.cum[v3d.cum.length - 1];
                 v3d.dureeBase = Math.min(180, Math.max(45, (v3d.total / 1000) * 5));
+            }
+
+            // Distance (en mètres, le long du parcours) correspondant à un instant.
+            function distanceALHeure(heureIso, debutIso) {
+                const t0 = Date.parse(debutIso);
+                const t = Date.parse(heureIso);
+                if (isNaN(t0) || isNaN(t) || v3d.tps.some(x => x === null)) return null;
+
+                const sec = (t - t0) / 1000;
+                const tps = v3d.tps;
+                const marge = 600;
+                if (sec < -marge || sec > tps[tps.length - 1] + marge) return null;
+                if (sec <= tps[0]) return 0;
+                if (sec >= tps[tps.length - 1]) return v3d.total;
+
+                for (let i = 1; i < tps.length; i++) {
+                    if (tps[i] >= sec) {
+                        const duree = tps[i] - tps[i - 1];
+                        const part = duree > 0 ? (sec - tps[i - 1]) / duree : 0;
+                        return v3d.cum[i - 1] + (v3d.cum[i] - v3d.cum[i - 1]) * part;
+                    }
+                }
+                return null;
+            }
+
+            // Calcule où chaque photo se place sur le parcours (GPS de la photo, sinon son heure).
+            function placerPhotos(sortie) {
+                const resultat = [];
+                const infos = sortie.photos_pos || [];
+
+                (sortie.photos || []).forEach((mini, numero) => {
+                    const info = infos[numero];
+                    if (!info) return;
+
+                    let d = null;
+                    let coord = null;
+
+                    if (typeof info.lat === 'number' && typeof info.lon === 'number') {
+                        const gps = [info.lon, info.lat];
+                        let meilleur = 0;
+                        let ecart = Infinity;
+                        v3d.pts.forEach((p, i) => {
+                            const e = distanceM(p, gps);
+                            if (e < ecart) { ecart = e; meilleur = i; }
+                        });
+                        if (ecart < 800) {
+                            d = v3d.cum[meilleur];
+                            coord = v3d.pts[meilleur];
+                        }
+                    }
+
+                    if (d === null && info.heure) {
+                        d = distanceALHeure(info.heure, sortie.debut);
+                        if (d !== null) coord = pointA(d);
+                    }
+
+                    if (d !== null && coord) {
+                        resultat.push({ numero: numero, mini: mini, d: d, coord: coord });
+                    }
+                });
+
+                resultat.sort((a, b) => a.d - b.d);
+                return resultat;
+            }
+
+            function cacherPhotoV3d() {
+                clearTimeout(v3d.minuteur);
+                document.getElementById('v3dPhoto').style.display = 'none';
+            }
+
+            async function montrerPhotoV3d(photo) {
+                const cadre = document.getElementById('v3dPhoto');
+                const img = document.getElementById('v3dPhotoImg');
+                const jeton = ++jetonV3d;
+                img.src = photo.mini;
+                cadre.style.display = 'block';
+                clearTimeout(v3d.minuteur);
+                v3d.minuteur = setTimeout(cacherPhotoV3d, 5000);
+
+                const cle = `${v3d.sortieId}-${photo.numero}`;
+                try {
+                    if (!photosCompletes[cle]) {
+                        const res = await fetch(`/api/sorties/${v3d.sortieId}/photos/${photo.numero}`, {
+                            headers: getHeaders()
+                        });
+                        if (res.ok) {
+                            photosCompletes[cle] = (await res.json()).image;
+                        }
+                    }
+                    if (photosCompletes[cle] && jeton === jetonV3d) {
+                        img.src = photosCompletes[cle];
+                    }
+                } catch (e) {
+                    console.error(e);
+                }
+            }
+
+            // Affiche les photos dont le point de prise de vue vient d'être dépassé.
+            function verifierPhotosV3d(avant, apres) {
+                const liste = v3d.photos;
+                let derniere = null;
+                for (let i = 0; i < liste.length; i++) {
+                    if (liste[i].d > avant && liste[i].d <= apres) derniere = liste[i];
+                }
+                if (derniere) montrerPhotoV3d(derniere);
+            }
+
+            function poserMarqueursV3d() {
+                v3d.marqueurs.forEach(m => m.remove());
+                v3d.marqueurs = [];
+                v3d.photos.forEach(photo => {
+                    const el = document.createElement('button');
+                    el.type = 'button';
+                    el.className = 'v3d-marqueur';
+                    el.textContent = '📷';
+                    el.setAttribute('aria-label', 'Voir la photo');
+                    el.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        montrerPhotoV3d(photo);
+                    });
+                    const marqueur = new window.maplibregl.Marker({ element: el })
+                        .setLngLat(photo.coord)
+                        .addTo(v3d.carte);
+                    v3d.marqueurs.push(marqueur);
+                });
             }
 
             function messageV3d(texte) {
@@ -4006,7 +4200,9 @@ def accueil():
 
                 const dt = Math.min(0.1, Math.max(0, (t - v3d.dernier) / 1000));
                 v3d.dernier = t;
+                const avant = v3d.f * v3d.total;
                 v3d.f = Math.min(1, v3d.f + (dt * v3d.vitesse) / v3d.dureeBase);
+                verifierPhotosV3d(avant, v3d.f * v3d.total);
 
                 placerCamera(dt, false);
                 v3d.compteImages++;
@@ -4193,6 +4389,9 @@ def accueil():
                     v3d.carte = null;
                 }
                 v3d.prete = false;
+                v3d.marqueurs.forEach(m => m.remove());
+                v3d.marqueurs = [];
+                cacherPhotoV3d();
                 document.getElementById('vue3d').style.display = 'none';
                 messageV3d('');
             }
@@ -4210,6 +4409,8 @@ def accueil():
                 v3d.fond = 'sat';
                 v3d.compteImages = 0;
                 v3d.titre = (sortie.debut || '').slice(0, 10);
+                v3d.sortieId = sortie.id;
+                v3d.photos = placerPhotos(sortie);
                 const jour = new Date(sortie.debut).toLocaleDateString('fr-FR');
                 document.getElementById('v3dTitre').textContent = `${sortie.nom} · ${jour}`;
                 document.getElementById('v3dProgres').value = '0';
@@ -4232,10 +4433,13 @@ def accueil():
                     v3d.carte.on('load', () => {
                         if (!v3d.carte) return;
                         installerCouches();
+                        poserMarqueursV3d();
                         vueEnsemble();
                         v3d.prete = true;
                         v3d.cap = capEntre(v3d.pts[0], pointA(Math.min(v3d.total, 300)));
-                        messageV3d('Appuie sur Lecture pour lancer le survol.');
+                        messageV3d(v3d.photos.length
+                            ? `Appuie sur Lecture pour lancer le survol (${v3d.photos.length} photo(s) placée(s) sur le parcours).`
+                            : 'Appuie sur Lecture pour lancer le survol.');
                         dessinerAvancement();
                     });
                     v3d.carte.on('error', (e) => console.error(e && e.error ? e.error : e));
@@ -4434,7 +4638,136 @@ def accueil():
 
             // Réduit une photo dans le navigateur avant l'envoi :
             // une version moyenne (affichée au clic) et une miniature.
+            // Lit le lieu (GPS) et l'heure de prise de vue dans l'en-tête d'une photo JPEG.
+            async function lireExif(fichier) {
+                const vide = { lat: null, lon: null, heure: null };
+
+                try {
+                    const buf = await fichier.slice(0, 262144).arrayBuffer();
+                    const v = new DataView(buf);
+
+                    if (v.byteLength < 12 || v.getUint16(0) !== 0xFFD8) {
+                        return vide;
+                    }
+
+                    let pos = 2;
+                    let debutTiff = -1;
+
+                    while (pos + 4 < v.byteLength) {
+                        const marqueur = v.getUint16(pos);
+                        const taille = v.getUint16(pos + 2);
+
+                        if (marqueur === 0xFFE1 && v.getUint32(pos + 4) === 0x45786966) {
+                            debutTiff = pos + 10;
+                            break;
+                        }
+                        if ((marqueur & 0xFF00) !== 0xFF00 || marqueur === 0xFFDA) {
+                            break;
+                        }
+                        pos += 2 + taille;
+                    }
+
+                    if (debutTiff < 0) {
+                        return vide;
+                    }
+
+                    const petit = v.getUint16(debutTiff) === 0x4949;
+                    const u16 = (o) => v.getUint16(debutTiff + o, petit);
+                    const u32 = (o) => v.getUint32(debutTiff + o, petit);
+                    const tailleType = { 1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 7: 1 };
+
+                    const lireIfd = (decalage) => {
+                        const entrees = {};
+                        const n = u16(decalage);
+
+                        for (let i = 0; i < n && i < 200; i++) {
+                            const e = decalage + 2 + i * 12;
+                            const tag = u16(e);
+                            const type = u16(e + 2);
+                            const nombre = u32(e + 4);
+                            const octets = (tailleType[type] || 1) * nombre;
+                            const donnees = octets <= 4 ? e + 8 : u32(e + 8);
+                            entrees[tag] = { type: type, nombre: nombre, donnees: donnees };
+                        }
+                        return entrees;
+                    };
+
+                    const texte = (e) => {
+                        let t = '';
+                        for (let i = 0; i < e.nombre; i++) {
+                            const c = v.getUint8(debutTiff + e.donnees + i);
+                            if (c === 0) {
+                                break;
+                            }
+                            t += String.fromCharCode(c);
+                        }
+                        return t;
+                    };
+
+                    const rationnels = (e) => {
+                        const r = [];
+                        for (let i = 0; i < e.nombre; i++) {
+                            const num = u32(e.donnees + i * 8);
+                            const den = u32(e.donnees + i * 8 + 4);
+                            r.push(den ? num / den : 0);
+                        }
+                        return r;
+                    };
+
+                    const ifd0 = lireIfd(u32(4));
+                    const resultat = { lat: null, lon: null, heure: null };
+
+                    if (ifd0[0x8769]) {
+                        const exif = lireIfd(u32(ifd0[0x8769].donnees));
+                        const brut = exif[0x9003] || exif[0x9004];
+                        if (brut) {
+                            const parties = texte(brut).trim().split(' ');
+                            const jour = (parties[0] || '').split(':');
+                            const heure = (parties[1] || '').split(':');
+                            if (jour.length === 3 && heure.length === 3) {
+                                const n = jour.concat(heure).map(Number);
+                                const decalage = exif[0x9011] ? texte(exif[0x9011]).trim() : '';
+                                const decalageOk = decalage.length === 6
+                                    && (decalage[0] === '+' || decalage[0] === '-')
+                                    && decalage[3] === ':';
+                                const iso = `${jour[0]}-${jour[1]}-${jour[2]}T${heure[0]}:${heure[1]}:${heure[2]}`;
+                                const date = decalageOk
+                                    ? new Date(iso + decalage)
+                                    : new Date(n[0], n[1] - 1, n[2], n[3], n[4], n[5]);
+                                if (!isNaN(date.getTime())) {
+                                    resultat.heure = date.toISOString().slice(0, 19) + 'Z';
+                                }
+                            }
+                        }
+                    }
+
+                    if (ifd0[0x8825]) {
+                        const gps = lireIfd(u32(ifd0[0x8825].donnees));
+                        if (gps[2] && gps[4] && gps[1] && gps[3]) {
+                            const dms = (e) => {
+                                const r = rationnels(e);
+                                return r[0] + (r[1] || 0) / 60 + (r[2] || 0) / 3600;
+                            };
+                            let lat = dms(gps[2]);
+                            let lon = dms(gps[4]);
+                            if (texte(gps[1]).startsWith('S')) lat = -lat;
+                            if (texte(gps[3]).startsWith('W')) lon = -lon;
+                            if (isFinite(lat) && isFinite(lon) && (lat !== 0 || lon !== 0)
+                                && Math.abs(lat) <= 90 && Math.abs(lon) <= 180) {
+                                resultat.lat = Math.round(lat * 1e6) / 1e6;
+                                resultat.lon = Math.round(lon * 1e6) / 1e6;
+                            }
+                        }
+                    }
+
+                    return resultat;
+                } catch (e) {
+                    return vide;
+                }
+            }
+
             async function preparerPhoto(fichier) {
+                const exif = await lireExif(fichier);
                 const image = await createImageBitmap(fichier);
 
                 const encoder = (cote, qualite) => {
@@ -4478,7 +4811,17 @@ def accueil():
                     throw new Error('photo');
                 }
 
-                return { mini: mini, photo: photo };
+                const sortie = { mini: mini, photo: photo };
+
+                if (exif.lat !== null) {
+                    sortie.lat = exif.lat;
+                    sortie.lon = exif.lon;
+                }
+                if (exif.heure) {
+                    sortie.heure = exif.heure;
+                }
+
+                return sortie;
             }
 
 
@@ -6462,7 +6805,7 @@ def importer_sortie(data: ImportGpxRequest, x_code_acces: Optional[str] = Header
     for p in photos:
         verifier_photo(p.mini, MAX_CHARS_MINIATURE)
         verifier_photo(p.photo, MAX_CHARS_PHOTO)
-        photos_stockees.append({"mini": p.mini, "photo": p.photo})
+        photos_stockees.append(photo_a_stocker(p))
 
     photos_json = json.dumps(photos_stockees) if photos_stockees else None
 
@@ -6576,6 +6919,7 @@ def lister_sorties(x_code_acces: Optional[str] = Header(default=None)):
             # La liste n'envoie que de petites miniatures :
             # la photo complète se charge au clic.
             sortie["photos"] = [miniature_de(p) for p in brutes]
+            sortie["photos_pos"] = [position_de(p) for p in brutes]
 
             sortie["videos"] = lire_videos(sortie.get("videos"))
 
@@ -6836,7 +7180,7 @@ def ajouter_photos(
     for p in data.photos:
         verifier_photo(p.mini, MAX_CHARS_MINIATURE)
         verifier_photo(p.photo, MAX_CHARS_PHOTO)
-        nouvelles.append({"mini": p.mini, "photo": p.photo})
+        nouvelles.append(photo_a_stocker(p))
 
     conn = db.connect()
     cursor = conn.cursor()

@@ -150,7 +150,12 @@ def _tracer(points):
         pas = (len(points) - 1) / (POINTS_TRACE - 1)
         choisis = [points[round(i * pas)] for i in range(POINTS_TRACE)]
 
-    return [[round(p[0], 5), round(p[1], 5)] for p in choisis]
+    # 3e valeur : secondes écoulées depuis le départ (pour placer les photos).
+    depart = points[0][3]
+    return [
+        [round(p[0], 5), round(p[1], 5), round((p[3] - depart).total_seconds())]
+        for p in choisis
+    ]
 
 
 def _verifier_texte_xml(texte):
