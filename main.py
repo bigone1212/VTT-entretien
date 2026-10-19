@@ -2052,6 +2052,7 @@ def accueil():
                     <button type="button" id="v3dVitesse"></button>
                     <button type="button" id="v3dInclinaison"></button>
                     <button type="button" id="v3dFond"></button>
+                    <button type="button" id="v3dAutres"></button>
                     <button type="button" id="v3dEnreg"></button>
                 </div>
                 <div class="v3d-info" id="v3dInfo"></div>
@@ -3689,6 +3690,8 @@ def accueil():
             }
 
 
+            let sortiesConnues = [];
+
             async function chargerSorties() {
                 const liste = document.getElementById('sortiesList');
 
@@ -3697,6 +3700,7 @@ def accueil():
                     if (!res.ok) throw new Error();
 
                     const sorties = await res.json();
+                    sortiesConnues = sorties;
                     liste.innerHTML = '';
 
                     if (sorties.length === 0) {
@@ -3892,7 +3896,7 @@ def accueil():
                 vitesse: 1, inclinaison: 60, cap: 0, dernier: 0, raf: 0,
                 fond: 'sat', enregistreur: null, morceaux: [], titre: '',
                 dureeBase: 60, prete: false, compteImages: 0,
-                tps: [], photos: [], marqueurs: [], prochaine: 0, sortieId: 0, minuteur: 0
+                tps: [], autres: [], voirAutres: true, photos: [], marqueurs: [], prochaine: 0, sortieId: 0, minuteur: 0
             };
 
             function chargerScript(url) {
@@ -4127,6 +4131,10 @@ def accueil():
                 remplirBouton(document.getElementById('v3dInclinaison'), 'incl', `${v3d.inclinaison}°`);
                 remplirBouton(document.getElementById('v3dFond'), 'fond',
                     v3d.fond === 'sat' ? 'Satellite' : 'Plan');
+                const autres = document.getElementById('v3dAutres');
+                remplirBouton(autres, 'incl', 'Mes parcours');
+                autres.classList.toggle('actif', v3d.voirAutres);
+                autres.style.display = v3d.autres.length ? '' : 'none';
                 const enr = document.getElementById('v3dEnreg');
                 const en_cours = !!v3d.enregistreur;
                 remplirBouton(enr, 'enreg', en_cours ? 'Arrêter et enregistrer' : 'Enregistrer');
@@ -4334,6 +4342,24 @@ def accueil():
                 });
                 carte.setTerrain({ source: 'dem', exaggeration: 1.4 });
 
+                if (v3d.autres.length) {
+                    carte.addSource('v3d-autres', {
+                        type: 'geojson',
+                        data: {
+                            type: 'Feature',
+                            geometry: { type: 'MultiLineString', coordinates: v3d.autres }
+                        }
+                    });
+                    carte.addLayer({
+                        id: 'v3d-autres-ligne', type: 'line', source: 'v3d-autres',
+                        layout: {
+                            'line-cap': 'round', 'line-join': 'round',
+                            visibility: v3d.voirAutres ? 'visible' : 'none'
+                        },
+                        paint: { 'line-color': '#ffb020', 'line-width': 3, 'line-opacity': 0.85 }
+                    });
+                }
+
                 const ligne = { type: 'Feature', geometry: { type: 'LineString', coordinates: v3d.pts } };
                 carte.addSource('v3d-trace', { type: 'geojson', data: ligne });
                 carte.addLayer({
@@ -4411,6 +4437,10 @@ def accueil():
                 v3d.titre = (sortie.debut || '').slice(0, 10);
                 v3d.sortieId = sortie.id;
                 v3d.photos = placerPhotos(sortie);
+                v3d.voirAutres = true;
+                v3d.autres = sortiesConnues
+                    .filter(o => o.id !== sortie.id && Array.isArray(o.trace) && o.trace.length >= 2)
+                    .map(o => o.trace.map(p => [p[1], p[0]]));
                 const jour = new Date(sortie.debut).toLocaleDateString('fr-FR');
                 document.getElementById('v3dTitre').textContent = `${sortie.nom} · ${jour}`;
                 document.getElementById('v3dProgres').value = '0';
@@ -4470,6 +4500,14 @@ def accueil():
                     if (v3d.carte && v3d.prete) {
                         v3d.carte.setLayoutProperty('fond-sat', 'visibility', v3d.fond === 'sat' ? 'visible' : 'none');
                         v3d.carte.setLayoutProperty('fond-plan', 'visibility', v3d.fond === 'plan' ? 'visible' : 'none');
+                    }
+                    majBoutonsV3d();
+                });
+                bouton('v3dAutres', () => {
+                    v3d.voirAutres = !v3d.voirAutres;
+                    if (v3d.carte && v3d.prete && v3d.carte.getLayer('v3d-autres-ligne')) {
+                        v3d.carte.setLayoutProperty('v3d-autres-ligne', 'visibility',
+                            v3d.voirAutres ? 'visible' : 'none');
                     }
                     majBoutonsV3d();
                 });
