@@ -2079,7 +2079,72 @@ def accueil():
                 --strong: #0b171c;
                 color-scheme: light;
             }
-</style>
+            /* ---- Téléphone à l'horizontale : barre de navigation sur le côté ---- */
+            @media (orientation: landscape) and (max-height: 520px) {
+                :root { --nav-w: 78px; }
+
+                body {
+                    padding: 0 calc(16px + env(safe-area-inset-right)) 24px
+                        calc(var(--nav-w) + 14px + env(safe-area-inset-left));
+                }
+
+                .header {
+                    position: static;
+                    max-width: 900px;
+                    margin-bottom: 8px;
+                    padding: 8px 0;
+                    background: none;
+                }
+
+                .page { max-width: 900px; }
+
+                .onglets {
+                    top: 0;
+                    right: auto;
+                    bottom: 0;
+                    left: 0;
+                    width: calc(var(--nav-w) + env(safe-area-inset-left));
+                    height: auto;
+                    flex-direction: column;
+                    justify-content: center;
+                    gap: 4px;
+                    padding: 6px 0 6px env(safe-area-inset-left);
+                    border-top: none;
+                    border-right: 1px solid var(--line3);
+                }
+
+                .onglet {
+                    flex: 0 1 auto;
+                    max-width: none;
+                    padding: 4px 0;
+                }
+
+                .onglet svg { padding: 3px 14px; }
+
+                .bike-container {
+                    max-width: none;
+                    width: min(100%, 900px, calc((100vh - 24px) * 16 / 9));
+                    margin-bottom: 14px;
+                }
+
+                .fenetre-profil { padding: 6px; }
+                .fp-boite { padding: 10px; max-height: 98vh; }
+                .fp-haut { margin-bottom: 6px; }
+
+                .v3d-haut { padding-top: calc(6px + env(safe-area-inset-top)); padding-bottom: 6px; }
+                .v3d-bas { padding: 14px calc(12px + env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left)); }
+                .v3d-bas input[type="range"] { margin-bottom: 6px; }
+                .vue3d button { padding: 5px 11px; font-size: 0.78rem; }
+                .v3d-info { margin-top: 4px; }
+                .v3d-legende { top: calc(46px + env(safe-area-inset-top)); left: calc(12px + env(safe-area-inset-left)); padding: 5px 8px; font-size: 0.68rem; }
+                .v3d-photo { top: calc(46px + env(safe-area-inset-top)); left: auto; right: calc(12px + env(safe-area-inset-right)); transform: none; }
+                .v3d-photo img { max-width: 40vw; max-height: 52vh; }
+                .v3d-message { top: 40%; }
+
+                #lightbox img { max-height: 92%; }
+            }
+
+        </style>
     </head>
 
     <body>
@@ -4083,7 +4148,8 @@ def accueil():
                 fenetre.style.display = 'flex';
 
                 const largeur = Math.max(300, Math.min(900, zone.clientWidth || 340));
-                const hauteur = largeur > 600 ? 340 : 280;
+                const paysage = window.innerHeight < 520 && window.innerWidth > window.innerHeight;
+                const hauteur = paysage ? 170 : (largeur > 600 ? 340 : 280);
                 const g = construireProfil(s, profil, largeur, hauteur, true);
                 zone.appendChild(g.svg);
 
