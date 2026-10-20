@@ -1100,6 +1100,7 @@ def accueil():
             }
 
             .history-item {
+                position: relative;
                 font-size: 0.85rem;
                 padding: 10px 0;
                 border-bottom: 1px solid var(--line);
@@ -1142,6 +1143,72 @@ def accueil():
                 margin-bottom: 10px;
                 color: var(--text-muted);
             }
+
+            .menu-sortie-btn {
+                position: absolute;
+                top: 6px;
+                right: 0;
+                z-index: 5;
+                width: 36px;
+                height: 36px;
+                padding: 0;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                color: var(--text-muted);
+                background: transparent;
+                border: none;
+                border-radius: 50%;
+                cursor: pointer;
+            }
+
+            .menu-sortie-btn:hover, .menu-sortie-btn[aria-expanded="true"] { background: var(--fill2); color: var(--strong); }
+            .menu-sortie-btn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; }
+
+            .menu-sortie {
+                position: absolute;
+                top: 44px;
+                right: 0;
+                z-index: 30;
+                min-width: 210px;
+                padding: 6px;
+                display: none;
+                flex-direction: column;
+                gap: 2px;
+                border-radius: 14px;
+                background: var(--card-bg);
+                border: 1px solid var(--line2);
+                box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+            }
+
+            .menu-sortie.ouvert { display: flex; }
+
+            .menu-sortie button {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                width: 100%;
+                margin: 0;
+                padding: 11px 12px;
+                font: inherit;
+                font-size: 0.9rem;
+                font-weight: 600;
+                text-align: left;
+                color: var(--text-color);
+                background: transparent;
+                border: none;
+                border-radius: 9px;
+                cursor: pointer;
+            }
+
+            .menu-sortie button:hover { background: var(--fill); }
+            .menu-sortie button:disabled { opacity: 0.4; cursor: default; }
+            .menu-sortie button.danger { color: var(--danger); }
+            .menu-sortie button .ico { width: 18px; height: 18px; }
+
+            .sortie-statut { margin-top: 8px; font-weight: 700; color: var(--accent); }
+
+            .history-details .titre-sortie { padding-right: 38px; }
 
             .sortie-media {
                 display: flex;
@@ -2631,6 +2698,9 @@ def accueil():
                 el.lastChild.textContent = texte;
             }
 
+            ICONES.points = '<circle cx="12" cy="5" r="1.9" fill="currentColor"/><circle cx="12" cy="12" r="1.9" fill="currentColor"/><circle cx="12" cy="19" r="1.9" fill="currentColor"/>';
+            ICONES.appareil = '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>';
+            ICONES.video = '<rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/>';
             ICONES.lecture = '<path d="M8 5v14l11-7z" fill="currentColor"/>';
             ICONES.pause = '<path d="M8 5v14M16 5v14"/>';
             ICONES.vitesse = '<path d="M5 6l6 6-6 6M13 6l6 6-6 6"/>';
@@ -4316,6 +4386,16 @@ def accueil():
                 return bloc;
             }
 
+            function fermerMenusSortie() {
+                document.querySelectorAll('.menu-sortie.ouvert').forEach(m => m.classList.remove('ouvert'));
+                document.querySelectorAll('.menu-sortie-btn').forEach(b => b.setAttribute('aria-expanded', 'false'));
+            }
+
+            document.addEventListener('click', fermerMenusSortie);
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') fermerMenusSortie();
+            });
+
             let sortiesConnues = [];
 
             async function chargerSorties() {
@@ -4348,6 +4428,8 @@ def accueil():
                         const titre = document.createElement('strong');
                         const jour = new Date(s.debut).toLocaleDateString('fr-FR');
                         titre.textContent = `${s.nom} · ${jour}`;
+                        titre.className = 'titre-sortie';
+                        titre.style.display = 'block';
 
                         const ligne1 = document.createElement('div');
                         ligne1.style.color = 'var(--text-muted)';
@@ -4420,8 +4502,19 @@ def accueil():
                         choixPhotos.accept = 'image/*';
                         choixPhotos.multiple = true;
                         choixPhotos.style.display = 'none';
+                        const statut = document.createElement('div');
+                        statut.className = 'sortie-statut';
+                        statut.style.display = 'none';
+                        const etatPhotos = {
+                            disabled: false,
+                            get textContent() { return ''; },
+                            set textContent(v) {
+                                statut.textContent = v;
+                                statut.style.display = v ? '' : 'none';
+                            }
+                        };
                         choixPhotos.addEventListener('change', () => {
-                            ajouterPhotos(s.id, nbPhotos, choixPhotos, boutonPhotos);
+                            ajouterPhotos(s.id, nbPhotos, choixPhotos, etatPhotos);
                         });
                         boutonPhotos.addEventListener('click', () => {
                             choixPhotos.click();
@@ -4455,28 +4548,61 @@ def accueil():
                             ouvrirV3d(s);
                         });
 
-                        details.appendChild(boutonPhotos);
-                        details.appendChild(choixPhotos);
-                        details.appendChild(boutonVideo);
-
-                        const boutonNom = document.createElement('button');
-                        boutonNom.className = 'btn-action';
-                        boutonNom.style.marginTop = '8px';
-                        boutonNom.style.marginRight = '8px';
-                        boutonNom.style.width = 'auto';
-                        boutonNom.style.padding = '6px 12px';
-                        boutonNom.textContent = '✏️ Renommer';
-                        boutonNom.addEventListener('click', () => {
-                            renommerSortie(s);
-                        });
-                        details.appendChild(boutonNom);
                         details.appendChild(bouton3d);
-                        details.appendChild(bouton);
+                        details.appendChild(choixPhotos);
+                        details.appendChild(statut);
+
+                        // Menu « trois points » en haut à droite de la sortie.
+                        const menu = document.createElement('div');
+                        menu.className = 'menu-sortie';
+                        menu.setAttribute('role', 'menu');
+
+                        const kebab = document.createElement('button');
+                        kebab.type = 'button';
+                        kebab.className = 'menu-sortie-btn';
+                        kebab.setAttribute('aria-label', 'Actions de la sortie');
+                        kebab.setAttribute('aria-haspopup', 'menu');
+                        kebab.setAttribute('aria-expanded', 'false');
+                        remplirBouton(kebab, 'points', '');
+
+                        const ajouterAction = (icone, texte, action, danger, desactive) => {
+                            const el = document.createElement('button');
+                            el.type = 'button';
+                            el.setAttribute('role', 'menuitem');
+                            if (danger) el.className = 'danger';
+                            el.disabled = !!desactive;
+                            remplirBouton(el, icone, texte);
+                            el.addEventListener('click', (e) => {
+                                e.stopPropagation();
+                                fermerMenusSortie();
+                                action();
+                            });
+                            menu.appendChild(el);
+                        };
+
+                        ajouterAction('appareil', 'Ajouter des photos', () => choixPhotos.click(), false, nbPhotos >= MAX_PHOTOS);
+                        ajouterAction('video', 'Ajouter une vidéo', () => ajouterVideo(s.id), false, nbVideos >= MAX_VIDEOS);
+                        ajouterAction('crayon', 'Renommer', () => renommerSortie(s), false, false);
+                        ajouterAction('poubelle', 'Supprimer', () => supprimerSortie(s.id), true, false);
+
+                        kebab.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            const etaitOuvert = menu.classList.contains('ouvert');
+                            fermerMenusSortie();
+                            if (!etaitOuvert) {
+                                menu.classList.add('ouvert');
+                                kebab.setAttribute('aria-expanded', 'true');
+                            }
+                        });
+
+                        item.appendChild(kebab);
+                        item.appendChild(menu);
 
                         item.appendChild(details);
 
                         const mediaDiv = document.createElement('div');
                         mediaDiv.className = 'sortie-media';
+                        mediaDiv.style.marginTop = '34px';
 
                         if (s.photos && s.photos.length > 0) {
                             const gallery = document.createElement('div');
