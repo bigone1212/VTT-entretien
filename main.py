@@ -4458,6 +4458,18 @@ def accueil():
                         details.appendChild(boutonPhotos);
                         details.appendChild(choixPhotos);
                         details.appendChild(boutonVideo);
+
+                        const boutonNom = document.createElement('button');
+                        boutonNom.className = 'btn-action';
+                        boutonNom.style.marginTop = '8px';
+                        boutonNom.style.marginRight = '8px';
+                        boutonNom.style.width = 'auto';
+                        boutonNom.style.padding = '6px 12px';
+                        boutonNom.textContent = '✏️ Renommer';
+                        boutonNom.addEventListener('click', () => {
+                            renommerSortie(s);
+                        });
+                        details.appendChild(boutonNom);
                         details.appendChild(bouton3d);
                         details.appendChild(bouton);
 
@@ -5370,6 +5382,33 @@ def accueil():
 
                 } catch (e) {
                     alert("Impossible d'ajouter la vidéo.");
+                }
+            }
+
+            async function renommerSortie(sortie) {
+                const nom = prompt("Nouveau nom de la sortie :", sortie.nom);
+                if (nom === null || nom.trim() === '' || nom.trim() === sortie.nom) return;
+
+                try {
+                    const res = await fetch(`/api/sorties/${sortie.id}/nom`, {
+                        method: 'POST',
+                        headers: getHeaders(),
+                        body: JSON.stringify({ nom: nom.trim() })
+                    });
+
+                    if (res.status === 401) {
+                        document.getElementById('authScreen').style.display = 'flex';
+                        return;
+                    }
+
+                    if (!res.ok) {
+                        throw new Error();
+                    }
+
+                    await chargerEtat();
+
+                } catch (e) {
+                    alert("Impossible de renommer la sortie (120 caractères maximum).");
                 }
             }
 
@@ -7819,6 +7858,45 @@ def lire_videos(texte):
         for v in videos
         if isinstance(v, dict) and v.get("url")
     ]
+
+
+class RenommerRequest(BaseModel):
+    nom: str = Field(min_length=1, max_length=120)
+
+
+@app.post("/api/sorties/{sortie_id}/nom")
+def renommer_sortie(
+    sortie_id: int,
+    data: RenommerRequest,
+    x_code_acces: Optional[str] = Header(default=None)
+):
+    """Change le nom d'une sortie."""
+    verifier_auth(x_code_acces)
+    nom = " ".join(data.nom.split())
+
+    if not nom:
+        raise HTTPException(status_code=400, detail="Le nom ne peut pas être vide.")
+
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("SELECT id FROM sorties WHERE id = ?", (sortie_id,))
+
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Sortie introuvable.")
+
+        cursor.execute("UPDATE sorties SET nom = ? WHERE id = ?", (nom, sortie_id))
+        conn.commit()
+
+        return {"statut": "success", "nom": nom}
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
 
 
 class SurfacesRequest(BaseModel):
