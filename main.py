@@ -1154,7 +1154,10 @@ def accueil():
                 font-size: 0.9rem;
                 font-weight: 800;
                 letter-spacing: 0.01em;
-                color: #04231f;
+                color: #ffffff;
+                -webkit-text-stroke: 0.5px #000000;
+                paint-order: stroke fill;
+                text-shadow: 0 0 1px #000000, 0 1px 1px rgba(0,0,0,0.35);
                 background: linear-gradient(135deg, #35e0c8, #0a8f9c);
                 border: none;
                 border-radius: 999px;
@@ -1166,7 +1169,7 @@ def accueil():
             .btn-survol:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(10,143,156,0.45), inset 0 1px 0 rgba(255,255,255,0.35); }
             .btn-survol:active { transform: translateY(1px); }
             .btn-survol:disabled { opacity: 0.45; cursor: default; box-shadow: none; transform: none; }
-            .btn-survol .ico { width: 20px; height: 20px; stroke-width: 2.2; }
+            .btn-survol .ico { width: 20px; height: 20px; stroke-width: 2.2; filter: drop-shadow(0 0 0.7px #000000) drop-shadow(0 0 0.7px #000000); }
 
             .menu-sortie-btn {
                 position: absolute;
