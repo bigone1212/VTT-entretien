@@ -1144,6 +1144,30 @@ def accueil():
                 color: var(--text-muted);
             }
 
+            .btn-survol {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                margin-top: 10px;
+                padding: 9px 16px;
+                font: inherit;
+                font-size: 0.9rem;
+                font-weight: 800;
+                letter-spacing: 0.01em;
+                color: #04231f;
+                background: linear-gradient(135deg, #35e0c8, #0a8f9c);
+                border: none;
+                border-radius: 999px;
+                box-shadow: 0 6px 16px rgba(10,143,156,0.35), inset 0 1px 0 rgba(255,255,255,0.35);
+                cursor: pointer;
+                transition: transform 0.15s, box-shadow 0.15s;
+            }
+
+            .btn-survol:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(10,143,156,0.45), inset 0 1px 0 rgba(255,255,255,0.35); }
+            .btn-survol:active { transform: translateY(1px); }
+            .btn-survol:disabled { opacity: 0.45; cursor: default; box-shadow: none; transform: none; }
+            .btn-survol .ico { width: 20px; height: 20px; stroke-width: 2.2; }
+
             .menu-sortie-btn {
                 position: absolute;
                 top: 6px;
@@ -2701,6 +2725,7 @@ def accueil():
             ICONES.points = '<circle cx="12" cy="5" r="1.9" fill="currentColor"/><circle cx="12" cy="12" r="1.9" fill="currentColor"/><circle cx="12" cy="19" r="1.9" fill="currentColor"/>';
             ICONES.appareil = '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>';
             ICONES.video = '<rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/>';
+            ICONES.montagne = '<path d="M2 20l6.5-11 4 6.5L15 12l7 8z"/><path d="M8.5 9l1.8 3"/><circle cx="18" cy="5.5" r="1.6" fill="currentColor"/>';
             ICONES.lecture = '<path d="M8 5v14l11-7z" fill="currentColor"/>';
             ICONES.pause = '<path d="M8 5v14M16 5v14"/>';
             ICONES.vitesse = '<path d="M5 6l6 6-6 6M13 6l6 6-6 6"/>';
@@ -4537,12 +4562,9 @@ def accueil():
                         });
 
                         const bouton3d = document.createElement('button');
-                        bouton3d.className = 'btn-action';
-                        bouton3d.style.marginTop = '8px';
-                        bouton3d.style.marginRight = '8px';
-                        bouton3d.style.width = 'auto';
-                        bouton3d.style.padding = '6px 12px';
-                        bouton3d.textContent = '🏔️ Survol 3D';
+                        bouton3d.className = 'btn-survol';
+                        bouton3d.type = 'button';
+                        remplirBouton(bouton3d, 'montagne', 'Survol 3D');
                         bouton3d.disabled = !s.trace || s.trace.length < 2;
                         bouton3d.addEventListener('click', () => {
                             ouvrirV3d(s);
