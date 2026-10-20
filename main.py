@@ -1171,6 +1171,63 @@ def accueil():
             .btn-survol:disabled { opacity: 0.45; cursor: default; box-shadow: none; transform: none; }
             .btn-survol .ico { width: 20px; height: 20px; stroke-width: 2.2; filter: drop-shadow(0 0 0.7px #000000) drop-shadow(0 0 0.7px #000000); }
 
+            .mode-switch {
+                display: flex;
+                gap: 4px;
+                padding: 4px;
+                max-width: 600px;
+                margin: 0 auto 12px auto;
+                border-radius: 999px;
+                background: var(--fill);
+                border: 1px solid var(--line2);
+            }
+
+            .mode-switch button {
+                flex: 1;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+                padding: 9px 10px;
+                font: inherit;
+                font-size: 0.88rem;
+                font-weight: 700;
+                color: var(--text-muted);
+                background: transparent;
+                border: none;
+                border-radius: 999px;
+                cursor: pointer;
+                transition: background 0.2s, color 0.2s;
+            }
+
+            .mode-switch button .ico { width: 17px; height: 17px; }
+            .mode-switch button small { font-size: 0.75rem; font-weight: 700; opacity: 0.85; }
+
+            .mode-switch button[aria-selected="true"] {
+                color: #ffffff;
+                background: linear-gradient(135deg, #35e0c8, #0a8f9c);
+                -webkit-text-stroke: 0.4px #000;
+                paint-order: stroke fill;
+                box-shadow: 0 4px 12px rgba(10,143,156,0.3);
+            }
+
+            .bike-container[data-mode="entretien"] .hotspot.verif,
+            .bike-container[data-mode="verifs"] .hotspot.entretien { display: none; }
+
+            .chip .chip-num {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 18px;
+                height: 18px;
+                margin-right: 6px;
+                font-size: 0.7rem;
+                font-weight: 800;
+                color: #fff;
+                border-radius: 50%;
+                background: linear-gradient(135deg, #35e0c8, #0a8f9c);
+            }
+
             .menu-sortie-btn {
                 position: absolute;
                 top: 6px;
@@ -2333,6 +2390,11 @@ def accueil():
         </nav>
 
         <div class="page" id="page-entretien">
+        <div class="mode-switch" id="modeSwitch" role="tablist" aria-label="Afficher">
+            <button type="button" role="tab" id="modeEntretien" aria-selected="true"></button>
+            <button type="button" role="tab" id="modeVerifs" aria-selected="false"></button>
+        </div>
+
         <div class="bike-container">
             <img
                 src="https://shop.roulezjeunesse.com/cdn/shop/files/CubeStereoHybridONE44EXC8001.jpg?v=1736521382&width=1220"
@@ -3116,18 +3178,67 @@ def accueil():
                 return reste >= 0 ? `${reste} j` : `+${-reste} j`;
             }
 
+            let modeAffichage = 'entretien';
+            try {
+                if (localStorage.getItem('maillon_mode') === 'verifs') modeAffichage = 'verifs';
+            } catch (e) {
+                // stockage indisponible : on reste sur « entretien »
+            }
+            let nbVerifs = 0;
+            let nbEntretien = 0;
+
+            function appliquerMode() {
+                if (nbVerifs === 0) modeAffichage = 'entretien';
+                const verifs = modeAffichage === 'verifs';
+
+                document.querySelector('.bike-container').dataset.mode = modeAffichage;
+                document.getElementById('modeSwitch').style.display = nbVerifs > 0 ? 'flex' : 'none';
+                document.getElementById('verifs').style.display = (verifs && nbVerifs > 0) ? 'block' : 'none';
+                document.getElementById('composantsList').style.display = verifs ? 'none' : '';
+
+                const bE = document.getElementById('modeEntretien');
+                const bV = document.getElementById('modeVerifs');
+                remplirBouton(bE, 'cle', 'Entretien');
+                const pe = document.createElement('small');
+                pe.textContent = String(nbEntretien);
+                bE.appendChild(pe);
+                remplirBouton(bV, 'valider', 'Vérifications');
+                const pv = document.createElement('small');
+                pv.textContent = String(nbVerifs);
+                bV.appendChild(pv);
+                bE.setAttribute('aria-selected', String(!verifs));
+                bV.setAttribute('aria-selected', String(verifs));
+
+                // Une pastille choisie dans l'autre mode n'a plus de sens ici.
+                document.querySelectorAll('.hotspot.choisi').forEach(h => h.classList.remove('choisi'));
+                placementId = null;
+            }
+
+            function choisirMode(mode) {
+                modeAffichage = mode;
+                try {
+                    localStorage.setItem('maillon_mode', mode);
+                } catch (e) {
+                    // sans importance
+                }
+                appliquerMode();
+            }
+
+            document.getElementById('modeEntretien').addEventListener('click', () => choisirMode('entretien'));
+            document.getElementById('modeVerifs').addEventListener('click', () => choisirMode('verifs'));
+
             function afficherVerifications(verifs) {
                 const zone = document.getElementById('verifs');
                 const chips = document.getElementById('verifsChips');
                 const detail = document.getElementById('verifDetail');
                 chips.innerHTML = '';
                 detail.style.display = 'none';
+                nbVerifs = verifs.length;
 
                 if (verifs.length === 0) {
                     zone.style.display = 'none';
                     return;
                 }
-                zone.style.display = 'block';
 
                 const aFaire = verifs.filter(v => v.pourcentage_usure >= 100).length;
                 document.getElementById('verifsInfo').textContent =
@@ -3138,11 +3249,38 @@ def accueil():
                 verifs.forEach(v => {
                     const etat = v.pourcentage_usure >= 100 ? 'warning'
                         : v.pourcentage_usure >= 85 ? 'near-warning' : 'ok';
+                    const rang = verifs.indexOf(v) + 1;
                     const chip = document.createElement('button');
                     chip.type = 'button';
                     chip.className = `chip ${etat}`;
                     chip.dataset.id = v.id;
+                    const numChip = document.createElement('span');
+                    numChip.className = 'chip-num';
+                    numChip.textContent = String(rang);
+                    chip.appendChild(numChip);
                     chip.appendChild(document.createTextNode(nomCourt(v.nom)));
+
+                    // Pastille sur la photo (visible en mode « Vérifications »).
+                    const pastille = document.createElement('div');
+                    pastille.className = `hotspot verif ${etat === 'ok' ? '' : etat}`;
+                    pastille.style.top = `${v.pos_y}%`;
+                    pastille.style.left = `${v.pos_x}%`;
+                    pastille.title = `${v.nom} (${v.pourcentage_usure}%)`;
+                    pastille.textContent = String(rang);
+                    pastille.dataset.id = v.id;
+                    pastille.addEventListener('click', () => {
+                        if (placementActif) {
+                            placementId = v.id;
+                            document.querySelectorAll('.hotspot').forEach(h => {
+                                h.classList.toggle('choisi', h === pastille);
+                            });
+                            return;
+                        }
+                        verifChoisie = v.id;
+                        montrerDetailVerification(verifs);
+                        document.getElementById('verifDetail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    });
+                    document.getElementById('hotspotsContainer').appendChild(pastille);
                     const delai = texteDelai(v);
                     if (delai) {
                         const pt = document.createElement('small');
@@ -3166,6 +3304,9 @@ def accueil():
                 const detail = document.getElementById('verifDetail');
                 document.querySelectorAll('#verifsChips .chip').forEach(ch => {
                     ch.classList.toggle('choisie', Number(ch.dataset.id) === verifChoisie);
+                });
+                document.querySelectorAll('.hotspot.verif').forEach(h => {
+                    h.classList.toggle('choisi', !placementActif && Number(h.dataset.id) === verifChoisie);
                 });
 
                 const v = verifs.find(x => x.id === verifChoisie);
@@ -3404,7 +3545,7 @@ def accueil():
                         }
 
                         const hotspot = document.createElement('div');
-                        hotspot.className = `hotspot ${hotspotClass}`;
+                        hotspot.className = `hotspot entretien ${hotspotClass}`;
                         hotspot.style.top = `${c.pos_y}%`;
                         hotspot.style.left = `${c.pos_x}%`;
                         hotspot.title = `${c.nom} (${c.pourcentage_usure}%)`;
@@ -3565,6 +3706,8 @@ def accueil():
                     });
 
                     afficherVerifications(verifs);
+                    nbEntretien = data.composants.filter(c => !c.verification).length;
+                    appliquerMode();
 
                     const nbPieces = data.composants.filter(c => !c.verification).length;
                     const entete = document.createElement('div');
