@@ -4266,7 +4266,11 @@ def accueil():
                 const profil = analyserProfil(s.trace);
                 if (!profil) return null;
 
-                const g = construireProfil(s, profil, 600, 175, false);
+                const g = construireProfil(
+                    s, profil, 600,
+                    document.documentElement.classList.contains('paysage') ? 175 : 235,
+                    false
+                );
                 g.svg.style.cursor = 'pointer';
                 g.svg.addEventListener('click', () => ouvrirProfil(s));
 
