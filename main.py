@@ -4035,8 +4035,12 @@ def accueil():
                 const total = profil.cum[profil.cum.length - 1];
                 const mini = Math.min(...profil.alt);
                 const maxi = Math.max(...profil.alt);
-                // Échelle verticale limitée : une sortie peu pentue ne doit pas ressembler à une montagne.
-                const etendue = Math.max(60, maxi - mini, total / 16);
+                // À la verticale : un peu de marge pour ne pas exagérer les pics.
+                // À l'horizontale : le graphique utilise toute la hauteur, comme avant.
+                const paysageEcran = document.documentElement.classList.contains('paysage');
+                const etendue = paysageEcran
+                    ? Math.max(30, maxi - mini)
+                    : Math.max(60, (maxi - mini) * 1.3, total / 30);
                 const x = (d) => margeG + (d / total) * (largeur - margeG);
                 const y = (a) => 8 + (1 - (a - mini) / etendue) * (hautGraph - 16);
 
@@ -4150,7 +4154,7 @@ def accueil():
 
                 const largeur = Math.max(300, Math.min(900, zone.clientWidth || 340));
                 const paysage = window.innerHeight < 520 && window.innerWidth > window.innerHeight;
-                const hauteur = paysage ? 170 : (largeur > 600 ? 300 : 220);
+                const hauteur = paysage ? 170 : (largeur > 600 ? 320 : 250);
                 const g = construireProfil(s, profil, largeur, hauteur, true);
                 zone.appendChild(g.svg);
 
@@ -5044,7 +5048,7 @@ def accueil():
                     maxzoom: 15,
                     attribution: 'Relief : AWS Terrain Tiles'
                 });
-                carte.setTerrain({ source: 'dem', exaggeration: 1.0 });
+                carte.setTerrain({ source: 'dem', exaggeration: 1.1 });
 
                 if (v3d.autres.length) {
                     carte.addSource('v3d-autres', {
