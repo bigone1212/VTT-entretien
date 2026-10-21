@@ -1251,12 +1251,18 @@ def accueil():
             .mode-switch button .ico { width: 17px; height: 17px; }
             .mode-switch button small { font-size: 0.75rem; font-weight: 700; opacity: 0.85; }
 
+            /* Pastille posée à cheval sur le bord haut droit du bouton. */
+            .mode-switch button { position: relative; }
+
             .mode-pastille {
-                flex-shrink: 0;
+                position: absolute;
+                top: -5px;
+                right: 14px;
                 width: 12px;
                 height: 12px;
                 border-radius: 50%;
                 border: 2px solid rgba(255,255,255,0.9);
+                pointer-events: none;
             }
 
             .mode-pastille.warning {
@@ -1265,7 +1271,7 @@ def accueil():
             }
 
             .mode-pastille.near-warning {
-                background: var(--warning);
+                background: #fcd34d;
                 animation: pulse-orange 1.5s infinite;
             }
 
@@ -3400,12 +3406,13 @@ def accueil():
                 const pe = document.createElement('small');
                 pe.textContent = String(nbEntretien);
                 bE.appendChild(pe);
-                ajouterPastilleMode(bE, urgences.entretien);
+                // La pastille n'apparaît que sur le bouton de l'autre mode.
+                if (verifs) ajouterPastilleMode(bE, urgences.entretien);
                 remplirBouton(bV, 'valider', 'Vérifications');
                 const pv = document.createElement('small');
                 pv.textContent = String(nbVerifs);
                 bV.appendChild(pv);
-                ajouterPastilleMode(bV, urgences.verifs);
+                if (!verifs) ajouterPastilleMode(bV, urgences.verifs);
                 bE.setAttribute('aria-selected', String(!verifs));
                 bV.setAttribute('aria-selected', String(verifs));
 
