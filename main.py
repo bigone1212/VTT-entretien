@@ -1251,6 +1251,53 @@ def accueil():
             .mode-switch button .ico { width: 17px; height: 17px; }
             .mode-switch button small { font-size: 0.75rem; font-weight: 700; opacity: 0.85; }
 
+            .mode-pastille {
+                flex-shrink: 0;
+                width: 12px;
+                height: 12px;
+                border-radius: 50%;
+                border: 2px solid rgba(255,255,255,0.9);
+            }
+
+            .mode-pastille.warning {
+                background: var(--danger);
+                animation: pulse-red 1.5s infinite;
+            }
+
+            .mode-pastille.near-warning {
+                background: var(--warning);
+                animation: pulse-orange 1.5s infinite;
+            }
+
+            /* ---- Blocs repliables de l'onglet Réglages ---- */
+            .mes-reglages.mr-repliable { margin-bottom: 10px; padding: 6px 14px; }
+            .apparence { margin-bottom: 10px; }
+
+            .mr-repliable > .mr-titre { margin-bottom: 0; }
+
+            .mr-titre button.mr-entete,
+            .mr-titre button.mr-entete:hover {
+                flex: 1;
+                justify-content: space-between;
+                padding: 10px 0;
+                font-size: 1rem;
+                color: var(--text-color);
+                background: transparent;
+                border: none;
+                border-radius: 0;
+            }
+
+            .mr-chevron { display: inline-flex; color: var(--text-muted); transition: transform 0.2s; }
+            .mr-repliable.ouverte .mr-chevron { transform: rotate(180deg); }
+
+            .mr-repliable .mr-corps { display: none; padding: 4px 0 10px; }
+            .mr-repliable.ouverte .mr-corps { display: block; }
+            .mr-repliable.ouverte > .mr-titre { border-bottom: 1px solid var(--line3); }
+
+            .mr-corps .mr-ligne label { color: var(--text-muted); }
+            .mr-corps .guide { margin: 0 0 8px; }
+            .mr-corps .mr-groupe:first-child { border-top: none; }
+
             .mode-switch button[aria-selected="true"] {
                 color: #ffffff;
                 background: linear-gradient(135deg, #35e0c8, #0a8f9c);
@@ -2511,81 +2558,112 @@ def accueil():
                 <button type="button" data-theme-choix="dark"></button>
             </div>
         </section>
-        <section class="mes-reglages" id="mesReglages" aria-label="Mes réglages">
+        <section class="mes-reglages mr-repliable" id="mesReglages" aria-label="Mes réglages">
             <div class="mr-titre">
-                <strong>🎚️ Mes réglages</strong>
-                <button type="button" id="mrModifier" onclick="modifierReglagesVelo()"></button>
+                <button type="button" class="mr-entete" aria-expanded="false" aria-controls="mesReglagesCorps">
+                    <strong>🎚️ Mes réglages</strong>
+                    <span class="mr-chevron"></span>
+                </button>
             </div>
-            <div id="mrContenu"></div>
-            <div class="form-help" id="mrDate" style="margin:8px 0 0;"></div>
-            <div class="mr-actions" id="mrActions" style="display:none;">
-                <button type="button" class="mr-ok" id="mrOk" onclick="enregistrerReglagesVelo()"></button>
-                <button type="button" id="mrAnnuler" onclick="annulerReglagesVelo()"></button>
+            <div class="mr-corps" id="mesReglagesCorps">
+                <div class="mr-titre">
+                    <div class="form-help" id="mrDate" style="margin:0;"></div>
+                    <button type="button" id="mrModifier" onclick="modifierReglagesVelo()"></button>
+                </div>
+                <div id="mrContenu"></div>
+                <div class="mr-actions" id="mrActions" style="display:none;">
+                    <button type="button" class="mr-ok" id="mrOk" onclick="enregistrerReglagesVelo()"></button>
+                    <button type="button" id="mrAnnuler" onclick="annulerReglagesVelo()"></button>
+                </div>
             </div>
         </section>
-        <section class="mes-reglages" id="reglagesUsure" aria-label="Réglages de l'usure">
+        <section class="mes-reglages mr-repliable" id="reglagesUsure" aria-label="Réglages de l'usure">
             <div class="mr-titre">
-                <strong>⚙️ Réglages de l'usure</strong>
+                <button type="button" class="mr-entete" aria-expanded="false" aria-controls="reglagesUsureCorps">
+                    <strong>⚙️ Réglages de l'usure</strong>
+                    <span class="mr-chevron"></span>
+                </button>
             </div>
+            <div class="mr-corps" id="reglagesUsureCorps">
+                <details class="guide">
+                    <summary>Comment ça marche</summary>
+                    <p>
+                        Chaque sortie fait vieillir tes pièces plus ou moins vite
+                        selon le terrain. 1 = usure normale, 1,6 = usure 60 % plus
+                        rapide. Le dénivelé compte aussi : 0 = on l'ignore,
+                        1 = poids normal. Le type de chemin de chaque sortie est
+                        analysé automatiquement : ce sont alors les pourcentages réels
+                        de route, chemin et sentier qui comptent. Le coefficient
+                        « Mixte » sert pour les parties que l'analyse ne reconnaît pas.
+                    </p>
+                </details>
 
-            <p class="form-help" style="margin-top: 10px;">
-                Chaque sortie fait vieillir tes pièces plus ou moins vite
-                selon le terrain. 1 = usure normale, 1,6 = usure 60 % plus
-                rapide. Le dénivelé compte aussi : 0 = on l'ignore,
-                1 = poids normal. Le type de chemin de chaque sortie est
-                analysé automatiquement : ce sont alors les pourcentages réels
-                de route, chemin et sentier qui comptent. Le coefficient
-                « Mixte » sert pour les parties que l'analyse ne reconnaît pas.
-            </p>
+                <div class="mr-ligne">
+                    <label for="regRoute">Route / bitume</label>
+                    <input type="text" inputmode="decimal" id="regRoute">
+                </div>
 
-            <label for="regRoute">Route / bitume</label>
-            <input type="text" inputmode="decimal" id="regRoute">
+                <div class="mr-ligne">
+                    <label for="regMixte">Mixte (par défaut)</label>
+                    <input type="text" inputmode="decimal" id="regMixte">
+                </div>
 
-            <label for="regMixte">Mixte (terrain par défaut)</label>
-            <input type="text" inputmode="decimal" id="regMixte">
+                <div class="mr-ligne">
+                    <label for="regChemin">Chemin / piste</label>
+                    <input type="text" inputmode="decimal" id="regChemin">
+                </div>
 
-            <label for="regChemin">Chemin / piste</label>
-            <input type="text" inputmode="decimal" id="regChemin">
+                <div class="mr-ligne">
+                    <label for="regSentier">Sentier technique</label>
+                    <input type="text" inputmode="decimal" id="regSentier">
+                </div>
 
-            <label for="regSentier">Sentier technique</label>
-            <input type="text" inputmode="decimal" id="regSentier">
+                <div class="mr-ligne">
+                    <label for="regDenivele">Poids du dénivelé</label>
+                    <input type="text" inputmode="decimal" id="regDenivele">
+                </div>
 
-            <label for="regDenivele">Poids du dénivelé</label>
-            <input type="text" inputmode="decimal" id="regDenivele">
+                <button
+                    class="btn-primary"
+                    style="width:100%; margin-top: 10px;"
+                    onclick="enregistrerReglages()"
+                >
+                    Enregistrer les réglages
+                </button>
 
-            <button
-                class="btn-primary"
-                style="width:100%;"
-                onclick="enregistrerReglages()"
-            >
-                Enregistrer les réglages
-            </button>
-
-            <p class="form-help" id="reglagesMessage" style="margin-top: 10px;"></p>
+                <p class="form-help" id="reglagesMessage" style="margin-top: 10px;"></p>
+            </div>
         </section>
-        <section class="mes-reglages" id="coefsPiecesSection" aria-label="Usure de chaque élément">
+        <section class="mes-reglages mr-repliable" id="coefsPiecesSection" aria-label="Usure de chaque élément">
             <div class="mr-titre">
-                <strong>🔩 Usure de chaque élément</strong>
+                <button type="button" class="mr-entete" aria-expanded="false" aria-controls="coefsPiecesCorps">
+                    <strong>🔩 Usure de chaque élément</strong>
+                    <span class="mr-chevron"></span>
+                </button>
             </div>
+            <div class="mr-corps" id="coefsPiecesCorps">
+                <details class="guide">
+                    <summary>Comment ça marche</summary>
+                    <p>
+                        Un coefficient pour chaque élément d'entretien, en plus de
+                        ceux du terrain. 1 = usure normale, 1,5 = cet élément
+                        s'use 50 % plus vite, 0,8 = 20 % plus lentement. Il joue
+                        sur le seuil en km et sur le seuil en jours.
+                    </p>
+                </details>
 
-            <p class="form-help" style="margin-top: 10px;">
-                Un coefficient pour chaque élément d'entretien, en plus de
-                ceux du terrain. 1 = usure normale, 1,5 = cet élément
-                s'use 50 % plus vite, 0,8 = 20 % plus lentement. Il joue
-                sur le seuil en km et sur le seuil en jours.
-            </p>
+                <div id="coefsPiecesListe"></div>
 
-            <div id="coefsPiecesListe"></div>
+                <button
+                    class="btn-primary"
+                    style="width:100%; margin-top: 10px;"
+                    onclick="enregistrerCoefsPieces()"
+                >
+                    Enregistrer les coefficients
+                </button>
 
-            <button
-                class="btn-primary"
-                style="width:100%; margin-top: 10px;"
-                onclick="enregistrerCoefsPieces()"
-            >
-                Enregistrer les coefficients
-            </button>
-
-            <p class="form-help" id="coefsPiecesMessage" style="margin-top: 10px;"></p>
+                <p class="form-help" id="coefsPiecesMessage" style="margin-top: 10px;"></p>
+            </div>
         </section>
         </div>
 
@@ -3033,6 +3111,22 @@ def accueil():
             remplirBouton(document.getElementById('mrOk'), 'valider', 'Enregistrer');
             remplirBouton(document.getElementById('mrAnnuler'), 'fermer', 'Annuler');
 
+            // Blocs repliables de l'onglet Réglages (fermés au départ).
+            function basculerSection(section) {
+                const ouverte = !section.classList.contains('ouverte');
+                section.classList.toggle('ouverte', ouverte);
+                const entete = section.querySelector('.mr-entete');
+                if (entete) entete.setAttribute('aria-expanded', String(ouverte));
+            }
+
+            document.querySelectorAll('.mr-repliable').forEach(section => {
+                const entete = section.querySelector('.mr-entete');
+                const chevron = section.querySelector('.mr-chevron');
+                chevron.innerHTML = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">'
+                    + ICONES.bas + '</svg>';
+                entete.addEventListener('click', () => basculerSection(section));
+            });
+
             const cartesOuvertes = new Set();
 
             // [difficulté, à quoi ça sert, étapes, outils, recherche YouTube]
@@ -3264,6 +3358,32 @@ def accueil():
             }
             let nbVerifs = 0;
             let nbEntretien = 0;
+            let urgences = { entretien: null, verifs: null };
+
+            // Rouge s'il y a au moins un élément à faire (100 % ou plus),
+            // orange s'il y en a au moins un proche (85 % ou plus).
+            function urgenceDe(liste) {
+                const rouges = liste.filter(c => c.pourcentage_usure >= 100).length;
+                const oranges = liste.filter(
+                    c => c.pourcentage_usure >= 85 && c.pourcentage_usure < 100
+                ).length;
+                const niveau = rouges > 0 ? 'warning' : (oranges > 0 ? 'near-warning' : '');
+                return { niveau: niveau, rouges: rouges, oranges: oranges };
+            }
+
+            function ajouterPastilleMode(bouton, urgence) {
+                if (!urgence || !urgence.niveau) return;
+
+                const texte = urgence.niveau === 'warning'
+                    ? nombre(urgence.rouges, 'élément à faire', 'éléments à faire')
+                    : nombre(urgence.oranges, 'élément bientôt à faire', 'éléments bientôt à faire');
+                const pastille = document.createElement('span');
+                pastille.className = 'mode-pastille ' + urgence.niveau;
+                pastille.setAttribute('role', 'img');
+                pastille.setAttribute('aria-label', texte);
+                pastille.title = texte;
+                bouton.appendChild(pastille);
+            }
 
             function appliquerMode() {
                 if (nbVerifs === 0) modeAffichage = 'entretien';
@@ -3280,10 +3400,12 @@ def accueil():
                 const pe = document.createElement('small');
                 pe.textContent = String(nbEntretien);
                 bE.appendChild(pe);
+                ajouterPastilleMode(bE, urgences.entretien);
                 remplirBouton(bV, 'valider', 'Vérifications');
                 const pv = document.createElement('small');
                 pv.textContent = String(nbVerifs);
                 bV.appendChild(pv);
+                ajouterPastilleMode(bV, urgences.verifs);
                 bE.setAttribute('aria-selected', String(!verifs));
                 bV.setAttribute('aria-selected', String(verifs));
 
@@ -3785,6 +3907,10 @@ def accueil():
 
                     afficherVerifications(verifs);
                     nbEntretien = data.composants.filter(c => !c.verification).length;
+                    urgences = {
+                        entretien: urgenceDe(data.composants.filter(c => !c.verification)),
+                        verifs: urgenceDe(data.composants.filter(c => c.verification))
+                    };
                     appliquerMode();
 
                     const nbPieces = data.composants.filter(c => !c.verification).length;
