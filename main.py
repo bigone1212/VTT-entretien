@@ -2517,6 +2517,46 @@ def accueil():
                 <button type="button" id="mrAnnuler" onclick="annulerReglagesVelo()"></button>
             </div>
         </section>
+        <section class="mes-reglages" id="reglagesUsure" aria-label="Réglages de l'usure">
+            <div class="mr-titre">
+                <strong>⚙️ Réglages de l'usure</strong>
+            </div>
+
+            <p class="form-help" style="margin-top: 10px;">
+                Chaque sortie fait vieillir tes pièces plus ou moins vite
+                selon le terrain. 1 = usure normale, 1,6 = usure 60 % plus
+                rapide. Le dénivelé compte aussi : 0 = on l'ignore,
+                1 = poids normal. Le type de chemin de chaque sortie est
+                analysé automatiquement : ce sont alors les pourcentages réels
+                de route, chemin et sentier qui comptent. Le coefficient
+                « Mixte » sert pour les parties que l'analyse ne reconnaît pas.
+            </p>
+
+            <label for="regRoute">Route / bitume</label>
+            <input type="text" inputmode="decimal" id="regRoute">
+
+            <label for="regMixte">Mixte (terrain par défaut)</label>
+            <input type="text" inputmode="decimal" id="regMixte">
+
+            <label for="regChemin">Chemin / piste</label>
+            <input type="text" inputmode="decimal" id="regChemin">
+
+            <label for="regSentier">Sentier technique</label>
+            <input type="text" inputmode="decimal" id="regSentier">
+
+            <label for="regDenivele">Poids du dénivelé</label>
+            <input type="text" inputmode="decimal" id="regDenivele">
+
+            <button
+                class="btn-primary"
+                style="width:100%;"
+                onclick="enregistrerReglages()"
+            >
+                Enregistrer les réglages
+            </button>
+
+            <p class="form-help" id="reglagesMessage" style="margin-top: 10px;"></p>
+        </section>
         </div>
 
         <div class="page" id="page-historique" style="display:none;">
@@ -2686,46 +2726,6 @@ def accueil():
                 <div class="loading">Chargement des sorties...</div>
             </div>
 
-            <details style="margin-top: 20px;">
-                <summary style="cursor: pointer; font-weight: 600;">
-                    ⚙️ Réglages de l'usure
-                </summary>
-
-                <p class="form-help" style="margin-top: 10px;">
-                    Chaque sortie fait vieillir tes pièces plus ou moins vite
-                    selon le terrain. 1 = usure normale, 1,6 = usure 60 % plus
-                    rapide. Le dénivelé compte aussi : 0 = on l'ignore,
-                    1 = poids normal. Quand le type de chemin d'une sortie a été
-                    analysé (automatiquement), ce sont les pourcentages réels de
-                    route, chemin et sentier qui comptent ; le terrain choisi ne
-                    sert alors que pour les parties inconnues.
-                </p>
-
-                <label for="regRoute">Route / bitume</label>
-                <input type="text" inputmode="decimal" id="regRoute">
-
-                <label for="regMixte">Mixte</label>
-                <input type="text" inputmode="decimal" id="regMixte">
-
-                <label for="regChemin">Chemin / piste</label>
-                <input type="text" inputmode="decimal" id="regChemin">
-
-                <label for="regSentier">Sentier technique</label>
-                <input type="text" inputmode="decimal" id="regSentier">
-
-                <label for="regDenivele">Poids du dénivelé</label>
-                <input type="text" inputmode="decimal" id="regDenivele">
-
-                <button
-                    class="btn-primary"
-                    style="width:100%;"
-                    onclick="enregistrerReglages()"
-                >
-                    Enregistrer les réglages
-                </button>
-
-                <p class="form-help" id="reglagesMessage" style="margin-top: 10px;"></p>
-            </details>
         </div>
 
         </div>
@@ -4583,6 +4583,32 @@ def accueil():
                 return bloc;
             }
 
+            // Répartition réelle du terrain d'une sortie analysée (en % de la distance).
+            function repartitionTerrain(s) {
+                const codes = s.surfaces;
+                const tr = s.trace;
+                if (!codes || !Array.isArray(tr) || codes.length !== tr.length || tr.length < 2) return null;
+
+                const tot = { r: 0, c: 0, s: 0, u: 0 };
+                let somme = 0;
+                for (let i = 0; i < tr.length - 1; i++) {
+                    const d = distanceLatLon(tr[i], tr[i + 1]);
+                    const k = codes[i] === 'v' ? 'r' : (codes[i] in tot ? codes[i] : 'u');
+                    tot[k] += d;
+                    somme += d;
+                }
+                if (somme <= 0) return null;
+
+                const noms = [['r', 'route'], ['c', 'chemin'], ['s', 'sentier'], ['u', 'inconnu']];
+                const parts = noms
+                    .map(([k, nom]) => ({ nom: nom, k: k, pct: Math.round((tot[k] / somme) * 100) }))
+                    .filter(x => x.pct > 0);
+                return {
+                    texte: parts.map(x => `${x.pct} % ${x.nom}`).join(' · '),
+                    inconnu: tot.u / somme
+                };
+            }
+
             // ---------- Analyse automatique du type de chemin ----------
             const etatAnalyse = {};
             const dejaEssayees = new Set();
@@ -4765,7 +4791,19 @@ def accueil():
                             changerTerrain(s.id, menuTerrain.value, menuTerrain, s.terrain);
                         });
 
-                        ligne2.appendChild(menuTerrain);
+                        const repart = s.coef_analyse ? repartitionTerrain(s) : null;
+                        if (repart) {
+                            const texteTerrain = document.createElement('span');
+                            texteTerrain.style.fontWeight = '600';
+                            texteTerrain.textContent = `Terrain analysé : ${repart.texte}`;
+                            ligne2.appendChild(texteTerrain);
+                        }
+
+                        // Le choix du terrain ne sert plus que sans analyse,
+                        // ou si une part importante du parcours reste inconnue.
+                        if (!repart || repart.inconnu >= 0.2) {
+                            ligne2.appendChild(menuTerrain);
+                        }
 
                         if (s.notes) {
                             const note = document.createElement('span');
