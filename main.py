@@ -415,6 +415,7 @@ def init_db():
 
     ajouter_colonne(cursor, "composants", "seuil_jours", "INTEGER DEFAULT 0")
     ajouter_colonne(cursor, "composants", "verification", "INTEGER DEFAULT 0")
+    ajouter_colonne(cursor, "composants", "coef_usure", "DOUBLE PRECISION DEFAULT 1")
     ajouter_colonne(cursor, "velo", "date_achat", "TEXT")
     cursor.execute(
         "UPDATE velo SET date_achat = ? WHERE id = 1 AND date_achat IS NULL",
@@ -550,6 +551,11 @@ class MesReglagesRequest(BaseModel):
 class SeuilsRequest(BaseModel):
     seuil_alerte: int = Field(ge=0, le=200000)
     seuil_jours: int = Field(ge=0, le=3650)
+
+
+class CoefsPiecesRequest(BaseModel):
+    # Clé : numéro de la pièce (en texte). Valeur : coefficient d'usure.
+    valeurs: Dict[str, float]
 
 
 class PositionRequest(BaseModel):
@@ -2557,6 +2563,30 @@ def accueil():
 
             <p class="form-help" id="reglagesMessage" style="margin-top: 10px;"></p>
         </section>
+        <section class="mes-reglages" id="coefsPiecesSection" aria-label="Usure de chaque élément">
+            <div class="mr-titre">
+                <strong>🔩 Usure de chaque élément</strong>
+            </div>
+
+            <p class="form-help" style="margin-top: 10px;">
+                Un coefficient pour chaque élément d'entretien, en plus de
+                ceux du terrain. 1 = usure normale, 1,5 = cet élément
+                s'use 50 % plus vite, 0,8 = 20 % plus lentement. Il joue
+                sur le seuil en km et sur le seuil en jours.
+            </p>
+
+            <div id="coefsPiecesListe"></div>
+
+            <button
+                class="btn-primary"
+                style="width:100%; margin-top: 10px;"
+                onclick="enregistrerCoefsPieces()"
+            >
+                Enregistrer les coefficients
+            </button>
+
+            <p class="form-help" id="coefsPiecesMessage" style="margin-top: 10px;"></p>
+        </section>
         </div>
 
         <div class="page" id="page-historique" style="display:none;">
@@ -3221,7 +3251,8 @@ def accueil():
 
             function texteDelai(c) {
                 if (!(c.seuil_jours > 0) || c.jours_ecoules === null) return '';
-                const reste = c.seuil_jours - c.jours_ecoules;
+                const ecoules = typeof c.jours_usure === 'number' ? c.jours_usure : c.jours_ecoules;
+                const reste = c.seuil_jours - ecoules;
                 return reste >= 0 ? `${reste} j` : `+${-reste} j`;
             }
 
@@ -3793,6 +3824,7 @@ def accueil():
                     }
                     majBoutonDeplier();
 
+                    afficherCoefsPieces(data.composants);
                     await chargerReglagesVelo();
                     await chargerHistorique();
                     await chargerSorties();
@@ -7313,6 +7345,98 @@ def accueil():
             }
 
 
+            // Un champ de coefficient par élément d'entretien (pièces, puis vérifications).
+            function afficherCoefsPieces(composants) {
+                const zone = document.getElementById('coefsPiecesListe');
+                zone.textContent = '';
+
+                const pieces = composants
+                    .filter(c => !c.verification)
+                    .sort((a, b) => (a.numero || 0) - (b.numero || 0));
+                const verifs = composants.filter(c => c.verification);
+
+                const groupe = (titre, liste) => {
+                    if (liste.length === 0) return;
+
+                    const bloc = document.createElement('div');
+                    bloc.className = 'mr-groupe';
+                    const h = document.createElement('h3');
+                    h.textContent = titre;
+                    bloc.appendChild(h);
+
+                    liste.forEach(c => {
+                        const ligne = document.createElement('div');
+                        ligne.className = 'mr-ligne';
+
+                        const nom = document.createElement('span');
+                        nom.textContent = c.numero ? `${c.numero}. ${c.nom}` : c.nom;
+                        ligne.appendChild(nom);
+
+                        const champ = document.createElement('input');
+                        champ.type = 'text';
+                        champ.inputMode = 'decimal';
+                        champ.maxLength = 6;
+                        champ.dataset.coefId = String(c.id);
+                        champ.setAttribute('aria-label', `Coefficient d'usure : ${c.nom}`);
+                        champ.value = String(c.coef_usure === undefined ? 1 : c.coef_usure)
+                            .replace('.', ',');
+                        ligne.appendChild(champ);
+
+                        bloc.appendChild(ligne);
+                    });
+
+                    zone.appendChild(bloc);
+                };
+
+                groupe('Pièces et entretiens', pieces);
+                groupe('Vérifications', verifs);
+            }
+
+            async function enregistrerCoefsPieces() {
+                const message = document.getElementById('coefsPiecesMessage');
+                const valeurs = {};
+                let erreur = false;
+
+                document.querySelectorAll('#coefsPiecesListe input[data-coef-id]').forEach(champ => {
+                    const v = parseFloat(champ.value.replace(',', '.'));
+
+                    if (isNaN(v) || v < 0.2 || v > 5) {
+                        erreur = true;
+                        champ.style.borderColor = 'var(--danger)';
+                    } else {
+                        champ.style.borderColor = '';
+                        valeurs[champ.dataset.coefId] = v;
+                    }
+                });
+
+                if (erreur) {
+                    message.textContent = 'Chaque coefficient doit être un nombre entre 0,2 et 5.';
+                    return;
+                }
+
+                try {
+                    const res = await fetch('/api/composants/coefficients', {
+                        method: 'POST',
+                        headers: getHeaders(),
+                        body: JSON.stringify({ valeurs: valeurs })
+                    });
+
+                    if (res.status === 401) {
+                        document.getElementById('authScreen').style.display = 'flex';
+                        return;
+                    }
+
+                    if (!res.ok) throw new Error();
+
+                    message.textContent = '✅ Coefficients enregistrés.';
+                    await chargerEtat();
+
+                } catch (e) {
+                    message.textContent = 'Enregistrement impossible.';
+                }
+            }
+
+
             const CHAMPS_REGLAGES = {
                 terrain_route: 'regRoute',
                 terrain_mixte: 'regMixte',
@@ -7456,7 +7580,9 @@ def obtenir_etat(x_code_acces: Optional[str] = Header(default=None)):
                     )
                     surplus += float(s[1] or 0) * (facteur - 1)
 
-            km_usure = max(0.0, km + surplus)
+            coef_piece = row["coef_usure"] if row["coef_usure"] else 1.0
+
+            km_usure = max(0.0, km + surplus) * coef_piece
 
             pourcentage_km = (
                 round((km_usure / seuil) * 100)
@@ -7475,7 +7601,9 @@ def obtenir_etat(x_code_acces: Optional[str] = Header(default=None)):
                     reference = date.fromisoformat(DATE_ACHAT_PAR_DEFAUT)
 
                 jours_ecoules = max(0, (aujourdhui - reference).days)
-                pourcentage_jours = round(jours_ecoules / seuil_jours * 100)
+                pourcentage_jours = round(
+                    jours_ecoules * coef_piece / seuil_jours * 100
+                )
 
             pourcentage = max(pourcentage_km, pourcentage_jours)
 
@@ -7497,6 +7625,12 @@ def obtenir_etat(x_code_acces: Optional[str] = Header(default=None)):
                 "pourcentage_usure": pourcentage,
                 "seuil_jours": seuil_jours,
                 "jours_ecoules": jours_ecoules,
+                "jours_usure": (
+                    round(jours_ecoules * coef_piece)
+                    if jours_ecoules is not None
+                    else None
+                ),
+                "coef_usure": round(coef_piece, 2),
                 "alerte_entretien": pourcentage >= 100,
                 "categorie": row["categorie"],
                 "pos_x": row["pos_x"],
@@ -7964,6 +8098,52 @@ def modifier_seuils(
             "UPDATE composants SET seuil_alerte = ?, seuil_jours = ? WHERE id = ?",
             (data.seuil_alerte, data.seuil_jours, composant_id)
         )
+        conn.commit()
+
+        return {"statut": "success"}
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+
+@app.post("/api/composants/coefficients")
+def enregistrer_coefs_pieces(
+    data: CoefsPiecesRequest,
+    x_code_acces: Optional[str] = Header(default=None)
+):
+    """Enregistre le coefficient d'usure de chaque élément d'entretien."""
+    verifier_auth(x_code_acces)
+
+    a_enregistrer = []
+
+    for cle, valeur in data.valeurs.items():
+        try:
+            composant_id = int(cle)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Pièce inconnue.")
+
+        if not (0.2 <= valeur <= 5):
+            raise HTTPException(
+                status_code=400,
+                detail="Chaque coefficient doit être entre 0,2 et 5."
+            )
+
+        a_enregistrer.append((round(valeur, 2), composant_id))
+
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        for valeur, composant_id in a_enregistrer:
+            cursor.execute(
+                "UPDATE composants SET coef_usure = ? WHERE id = ?",
+                (valeur, composant_id)
+            )
+
         conn.commit()
 
         return {"statut": "success"}
