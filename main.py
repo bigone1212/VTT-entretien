@@ -120,12 +120,54 @@ def famille_de(nom):
     return "autre"
 
 
-def facteur_usure(famille, distance_km, d_pos, d_neg, terrain, reglages):
+def coef_terrain_sortie(trace_json, surfaces, terrain, reglages):
+    """
+    Coefficient de terrain d'une sortie : (coefficient, analysé ?).
+    Si le type de chemin a été analysé, on pondère les coefficients route /
+    chemin / sentier par la part réelle de chaque type ; les parties inconnues
+    gardent le coefficient du terrain choisi pour la sortie.
+    """
+    base = reglages.get(f"terrain_{terrain}", 1.0)
+
+    if not surfaces:
+        return base, False
+
+    try:
+        trace = json.loads(trace_json or "[]")
+    except ValueError:
+        return base, False
+
+    if not isinstance(trace, list) or len(trace) != len(surfaces) or len(trace) < 2:
+        return base, False
+
+    route = reglages.get("terrain_route", 1.0)
+    coefs = {
+        "r": route,
+        "v": route,
+        "c": reglages.get("terrain_chemin", 1.0),
+        "s": reglages.get("terrain_sentier", 1.0),
+    }
+    total = 0.0
+    somme = 0.0
+
+    for i in range(len(trace) - 1):
+        d = gpx_import._distance_m(trace[i], trace[i + 1])
+        total += d
+        somme += d * coefs.get(surfaces[i], base)
+
+    if total <= 0:
+        return base, False
+
+    return somme / total, True
+
+
+def facteur_usure(famille, distance_km, d_pos, d_neg, terrain, reglages, coef=None):
     """
     Combien de km d'usure équivaut 1 km de cette sortie pour cette famille.
     1,0 = usure normale ; 2,0 = deux fois plus vite.
+    `coef` : coefficient de terrain déjà calculé (analyse du type de chemin).
     """
-    coef_terrain = reglages.get(f"terrain_{terrain}", 1.0)
+    coef_terrain = coef if coef is not None else reglages.get(f"terrain_{terrain}", 1.0)
     distance = max(float(distance_km or 0), 0.1)
     poids = reglages.get("poids_denivele", 1.0)
 
@@ -1289,6 +1331,8 @@ def accueil():
             .menu-sortie button:disabled { opacity: 0.4; cursor: default; }
             .menu-sortie button.danger { color: var(--danger); }
             .menu-sortie button .ico { width: 18px; height: 18px; }
+
+            .ligne-usure { margin-top: 4px; font-size: 0.78rem; font-weight: 600; color: var(--accent); }
 
             .sortie-statut { margin-top: 8px; font-weight: 700; color: var(--accent); }
 
@@ -2651,7 +2695,10 @@ def accueil():
                     Chaque sortie fait vieillir tes pièces plus ou moins vite
                     selon le terrain. 1 = usure normale, 1,6 = usure 60 % plus
                     rapide. Le dénivelé compte aussi : 0 = on l'ignore,
-                    1 = poids normal.
+                    1 = poids normal. Quand le type de chemin d'une sortie a été
+                    analysé (automatiquement), ce sont les pourcentages réels de
+                    route, chemin et sentier qui comptent ; le terrain choisi ne
+                    sert alors que pour les parties inconnues.
                 </p>
 
                 <label for="regRoute">Route / bitume</label>
@@ -4526,35 +4573,113 @@ def accueil():
                 bloc.appendChild(legendesProfil(s, profil));
 
                 if (!g.codes) {
-                    const bouton = document.createElement('button');
-                    bouton.className = 'btn-action';
-                    bouton.style.width = 'auto';
-                    bouton.style.padding = '6px 12px';
-                    bouton.style.marginTop = '8px';
-                    bouton.textContent = 'Analyser le type de chemin';
-                    bouton.addEventListener('click', async () => {
-                        bouton.disabled = true;
-                        bouton.textContent = 'Analyse en cours...';
-                        try {
-                            const codesTrouves = await chercherTypesChemin(s.trace);
-                            const res = await fetch(`/api/sorties/${s.id}/surfaces`, {
-                                method: 'POST',
-                                headers: getHeaders(),
-                                body: JSON.stringify({ codes: codesTrouves })
-                            });
-                            if (!res.ok) throw new Error();
-                            await chargerSorties();
-                        } catch (e) {
-                            console.error(e);
-                            bouton.disabled = false;
-                            bouton.textContent = 'Analyser le type de chemin';
-                            alert("Analyse impossible pour le moment (service de cartes OpenStreetMap indisponible ou parcours trop grand). Réessaie plus tard.");
-                        }
-                    });
-                    bloc.appendChild(bouton);
+                    const zoneAnalyse = document.createElement('div');
+                    zoneAnalyse.className = 'profil-analyse';
+                    zoneAnalyse.dataset.analyse = String(s.id);
+                    rendreAnalyse(zoneAnalyse, s);
+                    bloc.appendChild(zoneAnalyse);
                 }
 
                 return bloc;
+            }
+
+            // ---------- Analyse automatique du type de chemin ----------
+            const etatAnalyse = {};
+            const dejaEssayees = new Set();
+            let analyseEnCours = false;
+            const MAX_ANALYSES_AUTO = 30;
+
+            function pauseMs(ms) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            }
+
+            // Affiche, dans le bloc profil, l'état de l'analyse (en cours, ou bouton pour relancer).
+            function rendreAnalyse(zone, sortie) {
+                zone.textContent = '';
+                const etat = etatAnalyse[sortie.id];
+
+                if (etat === 'attente' || etat === 'cours') {
+                    const t = document.createElement('div');
+                    t.className = 'profil-legende';
+                    t.textContent = etat === 'cours'
+                        ? "Analyse du terrain en cours (route, chemin, sentier)..."
+                        : "Analyse du terrain en attente...";
+                    zone.appendChild(t);
+                    return;
+                }
+
+                const bouton = document.createElement('button');
+                bouton.className = 'btn-action';
+                bouton.style.width = 'auto';
+                bouton.style.padding = '6px 12px';
+                bouton.style.marginTop = '8px';
+                bouton.textContent = etat === 'echec'
+                    ? "Analyse impossible, réessayer"
+                    : "Analyser le type de chemin";
+                bouton.addEventListener('click', () => {
+                    dejaEssayees.delete(sortie.id);
+                    analyserSorties([sortie]);
+                });
+                zone.appendChild(bouton);
+            }
+
+            function majEtatAnalyse(sortie, etat) {
+                etatAnalyse[sortie.id] = etat;
+                const zone = document.querySelector(`[data-analyse="${sortie.id}"]`);
+                if (zone) rendreAnalyse(zone, sortie);
+            }
+
+            const fileAnalyses = [];
+
+            async function analyserSorties(liste) {
+                liste.forEach(sortie => {
+                    if (!fileAnalyses.includes(sortie)) {
+                        fileAnalyses.push(sortie);
+                        majEtatAnalyse(sortie, 'attente');
+                    }
+                });
+                if (analyseEnCours) return;
+                analyseEnCours = true;
+                let reussies = 0;
+
+                while (fileAnalyses.length > 0) {
+                    const sortie = fileAnalyses.shift();
+                    dejaEssayees.add(sortie.id);
+                    majEtatAnalyse(sortie, 'cours');
+                    try {
+                        const codes = await chercherTypesChemin(sortie.trace);
+                        const res = await fetch(`/api/sorties/${sortie.id}/surfaces`, {
+                            method: 'POST',
+                            headers: getHeaders(),
+                            body: JSON.stringify({ codes: codes })
+                        });
+                        if (!res.ok) throw new Error('enregistrement');
+                        sortie.surfaces = codes;
+                        majEtatAnalyse(sortie, 'ok');
+                        reussies++;
+                    } catch (e) {
+                        console.error(e);
+                        majEtatAnalyse(sortie, 'echec');
+                    }
+                    await pauseMs(fileAnalyses.length > 0 ? 1500 : 0);
+                }
+
+                analyseEnCours = false;
+
+                if (reussies > 0) {
+                    await chargerSorties();
+                    await chargerEtat();
+                }
+            }
+
+            // Lance l'analyse des sorties qui n'en ont pas encore (les plus récentes d'abord).
+            function analyserAuto(sorties) {
+                if (analyseEnCours) return;
+                const afaire = sorties
+                    .filter(x => !x.surfaces && Array.isArray(x.trace) && x.trace.length >= 2
+                        && !dejaEssayees.has(x.id))
+                    .slice(0, MAX_ANALYSES_AUTO);
+                if (afaire.length > 0) analyserSorties(afaire);
             }
 
             function fermerMenusSortie() {
@@ -4648,6 +4773,16 @@ def accueil():
                             ligne2.appendChild(note);
                         }
 
+                        const ligneUsure = document.createElement('div');
+                        ligneUsure.className = 'ligne-usure';
+                        if (s.coef_analyse) {
+                            ligneUsure.textContent =
+                                `Usure des pièces ×${String(s.coef_usure).replace('.', ',')} · d'après le terrain analysé`;
+                        } else {
+                            ligneUsure.textContent =
+                                `Usure des pièces ×${String(s.coef_usure).replace('.', ',')} · terrain choisi`;
+                        }
+
                         const bouton = document.createElement('button');
                         bouton.className = 'btn-action';
                         bouton.style.marginTop = '8px';
@@ -4694,6 +4829,7 @@ def accueil():
                         details.appendChild(titre);
                         details.appendChild(ligne1);
                         details.appendChild(ligne2);
+                        details.appendChild(ligneUsure);
                         const nbVideos = s.videos ? s.videos.length : 0;
                         const boutonVideo = document.createElement('button');
                         boutonVideo.className = 'btn-action';
@@ -4809,6 +4945,8 @@ def accueil():
 
                         liste.appendChild(item);
                     });
+
+                    analyserAuto(sorties);
 
                 } catch (e) {
                     console.error(e);
@@ -7243,10 +7381,15 @@ def obtenir_etat(x_code_acces: Optional[str] = Header(default=None)):
         aujourdhui = date.today()
 
         cursor.execute("""
-            SELECT debut, distance_km, denivele_pos, denivele_neg, terrain
+            SELECT debut, distance_km, denivele_pos, denivele_neg, terrain,
+                   trace, surfaces
             FROM sorties
         """)
         sorties = cursor.fetchall()
+        coefs_sorties = [
+            coef_terrain_sortie(s[5], s[6], s[4] or "mixte", reglages)[0]
+            for s in sorties
+        ]
 
         cursor.execute("""
             SELECT composant_id, MAX(date_remplacement)
@@ -7267,10 +7410,11 @@ def obtenir_etat(x_code_acces: Optional[str] = Header(default=None)):
             depuis = dernier_entretien.get(row["id"])
             surplus = 0.0
 
-            for s in sorties:
+            for s, coef_s in zip(sorties, coefs_sorties):
                 if depuis is None or s[0][:10] >= depuis:
                     facteur = facteur_usure(
-                        famille, s[1], s[2], s[3], s[4] or "mixte", reglages
+                        famille, s[1], s[2], s[3], s[4] or "mixte", reglages,
+                        coef_s
                     )
                     surplus += float(s[1] or 0) * (facteur - 1)
 
@@ -7991,10 +8135,12 @@ def lister_sorties(x_code_acces: Optional[str] = Header(default=None)):
 
     try:
         cursor.execute("SELECT * FROM sorties ORDER BY debut DESC")
+        lignes_sorties = cursor.fetchall()
+        reglages_usure = lire_reglages(cursor)
 
         resultat = []
 
-        for row in cursor.fetchall():
+        for row in lignes_sorties:
             sortie = dict(row)
 
             try:
@@ -8014,6 +8160,12 @@ def lister_sorties(x_code_acces: Optional[str] = Header(default=None)):
             # la photo complète se charge au clic.
             sortie["photos"] = [miniature_de(p) for p in brutes]
             sortie["photos_pos"] = [position_de(p) for p in brutes]
+            coef, analyse = coef_terrain_sortie(
+                json.dumps(sortie["trace"]), sortie.get("surfaces"),
+                sortie.get("terrain") or "mixte", reglages_usure
+            )
+            sortie["coef_usure"] = round(coef, 2)
+            sortie["coef_analyse"] = analyse
 
             sortie["videos"] = lire_videos(sortie.get("videos"))
 
