@@ -1256,10 +1256,10 @@ def accueil():
 
             .mode-pastille {
                 position: absolute;
-                top: -5px;
+                top: -8px;
                 right: 14px;
-                width: 12px;
-                height: 12px;
+                width: 17px;
+                height: 17px;
                 border-radius: 50%;
                 border: 2px solid rgba(255,255,255,0.9);
                 pointer-events: none;
