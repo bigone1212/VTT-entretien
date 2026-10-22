@@ -1267,10 +1267,10 @@ def accueil():
 
             .mode-pastille {
                 position: absolute;
-                top: -8px;
+                top: -7px;
                 right: 14px;
-                width: 17px;
-                height: 17px;
+                width: 15px;
+                height: 15px;
                 border-radius: 50%;
                 border: 2px solid rgba(255,255,255,0.9);
                 pointer-events: none;
@@ -1414,6 +1414,18 @@ def accueil():
             .hist-filtre-btn { right: 40px; }
             .hist-filtre-btn.actif { color: var(--accent); background: rgba(53,224,200,0.16); }
             .hist-filtre-btn.actif:hover { background: rgba(53,224,200,0.24); }
+            .hist-filtre-btn.actif::after {
+                content: "";
+                position: absolute;
+                top: 1px;
+                right: 1px;
+                width: 11px;
+                height: 11px;
+                border-radius: 50%;
+                background: linear-gradient(135deg, #35e0c8, #0a8f9c);
+                border: 2px solid rgba(255,255,255,0.9);
+                pointer-events: none;
+            }
             .menu-filtre { min-width: 250px; max-width: calc(100vw - 56px); max-height: 60vh; overflow-y: auto; }
             .menu-filtre button { white-space: normal; }
 
