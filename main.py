@@ -1313,6 +1313,8 @@ def accueil():
 
             .mr-corps .mr-ligne label { color: var(--text-muted); }
             .mr-corps .guide { margin: 0 0 8px; }
+            .mr-corps .guide-coefs { margin: 14px 0 0; }
+            .guide-coefs[open] > summary { color: var(--accent); }
             .mr-corps .mr-groupe:first-child { border-top: none; }
 
             .mode-switch button[aria-selected="true"] {
@@ -2711,10 +2713,10 @@ def accueil():
                 <button type="button" data-theme-choix="dark"></button>
             </div>
         </section>
-        <section class="mes-reglages mr-repliable" id="mesReglages" aria-label="Mes réglages">
+        <section class="mes-reglages mr-repliable" id="mesReglages" aria-label="Mes réglages vélo">
             <div class="mr-titre">
                 <button type="button" class="mr-entete" aria-expanded="false" aria-controls="mesReglagesCorps">
-                    <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg><span>Mes réglages</span></strong>
+                    <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg><span>Mes réglages vélo</span></strong>
                     <span class="mr-chevron"></span>
                 </button>
             </div>
@@ -2785,37 +2787,28 @@ def accueil():
                 </button>
 
                 <p class="form-help" id="reglagesMessage" style="margin-top: 10px;"></p>
-            </div>
-        </section>
-        <section class="mes-reglages mr-repliable" id="coefsPiecesSection" aria-label="Usure de chaque élément">
-            <div class="mr-titre">
-                <button type="button" class="mr-entete" aria-expanded="false" aria-controls="coefsPiecesCorps">
-                    <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg><span>Usure de chaque élément</span></strong>
-                    <span class="mr-chevron"></span>
-                </button>
-            </div>
-            <div class="mr-corps" id="coefsPiecesCorps">
-                <details class="guide">
-                    <summary>Comment ça marche</summary>
+
+                <details class="guide guide-coefs" id="coefsPiecesDetails">
+                    <summary>Coefficient de chaque élément</summary>
                     <p>
                         Un coefficient pour chaque élément d'entretien, en plus de
                         ceux du terrain. 1 = usure normale, 1,5 = cet élément
                         s'use 50 % plus vite, 0,8 = 20 % plus lentement. Il joue
                         sur le seuil en km et sur le seuil en jours.
                     </p>
+
+                    <div id="coefsPiecesListe"></div>
+
+                    <button
+                        class="btn-primary"
+                        style="width:100%; margin-top: 10px;"
+                        onclick="enregistrerCoefsPieces()"
+                    >
+                        Enregistrer les coefficients
+                    </button>
+
+                    <p class="form-help" id="coefsPiecesMessage" style="margin-top: 10px;"></p>
                 </details>
-
-                <div id="coefsPiecesListe"></div>
-
-                <button
-                    class="btn-primary"
-                    style="width:100%; margin-top: 10px;"
-                    onclick="enregistrerCoefsPieces()"
-                >
-                    Enregistrer les coefficients
-                </button>
-
-                <p class="form-help" id="coefsPiecesMessage" style="margin-top: 10px;"></p>
             </div>
         </section>
         </div>
