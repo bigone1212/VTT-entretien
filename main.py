@@ -1408,11 +1408,14 @@ def accueil():
 
             .history-details .titre-sortie { padding-right: 38px; }
 
-            .hist-entete { position: relative; display: flex; align-items: center; min-height: 44px; padding-right: 40px; }
+            .hist-entete { position: relative; display: flex; align-items: center; min-height: 44px; padding-right: 84px; }
             .hist-entete h2 { margin: 0; }
             .hist-total { margin: 2px 0 8px; font-size: 0.82rem; color: var(--text-muted); }
-            .hist-filtre { margin: 0 0 10px; }
-            .hist-filtre select { margin: 0; }
+            .hist-filtre-btn { right: 40px; }
+            .hist-filtre-btn.actif { color: var(--accent); background: rgba(53,224,200,0.16); }
+            .hist-filtre-btn.actif:hover { background: rgba(53,224,200,0.24); }
+            .menu-filtre { min-width: 250px; max-width: calc(100vw - 56px); max-height: 60vh; overflow-y: auto; }
+            .menu-filtre button { white-space: normal; }
 
             .hist-selection {
                 display: flex;
@@ -2786,10 +2789,6 @@ def accueil():
                 <div id="histMenuZone"></div>
             </div>
 
-            <div class="hist-filtre" id="histFiltreZone" style="display:none;">
-                <select id="histFiltre" aria-label="Filtrer par composant"></select>
-            </div>
-
             <div class="hist-total" id="histTotal"></div>
             <div class="hist-selection" id="histSelection" style="display:none;"></div>
 
@@ -3080,6 +3079,8 @@ def accueil():
             ICONES.soleil = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>';
             ICONES.lune = '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>';
             ICONES.auto = '<circle cx="12" cy="12" r="9"/><path d="M12 3v18"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/>';
+            ICONES.filtre = '<path d="M3.5 5h17l-6.5 8v6l-4-2v-4z"/>';
+            ICONES.vide = '';
             ICONES.plus = '<path d="M12 5v14M5 12h14"/>';
             ICONES.telecharger = '<path d="M12 4v11"/><path d="M7 11l5 5 5-5"/><path d="M5 20h14"/>';
             ICONES.cases = '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/>';
@@ -4114,18 +4115,19 @@ def accueil():
             }
 
             // Bouton « trois points » et son menu (même présentation que les sorties).
-            function ajouterMenuPoints(parent, libelle, actions) {
+            function ajouterMenuPoints(parent, libelle, actions, options) {
+                const opt = options || {};
                 const menu = document.createElement('div');
-                menu.className = 'menu-sortie';
+                menu.className = 'menu-sortie' + (opt.classeMenu ? ' ' + opt.classeMenu : '');
                 menu.setAttribute('role', 'menu');
 
                 const kebab = document.createElement('button');
                 kebab.type = 'button';
-                kebab.className = 'menu-sortie-btn';
+                kebab.className = 'menu-sortie-btn' + (opt.classeBtn ? ' ' + opt.classeBtn : '');
                 kebab.setAttribute('aria-label', libelle);
                 kebab.setAttribute('aria-haspopup', 'menu');
                 kebab.setAttribute('aria-expanded', 'false');
-                remplirBouton(kebab, 'points', '');
+                remplirBouton(kebab, opt.icone || 'points', '');
 
                 actions.forEach(a => {
                     const el = document.createElement('button');
@@ -4154,6 +4156,7 @@ def accueil():
 
                 parent.appendChild(kebab);
                 parent.appendChild(menu);
+                return kebab;
             }
 
             // Interventions affichées : toutes, ou celles du composant filtré.
@@ -4206,28 +4209,43 @@ def accueil():
 
                 if (histFiltreId && !comptes.has(histFiltreId)) histFiltreId = '';
 
-                const selectFiltre = document.getElementById('histFiltre');
-                selectFiltre.innerHTML = '';
-                const optTous = document.createElement('option');
-                optTous.value = '';
-                optTous.textContent = `Tous les composants (${historiqueDonnees.length})`;
-                selectFiltre.appendChild(optTous);
-                Array.from(comptes.entries())
-                    .sort((a, b) => a[1].nom.localeCompare(b[1].nom, 'fr'))
-                    .forEach(entree => {
-                        const o = document.createElement('option');
-                        o.value = entree[0];
-                        o.textContent = `${entree[1].nom} (${entree[1].n})`;
-                        selectFiltre.appendChild(o);
-                    });
-                selectFiltre.value = histFiltreId;
-                document.getElementById('histFiltreZone').style.display =
-                    comptes.size > 1 ? '' : 'none';
-
                 const visibles = interventionsVisibles();
 
-                // Menu général (trois points en haut à droite).
+                // Bouton entonnoir (filtre), à gauche des trois points.
                 zoneMenu.innerHTML = '';
+
+                if (comptes.size > 1) {
+                    const choisir = (cle) => () => {
+                        histFiltreId = cle;
+                        histSelection.clear();
+                        afficherHistorique();
+                    };
+                    const entrees = [{
+                        icone: histFiltreId === '' ? 'valider' : 'vide',
+                        texte: `Tous les composants (${historiqueDonnees.length})`,
+                        action: choisir('')
+                    }];
+
+                    Array.from(comptes.entries())
+                        .sort((a, b) => a[1].nom.localeCompare(b[1].nom, 'fr'))
+                        .forEach(entree => {
+                            entrees.push({
+                                icone: histFiltreId === entree[0] ? 'valider' : 'vide',
+                                texte: `${entree[1].nom} (${entree[1].n})`,
+                                action: choisir(entree[0])
+                            });
+                        });
+
+                    const boutonFiltre = ajouterMenuPoints(
+                        zoneMenu,
+                        histFiltreId ? 'Filtrer par composant (filtre actif)' : 'Filtrer par composant',
+                        entrees,
+                        { icone: 'filtre', classeBtn: 'hist-filtre-btn', classeMenu: 'menu-filtre' }
+                    );
+                    boutonFiltre.classList.toggle('actif', histFiltreId !== '');
+                }
+
+                // Menu général (trois points en haut à droite).
                 ajouterMenuPoints(zoneMenu, "Actions de l'historique", [
                     { icone: 'plus', texte: 'Ajouter une intervention', action: () => ouvrirFenetreIntervention(null, null) },
                     {
@@ -4622,12 +4640,6 @@ def accueil():
                     }
                 }
             }
-
-            document.getElementById('histFiltre').addEventListener('change', (e) => {
-                histFiltreId = e.target.value;
-                histSelection.clear();
-                afficherHistorique();
-            });
 
             (function preparerFenetreIntervention() {
                 const fenetre = document.getElementById('fenetreIntervention');
