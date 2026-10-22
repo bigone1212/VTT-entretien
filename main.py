@@ -634,6 +634,17 @@ class HistoriqueRequest(BaseModel):
     notes: Optional[str] = "Ancien entretien"
 
 
+class HistoriqueModifRequest(BaseModel):
+    date_remplacement: str
+    km_intervention: int = Field(ge=0)
+    cout: Optional[float] = Field(default=0.0, ge=0)
+    notes: Optional[str] = "Ancien entretien"
+
+
+class SupprimerPlusieursRequest(BaseModel):
+    ids: List[int] = Field(min_length=1, max_length=500)
+
+
 # ============================================================
 # PAGE PRINCIPALE : HTML, CSS ET JAVASCRIPT
 # ============================================================
@@ -1396,6 +1407,50 @@ def accueil():
             .sortie-statut { margin-top: 8px; font-weight: 700; color: var(--accent); }
 
             .history-details .titre-sortie { padding-right: 38px; }
+
+            .hist-entete { position: relative; display: flex; align-items: center; min-height: 44px; padding-right: 40px; }
+            .hist-entete h2 { margin: 0; }
+            .hist-total { margin: 2px 0 8px; font-size: 0.82rem; color: var(--text-muted); }
+
+            .hist-selection {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 8px;
+                margin: 6px 0 8px;
+                padding: 10px 12px;
+                border-radius: 12px;
+                background: var(--fill);
+                border: 1px solid var(--line2);
+            }
+
+            .hist-selection span { flex: 1 1 100%; font-weight: 700; font-size: 0.85rem; }
+
+            .hist-selection button {
+                margin: 0;
+                padding: 8px 12px;
+                font: inherit;
+                font-size: 0.82rem;
+                font-weight: 700;
+                color: var(--text-color);
+                background: var(--card-bg);
+                border: 1px solid var(--line2);
+                border-radius: 999px;
+                cursor: pointer;
+            }
+
+            .hist-selection button.danger { color: var(--danger); }
+            .hist-selection button:disabled { opacity: 0.4; cursor: default; }
+
+            .history-item.avec-menu { padding-right: 40px; }
+            .history-item.choisie { background: var(--fill); }
+            .history-item.en-selection { cursor: pointer; padding-right: 4px; }
+            .hist-case { flex: none; width: 22px; height: 22px; margin: 1px 0 0; accent-color: var(--accent); }
+
+            .fi-boite { width: min(100%, 460px); }
+            .fi-boite h2 { font-size: 1.1rem; }
+            #histFermer { width: 38px; height: 38px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid var(--line); background: var(--fill); color: var(--strong); cursor: pointer; }
+            #histFermer .ico { width: 18px; height: 18px; }
 
             .sortie-media {
                 display: flex;
@@ -2675,62 +2730,71 @@ def accueil():
 
         <div class="page" id="page-historique" style="display:none;">
         <div class="history-section">
-            <h2>📜 Ajouter une ancienne intervention</h2>
+            <div class="hist-entete">
+                <h2>📋 Historique des interventions</h2>
+                <div id="histMenuZone"></div>
+            </div>
 
-            <label for="histComposant">Composant concerné</label>
-            <select id="histComposant"></select>
-
-            <label for="histDate">Date de l'intervention</label>
-            <input type="date" id="histDate" required>
-
-            <label for="histKm">Kilométrage au moment de l'intervention</label>
-            <input
-                type="number"
-                id="histKm"
-                min="0"
-                step="1"
-                placeholder="Ex. : 2445"
-                required
-            >
-
-            <p class="form-help">
-                Ce kilométrage deviendra le point de départ du suivi
-                d'entretien du composant.
-            </p>
-
-            <label for="histCout">Coût en euros</label>
-            <input
-                type="number"
-                step="0.01"
-                min="0"
-                id="histCout"
-                placeholder="Coût en € (optionnel)"
-            >
-
-            <label for="histNotes">Notes</label>
-            <input
-                type="text"
-                id="histNotes"
-                placeholder="Ex. : entretien réalisé chez le bouclard"
-            >
-
-            <button
-                class="btn-primary"
-                style="width:100%;"
-                onclick="ajouterHistorique()"
-            >
-                Enregistrer l'intervention
-            </button>
-
-            <h2 style="margin-top: 24px;">
-                📋 Historique des interventions
-            </h2>
+            <div class="hist-total" id="histTotal"></div>
+            <div class="hist-selection" id="histSelection" style="display:none;"></div>
 
             <div id="historyList">
                 <div class="loading">Chargement de l'historique...</div>
             </div>
         </div>
 
+        </div>
+
+        <div id="fenetreIntervention" class="fenetre-profil" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="histTitre">
+            <div class="fp-boite fi-boite">
+                <div class="fp-haut">
+                    <h2 id="histTitre" style="margin:0;"></h2>
+                    <button type="button" id="histFermer" aria-label="Fermer"></button>
+                </div>
+
+                <label for="histComposant">Composant concerné</label>
+                <select id="histComposant"></select>
+
+                <label for="histDate">Date de l'intervention</label>
+                <input type="date" id="histDate" required>
+
+                <label for="histKm">Kilométrage au moment de l'intervention</label>
+                <input
+                    type="number"
+                    id="histKm"
+                    min="0"
+                    step="1"
+                    placeholder="Ex. : 2445"
+                    required
+                >
+
+                <p class="form-help" id="histAide"></p>
+
+                <label for="histCout">Coût en euros</label>
+                <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    id="histCout"
+                    placeholder="Coût en € (optionnel)"
+                >
+
+                <label for="histNotes">Notes</label>
+                <input
+                    type="text"
+                    id="histNotes"
+                    placeholder="Ex. : entretien réalisé chez le bouclard"
+                >
+
+                <button
+                    class="btn-primary"
+                    style="width:100%;"
+                    id="histEnregistrer"
+                    onclick="enregistrerIntervention()"
+                >
+                    Enregistrer l'intervention
+                </button>
+            </div>
         </div>
 
         <div class="page" id="page-sorties" style="display:none;">
@@ -2961,6 +3025,9 @@ def accueil():
             ICONES.soleil = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>';
             ICONES.lune = '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>';
             ICONES.auto = '<circle cx="12" cy="12" r="9"/><path d="M12 3v18"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/>';
+            ICONES.plus = '<path d="M12 5v14M5 12h14"/>';
+            ICONES.telecharger = '<path d="M12 4v11"/><path d="M7 11l5 5 5-5"/><path d="M5 20h14"/>';
+            ICONES.cases = '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/>';
 
             function themeChoisi() {
                 try {
@@ -3695,6 +3762,7 @@ def accueil():
                     }
 
                     const data = await res.json();
+                    kmTotalActuel = Number(data.km_total) || 0;
 
                     document.getElementById('veloInfo').innerText =
                         `${Number(data.km_total).toLocaleString('fr-FR')} km`;
@@ -3971,81 +4039,249 @@ def accueil():
             }
 
 
+            let historiqueDonnees = [];
+            let histSelectionActive = false;
+            const histSelection = new Set();
+            let histEdition = null;
+            let kmTotalActuel = 0;
+
+            function aujourdhuiISO() {
+                const d = new Date();
+                const mois = String(d.getMonth() + 1).padStart(2, '0');
+                const jour = String(d.getDate()).padStart(2, '0');
+                return `${d.getFullYear()}-${mois}-${jour}`;
+            }
+
+            function dateFrancaise(texte) {
+                const morceaux = String(texte || '').slice(0, 10).split('-');
+                return morceaux.length === 3 ? morceaux.reverse().join('/') : String(texte || '');
+            }
+
+            // Bouton « trois points » et son menu (même présentation que les sorties).
+            function ajouterMenuPoints(parent, libelle, actions) {
+                const menu = document.createElement('div');
+                menu.className = 'menu-sortie';
+                menu.setAttribute('role', 'menu');
+
+                const kebab = document.createElement('button');
+                kebab.type = 'button';
+                kebab.className = 'menu-sortie-btn';
+                kebab.setAttribute('aria-label', libelle);
+                kebab.setAttribute('aria-haspopup', 'menu');
+                kebab.setAttribute('aria-expanded', 'false');
+                remplirBouton(kebab, 'points', '');
+
+                actions.forEach(a => {
+                    const el = document.createElement('button');
+                    el.type = 'button';
+                    el.setAttribute('role', 'menuitem');
+                    if (a.danger) el.className = 'danger';
+                    el.disabled = !!a.desactive;
+                    remplirBouton(el, a.icone, a.texte);
+                    el.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        fermerMenusSortie();
+                        a.action();
+                    });
+                    menu.appendChild(el);
+                });
+
+                kebab.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const etaitOuvert = menu.classList.contains('ouvert');
+                    fermerMenusSortie();
+                    if (!etaitOuvert) {
+                        menu.classList.add('ouvert');
+                        kebab.setAttribute('aria-expanded', 'true');
+                    }
+                });
+
+                parent.appendChild(kebab);
+                parent.appendChild(menu);
+            }
+
             async function chargerHistorique() {
                 try {
                     const res = await fetch('/api/historique', { headers: getHeaders() });
                     if (!res.ok) throw new Error();
 
-                    const history = await res.json();
-                    const listDiv = document.getElementById('historyList');
+                    historiqueDonnees = await res.json();
 
-                    listDiv.innerHTML = '';
-
-                    if (history.length === 0) {
-                        listDiv.innerHTML = `
-                            <p style="color: var(--text-muted); font-size: 0.85rem;">
-                                Aucune intervention enregistrée.
-                            </p>
-                        `;
-                        return;
-                    }
-
-                    history.forEach(h => {
-                        const item = document.createElement('div');
-                        item.className = 'history-item';
-
-                        const details = document.createElement('div');
-                        details.className = 'history-details';
-
-                        const title = document.createElement('strong');
-                        title.textContent = h.composant_nom;
-
-                        const detailText = document.createElement('div');
-                        detailText.style.color = 'var(--text-muted)';
-                        detailText.style.marginTop = '4px';
-
-                        const kmText =
-                            h.km_intervention !== null &&
-                            h.km_intervention !== undefined
-                                ? `🚲 À ${h.km_intervention} km`
-                                : '🚲 Kilométrage non renseigné';
-
-                        detailText.textContent =
-                            `${h.notes || 'Intervention réalisée'} · ` +
-                            `${h.date_remplacement} · ${kmText}`;
-
-                        details.appendChild(title);
-                        details.appendChild(detailText);
-
-                        const boutonSuppr = document.createElement('button');
-                        boutonSuppr.className = 'btn-action';
-                        boutonSuppr.style.marginTop = '8px';
-                        boutonSuppr.style.width = 'auto';
-                        boutonSuppr.style.padding = '6px 12px';
-                        boutonSuppr.textContent = '🗑️ Supprimer';
-                        boutonSuppr.addEventListener('click', () => {
-                            supprimerIntervention(
-                                h.id,
-                                h.composant_nom,
-                                h.date_remplacement
-                            );
-                        });
-                        details.appendChild(boutonSuppr);
-
-                        const cost = document.createElement('div');
-                        cost.className = 'history-cost';
-                        cost.textContent =
-                            h.cout > 0 ? `${h.cout} €` : '';
-
-                        item.appendChild(details);
-                        item.appendChild(cost);
-
-                        listDiv.appendChild(item);
+                    // On oublie les lignes sélectionnées qui n'existent plus.
+                    const ids = new Set(historiqueDonnees.map(h => h.id));
+                    Array.from(histSelection).forEach(id => {
+                        if (!ids.has(id)) histSelection.delete(id);
                     });
+
+                    afficherHistorique();
 
                 } catch (e) {
                     console.error(e);
                 }
+            }
+
+            function afficherHistorique() {
+                const listDiv = document.getElementById('historyList');
+                const zoneMenu = document.getElementById('histMenuZone');
+                const total = document.getElementById('histTotal');
+                const barre = document.getElementById('histSelection');
+                const vide = historiqueDonnees.length === 0;
+
+                if (vide) {
+                    histSelectionActive = false;
+                    histSelection.clear();
+                }
+
+                // Menu général (trois points en haut à droite).
+                zoneMenu.innerHTML = '';
+                ajouterMenuPoints(zoneMenu, "Actions de l'historique", [
+                    { icone: 'plus', texte: 'Ajouter une intervention', action: () => ouvrirFenetreIntervention(null, null) },
+                    {
+                        icone: 'cases',
+                        texte: histSelectionActive ? 'Quitter la sélection' : 'Sélectionner plusieurs',
+                        desactive: vide,
+                        action: () => {
+                            histSelectionActive = !histSelectionActive;
+                            histSelection.clear();
+                            afficherHistorique();
+                        }
+                    },
+                    { icone: 'telecharger', texte: 'Exporter en tableur (CSV)', desactive: vide, action: exporterHistoriqueCsv }
+                ]);
+
+                // Total des interventions et des coûts.
+                const somme = historiqueDonnees.reduce((t, h) => t + (Number(h.cout) || 0), 0);
+                total.textContent = vide
+                    ? ''
+                    : nombre(historiqueDonnees.length, 'intervention', 'interventions')
+                        + (somme > 0
+                            ? ' · ' + somme.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' € dépensés'
+                            : '');
+
+                // Barre d'actions de la sélection.
+                barre.innerHTML = '';
+                barre.style.display = histSelectionActive ? 'flex' : 'none';
+
+                if (histSelectionActive) {
+                    const compteur = document.createElement('span');
+                    compteur.textContent = histSelection.size === 0
+                        ? 'Touchez les interventions à choisir'
+                        : nombre(histSelection.size, 'sélectionnée', 'sélectionnées');
+                    barre.appendChild(compteur);
+
+                    const toutes = histSelection.size === historiqueDonnees.length;
+                    const bTout = document.createElement('button');
+                    bTout.type = 'button';
+                    bTout.textContent = toutes ? 'Tout désélectionner' : 'Tout sélectionner';
+                    bTout.addEventListener('click', () => {
+                        histSelection.clear();
+                        if (!toutes) historiqueDonnees.forEach(h => histSelection.add(h.id));
+                        afficherHistorique();
+                    });
+                    barre.appendChild(bTout);
+
+                    const bSuppr = document.createElement('button');
+                    bSuppr.type = 'button';
+                    bSuppr.className = 'danger';
+                    bSuppr.disabled = histSelection.size === 0;
+                    bSuppr.textContent = '🗑️ Supprimer';
+                    bSuppr.addEventListener('click', supprimerSelection);
+                    barre.appendChild(bSuppr);
+
+                    const bAnnuler = document.createElement('button');
+                    bAnnuler.type = 'button';
+                    bAnnuler.textContent = 'Annuler';
+                    bAnnuler.addEventListener('click', () => {
+                        histSelectionActive = false;
+                        histSelection.clear();
+                        afficherHistorique();
+                    });
+                    barre.appendChild(bAnnuler);
+                }
+
+                // Liste.
+                listDiv.innerHTML = '';
+
+                if (vide) {
+                    const p = document.createElement('p');
+                    p.style.color = 'var(--text-muted)';
+                    p.style.fontSize = '0.85rem';
+                    p.textContent = "Aucune intervention enregistrée. Utilisez le menu ⋮ pour en ajouter une.";
+                    listDiv.appendChild(p);
+                    return;
+                }
+
+                historiqueDonnees.forEach(h => {
+                    const item = document.createElement('div');
+                    item.className = 'history-item';
+
+                    let caseSel = null;
+
+                    if (histSelectionActive) {
+                        item.classList.add('en-selection');
+                        caseSel = document.createElement('input');
+                        caseSel.type = 'checkbox';
+                        caseSel.className = 'hist-case';
+                        caseSel.checked = histSelection.has(h.id);
+                        caseSel.setAttribute('aria-label', `Choisir ${h.composant_nom}`);
+                        item.classList.toggle('choisie', caseSel.checked);
+
+                        const basculer = () => {
+                            if (caseSel.checked) histSelection.add(h.id);
+                            else histSelection.delete(h.id);
+                            afficherHistorique();
+                        };
+                        caseSel.addEventListener('change', basculer);
+                        item.addEventListener('click', (e) => {
+                            if (e.target === caseSel) return;
+                            caseSel.checked = !caseSel.checked;
+                            basculer();
+                        });
+                        item.appendChild(caseSel);
+                    } else {
+                        item.classList.add('avec-menu');
+                    }
+
+                    const details = document.createElement('div');
+                    details.className = 'history-details';
+
+                    const title = document.createElement('strong');
+                    title.textContent = h.composant_nom;
+
+                    const detailText = document.createElement('div');
+                    detailText.style.color = 'var(--text-muted)';
+                    detailText.style.marginTop = '4px';
+
+                    const kmText =
+                        h.km_intervention !== null && h.km_intervention !== undefined
+                            ? `🚲 À ${h.km_intervention} km`
+                            : '🚲 Kilométrage non renseigné';
+
+                    detailText.textContent =
+                        `${h.notes || 'Intervention réalisée'} · ` +
+                        `${dateFrancaise(h.date_remplacement)} · ${kmText}`;
+
+                    details.appendChild(title);
+                    details.appendChild(detailText);
+
+                    const cost = document.createElement('div');
+                    cost.className = 'history-cost';
+                    cost.textContent = h.cout > 0 ? `${h.cout} €` : '';
+
+                    item.appendChild(details);
+                    item.appendChild(cost);
+
+                    // Menu « trois points » de la ligne.
+                    if (!histSelectionActive) {
+                        ajouterMenuPoints(item, `Actions : ${h.composant_nom}`, [
+                            { icone: 'crayon', texte: 'Modifier', action: () => ouvrirFenetreIntervention(h, null) },
+                            { icone: 'echange', texte: "Refaire aujourd'hui", action: () => ouvrirFenetreIntervention(null, h) },
+                            { icone: 'poubelle', texte: 'Supprimer', danger: true, action: () => supprimerIntervention(h.id, h.composant_nom, dateFrancaise(h.date_remplacement)) }
+                        ]);
+                    }
+
+                    listDiv.appendChild(item);
+                });
             }
 
 
@@ -4084,7 +4320,240 @@ def accueil():
             }
 
 
-            async function syncKm() {
+            async function supprimerSelection() {
+                const ids = Array.from(histSelection);
+
+                if (ids.length === 0) return;
+
+                const confirmation = confirm(
+                    `Supprimer ${nombre(ids.length, 'intervention', 'interventions')} ? ` +
+                    `Chaque pièce reviendra au point de départ d'avant ces interventions.`
+                );
+
+                if (!confirmation) return;
+
+                try {
+                    const res = await fetch('/api/historique/supprimer-plusieurs', {
+                        method: 'POST',
+                        headers: getHeaders(),
+                        body: JSON.stringify({ ids: ids })
+                    });
+
+                    if (res.status === 401) {
+                        document.getElementById('authScreen').style.display = 'flex';
+                        return;
+                    }
+
+                    if (!res.ok) throw new Error();
+
+                    histSelection.clear();
+                    histSelectionActive = false;
+                    await chargerEtat();
+
+                } catch (e) {
+                    alert("Suppression impossible.");
+                }
+            }
+
+
+            function exporterHistoriqueCsv() {
+                if (historiqueDonnees.length === 0) return;
+
+                const separateur = ';';
+                const saut = String.fromCharCode(13, 10);
+                const guillemet = String.fromCharCode(34);
+
+                const champ = (valeur) => {
+                    const texte = String(valeur === null || valeur === undefined ? '' : valeur);
+                    return guillemet + texte.split(guillemet).join(guillemet + guillemet) + guillemet;
+                };
+
+                const lignes = [
+                    ['Date', 'Composant', 'Kilométrage', 'Coût (€)', 'Notes'].map(champ).join(separateur)
+                ];
+
+                historiqueDonnees.forEach(h => {
+                    lignes.push([
+                        dateFrancaise(h.date_remplacement),
+                        h.composant_nom,
+                        h.km_intervention,
+                        String(Number(h.cout) || 0).replace('.', ','),
+                        h.notes
+                    ].map(champ).join(separateur));
+                });
+
+                // Le premier caractère permet à Excel de lire correctement les accents.
+                const contenu = String.fromCharCode(0xFEFF) + lignes.join(saut);
+                const blob = new Blob([contenu], { type: 'text/csv;charset=utf-8' });
+                const lien = document.createElement('a');
+                const adresse = URL.createObjectURL(blob);
+
+                lien.href = adresse;
+                lien.download = `historique_interventions_${aujourdhuiISO()}.csv`;
+                document.body.appendChild(lien);
+                lien.click();
+                lien.remove();
+                URL.revokeObjectURL(adresse);
+            }
+
+
+            // Fenêtre d'ajout / de modification d'une intervention.
+            // edition = intervention à modifier ; modele = intervention à refaire.
+            function ouvrirFenetreIntervention(edition, modele) {
+                histEdition = edition || null;
+
+                const source = edition || modele || null;
+                const select = document.getElementById('histComposant');
+
+                if (source) select.value = String(source.composant_id);
+                select.disabled = !!edition;
+
+                document.getElementById('histTitre').textContent = edition
+                    ? "✏️ Modifier l'intervention"
+                    : (modele ? "🔁 Refaire l'intervention" : '🔧 Enregistrer une intervention');
+
+                document.getElementById('histDate').value = edition
+                    ? String(edition.date_remplacement || '').slice(0, 10)
+                    : aujourdhuiISO();
+
+                const km = edition ? edition.km_intervention : kmTotalActuel;
+                document.getElementById('histKm').value =
+                    km === null || km === undefined || km === 0 ? (edition ? '0' : '') : String(km);
+
+                document.getElementById('histCout').value =
+                    source && source.cout > 0 ? String(source.cout) : '';
+                document.getElementById('histNotes').value =
+                    source && source.notes ? source.notes : '';
+
+                document.getElementById('histAide').textContent = edition
+                    ? "Le composant ne peut pas être changé : supprimez l'intervention et recréez-la si besoin. Si c'est la dernière de ce composant, le nouveau kilométrage devient son point de départ."
+                    : "Ce kilométrage deviendra le point de départ du suivi d'entretien du composant. Pour une intervention d'aujourd'hui, laissez le kilométrage actuel du vélo.";
+
+                document.getElementById('histEnregistrer').textContent = edition
+                    ? 'Enregistrer les modifications'
+                    : "Enregistrer l'intervention";
+
+                document.getElementById('fenetreIntervention').style.display = 'flex';
+
+                setTimeout(() => {
+                    const premier = edition
+                        ? document.getElementById('histDate')
+                        : select;
+                    premier.focus();
+                }, 50);
+            }
+
+            function fermerFenetreIntervention() {
+                document.getElementById('fenetreIntervention').style.display = 'none';
+                document.getElementById('histComposant').disabled = false;
+                histEdition = null;
+            }
+
+            async function enregistrerIntervention() {
+                const composant_id = parseInt(
+                    document.getElementById('histComposant').value,
+                    10
+                );
+
+                const date_remplacement =
+                    document.getElementById('histDate').value;
+
+                const km_intervention = parseInt(
+                    document.getElementById('histKm').value,
+                    10
+                );
+
+                const cout =
+                    parseFloat(document.getElementById('histCout').value) || 0;
+
+                const notes =
+                    document.getElementById('histNotes').value.trim()
+                    || (date_remplacement === aujourdhuiISO() ? 'Intervention' : 'Ancien entretien');
+
+                if (!date_remplacement) {
+                    alert("Veuillez sélectionner la date de l'intervention.");
+                    return;
+                }
+
+                if (isNaN(km_intervention) || km_intervention < 0) {
+                    alert("Veuillez saisir un kilométrage valide.");
+                    return;
+                }
+
+                if (!histEdition && isNaN(composant_id)) {
+                    alert("Veuillez choisir un composant.");
+                    return;
+                }
+
+                const bouton = document.getElementById('histEnregistrer');
+                bouton.disabled = true;
+
+                try {
+                    const corps = { date_remplacement, km_intervention, cout, notes };
+                    let adresse = '/api/historique';
+
+                    if (histEdition) {
+                        adresse = `/api/historique/${histEdition.id}/modifier`;
+                    } else {
+                        corps.composant_id = composant_id;
+                    }
+
+                    const res = await fetch(adresse, {
+                        method: 'POST',
+                        headers: getHeaders(),
+                        body: JSON.stringify(corps)
+                    });
+
+                    if (res.status === 401) {
+                        document.getElementById('authScreen').style.display = 'flex';
+                        return;
+                    }
+
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail);
+
+                    fermerFenetreIntervention();
+                    await chargerEtat();
+
+                } catch (e) {
+                    alert(e.message || "Une erreur est survenue.");
+                } finally {
+                    bouton.disabled = false;
+                    if (document.getElementById('fenetreIntervention').style.display !== 'none') {
+                        bouton.focus();
+                    }
+                }
+            }
+
+            (function preparerFenetreIntervention() {
+                const fenetre = document.getElementById('fenetreIntervention');
+                const fermer = document.getElementById('histFermer');
+
+                fermer.innerHTML = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">'
+                    + ICONES.fermer + '</svg>';
+                fermer.addEventListener('click', fermerFenetreIntervention);
+
+                fenetre.addEventListener('click', (e) => {
+                    if (e.target === fenetre) fermerFenetreIntervention();
+                });
+
+                // Échap ferme la fenêtre, même si le focus est ailleurs.
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape' && fenetre.style.display !== 'none') {
+                        fermerFenetreIntervention();
+                    }
+                });
+
+                fenetre.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' && e.target.tagName === 'INPUT') {
+                        e.preventDefault();
+                        enregistrerIntervention();
+                    }
+                });
+            })();
+
+
+                        async function syncKm() {
                 const input = document.getElementById('kmInput');
                 const km = parseInt(input.value, 10);
 
@@ -4145,71 +4614,6 @@ def accueil():
 
                 } catch (e) {
                     alert("Impossible d'enregistrer l'intervention.");
-                }
-            }
-
-
-            async function ajouterHistorique() {
-                const composant_id = parseInt(
-                    document.getElementById('histComposant').value,
-                    10
-                );
-
-                const date_remplacement =
-                    document.getElementById('histDate').value;
-
-                const km_intervention = parseInt(
-                    document.getElementById('histKm').value,
-                    10
-                );
-
-                const cout =
-                    parseFloat(document.getElementById('histCout').value) || 0;
-
-                const notes =
-                    document.getElementById('histNotes').value.trim()
-                    || "Ancien entretien";
-
-                if (!date_remplacement) {
-                    alert("Veuillez sélectionner la date de l'intervention.");
-                    return;
-                }
-
-                if (isNaN(km_intervention) || km_intervention < 0) {
-                    alert("Veuillez saisir un kilométrage valide.");
-                    return;
-                }
-
-                try {
-                    const res = await fetch('/api/historique', {
-                        method: 'POST',
-                        headers: getHeaders(),
-                        body: JSON.stringify({
-                            composant_id,
-                            date_remplacement,
-                            km_intervention,
-                            cout,
-                            notes
-                        })
-                    });
-
-                    if (res.status === 401) {
-                        document.getElementById('authScreen').style.display = 'flex';
-                        return;
-                    }
-
-                    const data = await res.json();
-                    if (!res.ok) throw new Error(data.detail);
-
-                    document.getElementById('histDate').value = '';
-                    document.getElementById('histKm').value = '';
-                    document.getElementById('histCout').value = '';
-                    document.getElementById('histNotes').value = '';
-
-                    await chargerEtat();
-
-                } catch (e) {
-                    alert(e.message || "Une erreur est survenue.");
                 }
             }
 
@@ -7901,6 +8305,76 @@ def ajouter_historique(data: HistoriqueRequest, x_code_acces: Optional[str] = He
         conn.close()
 
 
+def retirer_intervention(cursor, historique_id):
+    """Supprime une intervention et remet la pièce dans l'état d'avant.
+
+    Retourne (composant_id, km_depart), ou None si elle n'existe pas.
+    """
+    cursor.execute(
+        "SELECT composant_id, km_avant FROM historique WHERE id = ?",
+        (historique_id,)
+    )
+    ligne = cursor.fetchone()
+
+    if ligne is None:
+        return None
+
+    composant_id = ligne[0]
+    km_avant = ligne[1]
+
+    cursor.execute(
+        "DELETE FROM historique WHERE id = ?",
+        (historique_id,)
+    )
+
+    cursor.execute("SELECT km_depart FROM composants WHERE id = ?", (composant_id,))
+    actuel = cursor.fetchone()
+    km_depart = (actuel[0] or 0) if actuel else 0
+
+    if composant_id is not None:
+        cursor.execute("""
+            SELECT id
+            FROM historique
+            WHERE composant_id = ? AND id > ?
+            ORDER BY id
+            LIMIT 1
+        """, (composant_id, historique_id))
+        suivante = cursor.fetchone()
+
+        if suivante is None:
+            # C'était la dernière intervention saisie : la pièce
+            # revient exactement à l'état d'avant cette intervention.
+            if km_avant is not None:
+                km_depart = km_avant
+            else:
+                # Ligne ancienne, sans mémoire de l'état d'avant :
+                # on reprend l'intervention précédente, ou 0.
+                cursor.execute("""
+                    SELECT km_intervention
+                    FROM historique
+                    WHERE composant_id = ? AND km_intervention IS NOT NULL
+                    ORDER BY id DESC
+                    LIMIT 1
+                """, (composant_id,))
+                derniere = cursor.fetchone()
+                km_depart = derniere[0] if derniere else 0
+
+            cursor.execute(
+                "UPDATE composants SET km_depart = ? WHERE id = ?",
+                (km_depart, composant_id)
+            )
+        else:
+            # Une intervention plus récente existe : l'état actuel de
+            # la pièce ne change pas. On "recolle" la chaîne pour que
+            # supprimer la suivante revienne au bon état d'avant.
+            cursor.execute(
+                "UPDATE historique SET km_avant = ? WHERE id = ?",
+                (km_avant, suivante[0])
+            )
+
+    return composant_id, km_depart
+
+
 @app.post("/api/historique/{historique_id}/supprimer")
 def supprimer_intervention(
     historique_id: int,
@@ -7911,8 +8385,81 @@ def supprimer_intervention(
     cursor = conn.cursor()
 
     try:
+        resultat = retirer_intervention(cursor, historique_id)
+
+        if resultat is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Intervention introuvable."
+            )
+
+        conn.commit()
+
+        return {
+            "statut": "success",
+            "composant_id": resultat[0],
+            "km_depart": resultat[1]
+        }
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+
+@app.post("/api/historique/supprimer-plusieurs")
+def supprimer_plusieurs_interventions(
+    data: SupprimerPlusieursRequest,
+    x_code_acces: Optional[str] = Header(default=None)
+):
+    """Supprime plusieurs interventions d'un coup (tout ou rien)."""
+    verifier_auth(x_code_acces)
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        supprimees = 0
+
+        # Les plus récentes d'abord : chaque pièce repasse ainsi par
+        # ses états successifs, dans le bon ordre.
+        for historique_id in sorted(set(data.ids), reverse=True):
+            if retirer_intervention(cursor, historique_id) is not None:
+                supprimees += 1
+
+        conn.commit()
+
+        return {"statut": "success", "supprimees": supprimees}
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+
+@app.post("/api/historique/{historique_id}/modifier")
+def modifier_intervention(
+    historique_id: int,
+    data: HistoriqueModifRequest,
+    x_code_acces: Optional[str] = Header(default=None)
+):
+    """Modifie la date, le kilométrage, le coût et les notes d'une intervention."""
+    verifier_auth(x_code_acces)
+
+    try:
+        date.fromisoformat(data.date_remplacement[:10])
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Date non valide.")
+
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
         cursor.execute(
-            "SELECT composant_id, km_avant FROM historique WHERE id = ?",
+            "SELECT composant_id FROM historique WHERE id = ?",
             (historique_id,)
         )
         ligne = cursor.fetchone()
@@ -7924,16 +8471,33 @@ def supprimer_intervention(
             )
 
         composant_id = ligne[0]
-        km_avant = ligne[1]
 
-        cursor.execute(
-            "DELETE FROM historique WHERE id = ?",
-            (historique_id,)
-        )
+        cursor.execute("SELECT km_total FROM velo WHERE id = 1")
+        velo = cursor.fetchone()
+        km_total = velo[0] if velo and velo[0] is not None else 2700
 
-        cursor.execute("SELECT km_depart FROM composants WHERE id = ?", (composant_id,))
-        actuel = cursor.fetchone()
-        km_depart = (actuel[0] or 0) if actuel else 0
+        if data.km_intervention > km_total:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Le kilométrage de l'intervention ne peut pas "
+                    "dépasser celui du vélo."
+                )
+            )
+
+        notes = (data.notes or "").strip() or "Ancien entretien"
+
+        cursor.execute("""
+            UPDATE historique
+            SET date_remplacement = ?, cout = ?, notes = ?, km_intervention = ?
+            WHERE id = ?
+        """, (
+            data.date_remplacement[:10],
+            data.cout or 0.0,
+            notes,
+            data.km_intervention,
+            historique_id
+        ))
 
         if composant_id is not None:
             cursor.execute("""
@@ -7946,43 +8510,22 @@ def supprimer_intervention(
             suivante = cursor.fetchone()
 
             if suivante is None:
-                # C'était la dernière intervention saisie : la pièce
-                # revient exactement à l'état d'avant cette intervention.
-                if km_avant is not None:
-                    km_depart = km_avant
-                else:
-                    # Ligne ancienne, sans mémoire de l'état d'avant :
-                    # on reprend l'intervention précédente, ou 0.
-                    cursor.execute("""
-                        SELECT km_intervention
-                        FROM historique
-                        WHERE composant_id = ? AND km_intervention IS NOT NULL
-                        ORDER BY id DESC
-                        LIMIT 1
-                    """, (composant_id,))
-                    derniere = cursor.fetchone()
-                    km_depart = derniere[0] if derniere else 0
-
+                # C'est la dernière intervention : elle fixe le point de
+                # départ actuel de la pièce.
                 cursor.execute(
                     "UPDATE composants SET km_depart = ? WHERE id = ?",
-                    (km_depart, composant_id)
+                    (data.km_intervention, composant_id)
                 )
             else:
-                # Une intervention plus récente existe : l'état actuel de
-                # la pièce ne change pas. On "recolle" la chaîne pour que
-                # supprimer la suivante revienne au bon état d'avant.
+                # Sinon, c'est l'état « d'avant » de l'intervention suivante.
                 cursor.execute(
                     "UPDATE historique SET km_avant = ? WHERE id = ?",
-                    (km_avant, suivante[0])
+                    (data.km_intervention, suivante[0])
                 )
 
         conn.commit()
 
-        return {
-            "statut": "success",
-            "composant_id": composant_id,
-            "km_depart": km_depart
-        }
+        return {"statut": "success"}
 
     except Exception:
         conn.rollback()
