@@ -2461,7 +2461,6 @@ def accueil():
             /* ---- Habillage aux couleurs de l'appli, commun à tous les onglets ---- */
             .history-section, .mes-reglages, .apparence, .sync-card, .verifs {
                 background:
-                    linear-gradient(180deg, #35e0c8, #0a8f9c) 0 0 / 4px 100% no-repeat,
                     linear-gradient(180deg, rgba(40,200,185,0.11), rgba(40,200,185,0) 170px),
                     var(--card-bg);
             }
@@ -2506,6 +2505,33 @@ def accueil():
                 background: linear-gradient(135deg, #35e0c8, #1bb5ac);
                 stroke: var(--on-accent);
             }
+
+            /* ---- Titres de blocs : même design que le bouton « Entretien » ---- */
+            .titre-pastille.titre-pastille {
+                display: flex;
+                width: fit-content;
+                align-items: center;
+                gap: 8px;
+                margin: 0 0 12px;
+                padding: 9px 16px;
+                font: inherit;
+                font-size: 0.9rem;
+                font-weight: 700;
+                line-height: 1.2;
+                color: #ffffff;
+                background: linear-gradient(135deg, #35e0c8, #0a8f9c);
+                -webkit-text-stroke: 0.4px #000;
+                paint-order: stroke fill;
+                border-radius: 999px;
+                box-shadow: 0 4px 12px rgba(10,143,156,0.3);
+            }
+
+            .titre-pastille .ico { width: 17px; height: 17px; flex: none; }
+            .titre-pastille small { font-size: 0.75rem; font-weight: 700; opacity: 0.85; }
+
+            .hist-entete .titre-pastille.titre-pastille,
+            .mr-titre .titre-pastille.titre-pastille,
+            .verifs-titre .titre-pastille.titre-pastille { margin: 0; }
         </style>
     </head>
 
@@ -2625,7 +2651,7 @@ def accueil():
         </div>
 
         <section class="verifs" id="verifs" style="display:none;" aria-label="Vérifications">
-            <div class="verifs-titre"><strong>Vérifications</strong><span class="form-help" id="verifsInfo"></span></div>
+            <div class="verifs-titre"><strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span>Vérifications</span></strong><span class="form-help" id="verifsInfo"></span></div>
             <div class="chips" id="verifsChips"></div>
             <div class="verif-detail" id="verifDetail" style="display:none;"></div>
         </section>
@@ -2666,7 +2692,7 @@ def accueil():
 
         <div class="page" id="page-reglages" style="display:none;">
         <section class="apparence" aria-label="Apparence">
-            <strong>Apparence</strong>
+            <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3v18"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg><span>Apparence</span></strong>
             <div class="segments" id="segmentsTheme">
                 <button type="button" data-theme-choix="auto"></button>
                 <button type="button" data-theme-choix="light"></button>
@@ -2676,7 +2702,7 @@ def accueil():
         <section class="mes-reglages mr-repliable" id="mesReglages" aria-label="Mes réglages">
             <div class="mr-titre">
                 <button type="button" class="mr-entete" aria-expanded="false" aria-controls="mesReglagesCorps">
-                    <strong>🎚️ Mes réglages</strong>
+                    <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg><span>Mes réglages</span></strong>
                     <span class="mr-chevron"></span>
                 </button>
             </div>
@@ -2695,7 +2721,7 @@ def accueil():
         <section class="mes-reglages mr-repliable" id="reglagesUsure" aria-label="Réglages de l'usure">
             <div class="mr-titre">
                 <button type="button" class="mr-entete" aria-expanded="false" aria-controls="reglagesUsureCorps">
-                    <strong>⚙️ Réglages de l'usure</strong>
+                    <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17a8 8 0 1 1 16 0"/><path d="M12 17l4-5"/></svg><span>Réglages de l'usure</span></strong>
                     <span class="mr-chevron"></span>
                 </button>
             </div>
@@ -2752,7 +2778,7 @@ def accueil():
         <section class="mes-reglages mr-repliable" id="coefsPiecesSection" aria-label="Usure de chaque élément">
             <div class="mr-titre">
                 <button type="button" class="mr-entete" aria-expanded="false" aria-controls="coefsPiecesCorps">
-                    <strong>🔩 Usure de chaque élément</strong>
+                    <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg><span>Usure de chaque élément</span></strong>
                     <span class="mr-chevron"></span>
                 </button>
             </div>
@@ -2785,7 +2811,7 @@ def accueil():
         <div class="page" id="page-historique" style="display:none;">
         <div class="history-section">
             <div class="hist-entete">
-                <h2>📒 Carnet d'entretien</h2>
+                <h2 class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h11"/></svg><span>Carnet d'entretien</span><small id="histCompteur"></small></h2>
                 <div id="histMenuZone"></div>
             </div>
 
@@ -2853,7 +2879,7 @@ def accueil():
 
         <div class="page" id="page-sorties" style="display:none;">
         <div class="history-section" style="margin-bottom: 20px;">
-            <h2>🚵 Sorties</h2>
+            <h2 class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h8a3 3 0 0 0 0-6H8a3 3 0 0 1 0-6h8"/></svg><span>Sorties</span></h2>
 
             <label for="gpxFile">Importer une ou plusieurs sorties (fichiers GPX de Komoot)</label>
             <input
@@ -2952,7 +2978,7 @@ def accueil():
                 <p class="form-help" id="stravaMessage" style="margin-top: 10px;"></p>
             </details>
 
-            <h2 style="margin-top: 24px;">Mes sorties</h2>
+            <h2 class="titre-pastille" style="margin: 24px 0 12px;"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h8a3 3 0 0 0 0-6H8a3 3 0 0 1 0-6h8"/></svg><span>Mes sorties</span></h2>
 
             <div id="sortiesList">
                 <div class="loading">Chargement des sorties...</div>
@@ -4210,6 +4236,7 @@ def accueil():
                 if (histFiltreId && !comptes.has(histFiltreId)) histFiltreId = '';
 
                 const visibles = interventionsVisibles();
+                document.getElementById('histCompteur').textContent = vide ? '' : String(historiqueDonnees.length);
 
                 // Bouton entonnoir (filtre), à gauche des trois points.
                 zoneMenu.innerHTML = '';
