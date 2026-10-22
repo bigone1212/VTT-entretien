@@ -1411,6 +1411,8 @@ def accueil():
             .hist-entete { position: relative; display: flex; align-items: center; min-height: 44px; padding-right: 40px; }
             .hist-entete h2 { margin: 0; }
             .hist-total { margin: 2px 0 8px; font-size: 0.82rem; color: var(--text-muted); }
+            .hist-filtre { margin: 0 0 10px; }
+            .hist-filtre select { margin: 0; }
 
             .hist-selection {
                 display: flex;
@@ -2452,6 +2454,55 @@ def accueil():
 
             :root.paysage #lightbox img { max-height: 92%; }
 
+
+            /* ---- Habillage aux couleurs de l'appli, commun à tous les onglets ---- */
+            .history-section, .mes-reglages, .apparence, .sync-card, .verifs {
+                background:
+                    linear-gradient(180deg, #35e0c8, #0a8f9c) 0 0 / 4px 100% no-repeat,
+                    linear-gradient(180deg, rgba(40,200,185,0.11), rgba(40,200,185,0) 170px),
+                    var(--card-bg);
+            }
+
+            input[type="file"]::file-selector-button {
+                margin-right: 10px;
+                padding: 8px 14px;
+                font: inherit;
+                font-size: 0.85rem;
+                font-weight: 700;
+                color: var(--on-accent);
+                background: var(--accent);
+                border: none;
+                border-radius: 999px;
+                cursor: pointer;
+            }
+
+            #page-sorties details:not(.guide) > summary { color: var(--accent); }
+
+            .onglets::before {
+                content: "";
+                position: absolute;
+                top: -1px;
+                left: 0;
+                right: 0;
+                height: 2px;
+                pointer-events: none;
+                background: linear-gradient(90deg, transparent, #35e0c8 30%, #0a8f9c 70%, transparent);
+            }
+
+            :root.paysage .onglets::before {
+                top: 0;
+                bottom: 0;
+                left: auto;
+                right: -1px;
+                width: 2px;
+                height: auto;
+                background: linear-gradient(180deg, transparent, #35e0c8 30%, #0a8f9c 70%, transparent);
+            }
+
+            .onglet.actif svg {
+                background: linear-gradient(135deg, #35e0c8, #1bb5ac);
+                stroke: var(--on-accent);
+            }
         </style>
     </head>
 
@@ -2731,8 +2782,12 @@ def accueil():
         <div class="page" id="page-historique" style="display:none;">
         <div class="history-section">
             <div class="hist-entete">
-                <h2>📋 Historique des interventions</h2>
+                <h2>📒 Carnet d'entretien</h2>
                 <div id="histMenuZone"></div>
+            </div>
+
+            <div class="hist-filtre" id="histFiltreZone" style="display:none;">
+                <select id="histFiltre" aria-label="Filtrer par composant"></select>
             </div>
 
             <div class="hist-total" id="histTotal"></div>
@@ -4043,6 +4098,7 @@ def accueil():
             let histSelectionActive = false;
             const histSelection = new Set();
             let histEdition = null;
+            let histFiltreId = '';
             let kmTotalActuel = 0;
 
             function aujourdhuiISO() {
@@ -4100,6 +4156,13 @@ def accueil():
                 parent.appendChild(menu);
             }
 
+            // Interventions affichées : toutes, ou celles du composant filtré.
+            function interventionsVisibles() {
+                return histFiltreId
+                    ? historiqueDonnees.filter(h => String(h.composant_id) === histFiltreId)
+                    : historiqueDonnees;
+            }
+
             async function chargerHistorique() {
                 try {
                     const res = await fetch('/api/historique', { headers: getHeaders() });
@@ -4132,6 +4195,37 @@ def accueil():
                     histSelection.clear();
                 }
 
+                // Filtre par composant : seuls les composants qui ont des interventions.
+                const comptes = new Map();
+                historiqueDonnees.forEach(h => {
+                    const cle = String(h.composant_id);
+                    const c = comptes.get(cle) || { nom: h.composant_nom, n: 0 };
+                    c.n += 1;
+                    comptes.set(cle, c);
+                });
+
+                if (histFiltreId && !comptes.has(histFiltreId)) histFiltreId = '';
+
+                const selectFiltre = document.getElementById('histFiltre');
+                selectFiltre.innerHTML = '';
+                const optTous = document.createElement('option');
+                optTous.value = '';
+                optTous.textContent = `Tous les composants (${historiqueDonnees.length})`;
+                selectFiltre.appendChild(optTous);
+                Array.from(comptes.entries())
+                    .sort((a, b) => a[1].nom.localeCompare(b[1].nom, 'fr'))
+                    .forEach(entree => {
+                        const o = document.createElement('option');
+                        o.value = entree[0];
+                        o.textContent = `${entree[1].nom} (${entree[1].n})`;
+                        selectFiltre.appendChild(o);
+                    });
+                selectFiltre.value = histFiltreId;
+                document.getElementById('histFiltreZone').style.display =
+                    comptes.size > 1 ? '' : 'none';
+
+                const visibles = interventionsVisibles();
+
                 // Menu général (trois points en haut à droite).
                 zoneMenu.innerHTML = '';
                 ajouterMenuPoints(zoneMenu, "Actions de l'historique", [
@@ -4150,10 +4244,12 @@ def accueil():
                 ]);
 
                 // Total des interventions et des coûts.
-                const somme = historiqueDonnees.reduce((t, h) => t + (Number(h.cout) || 0), 0);
+                const somme = visibles.reduce((t, h) => t + (Number(h.cout) || 0), 0);
                 total.textContent = vide
                     ? ''
-                    : nombre(historiqueDonnees.length, 'intervention', 'interventions')
+                    : (histFiltreId
+                        ? `${visibles.length} sur ${nombre(historiqueDonnees.length, 'intervention', 'interventions')}`
+                        : nombre(visibles.length, 'intervention', 'interventions'))
                         + (somme > 0
                             ? ' · ' + somme.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' € dépensés'
                             : '');
@@ -4169,13 +4265,13 @@ def accueil():
                         : nombre(histSelection.size, 'sélectionnée', 'sélectionnées');
                     barre.appendChild(compteur);
 
-                    const toutes = histSelection.size === historiqueDonnees.length;
+                    const toutes = histSelection.size === visibles.length;
                     const bTout = document.createElement('button');
                     bTout.type = 'button';
                     bTout.textContent = toutes ? 'Tout désélectionner' : 'Tout sélectionner';
                     bTout.addEventListener('click', () => {
                         histSelection.clear();
-                        if (!toutes) historiqueDonnees.forEach(h => histSelection.add(h.id));
+                        if (!toutes) visibles.forEach(h => histSelection.add(h.id));
                         afficherHistorique();
                     });
                     barre.appendChild(bTout);
@@ -4211,7 +4307,7 @@ def accueil():
                     return;
                 }
 
-                historiqueDonnees.forEach(h => {
+                visibles.forEach(h => {
                     const item = document.createElement('div');
                     item.className = 'history-item';
 
@@ -4357,7 +4453,9 @@ def accueil():
 
 
             function exporterHistoriqueCsv() {
-                if (historiqueDonnees.length === 0) return;
+                const aExporter = interventionsVisibles();
+
+                if (aExporter.length === 0) return;
 
                 const separateur = ';';
                 const saut = String.fromCharCode(13, 10);
@@ -4372,7 +4470,7 @@ def accueil():
                     ['Date', 'Composant', 'Kilométrage', 'Coût (€)', 'Notes'].map(champ).join(separateur)
                 ];
 
-                historiqueDonnees.forEach(h => {
+                aExporter.forEach(h => {
                     lignes.push([
                         dateFrancaise(h.date_remplacement),
                         h.composant_nom,
@@ -4524,6 +4622,12 @@ def accueil():
                     }
                 }
             }
+
+            document.getElementById('histFiltre').addEventListener('change', (e) => {
+                histFiltreId = e.target.value;
+                histSelection.clear();
+                afficherHistorique();
+            });
 
             (function preparerFenetreIntervention() {
                 const fenetre = document.getElementById('fenetreIntervention');
