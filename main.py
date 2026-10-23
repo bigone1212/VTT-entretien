@@ -5641,6 +5641,8 @@ def accueil():
 
                         ajouterAction('appareil', 'Ajouter des photos', () => choixPhotos.click(), false, nbPhotos >= MAX_PHOTOS);
                         ajouterAction('video', 'Ajouter une vidéo', () => ajouterVideo(s.id), false, nbVideos >= MAX_VIDEOS);
+                        ajouterAction('crayon', 'Modifier les notes', () => modifierNotesSortie(s), false, false);
+                        ajouterAction('telecharger', 'Exporter en GPX', () => exporterSortieGpx(s), false, !Array.isArray(s.trace) || s.trace.length < 2);
                         ajouterAction('crayon', 'Renommer', () => renommerSortie(s), false, false);
                         ajouterAction('poubelle', 'Supprimer', () => supprimerSortie(s.id), true, false);
 
@@ -6571,6 +6573,90 @@ def accueil():
                     alert("Impossible d'ajouter la vidéo.");
                 }
             }
+
+            function echapperXml(valeur) {
+                return String(valeur || '')
+                    .replaceAll('&', '&amp;')
+                    .replaceAll('<', '&lt;')
+                    .replaceAll('>', '&gt;')
+                    .replaceAll(String.fromCharCode(34), '&quot;')
+                    .replaceAll(String.fromCharCode(39), '&apos;');
+            }
+
+            function exporterSortieGpx(sortie) {
+                const trace = Array.isArray(sortie.trace) ? sortie.trace : [];
+                const points = trace.filter(p => Array.isArray(p) && p.length >= 2
+                    && p[0] !== null && p[0] !== ''
+                    && p[1] !== null && p[1] !== ''
+                    && Number.isFinite(Number(p[0]))
+                    && Number.isFinite(Number(p[1])));
+
+                if (points.length < 2) {
+                    alert("Cette sortie ne contient pas assez de points GPS pour créer un fichier GPX.");
+                    return;
+                }
+
+                const xmlPoints = points.map(p => {
+                    const latitude = Number(p[0]);
+                    const longitude = Number(p[1]);
+                    let altitude = '';
+                    if (p[2] !== null && p[2] !== undefined && p[2] !== '' && Number.isFinite(Number(p[2]))) {
+                        altitude = `<ele>${Number(p[2])}</ele>`;
+                    }
+                    return `<trkpt lat="${latitude}" lon="${longitude}">${altitude}</trkpt>`;
+                });
+
+                const xml = [
+                    '<?xml version="1.0" encoding="UTF-8"?>',
+                    '<gpx version="1.1" creator="Maillons" xmlns="http://www.topografix.com/GPX/1/1">',
+                    '<trk>',
+                    `<name>${echapperXml(sortie.nom || 'Sortie VTT')}</name>`,
+                    '<trkseg>',
+                    ...xmlPoints,
+                    '</trkseg>',
+                    '</trk>',
+                    '</gpx>'
+                ].join(String.fromCharCode(10));
+
+                const blob = new Blob([xml], { type: 'application/gpx+xml;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const lien = document.createElement('a');
+                const nomFichier = String(sortie.nom || 'sortie-vtt')
+                    .replace(/[^a-z0-9]+/gi, '-')
+                    .replace(/^-+|-+$/g, '') || 'sortie-vtt';
+                lien.href = url;
+                lien.download = `${nomFichier}.gpx`;
+                lien.style.display = 'none';
+                document.body.appendChild(lien);
+                lien.click();
+                lien.remove();
+                window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+            }
+
+            async function modifierNotesSortie(sortie) {
+                const notes = prompt("Notes de la sortie (laisser vide pour effacer) :", sortie.notes || '');
+                if (notes === null || notes.trim() === (sortie.notes || '').trim()) return;
+
+                try {
+                    const res = await fetch(`/api/sorties/${sortie.id}/modifier`, {
+                        method: 'POST',
+                        headers: getHeaders(),
+                        body: JSON.stringify({ notes: notes.trim() || null })
+                    });
+
+                    if (res.status === 401) {
+                        document.getElementById('authScreen').style.display = 'flex';
+                        return;
+                    }
+
+                    if (!res.ok) throw new Error();
+                    await chargerEtat();
+
+                } catch (e) {
+                    alert("Impossible de modifier les notes de cette sortie.");
+                }
+            }
+
 
             async function renommerSortie(sortie) {
                 const nom = prompt("Nouveau nom de la sortie :", sortie.nom);
@@ -9350,6 +9436,39 @@ def lire_videos(texte):
 
 class RenommerRequest(BaseModel):
     nom: str = Field(min_length=1, max_length=120)
+
+
+class SortieModifRequest(BaseModel):
+    notes: Optional[str] = Field(default=None, max_length=500)
+
+
+@app.post("/api/sorties/{sortie_id}/modifier")
+def modifier_sortie(
+    sortie_id: int,
+    data: SortieModifRequest,
+    x_code_acces: Optional[str] = Header(default=None)
+):
+    # Modifie les notes sans toucher au parcours ni au kilométrage.
+    verifier_auth(x_code_acces)
+    notes = (data.notes or "").strip()[:500] or None
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("SELECT id FROM sorties WHERE id = ?", (sortie_id,))
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Sortie introuvable.")
+
+        cursor.execute("UPDATE sorties SET notes = ? WHERE id = ?", (notes, sortie_id))
+        conn.commit()
+        return {"statut": "success", "notes": notes}
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
 
 
 @app.post("/api/sorties/{sortie_id}/nom")
