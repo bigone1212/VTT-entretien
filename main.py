@@ -2985,6 +2985,29 @@ def accueil():
 
             <h2 class="titre-pastille" style="margin: 24px 0 12px;"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h8a3 3 0 0 0 0-6H8a3 3 0 0 1 0-6h8"/></svg><span>Mes sorties</span></h2>
 
+            <div id="sortiesFiltres" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:12px 0 16px;">
+                <input id="rechercheSorties" type="search" placeholder="Rechercher une sortie..." aria-label="Rechercher une sortie" oninput="appliquerFiltresSorties()" style="margin:0;min-width:0;">
+                <select id="periodeSorties" aria-label="Filtrer par période" onchange="appliquerFiltresSorties()" style="margin:0;min-width:0;">
+                    <option value="tout">Toutes les périodes</option>
+                    <option value="7">7 derniers jours</option>
+                    <option value="30">30 derniers jours</option>
+                    <option value="365">12 derniers mois</option>
+                    <option value="annee">Cette année</option>
+                </select>
+                <select id="sportSorties" aria-label="Filtrer par activité" onchange="appliquerFiltresSorties()" style="margin:0;min-width:0;">
+                    <option value="tout">Toutes les activités</option>
+                </select>
+                <select id="triSorties" aria-label="Trier les sorties" onchange="appliquerFiltresSorties()" style="margin:0;min-width:0;">
+                    <option value="date-desc">Plus récentes</option>
+                    <option value="date-asc">Plus anciennes</option>
+                    <option value="distance-desc">Distance décroissante</option>
+                    <option value="distance-asc">Distance croissante</option>
+                    <option value="denivele-desc">Dénivelé décroissant</option>
+                    <option value="denivele-asc">Dénivelé croissant</option>
+                </select>
+                <button type="button" class="btn-secondary" onclick="reinitialiserFiltresSorties()" style="margin:0;">Réinitialiser les filtres</button>
+            </div>
+            <p id="compteurSorties" class="form-help" style="margin:0 0 10px;"></p>
             <div id="sortiesList">
                 <div class="loading">Chargement des sorties...</div>
             </div>
@@ -5437,16 +5460,82 @@ def accueil():
 
             let sortiesConnues = [];
 
-            async function chargerSorties() {
+            function preparerFiltresSorties(sorties) {
+                const select = document.getElementById('sportSorties');
+                const valeurActuelle = select.value || 'tout';
+                const sports = [...new Set(sorties.map(s => (s.sport || 'Autre').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr'));
+                select.innerHTML = '<option value="tout">Toutes les activités</option>';
+                sports.forEach(sport => {
+                    const option = document.createElement('option');
+                    option.value = sport;
+                    option.textContent = sport;
+                    select.appendChild(option);
+                });
+                select.value = sports.includes(valeurActuelle) ? valeurActuelle : 'tout';
+            }
+
+            function filtrerSorties(sorties) {
+                const recherche = (document.getElementById('rechercheSorties').value || '').trim().toLocaleLowerCase('fr');
+                const periode = document.getElementById('periodeSorties').value;
+                const sport = document.getElementById('sportSorties').value;
+                const maintenant = new Date();
+                const debutAnnee = new Date(maintenant.getFullYear(), 0, 1);
+                const resultat = sorties.filter(s => {
+                    const texte = [s.nom, s.notes, s.sport, s.terrain].filter(Boolean).join(' ').toLocaleLowerCase('fr');
+                    if (recherche && !texte.includes(recherche)) return false;
+                    if (sport !== 'tout' && (s.sport || 'Autre').trim() !== sport) return false;
+                    if (periode === 'annee') return new Date(s.debut) >= debutAnnee;
+                    if (periode !== 'tout') {
+                        const dateSortie = new Date(s.debut);
+                        const limite = new Date(maintenant);
+                        limite.setDate(limite.getDate() - Number(periode));
+                        if (dateSortie < limite || dateSortie > maintenant) return false;
+                    }
+                    return true;
+                });
+                const tri = document.getElementById('triSorties').value;
+                resultat.sort((a, b) => {
+                    if (tri === 'date-asc') return new Date(a.debut) - new Date(b.debut);
+                    if (tri === 'distance-desc') return Number(b.distance_km || 0) - Number(a.distance_km || 0);
+                    if (tri === 'distance-asc') return Number(a.distance_km || 0) - Number(b.distance_km || 0);
+                    if (tri === 'denivele-desc') return Number(b.denivele_pos || 0) - Number(a.denivele_pos || 0);
+                    if (tri === 'denivele-asc') return Number(a.denivele_pos || 0) - Number(b.denivele_pos || 0);
+                    return new Date(b.debut) - new Date(a.debut);
+                });
+                return resultat;
+            }
+
+            function appliquerFiltresSorties() {
+                if (sortiesConnues.length) chargerSorties(true);
+            }
+
+            function reinitialiserFiltresSorties() {
+                document.getElementById('rechercheSorties').value = '';
+                document.getElementById('periodeSorties').value = 'tout';
+                document.getElementById('sportSorties').value = 'tout';
+                document.getElementById('triSorties').value = 'date-desc';
+                chargerSorties(true);
+            }
+
+            async function chargerSorties(reutiliserCache = false) {
                 const liste = document.getElementById('sortiesList');
 
                 try {
-                    const res = await fetch('/api/sorties', { headers: getHeaders() });
-                    if (!res.ok) throw new Error();
-
-                    const sorties = await res.json();
-                    sortiesConnues = sorties;
+                    let sorties;
+                    const depuisCache = reutiliserCache && sortiesConnues.length > 0;
+                    if (depuisCache) {
+                        sorties = sortiesConnues;
+                    } else {
+                        const res = await fetch('/api/sorties', { headers: getHeaders() });
+                        if (!res.ok) throw new Error();
+                        sorties = await res.json();
+                        sortiesConnues = sorties;
+                    }
+                    preparerFiltresSorties(sorties);
+                    const sortiesAffichees = filtrerSorties(sorties);
                     liste.innerHTML = '';
+                    document.getElementById('compteurSorties').textContent =
+                        sortiesAffichees.length + ' sortie' + (sortiesAffichees.length > 1 ? 's' : '') + ' affichée' + (sortiesAffichees.length > 1 ? 's' : '') + ' sur ' + sorties.length;
 
                     if (sorties.length === 0) {
                         const vide = document.createElement('p');
@@ -5457,7 +5546,15 @@ def accueil():
                         return;
                     }
 
-                    sorties.forEach(s => {
+                    if (sortiesAffichees.length === 0) {
+                        const vide = document.createElement('p');
+                        vide.style.color = 'var(--text-muted)';
+                        vide.style.fontSize = '0.85rem';
+                        vide.textContent = 'Aucune sortie ne correspond à ces critères.';
+                        liste.appendChild(vide);
+                    }
+
+                    sortiesAffichees.forEach(s => {
                         const item = document.createElement('div');
                         item.className = 'history-item';
 
@@ -5703,7 +5800,7 @@ def accueil():
                         liste.appendChild(item);
                     });
 
-                    analyserAuto(sorties);
+                    if (!depuisCache) analyserAuto(sorties);
 
                 } catch (e) {
                     console.error(e);
