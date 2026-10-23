@@ -3059,6 +3059,10 @@ def accueil():
                         <option value="denivele-asc">Dénivelé croissant</option>
                     </select>
                 </div>
+                <button type="button" id="reinitialiserFiltresSorties" role="button">
+                    <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.64-6.36L3 8"/><path d="M3 3v5h5"/></svg>
+                    <span>Réinitialiser les filtres</span>
+                </button>
             </div>
             <p id="compteurSorties" class="form-help" style="margin:0 0 10px;"></p>
             <div id="sortiesList">
@@ -5549,13 +5553,21 @@ def accueil():
                     }
                 });
                 panneau.addEventListener('click', (e) => e.stopPropagation());
+                const boutonReinitialiser = document.getElementById('reinitialiserFiltresSorties');
+                if (boutonReinitialiser) {
+                    boutonReinitialiser.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        reinitialiserFiltresSorties();
+                        panneau.classList.remove('ouvert');
+                        bouton.setAttribute('aria-expanded', 'false');
+                    });
+                }
                 // Place le panneau dans l'en-tête positionné : il s'ouvre sous l'icône filtre.
                 zone.appendChild(panneau);
                 zone.appendChild(bouton);
 
-                ajouterMenuPoints(zone, 'Actions des sorties', [
-                    { icone: 'echange', texte: 'Réinitialiser les filtres', action: reinitialiserFiltresSorties }
-                ]);
+                // Le menu trois points est conservé, mais reste vide pour le moment.
+                ajouterMenuPoints(zone, 'Actions des sorties', []);
                 actualiserBoutonFiltreSorties();
             }
 
