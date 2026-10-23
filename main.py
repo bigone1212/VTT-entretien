@@ -4306,11 +4306,440 @@ def accueil():
                 return kebab;
             }
 
-            // Interventions affichées : toutes, ou celles du composant filtré.
+            // ---- Filtres du carnet : recherche, composant, période, tri ----
+            let histRecherche = '';
+            let histPeriode = { debut: '', fin: '' };
+            let histTri = 'recent';
+            let histFiltreUI = null;
+            let calendrierUI = null;
+
+            ICONES.reinit = '<path d="M3 12a9 9 0 1 0 2.64-6.36L3 8"/><path d="M3 3v5h5"/>';
+            ICONES.calendrier = '<rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/>';
+            ICONES.chevronG = '<path d="M15 6l-6 6 6 6"/>';
+            ICONES.chevronD = '<path d="M9 6l6 6-6 6"/>';
+
+            // Interventions affichées : celles qui passent tous les filtres.
             function interventionsVisibles() {
-                return histFiltreId
-                    ? historiqueDonnees.filter(h => String(h.composant_id) === histFiltreId)
-                    : historiqueDonnees;
+                const mot = histRecherche.trim().toLocaleLowerCase('fr');
+                let liste = historiqueDonnees.filter(h => {
+                    if (histFiltreId && String(h.composant_id) !== histFiltreId) return false;
+                    const jour = String(h.date_remplacement || '').slice(0, 10);
+                    if (histPeriode.debut && jour < histPeriode.debut) return false;
+                    if (histPeriode.fin && jour > histPeriode.fin) return false;
+                    if (mot) {
+                        const texte = [h.composant_nom, h.notes].filter(Boolean).join(' ').toLocaleLowerCase('fr');
+                        if (!texte.includes(mot)) return false;
+                    }
+                    return true;
+                });
+
+                if (histTri === 'ancien') {
+                    liste = liste.slice().reverse();
+                } else if (histTri === 'cout-desc') {
+                    liste = liste.slice().sort((a, b) => (Number(b.cout) || 0) - (Number(a.cout) || 0));
+                } else if (histTri === 'cout-asc') {
+                    liste = liste.slice().sort((a, b) => (Number(a.cout) || 0) - (Number(b.cout) || 0));
+                }
+
+                return liste;
+            }
+
+            function histFiltreActif() {
+                return Boolean(histFiltreId || histRecherche.trim() || histPeriode.debut || histPeriode.fin);
+            }
+
+            function textePeriodeHist() {
+                const p = histPeriode;
+                if (p.debut && p.fin) {
+                    return p.debut === p.fin
+                        ? dateFrancaise(p.debut)
+                        : `${dateFrancaise(p.debut)} → ${dateFrancaise(p.fin)}`;
+                }
+                if (p.debut) return `Depuis le ${dateFrancaise(p.debut)}`;
+                if (p.fin) return `Jusqu'au ${dateFrancaise(p.fin)}`;
+                return 'Toutes les périodes';
+            }
+
+            function actualiserFiltreHistorique() {
+                if (!histFiltreUI) return;
+                const actif = histFiltreActif() || histTri !== 'recent';
+                histFiltreUI.bouton.classList.toggle('actif', actif);
+                histFiltreUI.bouton.setAttribute('aria-label',
+                    actif ? 'Filtrer le carnet (filtre actif)' : 'Filtrer le carnet');
+                remplirBouton(histFiltreUI.boutonPeriode, 'calendrier', textePeriodeHist());
+            }
+
+            function positionnerPanneauHistorique() {
+                if (!histFiltreUI || !histFiltreUI.panneau.classList.contains('ouvert')) return;
+                const rect = histFiltreUI.bouton.getBoundingClientRect();
+                const marge = 12;
+                const largeur = Math.min(340, window.innerWidth - marge * 2);
+                const gauche = Math.max(marge, Math.min(rect.right - largeur, window.innerWidth - largeur - marge));
+                const panneau = histFiltreUI.panneau;
+                panneau.style.position = 'fixed';
+                panneau.style.top = `${Math.max(marge, rect.bottom + 6)}px`;
+                panneau.style.left = `${gauche}px`;
+                panneau.style.right = 'auto';
+                panneau.style.width = `${largeur}px`;
+                panneau.style.boxSizing = 'border-box';
+            }
+
+            function creerFiltreHistorique() {
+                const panneau = document.createElement('div');
+                panneau.id = 'histFiltres';
+                panneau.className = 'menu-sortie menu-filtre menu-filtres-sorties';
+                panneau.addEventListener('click', (e) => e.stopPropagation());
+
+                const contenu = document.createElement('div');
+                contenu.className = 'sorties-filtres-contenu';
+                panneau.appendChild(contenu);
+
+                const ajouterChamp = (texte, idChamp, element) => {
+                    const etiquette = document.createElement('label');
+                    etiquette.htmlFor = idChamp;
+                    etiquette.textContent = texte;
+                    contenu.appendChild(etiquette);
+                    contenu.appendChild(element);
+                };
+
+                const recherche = document.createElement('input');
+                recherche.type = 'search';
+                recherche.id = 'histRecherche';
+                recherche.placeholder = 'Composant, note...';
+                recherche.setAttribute('aria-label', 'Rechercher une intervention');
+                recherche.addEventListener('input', () => {
+                    histRecherche = recherche.value;
+                    histSelection.clear();
+                    actualiserFiltreHistorique();
+                    afficherHistorique();
+                });
+                ajouterChamp('Rechercher une intervention', 'histRecherche', recherche);
+
+                const selComposant = document.createElement('select');
+                selComposant.id = 'histFiltreComposant';
+                selComposant.setAttribute('aria-label', 'Filtrer par composant');
+                selComposant.addEventListener('change', () => {
+                    histFiltreId = selComposant.value;
+                    histSelection.clear();
+                    actualiserFiltreHistorique();
+                    afficherHistorique();
+                });
+                ajouterChamp('Composant', 'histFiltreComposant', selComposant);
+
+                const boutonPeriode = document.createElement('button');
+                boutonPeriode.type = 'button';
+                boutonPeriode.id = 'histFiltrePeriode';
+                boutonPeriode.className = 'hist-periode-btn';
+                boutonPeriode.addEventListener('click', () => ouvrirCalendrierPeriode());
+                ajouterChamp('Période', 'histFiltrePeriode', boutonPeriode);
+
+                const selTri = document.createElement('select');
+                selTri.id = 'histTri';
+                selTri.setAttribute('aria-label', 'Trier les interventions');
+                [
+                    ['recent', 'Plus récentes'],
+                    ['ancien', 'Plus anciennes'],
+                    ['cout-desc', 'Coût décroissant'],
+                    ['cout-asc', 'Coût croissant']
+                ].forEach(([valeur, texte]) => {
+                    const option = document.createElement('option');
+                    option.value = valeur;
+                    option.textContent = texte;
+                    selTri.appendChild(option);
+                });
+                selTri.addEventListener('change', () => {
+                    histTri = selTri.value;
+                    actualiserFiltreHistorique();
+                    afficherHistorique();
+                });
+                ajouterChamp('Trier les interventions', 'histTri', selTri);
+
+                const boutonReinit = document.createElement('button');
+                boutonReinit.type = 'button';
+                remplirBouton(boutonReinit, 'reinit', 'Réinitialiser les filtres');
+                boutonReinit.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    histRecherche = '';
+                    histFiltreId = '';
+                    histPeriode = { debut: '', fin: '' };
+                    histTri = 'recent';
+                    recherche.value = '';
+                    selComposant.value = '';
+                    selTri.value = 'recent';
+                    histSelection.clear();
+                    fermerMenusSortie();
+                    actualiserFiltreHistorique();
+                    afficherHistorique();
+                });
+                panneau.appendChild(boutonReinit);
+
+                const bouton = document.createElement('button');
+                bouton.type = 'button';
+                bouton.className = 'menu-sortie-btn hist-filtre-btn';
+                bouton.setAttribute('aria-haspopup', 'true');
+                bouton.setAttribute('aria-expanded', 'false');
+                remplirBouton(bouton, 'filtre', '');
+                bouton.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const etaitOuvert = panneau.classList.contains('ouvert');
+                    fermerMenusSortie();
+                    if (!etaitOuvert) {
+                        panneau.classList.add('ouvert');
+                        bouton.setAttribute('aria-expanded', 'true');
+                        positionnerPanneauHistorique();
+                    }
+                });
+
+                window.addEventListener('scroll', positionnerPanneauHistorique, true);
+                window.addEventListener('resize', positionnerPanneauHistorique);
+
+                histFiltreUI = { panneau, bouton, boutonPeriode, recherche, selComposant, selTri };
+                return histFiltreUI;
+            }
+
+            // Met en place le bouton entonnoir et son panneau (sans les recréer à chaque affichage).
+            function monterFiltreHistorique(zone, comptes) {
+                const ui = histFiltreUI || creerFiltreHistorique();
+
+                ui.selComposant.innerHTML = '';
+                const toutes = document.createElement('option');
+                toutes.value = '';
+                toutes.textContent = `Tous les composants (${historiqueDonnees.length})`;
+                ui.selComposant.appendChild(toutes);
+
+                Array.from(comptes.entries())
+                    .sort((a, b) => a[1].nom.localeCompare(b[1].nom, 'fr'))
+                    .forEach(entree => {
+                        const option = document.createElement('option');
+                        option.value = entree[0];
+                        option.textContent = `${entree[1].nom} (${entree[1].n})`;
+                        ui.selComposant.appendChild(option);
+                    });
+
+                ui.selComposant.value = histFiltreId;
+                ui.selTri.value = histTri;
+
+                if (ui.panneau.parentNode !== zone) zone.appendChild(ui.panneau);
+                if (ui.bouton.parentNode !== zone) zone.appendChild(ui.bouton);
+                actualiserFiltreHistorique();
+            }
+
+            // Fenêtre calendrier pour choisir une période (premier jour, puis dernier jour).
+            function creerCalendrierPeriode() {
+                const fenetre = document.createElement('div');
+                fenetre.className = 'fenetre-profil';
+                fenetre.style.display = 'none';
+                fenetre.setAttribute('role', 'dialog');
+                fenetre.setAttribute('aria-modal', 'true');
+                fenetre.setAttribute('aria-label', 'Choisir une période');
+
+                const boite = document.createElement('div');
+                boite.className = 'fp-boite cal-boite';
+                fenetre.appendChild(boite);
+
+                const haut = document.createElement('div');
+                haut.className = 'fp-haut';
+                const titre = document.createElement('strong');
+                titre.textContent = 'Choisir une période';
+                const fermerBtn = document.createElement('button');
+                fermerBtn.type = 'button';
+                fermerBtn.className = 'cal-rond';
+                fermerBtn.setAttribute('aria-label', 'Fermer');
+                remplirBouton(fermerBtn, 'fermer', '');
+                haut.appendChild(titre);
+                haut.appendChild(fermerBtn);
+                boite.appendChild(haut);
+
+                const raccourcis = document.createElement('div');
+                raccourcis.className = 'cal-raccourcis';
+                boite.appendChild(raccourcis);
+
+                const navigation = document.createElement('div');
+                navigation.className = 'cal-navigation';
+                const precedent = document.createElement('button');
+                precedent.type = 'button';
+                precedent.className = 'cal-rond';
+                precedent.setAttribute('aria-label', 'Mois précédent');
+                remplirBouton(precedent, 'chevronG', '');
+                const titreMois = document.createElement('strong');
+                titreMois.setAttribute('aria-live', 'polite');
+                const suivant = document.createElement('button');
+                suivant.type = 'button';
+                suivant.className = 'cal-rond';
+                suivant.setAttribute('aria-label', 'Mois suivant');
+                remplirBouton(suivant, 'chevronD', '');
+                navigation.appendChild(precedent);
+                navigation.appendChild(titreMois);
+                navigation.appendChild(suivant);
+                boite.appendChild(navigation);
+
+                const semaine = document.createElement('div');
+                semaine.className = 'cal-semaine';
+                ['L', 'M', 'M', 'J', 'V', 'S', 'D'].forEach(lettre => {
+                    const cellule = document.createElement('span');
+                    cellule.textContent = lettre;
+                    semaine.appendChild(cellule);
+                });
+                boite.appendChild(semaine);
+
+                const grille = document.createElement('div');
+                grille.className = 'cal-grille';
+                boite.appendChild(grille);
+
+                const resume = document.createElement('p');
+                resume.className = 'form-help cal-resume';
+                boite.appendChild(resume);
+
+                const actions = document.createElement('div');
+                actions.className = 'cal-actions';
+                const effacer = document.createElement('button');
+                effacer.type = 'button';
+                effacer.className = 'cal-secondaire';
+                effacer.textContent = 'Toutes les périodes';
+                const valider = document.createElement('button');
+                valider.type = 'button';
+                valider.className = 'btn-primary';
+                valider.textContent = 'Valider';
+                actions.appendChild(effacer);
+                actions.appendChild(valider);
+                boite.appendChild(actions);
+
+                let choix = { debut: '', fin: '' };
+                let vue = { annee: 2026, mois: 0 };
+
+                const versISO = (d) => {
+                    const mois = String(d.getMonth() + 1).padStart(2, '0');
+                    const jour = String(d.getDate()).padStart(2, '0');
+                    return `${d.getFullYear()}-${mois}-${jour}`;
+                };
+
+                const placerVue = (texteISO) => {
+                    const d = texteISO ? new Date(texteISO + 'T12:00:00') : new Date();
+                    vue = { annee: d.getFullYear(), mois: d.getMonth() };
+                };
+
+                const dessiner = () => {
+                    const premier = new Date(vue.annee, vue.mois, 1);
+                    const decalage = (premier.getDay() + 6) % 7;
+                    const nbJours = new Date(vue.annee, vue.mois + 1, 0).getDate();
+                    const aujourdhui = aujourdhuiISO();
+                    const joursAvecEntretien = new Set(
+                        historiqueDonnees.map(h => String(h.date_remplacement || '').slice(0, 10))
+                    );
+                    const nomMois = premier.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+                    titreMois.textContent = nomMois.charAt(0).toUpperCase() + nomMois.slice(1);
+
+                    grille.innerHTML = '';
+                    for (let i = 0; i < decalage; i++) {
+                        const videCase = document.createElement('span');
+                        grille.appendChild(videCase);
+                    }
+
+                    for (let j = 1; j <= nbJours; j++) {
+                        const jourISO = versISO(new Date(vue.annee, vue.mois, j));
+                        const b = document.createElement('button');
+                        b.type = 'button';
+                        b.className = 'cal-jour';
+                        b.textContent = String(j);
+                        b.setAttribute('aria-label', dateFrancaise(jourISO));
+
+                        const fin = choix.fin || choix.debut;
+                        if (choix.debut && jourISO >= choix.debut && jourISO <= fin) b.classList.add('dans-periode');
+                        if (jourISO === choix.debut || jourISO === fin && choix.debut) b.classList.add('borne');
+                        if (jourISO === aujourdhui) b.classList.add('auj');
+                        if (joursAvecEntretien.has(jourISO)) b.classList.add('avec-entretien');
+
+                        b.addEventListener('click', () => {
+                            if (!choix.debut || choix.fin) {
+                                choix = { debut: jourISO, fin: '' };
+                            } else if (jourISO < choix.debut) {
+                                choix = { debut: jourISO, fin: choix.debut };
+                            } else {
+                                choix = { debut: choix.debut, fin: jourISO };
+                            }
+                            dessiner();
+                        });
+                        grille.appendChild(b);
+                    }
+
+                    if (!choix.debut) {
+                        resume.textContent = 'Touchez le premier jour, puis le dernier jour.';
+                    } else if (!choix.fin) {
+                        resume.textContent = `Du ${dateFrancaise(choix.debut)} — touchez le dernier jour (ou Valider pour ce seul jour).`;
+                    } else if (choix.debut === choix.fin) {
+                        resume.textContent = `Le ${dateFrancaise(choix.debut)}.`;
+                    } else {
+                        resume.textContent = `Du ${dateFrancaise(choix.debut)} au ${dateFrancaise(choix.fin)}.`;
+                    }
+                };
+
+                const raccourci = (texte, calcul) => {
+                    const b = document.createElement('button');
+                    b.type = 'button';
+                    b.className = 'cal-puce';
+                    b.textContent = texte;
+                    b.addEventListener('click', () => {
+                        choix = calcul();
+                        placerVue(choix.fin || choix.debut);
+                        dessiner();
+                    });
+                    raccourcis.appendChild(b);
+                };
+                const reculer = (n) => {
+                    const d = new Date();
+                    d.setDate(d.getDate() - n);
+                    return versISO(d);
+                };
+                raccourci('7 jours', () => ({ debut: reculer(6), fin: aujourdhuiISO() }));
+                raccourci('30 jours', () => ({ debut: reculer(29), fin: aujourdhuiISO() }));
+                raccourci('Cette année', () => ({ debut: `${new Date().getFullYear()}-01-01`, fin: aujourdhuiISO() }));
+
+                const fermer = () => { fenetre.style.display = 'none'; };
+
+                const appliquer = (periode) => {
+                    histPeriode = periode;
+                    histSelection.clear();
+                    fermer();
+                    actualiserFiltreHistorique();
+                    afficherHistorique();
+                };
+
+                precedent.addEventListener('click', () => {
+                    vue = vue.mois === 0 ? { annee: vue.annee - 1, mois: 11 } : { annee: vue.annee, mois: vue.mois - 1 };
+                    dessiner();
+                });
+                suivant.addEventListener('click', () => {
+                    vue = vue.mois === 11 ? { annee: vue.annee + 1, mois: 0 } : { annee: vue.annee, mois: vue.mois + 1 };
+                    dessiner();
+                });
+                fermerBtn.addEventListener('click', fermer);
+                effacer.addEventListener('click', () => appliquer({ debut: '', fin: '' }));
+                valider.addEventListener('click', () => appliquer(
+                    choix.debut ? { debut: choix.debut, fin: choix.fin || choix.debut } : { debut: '', fin: '' }
+                ));
+                fenetre.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (e.target === fenetre) fermer();
+                });
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape' && fenetre.style.display !== 'none') fermer();
+                });
+
+                document.body.appendChild(fenetre);
+
+                return {
+                    ouvrir() {
+                        choix = { debut: histPeriode.debut, fin: histPeriode.fin };
+                        placerVue(choix.fin || choix.debut);
+                        dessiner();
+                        fenetre.style.display = 'flex';
+                    }
+                };
+            }
+
+            function ouvrirCalendrierPeriode() {
+                if (!calendrierUI) calendrierUI = creerCalendrierPeriode();
+                calendrierUI.ouvrir();
             }
 
             async function chargerHistorique() {
