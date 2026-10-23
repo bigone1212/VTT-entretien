@@ -5536,6 +5536,8 @@ def accueil():
                     }
                 });
                 panneau.addEventListener('click', (e) => e.stopPropagation());
+                // Place le panneau dans l'en-tête positionné : il s'ouvre sous l'icône filtre.
+                zone.appendChild(panneau);
                 zone.appendChild(bouton);
 
                 ajouterMenuPoints(zone, 'Actions des sorties', [
