@@ -1469,7 +1469,7 @@ def accueil():
             }
             .menu-filtre { min-width: 250px; max-width: calc(100vw - 56px); max-height: 60vh; overflow-y: auto; }
             .menu-filtre button { white-space: normal; }
-            .menu-filtres-sorties { top: 44px; right: 40px; width: min(340px, calc(100vw - 32px)); box-sizing: border-box; }
+            .menu-filtres-sorties { top: 44px; right: 40px; width: min(340px, calc(100vw - 56px)); max-width: calc(100vw - 56px); box-sizing: border-box; }
             .sorties-filtres-contenu { display: grid; grid-template-columns: 1fr; gap: 10px; }
             .sorties-filtres-contenu input[type="search"],
             .sorties-filtres-contenu select { width: 100%; min-width: 0; margin: 0; box-sizing: border-box; }
