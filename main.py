@@ -5531,6 +5531,19 @@ def accueil():
                     const etaitOuvert = panneau.classList.contains('ouvert');
                     fermerMenusSortie();
                     if (!etaitOuvert) {
+                        // Positionner le panneau depuis la vraie position de l'icône.
+                        // Le calcul en coordonnées écran évite qu'il sorte à gauche sur mobile.
+                        const rect = bouton.getBoundingClientRect();
+                        const marge = 12;
+                        const largeur = Math.min(340, Math.max(220, window.innerWidth - marge * 2));
+                        const gauche = Math.max(marge, Math.min(rect.right - largeur, window.innerWidth - largeur - marge));
+                        panneau.style.position = 'fixed';
+                        panneau.style.top = `${rect.bottom + 6}px`;
+                        panneau.style.left = `${gauche}px`;
+                        panneau.style.right = 'auto';
+                        panneau.style.width = `${Math.min(340, window.innerWidth - marge * 2)}px`;
+                        panneau.style.maxWidth = `calc(100vw - ${marge * 2}px)`;
+                        panneau.style.boxSizing = 'border-box';
                         panneau.classList.add('ouvert');
                         bouton.setAttribute('aria-expanded', 'true');
                     }
