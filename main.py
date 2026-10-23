@@ -1230,6 +1230,45 @@ def accueil():
             .btn-survol:disabled { opacity: 0.45; cursor: default; box-shadow: none; transform: none; }
             .btn-survol .ico { width: 20px; height: 20px; stroke-width: 2.2; filter: drop-shadow(0 0 0.7px #000000) drop-shadow(0 0 0.7px #000000); }
 
+            .sorties-filtres input[type="search"],
+            .sorties-filtres select {
+                border-color: rgba(10,143,156,0.55);
+                box-shadow: inset 0 0 0 1px rgba(53,224,200,0.08);
+                transition: border-color 0.15s, box-shadow 0.15s;
+            }
+
+            .sorties-filtres input[type="search"]:focus,
+            .sorties-filtres select:focus {
+                border-color: #0a8f9c;
+                box-shadow: 0 0 0 3px rgba(53,224,200,0.22);
+            }
+
+            .btn-filtres-survol {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                padding: 10px 16px;
+                font: inherit;
+                font-weight: 800;
+                color: #ffffff;
+                -webkit-text-stroke: 0.35px #000000;
+                paint-order: stroke fill;
+                text-shadow: 0 0 1px #000000, 0 1px 1px rgba(0,0,0,0.35);
+                background: linear-gradient(135deg, #35e0c8, #0a8f9c);
+                border: none;
+                border-radius: 999px;
+                box-shadow: 0 6px 16px rgba(10,143,156,0.35), inset 0 1px 0 rgba(255,255,255,0.35);
+                cursor: pointer;
+                transition: transform 0.15s, box-shadow 0.15s;
+            }
+
+            .btn-filtres-survol:hover {
+                transform: translateY(-1px);
+                box-shadow: 0 8px 20px rgba(10,143,156,0.45), inset 0 1px 0 rgba(255,255,255,0.35);
+            }
+
+            .btn-filtres-survol:active { transform: translateY(1px); }
+
             .mode-switch {
                 display: flex;
                 gap: 4px;
@@ -2985,7 +3024,7 @@ def accueil():
 
             <h2 class="titre-pastille" style="margin: 24px 0 12px;"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h8a3 3 0 0 0 0-6H8a3 3 0 0 1 0-6h8"/></svg><span>Mes sorties</span></h2>
 
-            <div id="sortiesFiltres" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:12px 0 16px;">
+            <div id="sortiesFiltres" class="sorties-filtres" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:12px 0 16px;">
                 <input id="rechercheSorties" type="search" placeholder="Rechercher une sortie..." aria-label="Rechercher une sortie" oninput="appliquerFiltresSorties()" style="margin:0;min-width:0;">
                 <select id="periodeSorties" aria-label="Filtrer par période" onchange="appliquerFiltresSorties()" style="margin:0;min-width:0;">
                     <option value="tout">Toutes les périodes</option>
@@ -3005,7 +3044,7 @@ def accueil():
                     <option value="denivele-desc">Dénivelé décroissant</option>
                     <option value="denivele-asc">Dénivelé croissant</option>
                 </select>
-                <button type="button" class="btn-secondary" onclick="reinitialiserFiltresSorties()" style="margin:0;">Réinitialiser les filtres</button>
+                <button type="button" class="btn-filtres-survol" onclick="reinitialiserFiltresSorties()" style="margin:0;">Réinitialiser les filtres</button>
             </div>
             <p id="compteurSorties" class="form-help" style="margin:0 0 10px;"></p>
             <div id="sortiesList">
