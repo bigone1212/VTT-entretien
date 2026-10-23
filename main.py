@@ -2591,6 +2591,42 @@ def accueil():
             .hist-entete .titre-pastille.titre-pastille,
             .mr-titre .titre-pastille.titre-pastille,
             .verifs-titre .titre-pastille.titre-pastille { margin: 0; }
+
+            /* ---- Page Sorties : formulaire d'import plus net (apparence seulement) ---- */
+            #page-sorties .history-section > label,
+            #page-sorties #blocStrava label {
+                display: block;
+                margin: 16px 2px 6px;
+                font-size: 0.74rem;
+                font-weight: 700;
+                letter-spacing: 0.05em;
+                text-transform: uppercase;
+                color: var(--text-muted);
+            }
+
+            #page-sorties input[type="file"] {
+                padding: 10px;
+                margin-bottom: 4px;
+                font-size: 0.85rem;
+                background: var(--field);
+                border: 1.5px dashed var(--field-line);
+                border-radius: 14px;
+            }
+
+            #page-sorties .history-section > .form-help {
+                margin: 8px 2px 4px;
+                line-height: 1.45;
+            }
+
+            #page-sorties #blocStrava {
+                margin-top: 18px;
+                padding: 12px 14px;
+                background: var(--fill);
+                border: 1px solid var(--line2);
+                border-radius: 14px;
+            }
+
+            #page-sorties #blocStrava[open] summary { margin-bottom: 4px; }
         </style>
     </head>
 
