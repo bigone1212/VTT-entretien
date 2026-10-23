@@ -1469,6 +1469,12 @@ def accueil():
             }
             .menu-filtre { min-width: 250px; max-width: calc(100vw - 56px); max-height: 60vh; overflow-y: auto; }
             .menu-filtre button { white-space: normal; }
+            .menu-filtres-sorties { top: 44px; right: 40px; width: min(340px, calc(100vw - 32px)); box-sizing: border-box; }
+            .sorties-filtres-contenu { display: grid; grid-template-columns: 1fr; gap: 10px; }
+            .sorties-filtres-contenu input[type="search"],
+            .sorties-filtres-contenu select { width: 100%; min-width: 0; margin: 0; box-sizing: border-box; }
+            .sorties-filtres-contenu label { margin: 2px 0 -6px; font-size: 0.78rem; font-weight: 700; color: var(--text-muted); }
+            .sorties-filtres-contenu .form-help { margin: 0; }
 
             .hist-selection {
                 display: flex;
@@ -3022,29 +3028,37 @@ def accueil():
                 <p class="form-help" id="stravaMessage" style="margin-top: 10px;"></p>
             </details>
 
-            <h2 class="titre-pastille" style="margin: 24px 0 12px;"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h8a3 3 0 0 0 0-6H8a3 3 0 0 1 0-6h8"/></svg><span>Mes sorties</span></h2>
+            <div class="hist-entete sorties-entete" style="margin:24px 0 12px;">
+                <h2 class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h8a3 3 0 0 0 0-6H8a3 3 0 0 1 0-6h8"/></svg><span>Mes sorties</span></h2>
+                <div id="sortiesMenuZone"></div>
+            </div>
 
-            <div id="sortiesFiltres" class="sorties-filtres" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:12px 0 16px;">
-                <input id="rechercheSorties" type="search" placeholder="Rechercher une sortie..." aria-label="Rechercher une sortie" oninput="appliquerFiltresSorties()" style="margin:0;min-width:0;">
-                <select id="periodeSorties" aria-label="Filtrer par période" onchange="appliquerFiltresSorties()" style="margin:0;min-width:0;">
-                    <option value="tout">Toutes les périodes</option>
-                    <option value="7">7 derniers jours</option>
-                    <option value="30">30 derniers jours</option>
-                    <option value="365">12 derniers mois</option>
-                    <option value="annee">Cette année</option>
-                </select>
-                <select id="sportSorties" aria-label="Filtrer par activité" onchange="appliquerFiltresSorties()" style="margin:0;min-width:0;">
-                    <option value="tout">Toutes les activités</option>
-                </select>
-                <select id="triSorties" aria-label="Trier les sorties" onchange="appliquerFiltresSorties()" style="margin:0;min-width:0;">
-                    <option value="date-desc">Plus récentes</option>
-                    <option value="date-asc">Plus anciennes</option>
-                    <option value="distance-desc">Distance décroissante</option>
-                    <option value="distance-asc">Distance croissante</option>
-                    <option value="denivele-desc">Dénivelé décroissant</option>
-                    <option value="denivele-asc">Dénivelé croissant</option>
-                </select>
-                <button type="button" class="btn-filtres-survol" onclick="reinitialiserFiltresSorties()" style="margin:0;">Réinitialiser les filtres</button>
+            <div id="sortiesFiltres" class="menu-sortie menu-filtre menu-filtres-sorties">
+                <div class="sorties-filtres-contenu">
+                    <label for="rechercheSorties">Rechercher une sortie</label>
+                    <input id="rechercheSorties" type="search" placeholder="Nom, note, activité..." aria-label="Rechercher une sortie" oninput="appliquerFiltresSorties()">
+                    <label for="periodeSorties">Période</label>
+                    <select id="periodeSorties" aria-label="Filtrer par période" onchange="appliquerFiltresSorties()">
+                        <option value="tout">Toutes les périodes</option>
+                        <option value="7">7 derniers jours</option>
+                        <option value="30">30 derniers jours</option>
+                        <option value="365">12 derniers mois</option>
+                        <option value="annee">Cette année</option>
+                    </select>
+                    <label for="sportSorties">Activité</label>
+                    <select id="sportSorties" aria-label="Filtrer par activité" onchange="appliquerFiltresSorties()">
+                        <option value="tout">Toutes les activités</option>
+                    </select>
+                    <label for="triSorties">Trier les sorties</label>
+                    <select id="triSorties" aria-label="Trier les sorties" onchange="appliquerFiltresSorties()">
+                        <option value="date-desc">Plus récentes</option>
+                        <option value="date-asc">Plus anciennes</option>
+                        <option value="distance-desc">Distance décroissante</option>
+                        <option value="distance-asc">Distance croissante</option>
+                        <option value="denivele-desc">Dénivelé décroissant</option>
+                        <option value="denivele-asc">Dénivelé croissant</option>
+                    </select>
+                </div>
             </div>
             <p id="compteurSorties" class="form-help" style="margin:0 0 10px;"></p>
             <div id="sortiesList">
@@ -5499,6 +5513,50 @@ def accueil():
 
             let sortiesConnues = [];
 
+            function initialiserMenuFiltresSorties() {
+                const zone = document.getElementById('sortiesMenuZone');
+                const panneau = document.getElementById('sortiesFiltres');
+                if (!zone || !panneau || document.getElementById('sortiesFiltreBouton')) return;
+
+                const bouton = document.createElement('button');
+                bouton.type = 'button';
+                bouton.id = 'sortiesFiltreBouton';
+                bouton.className = 'menu-sortie-btn hist-filtre-btn';
+                bouton.setAttribute('aria-label', 'Filtrer et rechercher les sorties');
+                bouton.setAttribute('aria-haspopup', 'true');
+                bouton.setAttribute('aria-expanded', 'false');
+                remplirBouton(bouton, 'filtre', '');
+                bouton.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const etaitOuvert = panneau.classList.contains('ouvert');
+                    fermerMenusSortie();
+                    if (!etaitOuvert) {
+                        panneau.classList.add('ouvert');
+                        bouton.setAttribute('aria-expanded', 'true');
+                    }
+                });
+                panneau.addEventListener('click', (e) => e.stopPropagation());
+                zone.appendChild(bouton);
+
+                ajouterMenuPoints(zone, 'Actions des sorties', [
+                    { icone: 'echange', texte: 'Réinitialiser les filtres', action: reinitialiserFiltresSorties }
+                ]);
+                actualiserBoutonFiltreSorties();
+            }
+
+            function actualiserBoutonFiltreSorties() {
+                const bouton = document.getElementById('sortiesFiltreBouton');
+                if (!bouton) return;
+                const actif = Boolean(
+                    (document.getElementById('rechercheSorties').value || '').trim()
+                    || document.getElementById('periodeSorties').value !== 'tout'
+                    || document.getElementById('sportSorties').value !== 'tout'
+                    || document.getElementById('triSorties').value !== 'date-desc'
+                );
+                bouton.classList.toggle('actif', actif);
+                bouton.setAttribute('aria-label', actif ? 'Filtres des sorties (filtre actif)' : 'Filtrer et rechercher les sorties');
+            }
+
             function preparerFiltresSorties(sorties) {
                 const select = document.getElementById('sportSorties');
                 const valeurActuelle = select.value || 'tout';
@@ -5511,6 +5569,7 @@ def accueil():
                     select.appendChild(option);
                 });
                 select.value = sports.includes(valeurActuelle) ? valeurActuelle : 'tout';
+                actualiserBoutonFiltreSorties();
             }
 
             function filtrerSorties(sorties) {
@@ -5545,6 +5604,7 @@ def accueil():
             }
 
             function appliquerFiltresSorties() {
+                actualiserBoutonFiltreSorties();
                 if (sortiesConnues.length) chargerSorties(true);
             }
 
@@ -5553,11 +5613,13 @@ def accueil():
                 document.getElementById('periodeSorties').value = 'tout';
                 document.getElementById('sportSorties').value = 'tout';
                 document.getElementById('triSorties').value = 'date-desc';
+                actualiserBoutonFiltreSorties();
                 chargerSorties(true);
             }
 
             async function chargerSorties(reutiliserCache = false) {
                 const liste = document.getElementById('sortiesList');
+                initialiserMenuFiltresSorties();
 
                 try {
                     let sorties;
