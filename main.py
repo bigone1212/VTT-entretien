@@ -7262,17 +7262,29 @@ def accueil():
                 const sud = Math.min(...lats)-marge, nord = Math.max(...lats)+marge, ouest = Math.min(...lons)-marge, est = Math.max(...lons)+marge;
                 if (nord-sud > 0.6 || est-ouest > 0.8) return [];
                 const zone = '('+sud+','+ouest+','+nord+','+est+')';
-                const q = '[out:json][timeout:25];(nwr["place"~"^(city|town|village|hamlet|isolated_dwelling|suburb|locality)$"]["name"]'+zone+';nwr["natural"="peak"]["name"]'+zone+';nwr["mountain_pass"="yes"]["name"]'+zone+';nwr["natural"="saddle"]["name"]'+zone+';);out center tags;';
+                const q = '[out:json][timeout:35];(nwr["place"~"^(city|town|village|hamlet|isolated_dwelling|suburb|locality|neighbourhood)$"]["name"]'+zone+';nwr["natural"="peak"]["name"]'+zone+';nwr["mountain_pass"="yes"]["name"]'+zone+';nwr["natural"="saddle"]["name"]'+zone+';);out center tags;';
                 let data = null;
+                let derniereErreur = null;
                 for (const base of ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter']) {
                     try {
-                        const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 22000);
-                        const res = await fetch(base+'?data='+encodeURIComponent(q), {method:'GET',signal:ctl.signal});
+                        const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 38000);
+                        const res = await fetch(base, {
+                            method:'POST',
+                            headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},
+                            body:'data='+encodeURIComponent(q),
+                            signal:ctl.signal
+                        });
                         clearTimeout(timer);
                         if (res.ok) { data = await res.json(); break; }
-                    } catch(e) { console.warn('Repères OpenStreetMap indisponibles', e); }
+                        derniereErreur = 'HTTP '+res.status+' sur '+base;
+                        console.warn('Recherche de lieux OSM :', derniereErreur);
+                    } catch(e) { derniereErreur = String(e); console.warn('Repères OpenStreetMap indisponibles', e); }
                 }
-                if (!data || !Array.isArray(data.elements)) return [];
+                if (!data || !Array.isArray(data.elements)) {
+                    console.warn('Aucun résultat exploitable pour les lieux du survol 3D.', derniereErreur || 'réponse vide');
+                    return [];
+                }
+                console.info('Survol 3D : objets OpenStreetMap reçus', data.elements.length);
                 const ref = v3d.pts.filter((_,i)=>i%Math.max(1,Math.floor(v3d.pts.length/500))===0);
                 const dist = (lon,lat) => Math.min(...ref.map(p => {
                     const x=(lon-p[0])*111320*Math.cos(lat*Math.PI/180), y=(lat-p[1])*110540; return Math.hypot(x,y);
