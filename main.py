@@ -6804,31 +6804,36 @@ def accueil():
             // on ne demande que les carrés où il y a des sorties, et chaque carré est gardé 30 jours sur l'appareil.
             let zonesErreur = '';
             let zonesEtat = 'attente';
-            async function chargerLieuxZones(centres) {
+
+            // Une demande par carré : plus petite, donc plus rapide. La liste se remplit au fur et à mesure.
+            async function chargerLieuxZones(centres, apresChaqueCarre) {
                 const PAS = 0.25, MARGE = 0.1;
                 let memo = { cases: {} };
                 try {
                     const lu = JSON.parse(localStorage.getItem('maillons_lieux_zones2') || 'null');
                     if (lu && lu.cases) memo = lu;
                 } catch (e) { /* pas de mémoire */ }
-                const maintenant = Date.now();
+                const toutLesLieux = () => {
+                    const tous = [];
+                    Object.keys(memo.cases).forEach(cle => memo.cases[cle].lieux.forEach(l => tous.push(l)));
+                    return tous;
+                };
                 const voulues = [];
                 centres.forEach(c => {
                     const cle = Math.floor(c[0] / PAS) + ',' + Math.floor(c[1] / PAS);
                     if (!voulues.includes(cle)) voulues.push(cle);
                 });
-                const manquantes = voulues.filter(cle => !memo.cases[cle] || maintenant - memo.cases[cle].t > 30 * 86400000).slice(0, 12);
+                const manquantes = voulues.filter(cle => !memo.cases[cle] || Date.now() - memo.cases[cle].t > 30 * 86400000).slice(0, 12);
                 zonesErreur = '';
-                if (manquantes.length) {
-                    const boites = manquantes.map(cle => {
-                        const p = cle.split(',').map(Number);
-                        return '(' + [p[0] * PAS - MARGE, p[1] * PAS - MARGE, (p[0] + 1) * PAS + MARGE, (p[1] + 1) * PAS + MARGE].join(',') + ')';
-                    });
-                    const q = '[out:json][timeout:40];(' + boites.map(b => 'node["place"~"^(city|town|village)$"]["name"]' + b + ';').join('') + ');out;';
+                if (voulues.length > manquantes.length) apresChaqueCarre(toutLesLieux());
+                for (const cle of manquantes) {
+                    const p = cle.split(',').map(Number);
+                    const boite = '(' + [p[0] * PAS - MARGE, p[1] * PAS - MARGE, (p[0] + 1) * PAS + MARGE, (p[1] + 1) * PAS + MARGE].join(',') + ')';
+                    const q = '[out:json][timeout:25];node["place"~"^(city|town|village)$"]["name"]' + boite + ';out;';
                     let data = null;
-                    for (const base of ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter']) {
+                    for (const base of ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']) {
                         try {
-                            const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 15000);
+                            const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 30000);
                             const res = await fetch(base, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
@@ -6842,20 +6847,14 @@ def accueil():
                             zonesErreur = 'réponse vide';
                         } catch (e) { zonesErreur = String(e); console.warn('Zones : serveur indisponible', e); }
                     }
-                    if (data) {
-                        manquantes.forEach(cle => { memo.cases[cle] = { t: maintenant, lieux: [] }; });
-                        data.elements.forEach(e => {
-                            if (!e.tags || !e.tags.name || !Number.isFinite(e.lat) || !Number.isFinite(e.lon)) return;
-                            const cle = Math.floor(e.lat / PAS) + ',' + Math.floor(e.lon / PAS);
-                            const cible = memo.cases[cle] || (memo.cases[cle] = { t: maintenant, lieux: [] });
-                            cible.lieux.push([e.tags.name, e.lat, e.lon]);
-                        });
-                        try { localStorage.setItem('maillons_lieux_zones2', JSON.stringify(memo)); } catch (e) { /* stockage refusé */ }
-                    }
+                    if (!data) continue;
+                    memo.cases[cle] = { t: Date.now(), lieux: data.elements
+                        .filter(e => e.tags && e.tags.name && Number.isFinite(e.lat) && Number.isFinite(e.lon))
+                        .map(e => [e.tags.name, e.lat, e.lon]) };
+                    try { localStorage.setItem('maillons_lieux_zones2', JSON.stringify(memo)); } catch (e) { /* stockage refusé */ }
+                    apresChaqueCarre(toutLesLieux());
                 }
-                const tous = [];
-                Object.keys(memo.cases).forEach(cle => memo.cases[cle].lieux.forEach(l => tous.push(l)));
-                return tous;
+                return toutLesLieux();
             }
 
             function remplirListeZones() {
@@ -6901,20 +6900,33 @@ def accueil():
                 zonesSignature = signature;
                 const centres = sorties.map(s => ({ id: s.id, c: centreSortie(s) })).filter(x => x.c);
                 if (!centres.length) { zonesEtat = 'sans-trace'; remplirListeZones(); return; }
-                const lieux = await chargerLieuxZones(centres.map(x => x.c));
-                if (!lieux.length) { zonesSignature = ''; zonesDernierEchec = Date.now(); zonesEtat = 'echec'; if (!zonesErreur) zonesErreur = 'aucun village trouvé'; remplirListeZones(); return; }
-                const parSortie = {};
-                centres.forEach(x => {
-                    let meilleur = null, dMin = 9;
-                    lieux.forEach(l => {
-                        const d = distanceKmGps(x.c, [l[1], l[2]]);
-                        if (d < dMin) { dMin = d; meilleur = l[0]; }
+                const assigner = (lieux) => {
+                    if (!lieux.length) return;
+                    const parSortie = {};
+                    centres.forEach(x => {
+                        let meilleur = null, dMin = 9;
+                        lieux.forEach(l => {
+                            const d = distanceKmGps(x.c, [l[1], l[2]]);
+                            if (d < dMin) { dMin = d; meilleur = l[0]; }
+                        });
+                        if (meilleur) parSortie[x.id] = meilleur;
                     });
-                    if (meilleur) parSortie[x.id] = meilleur;
-                });
-                zonesSorties = { parSortie: parSortie, noms: {} };
-                zonesEtat = 'ok';
-                remplirListeZones();
+                    zonesSorties = { parSortie: parSortie, noms: {} };
+                    zonesEtat = 'ok';
+                    remplirListeZones();
+                };
+                const lieux = await chargerLieuxZones(centres.map(x => x.c), assigner);
+                assigner(lieux);
+                if (!lieux.length) {
+                    zonesSignature = '';
+                    zonesDernierEchec = Date.now();
+                    zonesEtat = 'echec';
+                    if (!zonesErreur) zonesErreur = 'aucun village trouvé';
+                    remplirListeZones();
+                } else if (zonesErreur) {
+                    zonesSignature = '';
+                    zonesDernierEchec = Date.now() - 90000;
+                }
             }
 
             function preparerFiltresSorties(sorties) {
