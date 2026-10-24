@@ -2803,37 +2803,27 @@ def accueil():
 
             .ftv-entete {
                 display: flex;
-                align-items: center;
-                gap: 10px;
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 5px;
                 min-width: 0;
             }
 
-            .ftv-embleme {
-                display: grid;
-                place-items: center;
-                width: 42px;
-                height: 42px;
-                flex: none;
-                color: var(--accent);
-                background: var(--fill2);
-                border: 1px solid var(--line2);
-                border-radius: 12px;
+            .ftv-titre-pastille {
+                margin: 0 !important;
             }
 
-            .ftv-embleme svg { width: 25px; height: 25px; }
-
-            .ftv-titre {
-                display: block;
-                color: var(--text-color);
-                font-weight: 750;
-                font-size: 1rem;
+            .ftv-titre-pastille .ico {
+                width: 17px;
+                height: 17px;
+                flex: none;
             }
 
             .ftv-sous-titre {
                 display: block;
-                margin-top: 3px;
                 color: var(--text-muted);
                 font-size: 0.78rem;
+                line-height: 1.35;
             }
 
             .ftv-chevron {
@@ -2886,24 +2876,25 @@ def accueil():
                 align-items: flex-start;
                 gap: 10px;
                 min-width: 0;
-                padding: 11px;
-                background: var(--fill);
-                border: 1px solid var(--line);
-                border-radius: 12px;
+                padding: 11px 8px;
+                background: transparent;
+                border: 0;
+                border-bottom: 1px solid var(--line3);
+                border-radius: 0;
             }
 
             .ftv-icone {
                 display: grid;
                 place-items: center;
-                width: 42px;
-                height: 42px;
+                width: 36px;
+                height: 36px;
                 flex: none;
                 color: var(--accent);
-                background: var(--fill2);
-                border-radius: 10px;
+                background: transparent;
+                border-radius: 8px;
             }
 
-            .ftv-icone svg, .ftv-icone img { display: block; width: 32px; height: 32px; object-fit: contain; }
+            .ftv-icone svg, .ftv-icone img { display: block; width: 30px; height: 30px; object-fit: contain; }
 
             .ftv-libelle {
                 display: block;
@@ -3108,13 +3099,11 @@ def accueil():
         <details class="fiche-technique-velo">
             <summary class="ftv-resume">
                 <span class="ftv-entete">
-                    <span class="ftv-embleme" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="M5.5 17.5 9 9h4l5.5 8.5M9 9l4.5 8.5H5.5M8 6h3"/></svg>
-                    </span>
-                    <span>
-                        <span class="ftv-titre">Fiche technique du vélo</span>
-                        <span class="ftv-sous-titre">CUBE Stereo Hybrid ONE44 EXC 800 · 2025</span>
-                    </span>
+                    <strong class="titre-pastille ftv-titre-pastille">
+                        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="M5.5 17.5 9 9h4l5.5 8.5M9 9l4.5 8.5H5.5M8 6h3"/></svg>
+                        <span>Fiche technique du vélo</span>
+                    </strong>
+                    <span class="ftv-sous-titre">CUBE Stereo Hybrid ONE44 EXC 800 · 2025</span>
                 </span>
                 <span class="ftv-chevron" aria-hidden="true"></span>
             </summary>
