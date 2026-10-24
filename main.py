@@ -7455,9 +7455,11 @@ def accueil():
 
                 const hauteur = document.getElementById('carte3d').clientHeight || 600;
 
-                // Recentre le point de suivi : on mesure où il apparait à l'écran
-                // (relief compris) et on décale la vue pour le ramener vers 52 % de la hauteur.
-                if (typeof carte.project === 'function' && !brusque) {
+                // La correction de cadrage via project() est coûteuse avec le relief 3D.
+                // On la calcule périodiquement, sans réduire les points GPS ni la fréquence
+                // de déplacement de la caméra.
+                v3d.compteCadrage = (v3d.compteCadrage || 0) + 1;
+                if (typeof carte.project === 'function' && !brusque && v3d.compteCadrage % 6 === 0) {
                     try {
                         const ecran = carte.project(centre);
                         if (ecran && isFinite(ecran.y)) {
@@ -7467,7 +7469,7 @@ def accueil():
                             }
                         }
                     } catch (e) {
-                        console.error(e);
+                        console.warn('Correction du cadrage 3D indisponible', e);
                     }
                 }
 
