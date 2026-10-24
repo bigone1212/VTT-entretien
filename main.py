@@ -7258,72 +7258,90 @@ def accueil():
             }
             async function chercherLieuxV3d() {
                 if (v3d.pts.length < 2) return [];
-                // Recherche dans une bande proche du parcours : évite les grandes zones
-                // qui faisaient échouer Overpass et n'affiche que les lieux traversés/proches.
-                const lons = v3d.pts.map(p => p[0]), lats = v3d.pts.map(p => p[1]), marge = 0.006;
-                const sud = Math.min(...lats)-marge, nord = Math.max(...lats)+marge, ouest = Math.min(...lons)-marge, est = Math.max(...lons)+marge;
-                const zone = '('+sud+','+ouest+','+nord+','+est+')';
-                const q = '[out:json][timeout:12];(nwr["place"~"^(city|town|village|hamlet|isolated_dwelling|suburb|locality|neighbourhood)$"]["name"]'+zone+';nwr["natural"="peak"]["name"]'+zone+';nwr["mountain_pass"="yes"]["name"]'+zone+';nwr["natural"="saddle"]["name"]'+zone+';);out center tags;';
-                // Les deux serveurs sont interrogés en parallèle : on utilise le premier
-                // résultat valide au lieu d'attendre deux délais d'attente successifs.
-                let data = null;
-                let derniereErreur = null;
-                const serveurs = ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
-                const controles = serveurs.map(() => new AbortController());
-                const requetes = serveurs.map(async (base, i) => {
-                    const timer = setTimeout(() => controles[i].abort(), 14000);
-                    try {
-                        const res = await fetch(base, {
-                            method:'POST',
-                            headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},
-                            body:'data='+encodeURIComponent(q),
-                            signal:controles[i].signal
-                        });
-                        if (!res.ok) throw new Error('HTTP '+res.status+' sur '+base);
-                        const json = await res.json();
-                        if (!json || !Array.isArray(json.elements)) throw new Error('Réponse Overpass invalide');
-                        // Une réponse vide d'un serveur ne doit pas empêcher l'autre
-                        // de fournir les noms des villages et lieux-dits.
-                        if (json.elements.length === 0) throw new Error('Aucun lieu retourné par '+base);
-                        return json;
-                    } finally {
-                        clearTimeout(timer);
-                    }
-                });
-                try {
-                    data = await Promise.any(requetes);
-                    controles.forEach(c => c.abort());
-                } catch(e) {
-                    derniereErreur = String(e);
-                    console.warn('Repères OpenStreetMap indisponibles', e);
+                // Découpe le parcours en petites zones : une seule grande bbox peut
+                // faire expirer Overpass sur les sorties longues ou sinueuses.
+                const pts = v3d.pts;
+                const nbZones = Math.min(8, Math.max(1, Math.ceil(pts.length / 250)));
+                const zones = [];
+                for (let z = 0; z < nbZones; z++) {
+                    const debut = Math.floor(z * (pts.length - 1) / nbZones);
+                    const fin = Math.min(pts.length, Math.floor((z + 1) * (pts.length - 1) / nbZones) + 2);
+                    const segment = pts.slice(debut, fin);
+                    const lons = segment.map(p => p[0]), lats = segment.map(p => p[1]), marge = 0.012;
+                    zones.push('(' + (Math.min(...lats)-marge) + ',' + (Math.min(...lons)-marge) + ',' +
+                        (Math.max(...lats)+marge) + ',' + (Math.max(...lons)+marge) + ')');
                 }
-                if (!data || !Array.isArray(data.elements)) {
-                    console.warn('Aucun résultat exploitable pour les lieux du survol 3D.', derniereErreur || 'réponse vide');
-                    return [];
+                const requeteZone = async zone => {
+                    const q = '[out:json][timeout:10];(nwr["place"~"^(city|town|village|hamlet|isolated_dwelling|suburb|locality|neighbourhood)$"]["name"]' + zone +
+                        ';nwr["natural"="peak"]["name"]' + zone +
+                        ';nwr["mountain_pass"="yes"]["name"]' + zone +
+                        ';nwr["natural"="saddle"]["name"]' + zone + ';);out center tags;';
+                    const serveurs = ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
+                    const tentatives = serveurs.map(async base => {
+                        const controle = new AbortController();
+                        const timer = setTimeout(() => controle.abort(), 12000);
+                        try {
+                            const res = await fetch(base, {
+                                method:'POST',
+                                headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},
+                                body:'data='+encodeURIComponent(q),
+                                signal:controle.signal
+                            });
+                            if (!res.ok) throw new Error('HTTP ' + res.status);
+                            const json = await res.json();
+                            if (!json || !Array.isArray(json.elements) || json.elements.length === 0)
+                                throw new Error('Réponse Overpass vide ou invalide');
+                            return json.elements;
+                        } finally {
+                            clearTimeout(timer);
+                        }
+                    });
+                    try { return await Promise.any(tentatives); }
+                    catch (e) { console.warn('Zone de lieux indisponible', e); return []; }
+                };
+                const elements = [];
+                // Limite la concurrence pour ne pas surcharger les serveurs publics.
+                for (let i = 0; i < zones.length; i += 3) {
+                    const lot = await Promise.all(zones.slice(i, i + 3).map(requeteZone));
+                    for (const liste of lot) elements.push(...liste);
                 }
-                console.info('Survol 3D : objets OpenStreetMap reçus', data.elements.length);
-                const ref = v3d.pts.filter((_,i)=>i%Math.max(1,Math.floor(v3d.pts.length/500))===0);
-                const dist = (lon,lat) => Math.min(...ref.map(p => {
-                    const x=(lon-p[0])*111320*Math.cos(lat*Math.PI/180), y=(lat-p[1])*110540; return Math.hypot(x,y);
-                }));
-                const out=[], seen=new Set();
-                for (const e of data.elements) {
-                    if (!e.tags||!e.tags.name) continue;
+                const uniques = new Map();
+                for (const e of elements) {
+                    const t = e.tags || {};
                     const lon = Number.isFinite(e.lon) ? e.lon : e.center && e.center.lon;
                     const lat = Number.isFinite(e.lat) ? e.lat : e.center && e.center.lat;
-                    if (!Number.isFinite(lon)||!Number.isFinite(lat)) continue;
-                    let genre='',rang=9,portee=600;
-                    if (['city','town','village','hamlet','isolated_dwelling','suburb','locality'].includes(e.tags.place)) {
-                        genre=['hamlet','isolated_dwelling','locality'].includes(e.tags.place)?'village':(e.tags.place==='village'?'village':'ville');
-                        rang={city:1,town:2,suburb:3,village:4,hamlet:5,isolated_dwelling:6,locality:7}[e.tags.place] ?? 4;
-                        portee=600;
+                    if (!t.name || !Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+                    uniques.set((e.type || '') + '/' + (e.id || (t.name + '/' + lon + '/' + lat)), e);
+                }
+                if (!uniques.size) {
+                    console.warn('Aucun lieu reçu d’OpenStreetMap pour le parcours.');
+                    return [];
+                }
+                console.info('Survol 3D : objets OpenStreetMap reçus', uniques.size);
+                const ref = pts.filter((_,i)=>i%Math.max(1,Math.floor(pts.length/500))===0);
+                const dist = (lon,lat) => {
+                    let minimum = Infinity;
+                    for (const p of ref) {
+                        const x=(lon-p[0])*111320*Math.cos(lat*Math.PI/180), y=(lat-p[1])*110540;
+                        minimum = Math.min(minimum, Math.hypot(x,y));
                     }
-                    else if(e.tags.natural==='peak') {genre='sommet';rang=4;portee=1500;}
-                    else if(e.tags.mountain_pass==='yes'||e.tags.natural==='saddle') {genre='col';rang=2;portee=500;}
+                    return minimum;
+                };
+                const out=[], seen=new Set();
+                for (const e of uniques.values()) {
+                    const t=e.tags;
+                    const lon = Number.isFinite(e.lon) ? e.lon : e.center && e.center.lon;
+                    const lat = Number.isFinite(e.lat) ? e.lat : e.center && e.center.lat;
+                    let genre='',rang=9,portee=600;
+                    if (['city','town','village','hamlet','isolated_dwelling','suburb','locality','neighbourhood'].includes(t.place)) {
+                        genre=['hamlet','isolated_dwelling','locality','neighbourhood'].includes(t.place)?'village':(t.place==='village'?'village':'ville');
+                        rang={city:1,town:2,suburb:3,village:4,hamlet:5,isolated_dwelling:6,locality:7,neighbourhood:8}[t.place] ?? 4;
+                    } else if(t.natural==='peak') {genre='sommet';rang=4;portee=1500;}
+                    else if(t.mountain_pass==='yes'||t.natural==='saddle') {genre='col';rang=2;portee=500;}
                     else continue;
-                    const ec=dist(lon,lat), key=e.tags.name.toLowerCase()+genre;
+                    const ec=dist(lon,lat), key=t.name.toLowerCase()+genre;
                     if(ec>portee||seen.has(key)) continue;
-                    seen.add(key); out.push({nom:e.tags.name,genre,rang,ec,coord:[lon,lat],alt:parseInt(e.tags.ele,10)});
+                    seen.add(key); out.push({nom:t.name,genre,rang,ec,coord:[lon,lat],alt:parseInt(t.ele,10)});
                 }
                 out.sort((a,b)=>a.rang-b.rang||a.ec-b.ec);
                 const gardes=[];
