@@ -2844,15 +2844,28 @@ def accueil():
                 transform: rotate(225deg);
             }
 
-            .ftv-velo-illustration { margin: 0 -2px 10px; padding: 8px 4px 2px; border: 1px solid var(--line); border-radius: 12px; background: linear-gradient(145deg, var(--fill2), var(--fill)); overflow: hidden; }
-            .ftv-velo-illustration svg { display: block; width: 100%; height: auto; color: var(--accent); }
-            .ftv-velo-illustration .ftv-pneu { fill: #18272d; stroke: #a8bec2; stroke-width: 8; }
-            .ftv-velo-illustration .ftv-jante { fill: none; stroke: #7c999f; stroke-width: 2.5; }
-            .ftv-velo-illustration .ftv-rayon { stroke: #607b82; stroke-width: 1.2; }
-            .ftv-velo-illustration .ftv-tube { fill: none; stroke: currentColor; stroke-width: 10; stroke-linecap: round; stroke-linejoin: round; }
-            .ftv-velo-illustration .ftv-tube-fin { fill: none; stroke: #a4c0c5; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
-            .ftv-velo-illustration .ftv-moteur { fill: #203940; stroke: currentColor; stroke-width: 3; }
-            .ftv-velo-illustration .ftv-libelle-velo { fill: var(--text-muted); font-size: 12px; font-weight: 650; letter-spacing: .08em; }
+            .ftv-taille-ligne {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+                margin: 2px 0 10px;
+                padding: 9px 11px;
+                background: var(--fill);
+                border: 1px solid var(--line);
+                border-radius: 10px;
+            }
+            .ftv-taille-ligne label { color: var(--text-muted); font-size: .8rem; font-weight: 650; }
+            .ftv-taille-ligne select {
+                min-width: 76px;
+                padding: 7px 28px 7px 10px;
+                color: var(--text-color);
+                background: var(--card-bg);
+                border: 1px solid var(--line2);
+                border-radius: 8px;
+                font: inherit;
+                font-weight: 750;
+            }
 
             .ftv-grille {
                 display: grid;
@@ -2883,9 +2896,7 @@ def accueil():
                 border-radius: 10px;
             }
 
-            .ftv-icone svg { width: 32px; height: 32px; overflow: visible; fill: none; stroke: currentColor; stroke-width: 1.55; stroke-linecap: round; stroke-linejoin: round; }
-            .ftv-icone svg .ftv-rempli { fill: currentColor; fill-opacity: .14; }
-            .ftv-icone svg .ftv-fin { stroke-width: 1; opacity: .8; }
+            .ftv-icone svg, .ftv-icone img { display: block; width: 32px; height: 32px; object-fit: contain; }
 
             .ftv-libelle {
                 display: block;
@@ -3101,17 +3112,26 @@ def accueil():
                 <span class="ftv-chevron" aria-hidden="true"></span>
             </summary>
 
-            <div class="ftv-velo-illustration" role="img" aria-label="Illustration technique du vélo, adaptée à la taille du cadre et aux roues">
-                <svg id="ftvBikeSvg" viewBox="0 0 560 220" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <g id="ftvRoueArriere" transform="translate(125 158)"><circle class="ftv-pneu" r="66"/><circle class="ftv-jante" r="53"/><circle class="ftv-jante" r="7"/><g class="ftv-rayon"><path d="M0 -53V-7M0 7V53M-53 0H-7M7 0H53M-37 -37L-5 -5M5 5L37 37M37 -37L5 -5M-5 5L-37 37M-20 -49L-3 -7M3 7L20 49M-49 -20L-7 -3M7 3L49 20M20 -49L3 -7M-3 7L-20 49M-49 20L-7 3M7 -3L49 -20"/></g></g>
-                    <g id="ftvRoueAvant" transform="translate(435 158)"><circle class="ftv-pneu" r="66"/><circle class="ftv-jante" r="53"/><circle class="ftv-jante" r="7"/><g class="ftv-rayon"><path d="M0 -53V-7M0 7V53M-53 0H-7M7 0H53M-37 -37L-5 -5M5 5L37 37M37 -37L5 -5M-5 5L-37 37M-20 -49L-3 -7M3 7L20 49M-49 -20L-7 -3M7 3L49 20M20 -49L3 -7M-3 7L-20 49M-49 20L-7 3M7 -3L49 -20"/></g></g>
-                    <g id="ftvCadreIllustration"><path id="ftvTubeArriere" class="ftv-tube" d="M125 158L265 158L245 83L125 158M245 83L355 80L365 126L265 158L245 83M355 80L435 158L365 126"/><path class="ftv-tube-fin" d="M245 83L355 80M245 83L265 158M355 80L365 126M125 158L245 83M265 158L365 126"/><path d="M231 76l-8-4h22l-5 4M350 71l17 1 4 6h-19" class="ftv-tube"/><path d="M365 126L435 158" class="ftv-tube" stroke-width="13"/><path d="M365 126L435 158" class="ftv-tube-fin"/><path d="M265 158l-17 12m17-12 17 12m-34 0h34" class="ftv-tube-fin"/><circle cx="265" cy="158" r="22" class="ftv-moteur"/><circle cx="265" cy="158" r="6" class="ftv-jante"/><path d="M265 158l26 16m-26-16-18-20" class="ftv-tube-fin" stroke-width="4"/><circle cx="125" cy="158" r="7" class="ftv-moteur"/><circle cx="435" cy="158" r="7" class="ftv-moteur"/><path d="M352 80l-3-18 7-4 8 4 2 18M350 61l-7-8h22l-7 8" class="ftv-tube-fin"/><path d="M358 80L378 117M373 119l-8 12m8-12 8 12M435 158L421 95l-6-9 6-3 8 7 6 68" class="ftv-tube-fin"/></g>
-                    <text x="280" y="211" text-anchor="middle" class="ftv-libelle-velo" id="ftvIllustrationTaille">CADRE M · ROUES 29 POUCES</text>
-                </svg>
+            <div class="ftv-taille-ligne">
+                <label for="ftvTailleCadre">Taille du cadre</label>
+                <select id="ftvTailleCadre" aria-label="Taille du cadre">
+                    <option value="S">S</option>
+                    <option value="M">M</option>
+                    <option value="L">L</option>
+                    <option value="XL">XL</option>
+                </select>
             </div>
             <div class="ftv-grille">
                 <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path class="ftv-rempli" d="M15 4h18l-3 9 4 5-4 22H25l-2-22-4-5z"/><path d="M15 4h18l-3 9 4 5-4 22H25l-2-22-4-5z M19 13h11M22 18l3 18m5-18-2 18M21 40h-8m16 0h8M17 4V2h14v2"/><path class="ftv-fin" d="M19 8h12M21 15h9"/></svg></span>
+                    <span class="ftv-icone" aria-hidden="true"><img src="https://opticycles.com/images/motor.svg" alt="" loading="lazy"></span>
+                    <span><span class="ftv-libelle">Moteur</span><span class="ftv-valeur">Bosch Performance Line CX</span><span class="ftv-libelle">Couple maximal 85 Nm</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><img src="https://opticycles.com/images/battery.svg" alt="" loading="lazy"></span>
+                    <span><span class="ftv-libelle">Batterie</span><span class="ftv-valeur">Bosch PowerTube</span><span class="ftv-libelle">Capacité 800 Wh</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><img src="https://opticycles.com/images/fork.png" alt="" loading="lazy"></span>
                     <span><span class="ftv-libelle">Fourche avant</span><span class="ftv-valeur">Fox 36 Float AWL</span><span class="ftv-libelle">Débattement 140 mm</span></span>
                 </div>
                 <div class="ftv-item">
@@ -3123,11 +3143,11 @@ def accueil():
                     <span><span class="ftv-libelle">Transmission</span><span class="ftv-valeur">Shimano XT · 12 vitesses</span><span class="ftv-libelle">Cassette Deore 10–51 dents</span></span>
                 </div>
                 <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="22" cy="25" r="18"/><circle cx="22" cy="25" r="14" class="ftv-fin"/><circle cx="22" cy="25" r="5"/><circle cx="22" cy="25" r="9" stroke-dasharray="2 3" class="ftv-fin"/><path class="ftv-rempli" d="M31 8h9v10l-5 4-5-4z"/><path d="M31 8h9v10l-5 4-5-4zM35 14l-4 6"/></svg></span>
+                    <span class="ftv-icone" aria-hidden="true"><img src="https://opticycles.com/images/brake.png" alt="" loading="lazy"></span>
                     <span><span class="ftv-libelle">Freinage</span><span class="ftv-valeur">Shimano XT hydrauliques</span><span class="ftv-libelle">Disques 203 mm avant et arrière</span></span>
                 </div>
                 <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="19" stroke-width="5"/><circle cx="24" cy="24" r="13" class="ftv-fin"/><circle cx="24" cy="24" r="4"/><path class="ftv-fin" d="M24 5v15M24 28v15M5 24h15M28 24h15M10 10l11 11m6 6 11 11M38 10L27 21m-6 6L10 38"/><path class="ftv-rempli" d="M31 8h6v9l-5 4-5-4z"/></svg></span>
+                    <span class="ftv-icone" aria-hidden="true"><img src="https://opticycles.com/images/wheels.png" alt="" loading="lazy"></span>
                     <span><span class="ftv-libelle">Roues et pneus</span><span class="ftv-valeur">Schwalbe Nobby Nic</span><span class="ftv-libelle">Section 2,6 pouces · roues <strong id="ftvTailleRoues">29 pouces</strong></span></span>
                 </div>
                 <div class="ftv-item">
@@ -3757,9 +3777,6 @@ def accueil():
                             inp.id = 'mr-' + cle;
                             inp.value = mrValeurs[cle] || (cle === 'taille_cadre' ? 'M' : '');
                             if (cle === 'taille_cadre') inp.addEventListener('change', () => mettreAJourTailleRoues(inp.value));
-                            if (cle === 'taille_cadre') {
-                                inp.addEventListener('change', () => mettreAJourTailleRoues(inp.value));
-                            }
                             if (cle === 'notes') { inp.style.width = '100%'; inp.style.flex = '1'; inp.style.maxWidth = '200px'; }
                             ligne.appendChild(inp);
                         } else {
@@ -3790,25 +3807,37 @@ def accueil():
             function mettreAJourTailleRoues(tailleChoisie) {
                 const taille = tailleChoisie || mrValeurs.taille_cadre || 'M';
                 const roues = document.getElementById('ftvTailleRoues');
-                const diametre = taille === 'S' ? '27,5 pouces' : '29 pouces';
-                if (roues) roues.textContent = diametre;
-                const facteur = taille === 'S' ? 0.84 : 1;
-                ['ftvRoueArriere','ftvRoueAvant'].forEach(id => {
-                    const roue = document.getElementById(id);
-                    if (roue) roue.setAttribute('transform', (id === 'ftvRoueArriere' ? 'translate(125 158) ' : 'translate(435 158) ') + 'scale(' + facteur + ')');
-                });
-                const geometries = {
-                    S:{d:'M125 158L265 158L238 94L125 158M238 94L347 94L365 126L265 158L238 94M347 94L435 158L365 126',t:'CADRE S · ROUES 27,5 POUCES'},
-                    M:{d:'M125 158L265 158L245 83L125 158M245 83L355 80L365 126L265 158L245 83M355 80L435 158L365 126',t:'CADRE M · ROUES 29 POUCES'},
-                    L:{d:'M125 158L265 158L246 76L125 158M246 76L360 73L370 123L265 158L246 76M360 73L435 158L370 123',t:'CADRE L · ROUES 29 POUCES'},
-                    XL:{d:'M125 158L265 158L248 68L125 158M248 68L364 66L373 121L265 158L248 68M364 66L435 158L373 121',t:'CADRE XL · ROUES 29 POUCES'}
-                };
-                const geo = geometries[taille] || geometries.M;
-                const cadre = document.getElementById('ftvTubeArriere');
-                if (cadre) cadre.setAttribute('d', geo.d);
-                const texte = document.getElementById('ftvIllustrationTaille');
-                if (texte) texte.textContent = geo.t;
+                if (roues) roues.textContent = taille === 'S' ? '27,5 pouces' : '29 pouces';
+                const selectFiche = document.getElementById('ftvTailleCadre');
+                if (selectFiche && selectFiche.value !== taille) selectFiche.value = taille;
             }
+
+            async function enregistrerTailleDepuisFiche(taille) {
+                const valeurs = { ...mrValeurs, taille_cadre: taille };
+                try {
+                    const res = await fetch('/api/mes-reglages', {
+                        method: 'POST',
+                        headers: getHeaders(),
+                        body: JSON.stringify({ valeurs })
+                    });
+                    if (res.status === 401) {
+                        document.getElementById('authScreen').style.display = 'flex';
+                        return;
+                    }
+                    if (!res.ok) throw new Error();
+                    mrValeurs = valeurs;
+                    mrMaj = new Date().toISOString();
+                    mettreAJourTailleRoues(taille);
+                    afficherReglagesVelo();
+                } catch (e) {
+                    alert("Impossible d'enregistrer la taille du cadre.");
+                    mettreAJourTailleRoues(mrValeurs.taille_cadre || 'M');
+                }
+            }
+
+            document.getElementById('ftvTailleCadre')?.addEventListener('change', e => {
+                enregistrerTailleDepuisFiche(e.target.value);
+            });
 
             async function chargerReglagesVelo() {
                 try {
