@@ -3756,6 +3756,9 @@ def accueil():
                             }
                             inp.id = 'mr-' + cle;
                             inp.value = mrValeurs[cle] || (cle === 'taille_cadre' ? 'M' : '');
+                            if (cle === 'taille_cadre') {
+                                inp.addEventListener('change', () => mettreAJourTailleRoues(inp.value));
+                            }
                             if (cle === 'notes') { inp.style.width = '100%'; inp.style.flex = '1'; inp.style.maxWidth = '200px'; }
                             ligne.appendChild(inp);
                         } else {
@@ -3783,8 +3786,8 @@ def accueil():
                 document.getElementById('mrDate').textContent = txt;
             }
 
-            function mettreAJourTailleRoues() {
-                const taille = mrValeurs.taille_cadre || 'M';
+            function mettreAJourTailleRoues(tailleChoisie) {
+                const taille = tailleChoisie || mrValeurs.taille_cadre || 'M';
                 const roues = document.getElementById('ftvTailleRoues');
                 if (roues) roues.textContent = taille === 'S' ? '27,5 pouces' : '29 pouces';
             }
