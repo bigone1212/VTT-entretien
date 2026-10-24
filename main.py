@@ -7282,6 +7282,9 @@ def accueil():
                         if (!res.ok) throw new Error('HTTP '+res.status+' sur '+base);
                         const json = await res.json();
                         if (!json || !Array.isArray(json.elements)) throw new Error('Réponse Overpass invalide');
+                        // Une réponse vide d'un serveur ne doit pas empêcher l'autre
+                        // de fournir les noms des villages et lieux-dits.
+                        if (json.elements.length === 0) throw new Error('Aucun lieu retourné par '+base);
                         return json;
                     } finally {
                         clearTimeout(timer);
@@ -7309,11 +7312,11 @@ def accueil():
                     const lon = Number.isFinite(e.lon) ? e.lon : e.center && e.center.lon;
                     const lat = Number.isFinite(e.lat) ? e.lat : e.center && e.center.lat;
                     if (!Number.isFinite(lon)||!Number.isFinite(lat)) continue;
-                    let genre='',rang=9,portee=350;
+                    let genre='',rang=9,portee=600;
                     if (['city','town','village','hamlet','isolated_dwelling','suburb','locality'].includes(e.tags.place)) {
                         genre=['hamlet','isolated_dwelling','locality'].includes(e.tags.place)?'village':(e.tags.place==='village'?'village':'ville');
                         rang={city:1,town:2,suburb:3,village:4,hamlet:5,isolated_dwelling:6,locality:7}[e.tags.place] ?? 4;
-                        portee=350;
+                        portee=600;
                     }
                     else if(e.tags.natural==='peak') {genre='sommet';rang=4;portee=1500;}
                     else if(e.tags.mountain_pass==='yes'||e.tags.natural==='saddle') {genre='col';rang=2;portee=500;}
@@ -7324,7 +7327,7 @@ def accueil():
                 }
                 out.sort((a,b)=>a.rang-b.rang||a.ec-b.ec);
                 const gardes=[];
-                for(const l of out) { if(gardes.length>=30) break; if(gardes.every(g=>distanceM(g.coord,l.coord)>=350)) gardes.push(l); }
+                for(const l of out) { if(gardes.length>=30) break; if(gardes.every(g=>distanceM(g.coord,l.coord)>=300)) gardes.push(l); }
                 return gardes;
             }
             function viderReperesV3d() {
