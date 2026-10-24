@@ -6800,61 +6800,27 @@ def accueil():
                 return 12742 * Math.asin(Math.sqrt(h));
             }
 
-            // Villes et villages autour des sorties (OpenStreetMap). Le pays est découpé en carrés de 0,25 degré :
-            // on ne demande que les carrés où il y a des sorties, et chaque carré est gardé 30 jours sur l'appareil.
+            // Nom de la commune au centre de chaque sortie (service Nominatim d'OpenStreetMap), gardé sur l'appareil.
             let zonesErreur = '';
             let zonesEtat = 'attente';
 
-            // Une demande par carré : plus petite, donc plus rapide. La liste se remplit au fur et à mesure.
-            async function chargerLieuxZones(centres, apresChaqueCarre) {
-                const PAS = 0.25, MARGE = 0.1;
-                let memo = { cases: {} };
+            function lireNomsZones() {
+                try { return JSON.parse(localStorage.getItem('maillons_zones_noms') || '{}') || {}; } catch (e) { return {}; }
+            }
+
+            async function nomCommune(c) {
+                const url = 'https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=10&addressdetails=1&accept-language=fr'
+                    + '&lat=' + c[0].toFixed(5) + '&lon=' + c[1].toFixed(5);
+                const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 12000);
                 try {
-                    const lu = JSON.parse(localStorage.getItem('maillons_lieux_zones2') || 'null');
-                    if (lu && lu.cases) memo = lu;
-                } catch (e) { /* pas de mémoire */ }
-                const toutLesLieux = () => {
-                    const tous = [];
-                    Object.keys(memo.cases).forEach(cle => memo.cases[cle].lieux.forEach(l => tous.push(l)));
-                    return tous;
-                };
-                const voulues = [];
-                centres.forEach(c => {
-                    const cle = Math.floor(c[0] / PAS) + ',' + Math.floor(c[1] / PAS);
-                    if (!voulues.includes(cle)) voulues.push(cle);
-                });
-                const manquantes = voulues.filter(cle => !memo.cases[cle] || Date.now() - memo.cases[cle].t > 30 * 86400000).slice(0, 12);
-                zonesErreur = '';
-                if (voulues.length > manquantes.length) apresChaqueCarre(toutLesLieux());
-                for (const cle of manquantes) {
-                    const p = cle.split(',').map(Number);
-                    const boite = '(' + [p[0] * PAS - MARGE, p[1] * PAS - MARGE, (p[0] + 1) * PAS + MARGE, (p[1] + 1) * PAS + MARGE].join(',') + ')';
-                    const q = '[out:json][timeout:25];node["place"~"^(city|town|village)$"]["name"]' + boite + ';out;';
-                    let data = null;
-                    for (const base of ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']) {
-                        try {
-                            const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 30000);
-                            const res = await fetch(base, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
-                                body: 'data=' + encodeURIComponent(q),
-                                signal: ctl.signal
-                            });
-                            clearTimeout(timer);
-                            if (!res.ok) { zonesErreur = 'HTTP ' + res.status; continue; }
-                            const d = await res.json();
-                            if (d && Array.isArray(d.elements)) { data = d; break; }
-                            zonesErreur = 'réponse vide';
-                        } catch (e) { zonesErreur = String(e); console.warn('Zones : serveur indisponible', e); }
-                    }
-                    if (!data) continue;
-                    memo.cases[cle] = { t: Date.now(), lieux: data.elements
-                        .filter(e => e.tags && e.tags.name && Number.isFinite(e.lat) && Number.isFinite(e.lon))
-                        .map(e => [e.tags.name, e.lat, e.lon]) };
-                    try { localStorage.setItem('maillons_lieux_zones2', JSON.stringify(memo)); } catch (e) { /* stockage refusé */ }
-                    apresChaqueCarre(toutLesLieux());
+                    const res = await fetch(url, { signal: ctl.signal });
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    const d = await res.json();
+                    const a = (d && d.address) || {};
+                    return a.village || a.town || a.city || a.municipality || a.hamlet || a.suburb || a.county || '';
+                } finally {
+                    clearTimeout(timer);
                 }
-                return toutLesLieux();
             }
 
             function remplirListeZones() {
@@ -6900,30 +6866,41 @@ def accueil():
                 zonesSignature = signature;
                 const centres = sorties.map(s => ({ id: s.id, c: centreSortie(s) })).filter(x => x.c);
                 if (!centres.length) { zonesEtat = 'sans-trace'; remplirListeZones(); return; }
-                const assigner = (lieux) => {
-                    if (!lieux.length) return;
+                const noms = lireNomsZones();
+                const afficher = () => {
                     const parSortie = {};
-                    centres.forEach(x => {
-                        let meilleur = null, dMin = 9;
-                        lieux.forEach(l => {
-                            const d = distanceKmGps(x.c, [l[1], l[2]]);
-                            if (d < dMin) { dMin = d; meilleur = l[0]; }
-                        });
-                        if (meilleur) parSortie[x.id] = meilleur;
-                    });
+                    centres.forEach(x => { if (noms[x.id]) parSortie[x.id] = noms[x.id]; });
                     zonesSorties = { parSortie: parSortie, noms: {} };
-                    zonesEtat = 'ok';
+                    if (Object.keys(parSortie).length) zonesEtat = 'ok';
                     remplirListeZones();
                 };
-                const lieux = await chargerLieuxZones(centres.map(x => x.c), assigner);
-                assigner(lieux);
-                if (!lieux.length) {
-                    zonesSignature = '';
-                    zonesDernierEchec = Date.now();
+                afficher();
+                zonesErreur = '';
+                let echecs = 0;
+                for (const x of centres) {
+                    if (noms[x.id]) continue;
+                    try {
+                        const nom = await nomCommune(x.c);
+                        if (nom) {
+                            noms[x.id] = nom;
+                            try { localStorage.setItem('maillons_zones_noms', JSON.stringify(noms)); } catch (e) { /* stockage refusé */ }
+                            afficher();
+                        }
+                        echecs = 0;
+                    } catch (e) {
+                        zonesErreur = String(e && e.name === 'AbortError' ? 'délai dépassé' : e);
+                        console.warn('Zones : commune introuvable', e);
+                        if (++echecs >= 3) break;
+                    }
+                    // Nominatim demande au plus une requête par seconde.
+                    await new Promise(r => setTimeout(r, 1100));
+                }
+                if (!Object.keys(zonesSorties.parSortie).length) {
                     zonesEtat = 'echec';
-                    if (!zonesErreur) zonesErreur = 'aucun village trouvé';
+                    if (!zonesErreur) zonesErreur = 'aucune commune trouvée';
                     remplirListeZones();
-                } else if (zonesErreur) {
+                }
+                if (zonesErreur) {
                     zonesSignature = '';
                     zonesDernierEchec = Date.now() - 90000;
                 }
