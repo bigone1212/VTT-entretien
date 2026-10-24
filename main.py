@@ -7013,7 +7013,7 @@ def accueil():
                 vitesse: 1, inclinaison: 60, cap: 0, dernier: 0, raf: 0,
                 fond: 'sat', enregistreur: null, morceaux: [], titre: '',
                 dureeBase: 60, prete: false, compteImages: 0,
-                tps: [], decalage: 0, alts: [], surfaces: '', pentes: [], mode: 'pente', autres: [], voirAutres: true, photos: [], marqueurs: [], reperes: [], panneauxPente: [], repereVisibles: true, prochaine: 0, sortieId: 0, minuteur: 0
+                tps: [], decalage: 0, alts: [], surfaces: '', pentes: [], mode: 'pente', autres: [], voirAutres: false, photos: [], marqueurs: [], reperes: [], panneauxPente: [], repereVisibles: true, prochaine: 0, sortieId: 0, minuteur: 0
             };
 
             function chargerScript(url) {
@@ -7257,68 +7257,53 @@ def accueil():
                 return el;
             }
             async function chercherLieuxV3d() {
-                if (v3d.pts.length < 2) return [];
-                // Découpe le parcours en petites zones : une seule grande bbox peut
-                // faire expirer Overpass sur les sorties longues ou sinueuses.
                 const pts = v3d.pts;
-                const nbZones = Math.min(8, Math.max(1, Math.ceil(pts.length / 250)));
-                const zones = [];
-                for (let z = 0; z < nbZones; z++) {
-                    const debut = Math.floor(z * (pts.length - 1) / nbZones);
-                    const fin = Math.min(pts.length, Math.floor((z + 1) * (pts.length - 1) / nbZones) + 2);
-                    const segment = pts.slice(debut, fin);
-                    const lons = segment.map(p => p[0]), lats = segment.map(p => p[1]), marge = 0.012;
-                    zones.push('(' + (Math.min(...lats)-marge) + ',' + (Math.min(...lons)-marge) + ',' +
-                        (Math.max(...lats)+marge) + ',' + (Math.max(...lons)+marge) + ')');
+                if (!Array.isArray(pts) || pts.length < 2) return [];
+                // Recherche autour de points échantillonnés sur le parcours plutôt que dans une grande boîte.
+                const nb = Math.min(24, pts.length), echantillons = [], deja = new Set();
+                for (let i = 0; i < nb; i++) {
+                    const p = pts[Math.round(i * (pts.length - 1) / Math.max(1, nb - 1))];
+                    if (!p || !Number.isFinite(p[0]) || !Number.isFinite(p[1])) continue;
+                    const cle = p[0].toFixed(4) + ',' + p[1].toFixed(4);
+                    if (!deja.has(cle)) { deja.add(cle); echantillons.push(p); }
                 }
-                const requeteZone = async zone => {
-                    const q = '[out:json][timeout:10];(nwr["place"~"^(city|town|village|hamlet|isolated_dwelling|suburb|locality|neighbourhood)$"]["name"]' + zone +
-                        ';nwr["natural"="peak"]["name"]' + zone +
-                        ';nwr["mountain_pass"="yes"]["name"]' + zone +
-                        ';nwr["natural"="saddle"]["name"]' + zone + ';);out center tags;';
-                    const serveurs = ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
-                    const tentatives = serveurs.map(async base => {
-                        const controle = new AbortController();
-                        const timer = setTimeout(() => controle.abort(), 12000);
-                        try {
-                            const res = await fetch(base, {
-                                method:'POST',
-                                headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},
-                                body:'data='+encodeURIComponent(q),
-                                signal:controle.signal
-                            });
-                            if (!res.ok) throw new Error('HTTP ' + res.status);
-                            const json = await res.json();
-                            if (!json || !Array.isArray(json.elements) || json.elements.length === 0)
-                                throw new Error('Réponse Overpass vide ou invalide');
-                            return json.elements;
-                        } finally {
-                            clearTimeout(timer);
-                        }
-                    });
-                    try { return await Promise.any(tentatives); }
-                    catch (e) { console.warn('Zone de lieux indisponible', e); return []; }
-                };
-                const elements = [];
-                // Limite la concurrence pour ne pas surcharger les serveurs publics.
-                for (let i = 0; i < zones.length; i += 3) {
-                    const lot = await Promise.all(zones.slice(i, i + 3).map(requeteZone));
-                    for (const liste of lot) elements.push(...liste);
+                if (!echantillons.length) return [];
+                const clauses = [];
+                for (const p of echantillons) {
+                    const lat = p[1], lon = p[0];
+                    clauses.push('nwr(around:600,'+lat+','+lon+')["place"~"^(city|town|village|hamlet|isolated_dwelling|suburb|locality|neighbourhood)$"]["name"];');
+                    clauses.push('nwr(around:1500,'+lat+','+lon+')["natural"="peak"]["name"];');
+                    clauses.push('nwr(around:500,'+lat+','+lon+')["mountain_pass"="yes"]["name"];');
+                    clauses.push('nwr(around:500,'+lat+','+lon+')["natural"="saddle"]["name"];');
                 }
+                const q = '[out:json][timeout:20];(' + clauses.join('') + ');out center tags;';
+                const serveurs = ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
+                const tentatives = serveurs.map(async base => {
+                    const controle = new AbortController(), timer = setTimeout(() => controle.abort(), 22000);
+                    try {
+                        const res = await fetch(base, { method:'POST',
+                            headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},
+                            body:'data='+encodeURIComponent(q), signal:controle.signal });
+                        if (!res.ok) throw new Error('HTTP '+res.status+' sur '+base);
+                        const json = await res.json();
+                        if (!json || !Array.isArray(json.elements) || !json.elements.length)
+                            throw new Error('Réponse Overpass vide ou invalide');
+                        return json.elements;
+                    } finally { clearTimeout(timer); }
+                });
+                let elements;
+                try { elements = await Promise.any(tentatives); }
+                catch(e) { console.warn('Repères OpenStreetMap indisponibles', e); return []; }
                 const uniques = new Map();
                 for (const e of elements) {
                     const t = e.tags || {};
+                    if (!t.name) continue;
                     const lon = Number.isFinite(e.lon) ? e.lon : e.center && e.center.lon;
                     const lat = Number.isFinite(e.lat) ? e.lat : e.center && e.center.lat;
-                    if (!t.name || !Number.isFinite(lon) || !Number.isFinite(lat)) continue;
-                    uniques.set((e.type || '') + '/' + (e.id || (t.name + '/' + lon + '/' + lat)), e);
+                    if (Number.isFinite(lon) && Number.isFinite(lat))
+                        uniques.set((e.type || '') + '/' + (e.id || (t.name+'/'+lon+'/'+lat)), e);
                 }
-                if (!uniques.size) {
-                    console.warn('Aucun lieu reçu d’OpenStreetMap pour le parcours.');
-                    return [];
-                }
-                console.info('Survol 3D : objets OpenStreetMap reçus', uniques.size);
-                const ref = pts.filter((_,i)=>i%Math.max(1,Math.floor(pts.length/500))===0);
+                const ref = pts.filter((_,i)=>i%Math.max(1,Math.floor(pts.length/700))===0);
                 const dist = (lon,lat) => {
                     let minimum = Infinity;
                     for (const p of ref) {
@@ -7329,9 +7314,8 @@ def accueil():
                 };
                 const out=[], seen=new Set();
                 for (const e of uniques.values()) {
-                    const t=e.tags;
-                    const lon = Number.isFinite(e.lon) ? e.lon : e.center && e.center.lon;
-                    const lat = Number.isFinite(e.lat) ? e.lat : e.center && e.center.lat;
+                    const t=e.tags, lon=Number.isFinite(e.lon)?e.lon:e.center&&e.center.lon,
+                        lat=Number.isFinite(e.lat)?e.lat:e.center&&e.center.lat;
                     let genre='',rang=9,portee=600;
                     if (['city','town','village','hamlet','isolated_dwelling','suburb','locality','neighbourhood'].includes(t.place)) {
                         genre=['hamlet','isolated_dwelling','locality','neighbourhood'].includes(t.place)?'village':(t.place==='village'?'village':'ville');
@@ -7345,7 +7329,8 @@ def accueil():
                 }
                 out.sort((a,b)=>a.rang-b.rang||a.ec-b.ec);
                 const gardes=[];
-                for(const l of out) { if(gardes.length>=30) break; if(gardes.every(g=>distanceM(g.coord,l.coord)>=300)) gardes.push(l); }
+                for(const l of out) { if(gardes.length>=40) break; if(gardes.every(g=>distanceM(g.coord,l.coord)>=250)) gardes.push(l); }
+                console.info('Survol 3D : lieux affichables', gardes.length);
                 return gardes;
             }
             function viderReperesV3d() {
@@ -7410,7 +7395,7 @@ def accueil():
                 rep.style.display = (v3d.reperes.length || v3d.prete) ? '' : 'none';
                 remplirBouton(autres, 'incl', 'Mes parcours');
                 autres.classList.toggle('actif', v3d.voirAutres);
-                autres.style.display = v3d.autres.length ? '' : 'none';
+                autres.style.display = sortiesConnues.some(o => o.id !== v3d.sortieId && Array.isArray(o.trace) && o.trace.length >= 2) ? '' : 'none';
                 const enr = document.getElementById('v3dEnreg');
                 const en_cours = !!v3d.enregistreur;
                 remplirBouton(enr, 'enreg', en_cours ? 'Arrêter et enregistrer' : 'Enregistrer');
@@ -7697,23 +7682,7 @@ def accueil():
                 });
                 carte.setTerrain({ source: 'dem', exaggeration: 1.1 });
 
-                if (v3d.autres.length) {
-                    carte.addSource('v3d-autres', {
-                        type: 'geojson',
-                        data: {
-                            type: 'Feature',
-                            geometry: { type: 'MultiLineString', coordinates: v3d.autres }
-                        }
-                    });
-                    carte.addLayer({
-                        id: 'v3d-autres-ligne', type: 'line', source: 'v3d-autres',
-                        layout: {
-                            'line-cap': 'round', 'line-join': 'round',
-                            visibility: v3d.voirAutres ? 'visible' : 'none'
-                        },
-                        paint: { 'line-color': '#ffffff', 'line-width': 3, 'line-opacity': 0.9 }
-                    });
-                }
+                // Les autres parcours sont chargés uniquement au premier clic sur « Mes parcours ».
 
                 carte.addSource('v3d-trace', { type: 'geojson', data: donneesTrace() });
                 carte.addLayer({
@@ -7791,14 +7760,12 @@ def accueil():
                 v3d.titre = (sortie.debut || '').slice(0, 10);
                 v3d.sortieId = sortie.id;
                 v3d.photos = placerPhotos(sortie);
-                v3d.voirAutres = true;
+                v3d.voirAutres = false;
+                v3d.autres = [];
                 v3d.repereVisibles = true;
                 v3d.decalage = 0;
                 v3d.mode = 'pente';
                 v3d.surfaces = sortie.surfaces || '';
-                v3d.autres = sortiesConnues
-                    .filter(o => o.id !== sortie.id && Array.isArray(o.trace) && o.trace.length >= 2)
-                    .map(o => o.trace.map(p => [p[1], p[0]]));
                 const jour = new Date(sortie.debut).toLocaleDateString('fr-FR');
                 document.getElementById('v3dTitre').textContent = `${sortie.nom} · ${jour}`;
                 document.getElementById('v3dProgres').value = '0';
@@ -7874,9 +7841,29 @@ def accueil():
                 });
                 bouton('v3dAutres', () => {
                     v3d.voirAutres = !v3d.voirAutres;
-                    if (v3d.carte && v3d.prete && v3d.carte.getLayer('v3d-autres-ligne')) {
-                        v3d.carte.setLayoutProperty('v3d-autres-ligne', 'visibility',
-                            v3d.voirAutres ? 'visible' : 'none');
+                    if (v3d.carte && v3d.prete && v3d.voirAutres) {
+                        if (!v3d.carte.getSource('v3d-autres')) {
+                            v3d.autres = sortiesConnues
+                                .filter(o => o.id !== v3d.sortieId && Array.isArray(o.trace) && o.trace.length >= 2)
+                                .map(o => o.trace.map(p => [p[1], p[0]]));
+                            if (v3d.autres.length) {
+                                v3d.carte.addSource('v3d-autres', {
+                                    type: 'geojson',
+                                    data: { type: 'Feature', geometry: { type: 'MultiLineString', coordinates: v3d.autres } }
+                                });
+                                v3d.carte.addLayer({
+                                    id: 'v3d-autres-ligne', type: 'line', source: 'v3d-autres',
+                                    layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'visible' },
+                                    paint: { 'line-color': '#ffffff', 'line-width': 3, 'line-opacity': 0.9 }
+                                });
+                            } else {
+                                v3d.voirAutres = false;
+                            }
+                        } else if (v3d.carte.getLayer('v3d-autres-ligne')) {
+                            v3d.carte.setLayoutProperty('v3d-autres-ligne', 'visibility', 'visible');
+                        }
+                    } else if (v3d.carte && v3d.prete && v3d.carte.getLayer('v3d-autres-ligne')) {
+                        v3d.carte.setLayoutProperty('v3d-autres-ligne', 'visibility', 'none');
                     }
                     majBoutonsV3d();
                 });
