@@ -7013,7 +7013,7 @@ def accueil():
                 vitesse: 1, inclinaison: 60, cap: 0, dernier: 0, raf: 0,
                 fond: 'sat', enregistreur: null, morceaux: [], titre: '',
                 dureeBase: 60, prete: false, compteImages: 0,
-                tps: [], decalage: 0, alts: [], surfaces: '', pentes: [], mode: 'pente', autres: [], voirAutres: true, photos: [], marqueurs: [], reperes: [], repereVisibles: true, prochaine: 0, sortieId: 0, minuteur: 0
+                tps: [], decalage: 0, alts: [], surfaces: '', pentes: [], mode: 'pente', autres: [], voirAutres: true, photos: [], marqueurs: [], reperes: [], panneauxPente: [], repereVisibles: true, prochaine: 0, sortieId: 0, minuteur: 0
             };
 
             function chargerScript(url) {
@@ -7244,7 +7244,7 @@ def accueil():
                         let j = i, max = 0, somme = 0;
                         while (j < p.length && Math.abs(p[j]) >= seuil) { max = Math.max(max, Math.abs(p[j])); somme += p[j++]; }
                         const debut = v3d.cum[i], fin = v3d.cum[j];
-                        if (fin - debut >= 60) liste.push({ valeur: max, signe: somme >= 0 ? 1 : -1, d: (debut + fin) / 2 });
+                        if (fin - debut >= 60) liste.push({ valeur: max, signe: somme >= 0 ? 1 : -1, debut, fin, d: (debut + fin) / 2 });
                         i = j;
                     } else i++;
                 }
@@ -7262,12 +7262,12 @@ def accueil():
                 const sud = Math.min(...lats)-marge, nord = Math.max(...lats)+marge, ouest = Math.min(...lons)-marge, est = Math.max(...lons)+marge;
                 if (nord-sud > 0.6 || est-ouest > 0.8) return [];
                 const zone = '('+sud+','+ouest+','+nord+','+est+')';
-                const q = '[out:json][timeout:15];(node["place"~"^(city|town|village|hamlet)$"]["name"]'+zone+';node["natural"="peak"]["name"]'+zone+';node["mountain_pass"="yes"]["name"]'+zone+';node["natural"="saddle"]["name"]'+zone+';);out body;';
+                const q = '[out:json][timeout:20];(nwr["place"~"^(city|town|village|hamlet|isolated_dwelling)$"]["name"]'+zone+';nwr["natural"="peak"]["name"]'+zone+';nwr["mountain_pass"="yes"]["name"]'+zone+';nwr["natural"="saddle"]["name"]'+zone+';);out center tags;';
                 let data = null;
-                for (const url of ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter']) {
+                for (const base of ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter']) {
                     try {
-                        const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 18000);
-                        const res = await fetch(url,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'data='+encodeURIComponent(q),signal:ctl.signal});
+                        const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 22000);
+                        const res = await fetch(base+'?data='+encodeURIComponent(q), {method:'GET',signal:ctl.signal});
                         clearTimeout(timer);
                         if (res.ok) { data = await res.json(); break; }
                     } catch(e) { console.warn('Repères OpenStreetMap indisponibles', e); }
@@ -7279,28 +7279,44 @@ def accueil():
                 }));
                 const out=[], seen=new Set();
                 for (const e of data.elements) {
-                    if (e.type!=='node'||!e.tags||!e.tags.name) continue;
+                    if (!e.tags||!e.tags.name) continue;
+                    const lon = Number.isFinite(e.lon) ? e.lon : e.center && e.center.lon;
+                    const lat = Number.isFinite(e.lat) ? e.lat : e.center && e.center.lat;
+                    if (!Number.isFinite(lon)||!Number.isFinite(lat)) continue;
                     let genre='',rang=9,portee=1000;
                     if (['city','town','village','hamlet'].includes(e.tags.place)) { genre=e.tags.place==='hamlet'?'hameau':(e.tags.place==='village'?'village':'ville'); rang={city:1,town:2,village:3,hamlet:5}[e.tags.place]; portee=genre==='hameau'?600:1200; }
                     else if(e.tags.natural==='peak') {genre='sommet';rang=4;portee=1500;}
                     else if(e.tags.mountain_pass==='yes'||e.tags.natural==='saddle') {genre='col';rang=2;portee=500;}
                     else continue;
-                    const ec=dist(e.lon,e.lat), key=e.tags.name.toLowerCase()+genre;
+                    const ec=dist(lon,lat), key=e.tags.name.toLowerCase()+genre;
                     if(ec>portee||seen.has(key)) continue;
-                    seen.add(key); out.push({nom:e.tags.name,genre,rang,ec,coord:[e.lon,e.lat],alt:parseInt(e.tags.ele,10)});
+                    seen.add(key); out.push({nom:e.tags.name,genre,rang,ec,coord:[lon,lat],alt:parseInt(e.tags.ele,10)});
                 }
                 out.sort((a,b)=>a.rang-b.rang||a.ec-b.ec);
                 const gardes=[];
                 for(const l of out) { if(gardes.length>=18) break; if(gardes.every(g=>distanceM(g.coord,l.coord)>=600)) gardes.push(l); }
                 return gardes;
             }
-            function viderReperesV3d() { v3d.reperes.forEach(m=>m.remove()); v3d.reperes=[]; }
-            function majVisibiliteReperesV3d() { v3d.reperes.forEach(m=>m.getElement().classList.toggle('v3d-cache',!v3d.repereVisibles)); }
+            function viderReperesV3d() {
+                v3d.reperes.forEach(m=>m.remove()); v3d.reperes=[];
+                v3d.panneauxPente=[];
+            }
+            function majVisibiliteReperesV3d() {
+                const d = v3d.f * v3d.total;
+                const avanceParSeconde = v3d.total / Math.max(1, v3d.dureeBase) * v3d.vitesse;
+                v3d.reperes.forEach(m=>m.getElement().classList.toggle('v3d-cache',!v3d.repereVisibles));
+                v3d.panneauxPente.forEach(p=>{
+                    const visible = v3d.repereVisibles && d >= Math.max(0,p.debut-avanceParSeconde) && d <= p.fin;
+                    p.marqueur.getElement().classList.toggle('v3d-cache',!visible);
+                });
+            }
             async function poserReperesV3d() {
                 const carte=v3d.carte; viderReperesV3d();
                 const raides=tronconsRaidesV3d(15), liste=raides.length?raides:tronconsRaidesV3d(10).sort((a,b)=>b.valeur-a.valeur).slice(0,3);
                 liste.sort((a,b)=>b.valeur-a.valeur).slice(0,8).forEach(t=>{
-                    const m=new window.maplibregl.Marker({element:elementPanneauV3d(t.valeur,t.signe),anchor:'bottom'}).setLngLat(pointA(t.d)).addTo(carte); v3d.reperes.push(m);
+                    const m=new window.maplibregl.Marker({element:elementPanneauV3d(t.valeur,t.signe),anchor:'bottom'}).setLngLat(pointA(t.debut)).addTo(carte);
+                    v3d.reperes.push(m);
+                    v3d.panneauxPente.push({marqueur:m,debut:t.debut,fin:t.fin});
                 });
                 majVisibiliteReperesV3d(); majBoutonsV3d();
                 let lieux=[]; try { lieux=await chercherLieuxV3d(); } catch(e) { console.warn(e); }
@@ -7379,6 +7395,7 @@ def accueil():
                 document.getElementById('v3dProgres').value = String(Math.round(v3d.f * 1000));
                 document.getElementById('v3dInfo').textContent =
                     `${(d / 1000).toFixed(1)} km sur ${(v3d.total / 1000).toFixed(1)} km`;
+                majVisibiliteReperesV3d();
             }
 
             // Place la caméra derrière le point courant, orientée vers la suite du parcours.
