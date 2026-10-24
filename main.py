@@ -7488,7 +7488,9 @@ def accueil():
 
                 placerCamera(dt, false);
                 v3d.compteImages++;
-                if (v3d.compteImages % 2 === 0 || v3d.f >= 1) dessinerAvancement();
+                // La caméra avance à chaque image, mais la ligne GeoJSON du parcours
+                // est plus coûteuse à recalculer : on la rafraîchit moins souvent.
+                if (v3d.compteImages % 4 === 0 || v3d.f >= 1) dessinerAvancement();
 
                 if (v3d.f >= 1) {
                     v3d.jouer = false;
