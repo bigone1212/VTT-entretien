@@ -2768,6 +2768,153 @@ def accueil():
                 background: var(--fill);
                 border: 1px solid var(--line2);
             }
+
+            /* ---- Fiche technique du vélo ---- */
+            .fiche-technique-velo {
+                max-width: 600px;
+                margin: 0 auto 10px;
+                padding: 6px 14px;
+                background:
+                    linear-gradient(180deg, rgba(40,200,185,0.11), rgba(40,200,185,0) 170px),
+                    var(--card-bg);
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                box-shadow: var(--sh);
+            }
+
+            .ftv-resume {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+                padding: 10px 0;
+                cursor: pointer;
+                list-style: none;
+            }
+
+            .ftv-resume::-webkit-details-marker { display: none; }
+
+            .ftv-entete {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                min-width: 0;
+            }
+
+            .ftv-embleme {
+                display: grid;
+                place-items: center;
+                width: 42px;
+                height: 42px;
+                flex: none;
+                color: var(--accent);
+                background: var(--fill2);
+                border: 1px solid var(--line2);
+                border-radius: 12px;
+            }
+
+            .ftv-embleme svg { width: 25px; height: 25px; }
+
+            .ftv-titre {
+                display: block;
+                color: var(--text-color);
+                font-weight: 750;
+                font-size: 1rem;
+            }
+
+            .ftv-sous-titre {
+                display: block;
+                margin-top: 3px;
+                color: var(--text-muted);
+                font-size: 0.78rem;
+            }
+
+            .ftv-chevron {
+                width: 9px;
+                height: 9px;
+                flex: none;
+                margin-right: 4px;
+                border-right: 2px solid var(--text-muted);
+                border-bottom: 2px solid var(--text-muted);
+                transform: rotate(45deg);
+                transition: transform 0.18s ease;
+            }
+
+            .fiche-technique-velo[open] .ftv-chevron {
+                transform: rotate(225deg);
+            }
+
+            .ftv-grille {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 8px;
+                padding: 4px 0 10px;
+            }
+
+            .ftv-item {
+                display: flex;
+                align-items: flex-start;
+                gap: 10px;
+                min-width: 0;
+                padding: 11px;
+                background: var(--fill);
+                border: 1px solid var(--line);
+                border-radius: 12px;
+            }
+
+            .ftv-icone {
+                display: grid;
+                place-items: center;
+                width: 34px;
+                height: 34px;
+                flex: none;
+                color: var(--accent);
+                background: var(--fill2);
+                border-radius: 10px;
+            }
+
+            .ftv-icone svg {
+                width: 21px;
+                height: 21px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 1.7;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+
+            .ftv-libelle {
+                display: block;
+                margin: 1px 0 4px;
+                color: var(--text-muted);
+                font-size: 0.72rem;
+                line-height: 1.25;
+            }
+
+            .ftv-valeur {
+                display: block;
+                color: var(--text-color);
+                font-size: 0.85rem;
+                font-weight: 750;
+                line-height: 1.35;
+                overflow-wrap: anywhere;
+            }
+
+            .ftv-note {
+                margin: 2px 0 4px;
+                color: var(--text-muted);
+                font-size: 0.72rem;
+                line-height: 1.45;
+            }
+
+            @media (max-width: 380px) {
+                .ftv-grille { gap: 6px; }
+                .ftv-item { gap: 7px; padding: 9px 7px; }
+                .ftv-icone { width: 29px; height: 29px; }
+                .ftv-icone svg { width: 18px; height: 18px; }
+                .ftv-valeur { font-size: 0.79rem; }
+            }
+
         </style>
     </head>
 
@@ -2935,6 +3082,61 @@ def accueil():
                 <button type="button" data-theme-choix="dark"></button>
             </div>
         </section>
+
+        <details class="fiche-technique-velo">
+            <summary class="ftv-resume">
+                <span class="ftv-entete">
+                    <span class="ftv-embleme" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="M5.5 17.5 9 9h4l5.5 8.5M9 9l4.5 8.5H5.5M8 6h3"/></svg>
+                    </span>
+                    <span>
+                        <span class="ftv-titre">Fiche technique du vélo</span>
+                        <span class="ftv-sous-titre">CUBE Stereo Hybrid ONE44 EXC 800 · 2025</span>
+                    </span>
+                </span>
+                <span class="ftv-chevron" aria-hidden="true"></span>
+            </summary>
+
+            <div class="ftv-grille">
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 20V5l7-2 7 2v15l-7 2-7-2Z"/><path d="m5 5 7 3 7-3M12 8v14"/></svg></span>
+                    <span><span class="ftv-libelle">Cadre</span><span class="ftv-valeur">Aluminium Superlite</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 14V9l3-2h7l3 3h3v6h-3"/><path d="M7 16h8"/><circle cx="5.5" cy="16" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/><path d="M10 7V4h4"/></svg></span>
+                    <span><span class="ftv-libelle">Moteur</span><span class="ftv-valeur">Bosch Performance Line CX</span><span class="ftv-libelle">85 Nm · Smart System</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="7" width="16" height="14" rx="2"/><path d="M9 7V4h6v3M12 10v7M9 13h6"/></svg></span>
+                    <span><span class="ftv-libelle">Batterie</span><span class="ftv-valeur">Bosch PowerTube</span><span class="ftv-libelle">800 Wh</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 3h10l-1 5 2 3-2 10H8L6 11l2-3-1-5Z"/><path d="M8 8h8M8 13h8M9 17h6"/></svg></span>
+                    <span><span class="ftv-libelle">Fourche avant</span><span class="ftv-valeur">Fox 36 Float AWL</span><span class="ftv-libelle">Débattement 140 mm</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 5h14l-2 4 2 10H5L7 9 5 5Z"/><path d="M7 9h10M8 13h8M9 16h6"/></svg></span>
+                    <span><span class="ftv-libelle">Amortisseur arrière</span><span class="ftv-valeur">Fox Float Rhythm RC</span><span class="ftv-libelle">Débattement arrière 140 mm</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="6" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><path d="M8.2 15.8 15.8 8.2M9 6h3M6 9v3M15 18h3"/></svg></span>
+                    <span><span class="ftv-libelle">Transmission</span><span class="ftv-valeur">Shimano XT · 12 vitesses</span><span class="ftv-libelle">Cassette Deore 10–51 dents</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 3v6M21 12h-6M12 21v-6M3 12h6"/></svg></span>
+                    <span><span class="ftv-libelle">Freinage</span><span class="ftv-valeur">Shimano XT hydrauliques</span><span class="ftv-libelle">Disques 203 mm avant et arrière</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><path d="M12 3v4M21 12h-4M12 21v-4M3 12h4"/></svg></span>
+                    <span><span class="ftv-libelle">Pneus</span><span class="ftv-valeur">Schwalbe Nobby Nic</span><span class="ftv-libelle">Section 2,6 pouces</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4M7 9h3M7 12h7"/></svg></span>
+                    <span><span class="ftv-libelle">Commande et écran</span><span class="ftv-valeur">Bosch Purion 200</span><span class="ftv-libelle">Écran intégré</span></span>
+                </div>
+            </div>
+            <p class="ftv-note">Caractéristiques du modèle 2025. Les équipements peuvent varier selon la version et la taille du vélo.</p>
+        </details>
         <section class="mes-reglages mr-repliable" id="mesReglages" aria-label="Mes réglages vélo">
             <div class="mr-titre">
                 <button type="button" class="mr-entete" aria-expanded="false" aria-controls="mesReglagesCorps">
