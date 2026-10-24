@@ -2189,6 +2189,8 @@ def accueil():
                 border: 1px solid rgba(255,255,255,0.2);
             }
 
+            .v3d-recherche { position: absolute; z-index: 5; left: 50%; top: 56%; transform: translateX(-50%); display: flex; align-items: center; padding: 8px 14px; border-radius: 999px; font-size: 0.85rem; font-weight: 600; white-space: nowrap; color: #fff; background: rgba(10,25,31,0.92); border: 1px solid rgba(255,255,255,0.25); box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+
             .videos-liste {
                 flex: 0 0 100%;
                 min-width: 0;
@@ -3047,6 +3049,7 @@ def accueil():
                 <img id="v3dPhotoImg" alt="Photo de la sortie">
             </div>
             <div class="v3d-message" id="v3dMessage" style="display:none;"></div>
+            <div class="v3d-recherche" id="v3dRecherche" style="display:none;"><span class="v3d-tourne"></span>Recherche des noms de lieux…</div>
             <div class="v3d-bas">
                 <input type="range" id="v3dProgres" min="0" max="1000" value="0" aria-label="Avancement du parcours">
                 <div class="v3d-boutons">
@@ -7884,11 +7887,11 @@ def accueil():
                 });
                 majVisibiliteReperesV3d(); majBoutonsV3d();
                 let lieux=[];
-                const msgLieux=document.getElementById('v3dMessage');
-                if(msgLieux) { msgLieux.innerHTML='<span class="v3d-tourne"></span>Recherche des noms de lieux…'; msgLieux.style.display='block'; }
+                const rech=document.getElementById('v3dRecherche');
+                if(rech) rech.style.display='flex';
                 try { lieux=await chercherLieuxV3d(); } catch(e) { console.warn(e); }
+                if(rech) rech.style.display='none';
                 if(v3d.carte!==carte) return;
-                if(msgLieux && msgLieux.querySelector('.v3d-tourne')) messageV3d('');
                 if(v3d.lieuxEtat==='panne') { messageV3d('Noms de lieux indisponibles : le serveur OpenStreetMap ne répond pas.'); setTimeout(()=>messageV3d(''),6000); }
                 lieux.forEach(l=>{
                     const el=document.createElement('div'); el.className='v3d-lieu'+(['sommet','col'].includes(l.genre)?' v3d-lieu-haut':'');
