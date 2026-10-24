@@ -1463,7 +1463,7 @@ def accueil():
                 width: 11px;
                 height: 11px;
                 border-radius: 50%;
-                background: linear-gradient(135deg, #35e0c8, #0a8f9c);
+                background: var(--danger);
                 border: 2px solid rgba(255,255,255,0.9);
                 pointer-events: none;
             }
@@ -2627,6 +2627,117 @@ def accueil():
             }
 
             #page-sorties #blocStrava[open] summary { margin-bottom: 4px; }
+
+            /* ---- Historique : bouton « Période » du filtre et fenêtre calendrier ---- */
+            .menu-sortie button.hist-periode-btn {
+                padding: 10px;
+                font-size: 1rem;
+                font-weight: 400;
+                color: var(--strong);
+                background: var(--field);
+                border: 1px solid var(--field-line);
+                border-radius: 12px;
+            }
+
+            .menu-sortie button.hist-periode-btn:hover { background: var(--field); border-color: var(--accent); }
+            .hist-periode-btn .ico { width: 20px; height: 20px; flex: none; fill: none; stroke: var(--accent); }
+
+            /* Champ de recherche des filtres : même look que les autres champs */
+            .sorties-filtres-contenu input[type="search"] {
+                -webkit-appearance: none;
+                appearance: none;
+                padding: 10px;
+                font-size: 1rem;
+                color: var(--strong);
+                background: var(--field);
+                border: 1px solid var(--field-line);
+                border-radius: 12px;
+                outline: none;
+            }
+
+            .sorties-filtres-contenu input[type="search"]:focus { border-color: var(--accent); }
+
+            .cal-boite { width: min(100%, 380px); }
+
+            .cal-rond {
+                width: 38px;
+                height: 38px;
+                padding: 0;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                flex: none;
+                color: var(--strong);
+                background: var(--fill);
+                border: 1px solid var(--line);
+                border-radius: 50%;
+                cursor: pointer;
+            }
+
+            .cal-rond svg { width: 20px; height: 20px; fill: none; stroke: currentColor; }
+
+            .cal-raccourcis { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+
+            .cal-puce {
+                padding: 7px 14px;
+                font: inherit;
+                font-size: 0.82rem;
+                font-weight: 700;
+                color: var(--accent);
+                background: var(--fill);
+                border: 1px solid var(--line2);
+                border-radius: 999px;
+                cursor: pointer;
+            }
+
+            .cal-navigation { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+            .cal-navigation strong { font-size: 1rem; }
+
+            .cal-semaine, .cal-grille { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+            .cal-semaine { margin-bottom: 4px; }
+            .cal-semaine span { text-align: center; font-size: 0.72rem; font-weight: 700; color: var(--text-muted); }
+
+            .cal-jour {
+                position: relative;
+                aspect-ratio: 1 / 1;
+                padding: 0;
+                font: inherit;
+                font-size: 0.92rem;
+                font-weight: 600;
+                color: var(--text-color);
+                background: transparent;
+                border: 1.5px solid transparent;
+                border-radius: 12px;
+                cursor: pointer;
+            }
+
+            .cal-jour.auj { border-color: var(--accent); }
+            .cal-jour.dans-periode { background: rgba(53,224,200,0.2); }
+            .cal-jour.borne { background: var(--accent); color: var(--on-accent); font-weight: 800; }
+
+            .cal-jour.avec-entretien::after {
+                content: "";
+                position: absolute;
+                left: 50%;
+                bottom: 5px;
+                width: 5px;
+                height: 5px;
+                margin-left: -2.5px;
+                border-radius: 50%;
+                background: var(--accent);
+            }
+
+            .cal-jour.borne.avec-entretien::after { background: var(--on-accent); }
+
+            .cal-resume { margin: 12px 0; min-height: 2.6em; }
+            .cal-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+            .cal-actions button { margin: 0; padding: 12px; font: inherit; font-weight: 700; border-radius: 999px; cursor: pointer; }
+
+            .cal-secondaire {
+                color: var(--text-color);
+                background: var(--fill);
+                border: 1px solid var(--line2);
+            }
         </style>
     </head>
 
@@ -4789,38 +4900,14 @@ def accueil():
                 document.getElementById('histCompteur').textContent = vide ? '' : String(historiqueDonnees.length);
 
                 // Bouton entonnoir (filtre), à gauche des trois points.
-                zoneMenu.innerHTML = '';
-
-                if (comptes.size > 1) {
-                    const choisir = (cle) => () => {
-                        histFiltreId = cle;
-                        histSelection.clear();
-                        afficherHistorique();
-                    };
-                    const entrees = [{
-                        icone: histFiltreId === '' ? 'valider' : 'vide',
-                        texte: `Tous les composants (${historiqueDonnees.length})`,
-                        action: choisir('')
-                    }];
-
-                    Array.from(comptes.entries())
-                        .sort((a, b) => a[1].nom.localeCompare(b[1].nom, 'fr'))
-                        .forEach(entree => {
-                            entrees.push({
-                                icone: histFiltreId === entree[0] ? 'valider' : 'vide',
-                                texte: `${entree[1].nom} (${entree[1].n})`,
-                                action: choisir(entree[0])
-                            });
-                        });
-
-                    const boutonFiltre = ajouterMenuPoints(
-                        zoneMenu,
-                        histFiltreId ? 'Filtrer par composant (filtre actif)' : 'Filtrer par composant',
-                        entrees,
-                        { icone: 'filtre', classeBtn: 'hist-filtre-btn', classeMenu: 'menu-filtre' }
-                    );
-                    boutonFiltre.classList.toggle('actif', histFiltreId !== '');
-                }
+                // Le panneau de filtres reste en place d'un affichage à l'autre
+                // (sinon la saisie dans la recherche perdrait le curseur à chaque lettre).
+                Array.from(zoneMenu.children).forEach(enfant => {
+                    const garde = histFiltreUI
+                        && (enfant === histFiltreUI.panneau || enfant === histFiltreUI.bouton);
+                    if (!garde) enfant.remove();
+                });
+                monterFiltreHistorique(zoneMenu, comptes);
 
                 // Menu général (trois points en haut à droite).
                 ajouterMenuPoints(zoneMenu, "Actions de l'historique", [
@@ -4842,7 +4929,7 @@ def accueil():
                 const somme = visibles.reduce((t, h) => t + (Number(h.cout) || 0), 0);
                 total.textContent = vide
                     ? ''
-                    : (histFiltreId
+                    : (histFiltreActif()
                         ? `${visibles.length} sur ${nombre(historiqueDonnees.length, 'intervention', 'interventions')}`
                         : nombre(visibles.length, 'intervention', 'interventions'))
                         + (somme > 0
