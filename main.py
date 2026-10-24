@@ -1479,6 +1479,7 @@ def accueil():
             .menu-filtres-sorties { top: 44px; right: 40px; width: min(340px, calc(100vw - 56px)); max-width: calc(100vw - 56px); box-sizing: border-box; }
             .sorties-filtres-contenu { display: grid; grid-template-columns: 1fr; gap: 10px; }
             .sorties-filtres-contenu input[type="search"],
+            .sorties-filtres-contenu input.champ-km,
             .sorties-filtres-contenu select { width: 100%; min-width: 0; margin: 0; box-sizing: border-box; }
             .sorties-filtres-contenu label { margin: 2px 0 -6px; font-size: 0.78rem; font-weight: 700; color: var(--text-muted); }
             .sorties-filtres-contenu .form-help { margin: 0; }
@@ -2764,7 +2765,22 @@ def accueil():
                 outline: none;
             }
 
-            .sorties-filtres-contenu input[type="search"]:focus { border-color: var(--accent); }
+            .sorties-filtres-contenu input.champ-km {
+                -webkit-appearance: none;
+                appearance: none;
+                padding: 10px;
+                font-size: 1rem;
+                color: var(--strong);
+                background: var(--field);
+                border: 1px solid var(--field-line);
+                border-radius: 12px;
+                outline: none;
+            }
+
+            .sorties-filtres-contenu input[type="search"]:focus,
+            .sorties-filtres-contenu input.champ-km:focus { border-color: var(--accent); }
+
+            .sorties-km { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
             .cal-boite { width: min(100%, 380px); }
 
@@ -3575,6 +3591,11 @@ def accueil():
                     <input id="rechercheSorties" type="search" placeholder="Nom, note, activité..." aria-label="Rechercher une sortie" oninput="appliquerFiltresSorties()">
                     <label for="periodeSortiesBtn">Période</label>
                     <button type="button" id="periodeSortiesBtn" class="hist-periode-btn" aria-label="Filtrer par période" onclick="ouvrirCalendrierSorties()"></button>
+                    <label for="kmMinSorties">Distance (km)</label>
+                    <div class="sorties-km">
+                        <input id="kmMinSorties" class="champ-km" type="text" inputmode="decimal" placeholder="Min" aria-label="Distance minimale en kilomètres" oninput="appliquerFiltresSorties()">
+                        <input id="kmMaxSorties" class="champ-km" type="text" inputmode="decimal" placeholder="Max" aria-label="Distance maximale en kilomètres" oninput="appliquerFiltresSorties()">
+                    </div>
                     <label for="triSorties">Trier les sorties</label>
                     <select id="triSorties" aria-label="Trier les sorties" onchange="appliquerFiltresSorties()">
                         <option value="date-desc">Plus récentes</option>
@@ -6634,6 +6655,9 @@ def accueil():
                     const etaitOuvert = panneau.classList.contains('ouvert');
                     fermerMenusSortie();
                     if (!etaitOuvert) {
+                        // Remonte la page pour que tout le panneau tienne à l'écran.
+                        const haut = bouton.getBoundingClientRect().top;
+                        if (haut > 160) window.scrollBy(0, haut - 130);
                         panneau.classList.add('ouvert');
                         positionnerPanneauFiltresSorties();
                         bouton.setAttribute('aria-expanded', 'true');
@@ -6680,6 +6704,10 @@ def accueil():
                 panneau.style.width = `${Math.min(340, window.innerWidth - marge * 2)}px`;
                 panneau.style.maxWidth = `calc(100vw - ${marge * 2}px)`;
                 panneau.style.boxSizing = 'border-box';
+                // Si l'écran est trop petit, le panneau défile au lieu de passer sous la barre du bas.
+                const hautPanneau = Math.max(marge, rect.bottom + 6);
+                panneau.style.maxHeight = `${Math.max(160, window.innerHeight - hautPanneau - 96)}px`;
+                panneau.style.overflowY = 'auto';
             }
 
             function actualiserBoutonFiltreSorties() {
@@ -6689,12 +6717,22 @@ def accueil():
                     (document.getElementById('rechercheSorties').value || '').trim()
                     || sortiesPeriode.debut
                     || sortiesPeriode.fin
+                    || kmSaisi('kmMinSorties') !== null
+                    || kmSaisi('kmMaxSorties') !== null
                     || document.getElementById('triSorties').value !== 'date-desc'
                 );
                 const boutonPeriode = document.getElementById('periodeSortiesBtn');
                 if (boutonPeriode) remplirBouton(boutonPeriode, 'calendrier', textePeriodeHist(sortiesPeriode));
                 bouton.classList.toggle('actif', actif);
                 bouton.setAttribute('aria-label', actif ? 'Filtres des sorties (filtre actif)' : 'Filtrer et rechercher les sorties');
+            }
+
+            // Lit un nombre de kilomètres saisi (virgule ou point) ; null si le champ est vide ou invalide.
+            function kmSaisi(id) {
+                const champ = document.getElementById(id);
+                if (!champ) return null;
+                const n = parseFloat(String(champ.value || '').trim().replace(',', '.'));
+                return Number.isFinite(n) ? n : null;
             }
 
             function preparerFiltresSorties(sorties) {
@@ -6731,6 +6769,10 @@ def accueil():
                         if (sortiesPeriode.debut && jour < sortiesPeriode.debut) return false;
                         if (sortiesPeriode.fin && jour > sortiesPeriode.fin) return false;
                     }
+                    const kmMin = kmSaisi('kmMinSorties'), kmMax = kmSaisi('kmMaxSorties');
+                    const km = Number(s.distance_km || 0);
+                    if (kmMin !== null && km < kmMin) return false;
+                    if (kmMax !== null && km > kmMax) return false;
                     return true;
                 });
                 const tri = document.getElementById('triSorties').value;
@@ -6753,6 +6795,8 @@ def accueil():
             function reinitialiserFiltresSorties() {
                 document.getElementById('rechercheSorties').value = '';
                 sortiesPeriode = { debut: '', fin: '' };
+                document.getElementById('kmMinSorties').value = '';
+                document.getElementById('kmMaxSorties').value = '';
                 document.getElementById('triSorties').value = 'date-desc';
                 actualiserBoutonFiltreSorties();
                 chargerSorties(true);
