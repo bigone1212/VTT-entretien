@@ -2628,6 +2628,36 @@ def accueil():
 
             #page-sorties #blocStrava[open] summary { margin-bottom: 4px; }
 
+            /* ---- Pastilles rouges de nouveauté ---- */
+            .onglet { position: relative; }
+
+            .onglet.avec-pastille::after {
+                content: "";
+                position: absolute;
+                top: 4px;
+                left: calc(50% + 12px);
+                width: 12px;
+                height: 12px;
+                border-radius: 50%;
+                background: var(--danger);
+                border: 2px solid var(--bg-color);
+                pointer-events: none;
+            }
+
+            .pastille-nouvelle {
+                display: inline-block;
+                margin-right: 8px;
+                padding: 2px 8px;
+                font-size: 0.66rem;
+                font-weight: 800;
+                letter-spacing: 0.04em;
+                text-transform: uppercase;
+                vertical-align: middle;
+                color: #ffffff;
+                background: var(--danger);
+                border-radius: 999px;
+            }
+
             /* ---- Historique : bouton « Période » du filtre et fenêtre calendrier ---- */
             .menu-sortie button.hist-periode-btn {
                 padding: 10px;
@@ -3235,6 +3265,108 @@ def accueil():
                 });
 
                 window.scrollTo(0, 0);
+                viderPastilleOnglet(nom);
+            }
+
+            // ---- Pastilles rouges : nouveautés depuis la dernière visite (mémorisées sur cet appareil) ----
+            var etatComposants = null;
+
+            function lireVus() {
+                try {
+                    const texte = localStorage.getItem('maillons_vus');
+                    return texte ? JSON.parse(texte) : null;
+                } catch (e) {
+                    return null;
+                }
+            }
+
+            function ecrireVus(v) {
+                try {
+                    localStorage.setItem('maillons_vus', JSON.stringify(v));
+                } catch (e) {}
+            }
+
+            function pageCourante() {
+                const nom = (location.hash || '').replace('#', '');
+                return PAGES.includes(nom) ? nom : 'entretien';
+            }
+
+            function dessinerPastilles() {
+                const v = lireVus();
+                PAGES.forEach(p => {
+                    const bouton = document.getElementById('onglet-' + p);
+                    if (!bouton) return;
+                    const actif = Boolean(v && v.badges && v.badges[p]);
+                    bouton.classList.toggle('avec-pastille', actif);
+                    if (!bouton.dataset.libelle) bouton.dataset.libelle = bouton.textContent.trim();
+                    bouton.setAttribute('aria-label', actif ? bouton.dataset.libelle + ' (nouveauté)' : bouton.dataset.libelle);
+                });
+            }
+
+            function viderPastilleOnglet(nom) {
+                const v = lireVus();
+                if (v && v.badges && v.badges[nom]) {
+                    v.badges[nom] = false;
+                    ecrireVus(v);
+                }
+                dessinerPastilles();
+            }
+
+            function sortieEstNouvelle(id) {
+                const v = lireVus();
+                return Boolean(v && Array.isArray(v.nouvelles) && v.nouvelles.includes(String(id)));
+            }
+
+            function effacerNouvelleSortie(id) {
+                const v = lireVus();
+                if (!v || !Array.isArray(v.nouvelles)) return;
+                v.nouvelles = v.nouvelles.filter(x => x !== String(id));
+                ecrireVus(v);
+            }
+
+            // Compare ce qui existe maintenant avec ce qu'on connaissait : le nouveau déclenche la pastille.
+            function actualiserPastilles() {
+                let v = lireVus();
+                if (!v || typeof v !== 'object') v = {};
+                if (!v.base) v.base = {};
+                if (!v.badges) v.badges = {};
+                if (!Array.isArray(v.nouvelles)) v.nouvelles = [];
+
+                const page = pageCourante();
+                const ids = (liste) => liste.map(x => String(x.id));
+                const traiter = (nom, courants, charge) => {
+                    const ancien = v.base[nom];
+                    if (!Array.isArray(ancien)) {
+                        // Première fois : on retient l'existant sans rien signaler.
+                        if (charge) v.base[nom] = courants;
+                        return [];
+                    }
+                    const nouveaux = courants.filter(id => !ancien.includes(id));
+                    v.base[nom] = courants;
+                    if (nouveaux.length && page !== nom) v.badges[nom] = true;
+                    return nouveaux;
+                };
+
+                const enAlerte = Array.isArray(etatComposants)
+                    ? ids(etatComposants.filter(c => c.alerte_entretien))
+                    : [];
+                traiter('entretien', enAlerte, Array.isArray(etatComposants));
+                traiter('historique', ids(historiqueDonnees), historiqueDonnees.length > 0);
+
+                const idsSorties = ids(sortiesConnues);
+                const nouvellesSorties = traiter('sorties', idsSorties, idsSorties.length > 0);
+                nouvellesSorties.forEach(id => {
+                    if (!v.nouvelles.includes(id)) v.nouvelles.push(id);
+                });
+                if (idsSorties.length > 0) {
+                    v.nouvelles = v.nouvelles.filter(id => idsSorties.includes(id));
+                }
+
+                ecrireVus(v);
+                dessinerPastilles();
+
+                // Réaffiche la liste des sorties pour y poser la pastille « Nouveau ».
+                if (nouvellesSorties.length) chargerSorties(true);
             }
 
             window.addEventListener('hashchange', afficherPage);
@@ -4067,6 +4199,7 @@ def accueil():
 
                     const data = await res.json();
                     kmTotalActuel = Number(data.km_total) || 0;
+                    etatComposants = data.composants;
 
                     document.getElementById('veloInfo').innerText =
                         `${Number(data.km_total).toLocaleString('fr-FR')} km`;
@@ -4334,6 +4467,7 @@ def accueil():
                     await chargerHistorique();
                     await chargerSorties();
                     await chargerReglages();
+                    actualiserPastilles();
 
                 } catch (e) {
                     console.error(e);
@@ -6265,6 +6399,18 @@ def accueil():
                         titre.textContent = `${s.nom} · ${jour}`;
                         titre.className = 'titre-sortie';
                         titre.style.display = 'block';
+
+                        // Pastille rouge « Nouveau » tant que la sortie n'a pas été touchée.
+                        if (sortieEstNouvelle(s.id)) {
+                            const nouveau = document.createElement('span');
+                            nouveau.className = 'pastille-nouvelle';
+                            nouveau.textContent = 'Nouveau';
+                            titre.prepend(nouveau);
+                            item.addEventListener('click', () => {
+                                effacerNouvelleSortie(s.id);
+                                nouveau.remove();
+                            });
+                        }
 
                         const ligne1 = document.createElement('div');
                         ligne1.style.color = 'var(--text-muted)';
