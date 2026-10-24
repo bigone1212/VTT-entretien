@@ -3184,18 +3184,8 @@ def accueil():
                 <div class="sorties-filtres-contenu">
                     <label for="rechercheSorties">Rechercher une sortie</label>
                     <input id="rechercheSorties" type="search" placeholder="Nom, note, activité..." aria-label="Rechercher une sortie" oninput="appliquerFiltresSorties()">
-                    <label for="periodeSorties">Période</label>
-                    <select id="periodeSorties" aria-label="Filtrer par période" onchange="appliquerFiltresSorties()">
-                        <option value="tout">Toutes les périodes</option>
-                        <option value="7">7 derniers jours</option>
-                        <option value="30">30 derniers jours</option>
-                        <option value="365">12 derniers mois</option>
-                        <option value="annee">Cette année</option>
-                    </select>
-                    <label for="sportSorties">Activité</label>
-                    <select id="sportSorties" aria-label="Filtrer par activité" onchange="appliquerFiltresSorties()">
-                        <option value="tout">Toutes les activités</option>
-                    </select>
+                    <label for="periodeSortiesBtn">Période</label>
+                    <button type="button" id="periodeSortiesBtn" class="hist-periode-btn" aria-label="Filtrer par période" onclick="ouvrirCalendrierSorties()"></button>
                     <label for="triSorties">Trier les sorties</label>
                     <select id="triSorties" aria-label="Trier les sorties" onchange="appliquerFiltresSorties()">
                         <option value="date-desc">Plus récentes</option>
@@ -4459,8 +4449,7 @@ def accueil():
                 return Boolean(histFiltreId || histRecherche.trim() || histPeriode.debut || histPeriode.fin);
             }
 
-            function textePeriodeHist() {
-                const p = histPeriode;
+            function textePeriodeHist(p = histPeriode) {
                 if (p.debut && p.fin) {
                     return p.debut === p.fin
                         ? dateFrancaise(p.debut)
@@ -4541,7 +4530,7 @@ def accueil():
                 boutonPeriode.type = 'button';
                 boutonPeriode.id = 'histFiltrePeriode';
                 boutonPeriode.className = 'hist-periode-btn';
-                boutonPeriode.addEventListener('click', () => ouvrirCalendrierPeriode());
+                boutonPeriode.addEventListener('click', () => ouvrirCalendrierHistorique());
                 ajouterChamp('Période', 'histFiltrePeriode', boutonPeriode);
 
                 const selTri = document.createElement('select');
@@ -4717,6 +4706,8 @@ def accueil():
 
                 let choix = { debut: '', fin: '' };
                 let vue = { annee: 2026, mois: 0 };
+                let joursMarques = new Set();
+                let auAppliquer = null;
 
                 const versISO = (d) => {
                     const mois = String(d.getMonth() + 1).padStart(2, '0');
@@ -4734,9 +4725,7 @@ def accueil():
                     const decalage = (premier.getDay() + 6) % 7;
                     const nbJours = new Date(vue.annee, vue.mois + 1, 0).getDate();
                     const aujourdhui = aujourdhuiISO();
-                    const joursAvecEntretien = new Set(
-                        historiqueDonnees.map(h => String(h.date_remplacement || '').slice(0, 10))
-                    );
+                    const joursAvecEntretien = joursMarques;
                     const nomMois = premier.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
                     titreMois.textContent = nomMois.charAt(0).toUpperCase() + nomMois.slice(1);
 
@@ -4808,11 +4797,8 @@ def accueil():
                 const fermer = () => { fenetre.style.display = 'none'; };
 
                 const appliquer = (periode) => {
-                    histPeriode = periode;
-                    histSelection.clear();
                     fermer();
-                    actualiserFiltreHistorique();
-                    afficherHistorique();
+                    if (auAppliquer) auAppliquer(periode);
                 };
 
                 precedent.addEventListener('click', () => {
@@ -4839,8 +4825,10 @@ def accueil():
                 document.body.appendChild(fenetre);
 
                 return {
-                    ouvrir() {
-                        choix = { debut: histPeriode.debut, fin: histPeriode.fin };
+                    ouvrir(periode, jours, appliquerPeriode) {
+                        joursMarques = jours || new Set();
+                        auAppliquer = appliquerPeriode;
+                        choix = { debut: periode.debut, fin: periode.fin };
                         placerVue(choix.fin || choix.debut);
                         dessiner();
                         fenetre.style.display = 'flex';
@@ -4848,9 +4836,24 @@ def accueil():
                 };
             }
 
-            function ouvrirCalendrierPeriode() {
+            // Ouvre le calendrier : période de départ, jours à repérer d'un point,
+            // et ce qu'il faut faire quand on valide.
+            function ouvrirCalendrierPeriode(periode, jours, appliquerPeriode) {
                 if (!calendrierUI) calendrierUI = creerCalendrierPeriode();
-                calendrierUI.ouvrir();
+                calendrierUI.ouvrir(periode, jours, appliquerPeriode);
+            }
+
+            function ouvrirCalendrierHistorique() {
+                ouvrirCalendrierPeriode(
+                    histPeriode,
+                    new Set(historiqueDonnees.map(h => String(h.date_remplacement || '').slice(0, 10))),
+                    (periode) => {
+                        histPeriode = periode;
+                        histSelection.clear();
+                        actualiserFiltreHistorique();
+                        afficherHistorique();
+                    }
+                );
             }
 
             async function chargerHistorique() {
@@ -6068,6 +6071,7 @@ def accueil():
             });
 
             let sortiesConnues = [];
+            let sortiesPeriode = { debut: '', fin: '' };
 
             function initialiserMenuFiltresSorties() {
                 const zone = document.getElementById('sortiesMenuZone');
@@ -6140,45 +6144,49 @@ def accueil():
                 if (!bouton) return;
                 const actif = Boolean(
                     (document.getElementById('rechercheSorties').value || '').trim()
-                    || document.getElementById('periodeSorties').value !== 'tout'
-                    || document.getElementById('sportSorties').value !== 'tout'
+                    || sortiesPeriode.debut
+                    || sortiesPeriode.fin
                     || document.getElementById('triSorties').value !== 'date-desc'
                 );
+                const boutonPeriode = document.getElementById('periodeSortiesBtn');
+                if (boutonPeriode) remplirBouton(boutonPeriode, 'calendrier', textePeriodeHist(sortiesPeriode));
                 bouton.classList.toggle('actif', actif);
                 bouton.setAttribute('aria-label', actif ? 'Filtres des sorties (filtre actif)' : 'Filtrer et rechercher les sorties');
             }
 
             function preparerFiltresSorties(sorties) {
-                const select = document.getElementById('sportSorties');
-                const valeurActuelle = select.value || 'tout';
-                const sports = [...new Set(sorties.map(s => (s.sport || 'Autre').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr'));
-                select.innerHTML = '<option value="tout">Toutes les activités</option>';
-                sports.forEach(sport => {
-                    const option = document.createElement('option');
-                    option.value = sport;
-                    option.textContent = sport;
-                    select.appendChild(option);
-                });
-                select.value = sports.includes(valeurActuelle) ? valeurActuelle : 'tout';
                 actualiserBoutonFiltreSorties();
+            }
+
+            // Jour (aaaa-mm-jj) d'une sortie, à l'heure locale.
+            function jourLocalSortie(texte) {
+                const d = new Date(texte);
+                if (isNaN(d.getTime())) return '';
+                const mois = String(d.getMonth() + 1).padStart(2, '0');
+                const jour = String(d.getDate()).padStart(2, '0');
+                return `${d.getFullYear()}-${mois}-${jour}`;
+            }
+
+            function ouvrirCalendrierSorties() {
+                ouvrirCalendrierPeriode(
+                    sortiesPeriode,
+                    new Set(sortiesConnues.map(s => jourLocalSortie(s.debut))),
+                    (periode) => {
+                        sortiesPeriode = periode;
+                        appliquerFiltresSorties();
+                    }
+                );
             }
 
             function filtrerSorties(sorties) {
                 const recherche = (document.getElementById('rechercheSorties').value || '').trim().toLocaleLowerCase('fr');
-                const periode = document.getElementById('periodeSorties').value;
-                const sport = document.getElementById('sportSorties').value;
-                const maintenant = new Date();
-                const debutAnnee = new Date(maintenant.getFullYear(), 0, 1);
                 const resultat = sorties.filter(s => {
                     const texte = [s.nom, s.notes, s.sport, s.terrain].filter(Boolean).join(' ').toLocaleLowerCase('fr');
                     if (recherche && !texte.includes(recherche)) return false;
-                    if (sport !== 'tout' && (s.sport || 'Autre').trim() !== sport) return false;
-                    if (periode === 'annee') return new Date(s.debut) >= debutAnnee;
-                    if (periode !== 'tout') {
-                        const dateSortie = new Date(s.debut);
-                        const limite = new Date(maintenant);
-                        limite.setDate(limite.getDate() - Number(periode));
-                        if (dateSortie < limite || dateSortie > maintenant) return false;
+                    if (sortiesPeriode.debut || sortiesPeriode.fin) {
+                        const jour = jourLocalSortie(s.debut);
+                        if (sortiesPeriode.debut && jour < sortiesPeriode.debut) return false;
+                        if (sortiesPeriode.fin && jour > sortiesPeriode.fin) return false;
                     }
                     return true;
                 });
@@ -6201,8 +6209,7 @@ def accueil():
 
             function reinitialiserFiltresSorties() {
                 document.getElementById('rechercheSorties').value = '';
-                document.getElementById('periodeSorties').value = 'tout';
-                document.getElementById('sportSorties').value = 'tout';
+                sortiesPeriode = { debut: '', fin: '' };
                 document.getElementById('triSorties').value = 'date-desc';
                 actualiserBoutonFiltreSorties();
                 chargerSorties(true);
