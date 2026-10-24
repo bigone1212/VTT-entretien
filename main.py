@@ -2671,6 +2671,68 @@ def accueil():
                 border-radius: 999px;
             }
 
+            /* ---- Fiche d'une sortie ---- */
+            .sortie-cliquable { cursor: pointer; }
+            .fiche-boite { width: min(100%, 560px); }
+            .fiche-titre { font-size: 1.15rem; line-height: 1.25; }
+            .fiche-bloc { margin-top: 16px; }
+
+            .fiche-bloc h3 {
+                margin: 0 0 8px;
+                font-size: 0.74rem;
+                font-weight: 700;
+                letter-spacing: 0.05em;
+                text-transform: uppercase;
+                color: var(--text-muted);
+            }
+
+            .fiche-carte {
+                position: relative;
+                height: 250px;
+                overflow: hidden;
+                border-radius: 14px;
+                background: var(--fill);
+            }
+
+            .fiche-carte svg { width: 100%; height: 100%; }
+
+            .fiche-fond {
+                position: absolute;
+                top: 8px;
+                left: 8px;
+                z-index: 2;
+                padding: 6px 12px;
+                font: inherit;
+                font-size: 0.78rem;
+                font-weight: 700;
+                color: #ffffff;
+                background: rgba(0,0,0,0.55);
+                border: 1px solid rgba(255,255,255,0.35);
+                border-radius: 999px;
+                cursor: pointer;
+            }
+
+            .fiche-grille { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+            .fiche-tuile {
+                display: flex;
+                flex-direction: column;
+                gap: 2px;
+                padding: 10px 12px;
+                background: var(--fill);
+                border: 1px solid var(--line);
+                border-radius: 12px;
+            }
+
+            .fiche-tuile span { font-size: 0.72rem; color: var(--text-muted); }
+            .fiche-tuile strong { font-size: 1.05rem; font-weight: 800; color: var(--strong); }
+            .fiche-meteo-titre { margin: 0 0 8px; font-size: 1.05rem; font-weight: 800; }
+            .fiche-bloc svg { width: 100%; height: auto; display: block; border-radius: 10px; background: var(--fill); }
+            .fiche-barre { display: flex; height: 14px; overflow: hidden; border-radius: 7px; background: var(--fill); }
+            .fiche-legende { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; font-size: 0.8rem; color: var(--text-muted); }
+            .fiche-legende i { display: inline-block; width: 12px; height: 8px; margin-right: 8px; border-radius: 3px; }
+            .fiche-boite > .btn-survol { margin-top: 18px; }
+
             /* ---- Historique : bouton « Période » du filtre et fenêtre calendrier ---- */
             .menu-sortie button.hist-periode-btn {
                 padding: 10px;
@@ -6984,6 +7046,13 @@ def accueil():
                             item.appendChild(blocProfil);
                         }
 
+                        // On touche la sortie (hors boutons, photos, menus) pour ouvrir sa fiche.
+                        item.classList.add('sortie-cliquable');
+                        item.addEventListener('click', (e) => {
+                            if (e.target.closest('button, select, input, a, label, img, video, .profil-sortie, .videos-liste, .menu-sortie, .photos-gallery')) return;
+                            ouvrirFicheSortie(s);
+                        });
+
                         liste.appendChild(item);
                     });
 
@@ -6997,6 +7066,481 @@ def accueil():
 
             const MAX_PHOTOS = 8;
             const MAX_VIDEOS = 10;
+
+            // ---------- Fiche d'une sortie : on touche une sortie pour l'ouvrir ----------
+            let ficheUI = null;
+            let ficheCarte = null;
+            let ficheJeton = 0;
+
+            const METEO_CODES = [
+                [[0], '☀️', 'Ciel dégagé'],
+                [[1], '🌤️', 'Plutôt dégagé'],
+                [[2], '⛅', 'Partiellement nuageux'],
+                [[3], '☁️', 'Couvert'],
+                [[45, 48], '🌫️', 'Brouillard'],
+                [[51, 53, 55, 56, 57], '🌦️', 'Bruine'],
+                [[61, 63, 65, 66, 67], '🌧️', 'Pluie'],
+                [[71, 73, 75, 77, 85, 86], '🌨️', 'Neige'],
+                [[80, 81, 82], '🌦️', 'Averses'],
+                [[95, 96, 99], '⛈️', 'Orage']
+            ];
+
+            function fmtFr(n, decimales = 0) {
+                return Number(n).toLocaleString('fr-FR', {
+                    minimumFractionDigits: decimales,
+                    maximumFractionDigits: decimales
+                });
+            }
+
+            // Vitesse maximale tenue au moins 10 secondes (évite les sauts isolés du GPS).
+            function vitesseMaxSortie(trace) {
+                if (!Array.isArray(trace) || trace.length < 3) return null;
+                if (trace.some(p => !Array.isArray(p) || typeof p[2] !== 'number')) return null;
+                let max = 0;
+                let j = 1;
+                for (let i = 0; i < trace.length - 1; i++) {
+                    if (j <= i) j = i + 1;
+                    while (j < trace.length && trace[j][2] - trace[i][2] < 10) j++;
+                    if (j >= trace.length) break;
+                    const dt = trace[j][2] - trace[i][2];
+                    const v = (distanceLatLon(trace[i], trace[j]) / dt) * 3.6;
+                    if (v <= 100 && v > max) max = v;
+                }
+                return max > 0 ? max : null;
+            }
+
+            function cumulTrace(trace) {
+                const cum = [0];
+                for (let i = 1; i < trace.length; i++) {
+                    cum.push(cum[i - 1] + distanceLatLon(trace[i - 1], trace[i]));
+                }
+                return cum;
+            }
+
+            // Météo de la sortie (service gratuit Open-Meteo : fonctionne seulement en ligne).
+            async function chercherMeteoSortie(s) {
+                const pts = Array.isArray(s.trace) ? s.trace.filter(p => Array.isArray(p) && p.length >= 2) : [];
+                const debut = new Date(s.debut);
+                if (pts.length === 0 || isNaN(debut.getTime())) throw new Error('donnees');
+
+                const duree = Number(s.duree_s) > 0 ? Number(s.duree_s) : 3600;
+                const fin = new Date(debut.getTime() + duree * 1000);
+                const milieu = pts[Math.floor(pts.length / 2)];
+                const jourUtc = (d) => d.toISOString().slice(0, 10);
+                const params = 'latitude=' + Number(milieu[0]).toFixed(3)
+                    + '&longitude=' + Number(milieu[1]).toFixed(3)
+                    + '&start_date=' + jourUtc(debut)
+                    + '&end_date=' + jourUtc(fin)
+                    + '&hourly=temperature_2m,precipitation,wind_speed_10m,wind_gusts_10m,weather_code'
+                    + '&timezone=UTC';
+                const recente = (Date.now() - debut.getTime()) < 85 * 86400000;
+                const prevision = 'https://api.open-meteo.com/v1/forecast?' + params;
+                const archive = 'https://archive-api.open-meteo.com/v1/archive?' + params;
+                const adresses = recente ? [prevision, archive] : [archive, prevision];
+
+                let h = null;
+                for (const adresse of adresses) {
+                    try {
+                        const res = await fetch(adresse);
+                        if (!res.ok) continue;
+                        const donnees = await res.json();
+                        if (donnees && donnees.hourly && Array.isArray(donnees.hourly.time)) {
+                            h = donnees.hourly;
+                            break;
+                        }
+                    } catch (e) {
+                        console.error(e);
+                    }
+                }
+                if (!h) throw new Error('meteo');
+
+                const indices = [];
+                h.time.forEach((t, i) => {
+                    const debutHeure = Date.parse(t + 'Z');
+                    if (debutHeure + 3600000 > debut.getTime() && debutHeure < fin.getTime()) indices.push(i);
+                });
+                if (indices.length === 0) throw new Error('heures');
+
+                const valeurs = (cle) => (h[cle] || [])
+                    ? indices.map(i => (h[cle] || [])[i]).filter(v => typeof v === 'number')
+                    : [];
+                const moy = (l) => (l.length ? l.reduce((a, b) => a + b, 0) / l.length : null);
+                const temps = valeurs('temperature_2m');
+                const pluie = valeurs('precipitation');
+                const vent = valeurs('wind_speed_10m');
+                const rafales = valeurs('wind_gusts_10m');
+                const codes = valeurs('weather_code');
+
+                const compte = {};
+                codes.forEach(c => { compte[c] = (compte[c] || 0) + 1; });
+                const frequent = Object.keys(compte).sort((a, b) => compte[b] - compte[a])[0];
+
+                return {
+                    temp: moy(temps),
+                    tempMin: temps.length ? Math.min(...temps) : null,
+                    tempMax: temps.length ? Math.max(...temps) : null,
+                    pluie: pluie.length ? pluie.reduce((a, b) => a + b, 0) : null,
+                    vent: moy(vent),
+                    rafales: rafales.length ? Math.max(...rafales) : null,
+                    code: frequent === undefined ? null : Number(frequent)
+                };
+            }
+
+            function styleCarteFiche() {
+                return {
+                    version: 8,
+                    sources: {
+                        sat: {
+                            type: 'raster',
+                            tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+                            tileSize: 256,
+                            maxzoom: 19,
+                            attribution: 'Imagerie © Esri, Maxar, Earthstar Geographics'
+                        },
+                        plan: {
+                            type: 'raster',
+                            tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+                            tileSize: 256,
+                            maxzoom: 19,
+                            attribution: '© contributeurs OpenStreetMap'
+                        }
+                    },
+                    layers: [
+                        { id: 'fond-sat', type: 'raster', source: 'sat' },
+                        { id: 'fond-plan', type: 'raster', source: 'plan', layout: { visibility: 'none' } }
+                    ]
+                };
+            }
+
+            function barreRepartition(parts) {
+                const total = parts.reduce((t, p) => t + p.km, 0);
+                const zone = document.createElement('div');
+                if (total <= 0) return zone;
+
+                const barre = document.createElement('div');
+                barre.className = 'fiche-barre';
+                parts.forEach(p => {
+                    const seg = document.createElement('div');
+                    seg.style.width = ((p.km / total) * 100) + '%';
+                    seg.style.background = p.couleur;
+                    barre.appendChild(seg);
+                });
+                zone.appendChild(barre);
+
+                const legende = document.createElement('div');
+                legende.className = 'fiche-legende';
+                parts.forEach(p => {
+                    const ligne = document.createElement('span');
+                    const pastille = document.createElement('i');
+                    pastille.style.background = p.couleur;
+                    ligne.appendChild(pastille);
+                    ligne.appendChild(document.createTextNode(
+                        `${p.libelle} · ${fmtFr(p.km, 1)} km (${Math.round((p.km / total) * 100)} %)`
+                    ));
+                    legende.appendChild(ligne);
+                });
+                zone.appendChild(legende);
+                return zone;
+            }
+
+            function creerFicheUI() {
+                const fenetre = document.createElement('div');
+                fenetre.className = 'fenetre-profil';
+                fenetre.style.display = 'none';
+                fenetre.setAttribute('role', 'dialog');
+                fenetre.setAttribute('aria-modal', 'true');
+                fenetre.setAttribute('aria-label', 'Fiche de la sortie');
+
+                const boite = document.createElement('div');
+                boite.className = 'fp-boite fiche-boite';
+                fenetre.appendChild(boite);
+
+                const fermer = () => {
+                    ficheJeton++;
+                    if (ficheCarte) {
+                        try { ficheCarte.remove(); } catch (e) { console.error(e); }
+                        ficheCarte = null;
+                    }
+                    fenetre.style.display = 'none';
+                };
+
+                fenetre.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (e.target === fenetre) fermer();
+                });
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape' && fenetre.style.display !== 'none') fermer();
+                });
+                document.body.appendChild(fenetre);
+
+                const bloc = (titre) => {
+                    const b = document.createElement('section');
+                    b.className = 'fiche-bloc';
+                    const h = document.createElement('h3');
+                    h.textContent = titre;
+                    b.appendChild(h);
+                    boite.appendChild(b);
+                    return b;
+                };
+
+                const tuile = (parent, libelle, valeur) => {
+                    const t = document.createElement('div');
+                    t.className = 'fiche-tuile';
+                    const l = document.createElement('span');
+                    l.textContent = libelle;
+                    const v = document.createElement('strong');
+                    v.textContent = valeur;
+                    t.appendChild(l);
+                    t.appendChild(v);
+                    parent.appendChild(t);
+                    return v;
+                };
+
+                const afficher = (s) => {
+                    const jeton = ++ficheJeton;
+                    if (ficheCarte) {
+                        try { ficheCarte.remove(); } catch (e) { console.error(e); }
+                        ficheCarte = null;
+                    }
+                    boite.textContent = '';
+
+                    const trace = Array.isArray(s.trace) ? s.trace : [];
+                    const profil = analyserProfil(trace);
+                    const debut = new Date(s.debut);
+                    const dateTexte = isNaN(debut.getTime())
+                        ? ''
+                        : debut.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+                            + ' · départ ' + debut.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+
+                    // En-tête
+                    const haut = document.createElement('div');
+                    haut.className = 'fp-haut';
+                    const titres = document.createElement('div');
+                    const titre = document.createElement('strong');
+                    titre.className = 'fiche-titre';
+                    titre.textContent = s.nom || 'Sortie';
+                    const sous = document.createElement('div');
+                    sous.className = 'form-help';
+                    sous.style.margin = '2px 0 0';
+                    sous.textContent = dateTexte;
+                    titres.appendChild(titre);
+                    titres.appendChild(sous);
+                    const boutonFermer = document.createElement('button');
+                    boutonFermer.type = 'button';
+                    boutonFermer.className = 'cal-rond';
+                    boutonFermer.setAttribute('aria-label', 'Fermer');
+                    remplirBouton(boutonFermer, 'fermer', '');
+                    boutonFermer.addEventListener('click', fermer);
+                    haut.appendChild(titres);
+                    haut.appendChild(boutonFermer);
+                    boite.appendChild(haut);
+
+                    // Carte vue de dessus
+                    const blocCarte = document.createElement('div');
+                    blocCarte.className = 'fiche-carte';
+                    boite.appendChild(blocCarte);
+
+                    // Chiffres clés
+                    const blocStats = bloc('En chiffres');
+                    const grille = document.createElement('div');
+                    grille.className = 'fiche-grille';
+                    blocStats.appendChild(grille);
+                    const altitudes = trace.map(p => (Array.isArray(p) ? p[3] : null)).filter(a => typeof a === 'number');
+                    const vmax = vitesseMaxSortie(trace);
+                    tuile(grille, 'Distance', `${fmtFr(s.distance_km, 1)} km`);
+                    tuile(grille, 'Durée', formaterDuree(s.duree_s));
+                    tuile(grille, 'Vitesse moyenne', `${fmtFr(s.vitesse_moy, 1)} km/h`);
+                    tuile(grille, 'Vitesse maximum', vmax === null ? '—' : `${fmtFr(vmax, 1)} km/h`);
+                    tuile(grille, 'Dénivelé positif', `${fmtFr(s.denivele_pos)} m`);
+                    tuile(grille, 'Dénivelé négatif', `${fmtFr(s.denivele_neg)} m`);
+                    if (altitudes.length) {
+                        tuile(grille, 'Altitude maximum', `${fmtFr(Math.max(...altitudes))} m`);
+                        tuile(grille, 'Altitude minimum', `${fmtFr(Math.min(...altitudes))} m`);
+                    }
+                    if (profil) {
+                        tuile(grille, 'Pente max en montée', `${Math.round(Math.max(...profil.pentes))} %`);
+                        tuile(grille, 'Pente max en descente', `${Math.round(Math.abs(Math.min(...profil.pentes)))} %`);
+                    }
+                    if (s.coef_usure) {
+                        tuile(grille, 'Usure des pièces', `×${fmtFr(s.coef_usure, 2)}`);
+                    }
+
+                    // Météo (remplie quand le service répond)
+                    const blocMeteo = bloc('Météo pendant la sortie');
+                    const texteMeteo = document.createElement('p');
+                    texteMeteo.className = 'form-help';
+                    texteMeteo.style.margin = '0';
+                    texteMeteo.textContent = 'Recherche de la météo…';
+                    blocMeteo.appendChild(texteMeteo);
+                    chercherMeteoSortie(s).then(m => {
+                        if (jeton !== ficheJeton) return;
+                        const cond = METEO_CODES.find(x => x[0].includes(m.code));
+                        texteMeteo.className = 'fiche-meteo-titre';
+                        texteMeteo.textContent = cond ? `${cond[1]} ${cond[2]}` : '🌡️ Conditions variables';
+                        const g = document.createElement('div');
+                        g.className = 'fiche-grille';
+                        blocMeteo.appendChild(g);
+                        if (m.temp !== null) {
+                            tuile(g, 'Température', `${fmtFr(m.temp)} °C`);
+                            tuile(g, 'Min · max', `${fmtFr(m.tempMin)} à ${fmtFr(m.tempMax)} °C`);
+                        }
+                        if (m.pluie !== null) tuile(g, 'Pluie', `${fmtFr(m.pluie, 1)} mm`);
+                        if (m.vent !== null) tuile(g, 'Vent moyen', `${fmtFr(m.vent)} km/h`);
+                        if (m.rafales !== null) tuile(g, 'Rafales max', `${fmtFr(m.rafales)} km/h`);
+                    }).catch(() => {
+                        if (jeton !== ficheJeton) return;
+                        texteMeteo.textContent = 'Météo indisponible (il faut une connexion internet).';
+                    });
+
+                    // Profil d'altitude
+                    const blocProfil = bloc("Profil d'altitude");
+                    if (profil) {
+                        fenetre.style.display = 'flex';
+                        const largeur = Math.max(280, Math.min(520, (boite.clientWidth || 340) - 28));
+                        const g = construireProfil(s, profil, largeur, 230, true);
+                        blocProfil.appendChild(g.svg);
+                        blocProfil.appendChild(legendesProfil(s, profil));
+                    } else {
+                        const p = document.createElement('p');
+                        p.className = 'form-help';
+                        p.textContent = "Pas assez d'altitudes dans cette sortie pour dessiner le profil.";
+                        blocProfil.appendChild(p);
+                    }
+
+                    // Pentes
+                    if (profil) {
+                        const blocPentes = bloc('Pentes');
+                        const km = COULEURS_PENTE.map(() => 0);
+                        for (let i = 0; i < profil.pentes.length; i++) {
+                            const d = profil.cum[i + 1] - profil.cum[i];
+                            const k = COULEURS_PENTE.findIndex(c => Math.abs(profil.pentes[i]) < c.max);
+                            km[k < 0 ? km.length - 1 : k] += d / 1000;
+                        }
+                        blocPentes.appendChild(barreRepartition(
+                            COULEURS_PENTE.map((c, i) => ({ couleur: c.couleur, libelle: c.nom, km: km[i] })).filter(p => p.km > 0)
+                        ));
+                    }
+
+                    // Terrain
+                    const blocTerrain = bloc('Terrain');
+                    const codes = s.surfaces && s.surfaces.length === trace.length ? s.surfaces : null;
+                    if (codes && trace.length > 1) {
+                        const totaux = {};
+                        for (let i = 0; i < trace.length - 1; i++) {
+                            const cle = codes[i] in TYPES_CHEMIN ? codes[i] : 'u';
+                            totaux[cle] = (totaux[cle] || 0) + distanceLatLon(trace[i], trace[i + 1]) / 1000;
+                        }
+                        blocTerrain.appendChild(barreRepartition(
+                            Object.keys(TYPES_CHEMIN)
+                                .filter(k => totaux[k] > 0)
+                                .map(k => ({ couleur: TYPES_CHEMIN[k].couleur, libelle: TYPES_CHEMIN[k].nom, km: totaux[k] }))
+                        ));
+                    } else {
+                        const p = document.createElement('p');
+                        p.className = 'form-help';
+                        p.style.margin = '0';
+                        p.textContent = `Terrain choisi : ${LIBELLES_TERRAIN[s.terrain] || s.terrain || 'mixte'} (analyse du chemin pas encore disponible).`;
+                        blocTerrain.appendChild(p);
+                    }
+
+                    if (s.notes) {
+                        const blocNotes = bloc('Notes');
+                        const p = document.createElement('p');
+                        p.style.margin = '0';
+                        p.textContent = s.notes;
+                        blocNotes.appendChild(p);
+                    }
+
+                    // Bouton vers le survol 3D
+                    const bouton3d = document.createElement('button');
+                    bouton3d.type = 'button';
+                    bouton3d.className = 'btn-survol';
+                    remplirBouton(bouton3d, 'montagne', 'Survol 3D');
+                    bouton3d.disabled = trace.length < 2;
+                    bouton3d.addEventListener('click', () => {
+                        fermer();
+                        ouvrirV3d(s);
+                    });
+                    boite.appendChild(bouton3d);
+
+                    fenetre.style.display = 'flex';
+                    boite.scrollTop = 0;
+
+                    // Carte : MapLibre si possible, sinon simple tracé dessiné.
+                    const secours = () => {
+                        blocCarte.textContent = '';
+                        blocCarte.appendChild(dessinerTrace(trace));
+                    };
+                    const pts = trace.filter(p => Array.isArray(p) && p.length >= 2).map(p => [p[1], p[0]]);
+                    if (pts.length < 2) {
+                        blocCarte.style.display = 'none';
+                        return;
+                    }
+                    chargerMapLibre().then(() => {
+                        if (jeton !== ficheJeton) return;
+                        const ml = window.maplibregl;
+                        const carte = new ml.Map({
+                            container: blocCarte,
+                            style: styleCarteFiche(),
+                            center: pts[0],
+                            zoom: 11,
+                            cooperativeGestures: true,
+                            attributionControl: true
+                        });
+                        ficheCarte = carte;
+                        carte.on('load', () => {
+                            if (jeton !== ficheJeton) return;
+                            const features = [];
+                            for (let i = 0; i < pts.length - 1; i++) {
+                                const pente = profil && profil.pentes.length === pts.length - 1 ? profil.pentes[i] : null;
+                                features.push({
+                                    type: 'Feature',
+                                    properties: { c: pente === null ? '#35e0c8' : couleurPente(pente) },
+                                    geometry: { type: 'LineString', coordinates: [pts[i], pts[i + 1]] }
+                                });
+                            }
+                            carte.addSource('trace', { type: 'geojson', data: { type: 'FeatureCollection', features: features } });
+                            carte.addLayer({
+                                id: 'trace-bord', type: 'line', source: 'trace',
+                                layout: { 'line-cap': 'round', 'line-join': 'round' },
+                                paint: { 'line-color': '#ffffff', 'line-width': 7, 'line-opacity': 0.9 }
+                            });
+                            carte.addLayer({
+                                id: 'trace-ligne', type: 'line', source: 'trace',
+                                layout: { 'line-cap': 'round', 'line-join': 'round' },
+                                paint: { 'line-color': ['get', 'c'], 'line-width': 4 }
+                            });
+                            new ml.Marker({ color: '#22c55e' }).setLngLat(pts[0]).addTo(carte);
+                            new ml.Marker({ color: '#ef4444' }).setLngLat(pts[pts.length - 1]).addTo(carte);
+                            const bornes = new ml.LngLatBounds(pts[0], pts[0]);
+                            pts.forEach(p => bornes.extend(p));
+                            carte.fitBounds(bornes, { padding: 36, animate: false });
+                        });
+
+                        const fond = document.createElement('button');
+                        fond.type = 'button';
+                        fond.className = 'fiche-fond';
+                        fond.textContent = 'Plan';
+                        let satellite = true;
+                        fond.addEventListener('click', () => {
+                            satellite = !satellite;
+                            carte.setLayoutProperty('fond-sat', 'visibility', satellite ? 'visible' : 'none');
+                            carte.setLayoutProperty('fond-plan', 'visibility', satellite ? 'none' : 'visible');
+                            fond.textContent = satellite ? 'Plan' : 'Satellite';
+                        });
+                        blocCarte.appendChild(fond);
+                    }).catch(() => {
+                        if (jeton === ficheJeton) secours();
+                    });
+                };
+
+                return { afficher: afficher, fermer: fermer };
+            }
+
+            function ouvrirFicheSortie(s) {
+                if (!ficheUI) ficheUI = creerFicheUI();
+                ficheUI.afficher(s);
+            }
 
             // ---------- Survol 3D ----------
             const MAPLIBRE_JS = [
