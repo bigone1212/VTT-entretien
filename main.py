@@ -316,6 +316,13 @@ def init_db():
     conn = db.connect()
     cursor = conn.cursor()
 
+    # Évite que le service de production et un aperçu Render exécutent
+    # les migrations PostgreSQL en même temps sur la même base Neon.
+    # Le verrou transactionnel est libéré au commit ou à la fermeture
+    # de la connexion.
+    if db.USE_PG:
+        cursor.execute("SELECT pg_advisory_xact_lock(84720124)")
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS velo (
             id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -537,7 +544,7 @@ class ReglagesRequest(BaseModel):
 
 
 MES_REGLAGES_CLES = {
-    "pneu_av", "pneu_ar",
+    "taille_cadre", "pneu_av", "pneu_ar",
     "fourche_psi", "fourche_sag", "fourche_detente", "fourche_bagues",
     "amorto_psi", "amorto_sag", "amorto_detente", "amorto_bagues",
     "notes",
@@ -2100,6 +2107,12 @@ def accueil():
                 box-shadow: 0 2px 8px rgba(0,0,0,0.5);
             }
 
+            .v3d-panneau { width: 48px; height: 44px; filter: drop-shadow(0 2px 3px rgba(0,0,0,.65)); }
+            .v3d-panneau svg { width: 48px; height: 44px; display: block; }
+            .v3d-lieu { padding: 4px 7px; border-radius: 6px; color: #fff; background: rgba(15,23,42,.88); border: 1px solid rgba(255,255,255,.8); font-size: 12px; font-weight: 700; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,.45); }
+            .v3d-lieu-haut { background: rgba(20,83,45,.92); }
+            .v3d-cache { display: none !important; }
+
             .v3d-legende {
                 position: absolute;
                 z-index: 3;
@@ -2768,6 +2781,170 @@ def accueil():
                 background: var(--fill);
                 border: 1px solid var(--line2);
             }
+
+            /* ---- Fiche technique du vélo ---- */
+            .fiche-technique-velo {
+                max-width: 600px;
+                margin: 0 auto 10px;
+                padding: 6px 14px;
+                background:
+                    linear-gradient(180deg, rgba(40,200,185,0.11), rgba(40,200,185,0) 170px),
+                    var(--card-bg);
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                box-shadow: var(--sh);
+            }
+
+            .ftv-resume {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+                padding: 10px 0;
+                cursor: pointer;
+                list-style: none;
+            }
+
+            .ftv-resume::-webkit-details-marker { display: none; }
+
+            .ftv-entete {
+                display: flex;
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 5px;
+                min-width: 0;
+            }
+
+            .ftv-titre-pastille {
+                margin: 0 !important;
+            }
+
+            .ftv-titre-pastille .ico {
+                width: 17px;
+                height: 17px;
+                flex: none;
+            }
+
+            .ftv-sous-titre {
+                display: block;
+                color: var(--text-muted);
+                font-size: 0.78rem;
+                line-height: 1.35;
+            }
+
+            .ftv-chevron {
+                width: 9px;
+                height: 9px;
+                flex: none;
+                margin-right: 4px;
+                border-right: 2px solid var(--text-muted);
+                border-bottom: 2px solid var(--text-muted);
+                transform: rotate(45deg);
+                transition: transform 0.18s ease;
+            }
+
+            .fiche-technique-velo[open] .ftv-chevron {
+                transform: rotate(225deg);
+            }
+
+            .ftv-taille-ligne {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+                margin: 2px 0 10px;
+                padding: 9px 11px;
+                background: var(--fill);
+                border: 1px solid var(--line);
+                border-radius: 10px;
+            }
+            .ftv-taille-ligne label { color: var(--text-muted); font-size: .8rem; font-weight: 650; }
+            .ftv-taille-ligne select {
+                min-width: 76px;
+                padding: 7px 28px 7px 10px;
+                color: var(--text-color);
+                background: var(--card-bg);
+                border: 1px solid var(--line2);
+                border-radius: 8px;
+                font: inherit;
+                font-weight: 750;
+            }
+
+            .ftv-grille {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 10px;
+                padding: 4px 0 10px;
+            }
+
+            .ftv-item {
+                display: flex;
+                align-items: flex-start;
+                gap: 10px;
+                min-width: 0;
+                padding: 12px 10px;
+                background: var(--fill);
+                border: 1px solid var(--line);
+                border-radius: 12px;
+            }
+
+            .ftv-icone {
+                display: grid;
+                place-items: center;
+                width: 38px;
+                height: 38px;
+                flex: none;
+                color: var(--accent);
+                background: rgba(40, 200, 185, 0.12);
+                border: 1px solid rgba(40, 200, 185, 0.22);
+                border-radius: 10px;
+            }
+
+            .ftv-icone svg {
+                display: block;
+                width: 27px;
+                height: 27px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 1.8;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+
+            .ftv-item > span:last-child { min-width: 0; }
+
+            .ftv-libelle {
+                display: block;
+                margin: 1px 0 4px;
+                color: var(--text-muted);
+                font-size: 0.72rem;
+                line-height: 1.25;
+            }
+
+            .ftv-valeur {
+                display: block;
+                color: var(--text-color);
+                font-size: 0.85rem;
+                font-weight: 750;
+                line-height: 1.35;
+                overflow-wrap: anywhere;
+            }
+
+            .ftv-note {
+                margin: 2px 0 4px;
+                color: var(--text-muted);
+                font-size: 0.72rem;
+                line-height: 1.45;
+            }
+
+            @media (max-width: 380px) {
+                .ftv-grille { gap: 6px; }
+                .ftv-item { gap: 7px; padding: 9px 7px; }
+                .ftv-icone { width: 32px; height: 32px; border-radius: 8px; }
+                .ftv-icone svg { width: 24px; height: 24px; }
+                .ftv-valeur { font-size: 0.79rem; }
+            }
+
         </style>
     </head>
 
@@ -2814,6 +2991,7 @@ def accueil():
                     <button type="button" id="v3dInclinaison"></button>
                     <button type="button" id="v3dFond"></button>
                     <button type="button" id="v3dAutres"></button>
+                    <button type="button" id="v3dReperes"></button>
                     <button type="button" id="v3dCouleur"></button>
                     <button type="button" id="v3dEnreg"></button>
                 </div>
@@ -2935,6 +3113,120 @@ def accueil():
                 <button type="button" data-theme-choix="dark"></button>
             </div>
         </section>
+
+        <details class="fiche-technique-velo">
+            <summary class="ftv-resume">
+                <span class="ftv-entete">
+                    <strong class="titre-pastille ftv-titre-pastille">
+                        
+                        <span>Fiche technique du vélo</span>
+                    </strong>
+                    <span class="ftv-sous-titre">CUBE Stereo Hybrid ONE44 EXC 800 · 2025</span>
+                </span>
+                <span class="ftv-chevron" aria-hidden="true"></span>
+            </summary>
+
+            <div class="ftv-taille-ligne">
+                <label for="ftvTailleCadre">Taille du cadre</label>
+                <select id="ftvTailleCadre" aria-label="Taille du cadre">
+                    <option value="S">S</option>
+                    <option value="M">M</option>
+                    <option value="L">L</option>
+                    <option value="XL">XL</option>
+                </select>
+            </div>
+            <div class="ftv-grille">
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M13 10h15l7 7v14l-7 7H13l-5-7V17z"/><path d="M17 16h9v16h-9z"/><path d="M20 12v4m4-4v4M20 32v4m4-4v4M8 21H4m4 8H4m31-8h5m-5 8h5"/></svg></span>
+                    <span><span class="ftv-libelle">Moteur</span><span class="ftv-valeur">Bosch Performance Line CX</span><span class="ftv-libelle">Couple maximal 85 Nm</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="10" y="10" width="27" height="29" rx="4"/><path d="M18 6h11v4M37 19h4v11h-4"/><path d="M24 15l-6 11h6l-2 8 9-13h-6l2-6"/></svg></span>
+                    <span><span class="ftv-libelle">Batterie</span><span class="ftv-valeur">Bosch PowerTube</span><span class="ftv-libelle">Capacité 800 Wh</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M16 7h9l4 5-3 5-5 20-5 4-4-2 3-6 4-17-3-5z"/><path d="M29 12l6 5-4 5M13 39l-3 3m9-3 4 2"/></svg></span>
+                    <span><span class="ftv-libelle">Fourche avant</span><span class="ftv-valeur">Fox 36 Float AWL</span><span class="ftv-libelle">Débattement 140 mm</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="11" cy="10" r="4"/><circle cx="37" cy="38" r="4"/><path d="M14 13l20 22"/><path d="M16 14l-4 5 5 4-4 5 5 4-3 4"/><path d="M24 9l7 7m-2-11 7 7"/></svg></span>
+                    <span><span class="ftv-libelle">Amortisseur arrière</span><span class="ftv-valeur">Fox Float Rhythm RC</span><span class="ftv-libelle">Débattement arrière 140 mm</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="12" cy="34" r="8"/><circle cx="35" cy="13" r="6"/><circle cx="12" cy="34" r="2"/><circle cx="35" cy="13" r="1.5"/><path d="M17 29l13-12M12 26V15h9m5 19h9v-8"/></svg></span>
+                    <span><span class="ftv-libelle">Transmission</span><span class="ftv-valeur">Shimano XT · 12 vitesses</span><span class="ftv-libelle">Cassette Deore 10–51 dents</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="16"/><circle cx="24" cy="24" r="4"/><path d="M24 8v5m0 22v5M8 24h5m22 0h5M13 13l4 4m14 14 4 4M35 13l-4 4M17 31l-4 4"/><path d="M24 20v-8"/></svg></span>
+                    <span><span class="ftv-libelle">Freinage</span><span class="ftv-valeur">Shimano XT hydrauliques</span><span class="ftv-libelle">Disques 203 mm avant et arrière</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="17"/><circle cx="24" cy="24" r="3"/><path d="M24 7v14m0 6v14M7 24h14m6 0h14M12 12l9 9m6 6 9 9M36 12l-9 9m-6 6-9 9"/></svg></span>
+                    <span><span class="ftv-libelle">Roues et pneus</span><span class="ftv-valeur">Schwalbe Nobby Nic</span><span class="ftv-libelle">Section 2,6 pouces · roues <strong id="ftvTailleRoues">29 pouces</strong></span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="7" y="7" width="34" height="27" rx="5"/><path d="M17 41h14m-7-7v7M12 13h24M12 18h11"/><circle cx="32" cy="25" r="4"/></svg></span>
+                    <span><span class="ftv-libelle">Commande et écran</span><span class="ftv-valeur">Bosch Purion 200</span><span class="ftv-libelle">Écran intégré</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M8 11h22l8 8v18H8z"/><path d="M13 16h15l5 5v11H13z"/><path d="M17 20h12m-12 5h12m-12 5h7"/></svg></span>
+                    <span><span class="ftv-libelle">Cadre</span><span class="ftv-valeur">Aluminium Superlite</span><span class="ftv-libelle">Batterie intégrée · patte UDH</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="12" cy="35" r="7"/><circle cx="35" cy="13" r="5"/><path d="M17 30l13-12M12 28V15h10m4 19h9v-8M30 18l5 7"/></svg></span>
+                    <span><span class="ftv-libelle">Dérailleur arrière</span><span class="ftv-valeur">Shimano XT RD-M8100-SGS</span><span class="ftv-libelle">12 vitesses · ShadowPlus</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M10 10h15v28H10z"/><path d="M25 15h9a5 5 0 0 1 5 5v8a5 5 0 0 1-5 5h-9"/><path d="M14 15h7m-7 6h7m-7 6h7m-7 6h7"/></svg></span>
+                    <span><span class="ftv-libelle">Commandes de vitesses</span><span class="ftv-valeur">Shimano XT SL-M8100-IR</span><span class="ftv-libelle">Commande au guidon</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="15"/><circle cx="24" cy="24" r="5"/><path d="M24 9v10m0 10v10M9 24h10m10 0h10"/></svg></span>
+                    <span><span class="ftv-libelle">Pédalier et plateau</span><span class="ftv-valeur">ACID MTB Hybrid Pro</span><span class="ftv-libelle">36 dents en 27,5″ · 34 dents en 29″</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="16"/><circle cx="24" cy="24" r="12"/><circle cx="24" cy="24" r="8"/><circle cx="24" cy="24" r="4"/></svg></span>
+                    <span><span class="ftv-libelle">Cassette</span><span class="ftv-valeur">Shimano Deore CS-M6100</span><span class="ftv-libelle">12 pignons · 10–51 dents</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M8 15h8v8h-8zM20 15h8v8h-8zM32 15h8v8h-8zM14 27h8v8h-8zM26 27h8v8h-8z"/><path d="M16 19h4m8 0h4m-12 12h6"/></svg></span>
+                    <span><span class="ftv-libelle">Chaîne</span><span class="ftv-valeur">KMC e12</span><span class="ftv-libelle">Chaîne 12 vitesses pour VAE</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M8 12h32v24H8z"/><path d="M13 17h22v14H13zM18 21v6m6-6v6m6-6v6"/></svg></span>
+                    <span><span class="ftv-libelle">Guide-chaîne</span><span class="ftv-valeur">Reverse Flip-Guide E-Chain Guide</span><span class="ftv-libelle">Montage direct sur le cadre</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="17"/><circle cx="24" cy="24" r="3"/><path d="M24 7v14m0 6v14M7 24h14m6 0h14M12 12l9 9m6 6 9 9M36 12l-9 9m-6 6-9 9"/></svg></span>
+                    <span><span class="ftv-libelle">Jantes</span><span class="ftv-valeur">CUBE EX30</span><span class="ftv-libelle">Tubeless Ready · 32 trous</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="15"/><circle cx="24" cy="24" r="5"/><path d="M24 9v10m0 10v10M9 24h10m10 0h10"/></svg></span>
+                    <span><span class="ftv-libelle">Moyeux</span><span class="ftv-valeur">CUBE by Newmen</span><span class="ftv-libelle">Avant 15 mm · arrière 12 mm Boost</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M18 7h12l-2 22h-8z"/><path d="M17 29h14l5 5v6H12v-6z"/><path d="M19 13h10m-10 5h10"/></svg></span>
+                    <span><span class="ftv-libelle">Tige de selle télescopique</span><span class="ftv-valeur">CUBE Dropper Post</span><span class="ftv-libelle">Diamètre 31,6 mm · commande au guidon</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M8 29c5-9 10-12 18-12h8l6 7-4 7H18l-6 4z"/><path d="M17 29h18"/></svg></span>
+                    <span><span class="ftv-libelle">Selle</span><span class="ftv-valeur">ACID Venec EMTB Plus 145</span><span class="ftv-libelle">Largeur annoncée 145 mm</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M8 14h13l5 8-4 5H9zM27 25h12l3 8-4 4H25z"/><path d="M13 18h5m12 11h5"/></svg></span>
+                    <span><span class="ftv-libelle">Pédales</span><span class="ftv-valeur">ACID PP MTB</span><span class="ftv-libelle">Pédales plates d’origine</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="10" y="8" width="22" height="32" rx="3"/><path d="M32 17h6v14h-6M16 14h10m-10 6h10m-10 6h7"/><path d="M20 34l3-5 3 5"/></svg></span>
+                    <span><span class="ftv-libelle">Chargeur</span><span class="ftv-valeur">Bosch 2 A</span><span class="ftv-libelle">Pour batterie Bosch PowerTube 800</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M9 11h30v26H9z"/><path d="M15 17h18v14H15z"/><path d="M19 20l4 8 6-8"/></svg></span>
+                    <span><span class="ftv-libelle">Plaquettes de frein</span><span class="ftv-valeur">Shimano compatibles BR-M8120</span><span class="ftv-libelle">Référence exacte à confirmer avant achat</span></span>
+                </div>
+            </div>
+            <p class="ftv-note">Caractéristiques du modèle 2025. Les équipements peuvent varier selon la version et la taille du vélo.</p>
+        </details>
         <section class="mes-reglages mr-repliable" id="mesReglages" aria-label="Mes réglages vélo">
             <div class="mr-titre">
                 <button type="button" class="mr-entete" aria-expanded="false" aria-controls="mesReglagesCorps">
@@ -3417,6 +3709,8 @@ def accueil():
             }
 
             const MR_GROUPES = [
+                { titre: '🚲 Mon vélo', champs: [
+                    ['taille_cadre', 'Taille du cadre'] ] },
                 { titre: '🛞 Pneus', champs: [
                     ['pneu_av', 'Avant (bar)'], ['pneu_ar', 'Arrière (bar)'] ] },
                 { titre: '🔱 Fourche', champs: [
@@ -3535,17 +3829,29 @@ def accueil():
                         ligne.appendChild(l);
 
                         if (mrEdition) {
-                            const inp = document.createElement('input');
-                            inp.type = 'text';
-                            inp.inputMode = cle === 'notes' ? 'text' : 'decimal';
+                            let inp;
+                            if (cle === 'taille_cadre') {
+                                inp = document.createElement('select');
+                                ['S', 'M', 'L', 'XL'].forEach(val => {
+                                    const opt = document.createElement('option');
+                                    opt.value = val;
+                                    opt.textContent = val;
+                                    inp.appendChild(opt);
+                                });
+                            } else {
+                                inp = document.createElement('input');
+                                inp.type = 'text';
+                                inp.inputMode = cle === 'notes' ? 'text' : 'decimal';
+                                inp.maxLength = 200;
+                            }
                             inp.id = 'mr-' + cle;
-                            inp.maxLength = 200;
-                            inp.value = mrValeurs[cle] || '';
+                            inp.value = mrValeurs[cle] || (cle === 'taille_cadre' ? 'M' : '');
+                            if (cle === 'taille_cadre') inp.addEventListener('change', () => mettreAJourTailleRoues(inp.value));
                             if (cle === 'notes') { inp.style.width = '100%'; inp.style.flex = '1'; inp.style.maxWidth = '200px'; }
                             ligne.appendChild(inp);
                         } else {
                             const v = document.createElement('b');
-                            v.textContent = mrValeurs[cle] || '—';
+                            v.textContent = mrValeurs[cle] || (cle === 'taille_cadre' ? 'M' : '—');
                             ligne.appendChild(v);
                         }
                         bloc.appendChild(ligne);
@@ -3568,6 +3874,41 @@ def accueil():
                 document.getElementById('mrDate').textContent = txt;
             }
 
+            function mettreAJourTailleRoues(tailleChoisie) {
+                const taille = tailleChoisie || mrValeurs.taille_cadre || 'M';
+                const roues = document.getElementById('ftvTailleRoues');
+                if (roues) roues.textContent = taille === 'S' ? '27,5 pouces' : '29 pouces';
+                const selectFiche = document.getElementById('ftvTailleCadre');
+                if (selectFiche && selectFiche.value !== taille) selectFiche.value = taille;
+            }
+
+            async function enregistrerTailleDepuisFiche(taille) {
+                const valeurs = { ...mrValeurs, taille_cadre: taille };
+                try {
+                    const res = await fetch('/api/mes-reglages', {
+                        method: 'POST',
+                        headers: getHeaders(),
+                        body: JSON.stringify({ valeurs })
+                    });
+                    if (res.status === 401) {
+                        document.getElementById('authScreen').style.display = 'flex';
+                        return;
+                    }
+                    if (!res.ok) throw new Error();
+                    mrValeurs = valeurs;
+                    mrMaj = new Date().toISOString();
+                    mettreAJourTailleRoues(taille);
+                    afficherReglagesVelo();
+                } catch (e) {
+                    alert("Impossible d'enregistrer la taille du cadre.");
+                    mettreAJourTailleRoues(mrValeurs.taille_cadre || 'M');
+                }
+            }
+
+            document.getElementById('ftvTailleCadre')?.addEventListener('change', e => {
+                enregistrerTailleDepuisFiche(e.target.value);
+            });
+
             async function chargerReglagesVelo() {
                 try {
                     const res = await fetch('/api/mes-reglages', { headers: getHeaders() });
@@ -3579,6 +3920,7 @@ def accueil():
                     mrValeurs = {};
                 }
                 if (!mrEdition) afficherReglagesVelo();
+                mettreAJourTailleRoues();
             }
 
             function modifierReglagesVelo() {
@@ -6671,7 +7013,7 @@ def accueil():
                 vitesse: 1, inclinaison: 60, cap: 0, dernier: 0, raf: 0,
                 fond: 'sat', enregistreur: null, morceaux: [], titre: '',
                 dureeBase: 60, prete: false, compteImages: 0,
-                tps: [], decalage: 0, alts: [], surfaces: '', pentes: [], mode: 'pente', autres: [], voirAutres: true, photos: [], marqueurs: [], prochaine: 0, sortieId: 0, minuteur: 0
+                tps: [], decalage: 0, alts: [], surfaces: '', pentes: [], mode: 'pente', autres: [], voirAutres: true, photos: [], marqueurs: [], reperes: [], repereVisibles: true, prochaine: 0, sortieId: 0, minuteur: 0
             };
 
             function chargerScript(url) {
@@ -6873,6 +7215,7 @@ def accueil():
             function poserMarqueursV3d() {
                 v3d.marqueurs.forEach(m => m.remove());
                 v3d.marqueurs = [];
+                viderReperesV3d();
                 v3d.photos.forEach(photo => {
                     const el = document.createElement('button');
                     el.type = 'button';
@@ -6888,6 +7231,87 @@ def accueil():
                         .addTo(v3d.carte);
                     v3d.marqueurs.push(marqueur);
                 });
+            }
+
+
+            // Repères du parcours : panneaux de pente et noms de lieux OpenStreetMap.
+            function tronconsRaidesV3d(seuil) {
+                const p = v3d.pentes, liste = [];
+                if (!p.length || v3d.cum.length < p.length + 1) return liste;
+                let i = 0;
+                while (i < p.length) {
+                    if (Math.abs(p[i]) >= seuil) {
+                        let j = i, max = 0, somme = 0;
+                        while (j < p.length && Math.abs(p[j]) >= seuil) { max = Math.max(max, Math.abs(p[j])); somme += p[j++]; }
+                        const debut = v3d.cum[i], fin = v3d.cum[j];
+                        if (fin - debut >= 60) liste.push({ valeur: max, signe: somme >= 0 ? 1 : -1, d: (debut + fin) / 2 });
+                        i = j;
+                    } else i++;
+                }
+                return liste;
+            }
+            function elementPanneauV3d(valeur, signe) {
+                const el = document.createElement('div'); el.className = 'v3d-panneau';
+                el.setAttribute('aria-label', 'Pente de ' + Math.round(valeur) + ' %');
+                el.innerHTML = '<svg viewBox="0 0 48 44" aria-hidden="true"><polygon points="24,3 45,40 3,40" fill="white" stroke="#dc2626" stroke-width="4.5" stroke-linejoin="round"/><path d="' + (signe > 0 ? 'M17 27 L31 27 L31 18 Z' : 'M17 18 L17 27 L31 27 Z') + '" fill="#111827"/><text x="24" y="37" text-anchor="middle" font-size="11" font-weight="800" fill="#111827">' + Math.round(valeur) + '%</text></svg>';
+                return el;
+            }
+            async function chercherLieuxV3d() {
+                if (v3d.pts.length < 2) return [];
+                const lons = v3d.pts.map(p => p[0]), lats = v3d.pts.map(p => p[1]), marge = 0.012;
+                const sud = Math.min(...lats)-marge, nord = Math.max(...lats)+marge, ouest = Math.min(...lons)-marge, est = Math.max(...lons)+marge;
+                if (nord-sud > 0.6 || est-ouest > 0.8) return [];
+                const zone = '('+sud+','+ouest+','+nord+','+est+')';
+                const q = '[out:json][timeout:15];(node["place"~"^(city|town|village|hamlet)$"]["name"]'+zone+';node["natural"="peak"]["name"]'+zone+';node["mountain_pass"="yes"]["name"]'+zone+';node["natural"="saddle"]["name"]'+zone+';);out body;';
+                let data = null;
+                for (const url of ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter']) {
+                    try {
+                        const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 18000);
+                        const res = await fetch(url,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'data='+encodeURIComponent(q),signal:ctl.signal});
+                        clearTimeout(timer);
+                        if (res.ok) { data = await res.json(); break; }
+                    } catch(e) { console.warn('Repères OpenStreetMap indisponibles', e); }
+                }
+                if (!data || !Array.isArray(data.elements)) return [];
+                const ref = v3d.pts.filter((_,i)=>i%Math.max(1,Math.floor(v3d.pts.length/500))===0);
+                const dist = (lon,lat) => Math.min(...ref.map(p => {
+                    const x=(lon-p[0])*111320*Math.cos(lat*Math.PI/180), y=(lat-p[1])*110540; return Math.hypot(x,y);
+                }));
+                const out=[], seen=new Set();
+                for (const e of data.elements) {
+                    if (e.type!=='node'||!e.tags||!e.tags.name) continue;
+                    let genre='',rang=9,portee=1000;
+                    if (['city','town','village','hamlet'].includes(e.tags.place)) { genre=e.tags.place==='hamlet'?'hameau':(e.tags.place==='village'?'village':'ville'); rang={city:1,town:2,village:3,hamlet:5}[e.tags.place]; portee=genre==='hameau'?600:1200; }
+                    else if(e.tags.natural==='peak') {genre='sommet';rang=4;portee=1500;}
+                    else if(e.tags.mountain_pass==='yes'||e.tags.natural==='saddle') {genre='col';rang=2;portee=500;}
+                    else continue;
+                    const ec=dist(e.lon,e.lat), key=e.tags.name.toLowerCase()+genre;
+                    if(ec>portee||seen.has(key)) continue;
+                    seen.add(key); out.push({nom:e.tags.name,genre,rang,ec,coord:[e.lon,e.lat],alt:parseInt(e.tags.ele,10)});
+                }
+                out.sort((a,b)=>a.rang-b.rang||a.ec-b.ec);
+                const gardes=[];
+                for(const l of out) { if(gardes.length>=18) break; if(gardes.every(g=>distanceM(g.coord,l.coord)>=600)) gardes.push(l); }
+                return gardes;
+            }
+            function viderReperesV3d() { v3d.reperes.forEach(m=>m.remove()); v3d.reperes=[]; }
+            function majVisibiliteReperesV3d() { v3d.reperes.forEach(m=>m.getElement().classList.toggle('v3d-cache',!v3d.repereVisibles)); }
+            async function poserReperesV3d() {
+                const carte=v3d.carte; viderReperesV3d();
+                const raides=tronconsRaidesV3d(15), liste=raides.length?raides:tronconsRaidesV3d(10).sort((a,b)=>b.valeur-a.valeur).slice(0,3);
+                liste.sort((a,b)=>b.valeur-a.valeur).slice(0,8).forEach(t=>{
+                    const m=new window.maplibregl.Marker({element:elementPanneauV3d(t.valeur,t.signe),anchor:'bottom'}).setLngLat(pointA(t.d)).addTo(carte); v3d.reperes.push(m);
+                });
+                majVisibiliteReperesV3d(); majBoutonsV3d();
+                let lieux=[]; try { lieux=await chercherLieuxV3d(); } catch(e) { console.warn(e); }
+                if(v3d.carte!==carte) return;
+                lieux.forEach(l=>{
+                    const el=document.createElement('div'); el.className='v3d-lieu'+(['sommet','col'].includes(l.genre)?' v3d-lieu-haut':'');
+                    const ic=l.genre==='sommet'?'⛰️':l.genre==='col'?'🏔️':'🏘️';
+                    el.textContent=ic+' '+l.nom+(Number.isFinite(l.alt)&&['sommet','col'].includes(l.genre)?' · '+l.alt+' m':'');
+                    v3d.reperes.push(new window.maplibregl.Marker({element:el,anchor:'bottom'}).setLngLat(l.coord).addTo(carte));
+                });
+                majVisibiliteReperesV3d(); majBoutonsV3d();
             }
 
             function messageV3d(texte) {
@@ -6913,6 +7337,10 @@ def accueil():
                 couleur.style.display = (v3d.pentes.length && aTerrain) ? '' : 'none';
                 remplirBouton(couleur, 'incl', v3d.mode === 'pente' ? 'Couleurs : pente' : 'Couleurs : terrain');
                 const autres = document.getElementById('v3dAutres');
+                const rep = document.getElementById('v3dReperes');
+                remplirBouton(rep, 'montagne', 'Repères');
+                rep.classList.toggle('actif', v3d.repereVisibles);
+                rep.style.display = (v3d.reperes.length || v3d.prete) ? '' : 'none';
                 remplirBouton(autres, 'incl', 'Mes parcours');
                 autres.classList.toggle('actif', v3d.voirAutres);
                 autres.style.display = v3d.autres.length ? '' : 'none';
@@ -7292,6 +7720,7 @@ def accueil():
                 v3d.sortieId = sortie.id;
                 v3d.photos = placerPhotos(sortie);
                 v3d.voirAutres = true;
+                v3d.repereVisibles = true;
                 v3d.decalage = 0;
                 v3d.mode = 'pente';
                 v3d.surfaces = sortie.surfaces || '';
@@ -7321,6 +7750,7 @@ def accueil():
                         if (!v3d.carte) return;
                         installerCouches();
                         poserMarqueursV3d();
+                        poserReperesV3d();
                         majLegendeV3d();
                         majBoutonsV3d();
                         vueEnsemble();
@@ -7344,6 +7774,7 @@ def accueil():
                 majBoutonsV3d();
 
                 bouton('v3dFermer', fermerV3d);
+                bouton('v3dReperes', () => { v3d.repereVisibles = !v3d.repereVisibles; majVisibiliteReperesV3d(); majBoutonsV3d(); });
                 bouton('v3dLecture', () => lectureV3d(!v3d.jouer));
                 bouton('v3dVitesse', () => {
                     v3d.vitesse = VITESSES[(VITESSES.indexOf(v3d.vitesse) + 1) % VITESSES.length];
