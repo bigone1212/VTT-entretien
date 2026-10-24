@@ -2107,6 +2107,12 @@ def accueil():
                 box-shadow: 0 2px 8px rgba(0,0,0,0.5);
             }
 
+            .v3d-panneau { width: 48px; height: 44px; filter: drop-shadow(0 2px 3px rgba(0,0,0,.65)); }
+            .v3d-panneau svg { width: 48px; height: 44px; display: block; }
+            .v3d-lieu { padding: 4px 7px; border-radius: 6px; color: #fff; background: rgba(15,23,42,.88); border: 1px solid rgba(255,255,255,.8); font-size: 12px; font-weight: 700; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,.45); }
+            .v3d-lieu-haut { background: rgba(20,83,45,.92); }
+            .v3d-cache { display: none !important; }
+
             .v3d-legende {
                 position: absolute;
                 z-index: 3;
@@ -2985,6 +2991,7 @@ def accueil():
                     <button type="button" id="v3dInclinaison"></button>
                     <button type="button" id="v3dFond"></button>
                     <button type="button" id="v3dAutres"></button>
+                    <button type="button" id="v3dReperes"></button>
                     <button type="button" id="v3dCouleur"></button>
                     <button type="button" id="v3dEnreg"></button>
                 </div>
@@ -7006,7 +7013,7 @@ def accueil():
                 vitesse: 1, inclinaison: 60, cap: 0, dernier: 0, raf: 0,
                 fond: 'sat', enregistreur: null, morceaux: [], titre: '',
                 dureeBase: 60, prete: false, compteImages: 0,
-                tps: [], decalage: 0, alts: [], surfaces: '', pentes: [], mode: 'pente', autres: [], voirAutres: true, photos: [], marqueurs: [], prochaine: 0, sortieId: 0, minuteur: 0
+                tps: [], decalage: 0, alts: [], surfaces: '', pentes: [], mode: 'pente', autres: [], voirAutres: true, photos: [], marqueurs: [], reperes: [], repereVisibles: true, prochaine: 0, sortieId: 0, minuteur: 0
             };
 
             function chargerScript(url) {
@@ -7208,6 +7215,7 @@ def accueil():
             function poserMarqueursV3d() {
                 v3d.marqueurs.forEach(m => m.remove());
                 v3d.marqueurs = [];
+                viderReperesV3d();
                 v3d.photos.forEach(photo => {
                     const el = document.createElement('button');
                     el.type = 'button';
@@ -7223,6 +7231,87 @@ def accueil():
                         .addTo(v3d.carte);
                     v3d.marqueurs.push(marqueur);
                 });
+            }
+
+
+            // Repères du parcours : panneaux de pente et noms de lieux OpenStreetMap.
+            function tronconsRaidesV3d(seuil) {
+                const p = v3d.pentes, liste = [];
+                if (!p.length || v3d.cum.length < p.length + 1) return liste;
+                let i = 0;
+                while (i < p.length) {
+                    if (Math.abs(p[i]) >= seuil) {
+                        let j = i, max = 0, somme = 0;
+                        while (j < p.length && Math.abs(p[j]) >= seuil) { max = Math.max(max, Math.abs(p[j])); somme += p[j++]; }
+                        const debut = v3d.cum[i], fin = v3d.cum[j];
+                        if (fin - debut >= 60) liste.push({ valeur: max, signe: somme >= 0 ? 1 : -1, d: (debut + fin) / 2 });
+                        i = j;
+                    } else i++;
+                }
+                return liste;
+            }
+            function elementPanneauV3d(valeur, signe) {
+                const el = document.createElement('div'); el.className = 'v3d-panneau';
+                el.setAttribute('aria-label', 'Pente de ' + Math.round(valeur) + ' %');
+                el.innerHTML = '<svg viewBox="0 0 48 44" aria-hidden="true"><polygon points="24,3 45,40 3,40" fill="white" stroke="#dc2626" stroke-width="4.5" stroke-linejoin="round"/><path d="' + (signe > 0 ? 'M17 27 L31 27 L31 18 Z' : 'M17 18 L17 27 L31 27 Z') + '" fill="#111827"/><text x="24" y="37" text-anchor="middle" font-size="11" font-weight="800" fill="#111827">' + Math.round(valeur) + '%</text></svg>';
+                return el;
+            }
+            async function chercherLieuxV3d() {
+                if (v3d.pts.length < 2) return [];
+                const lons = v3d.pts.map(p => p[0]), lats = v3d.pts.map(p => p[1]), marge = 0.012;
+                const sud = Math.min(...lats)-marge, nord = Math.max(...lats)+marge, ouest = Math.min(...lons)-marge, est = Math.max(...lons)+marge;
+                if (nord-sud > 0.6 || est-ouest > 0.8) return [];
+                const zone = '('+sud+','+ouest+','+nord+','+est+')';
+                const q = '[out:json][timeout:15];(node["place"~"^(city|town|village|hamlet)$"]["name"]'+zone+';node["natural"="peak"]["name"]'+zone+';node["mountain_pass"="yes"]["name"]'+zone+';node["natural"="saddle"]["name"]'+zone+';);out body;';
+                let data = null;
+                for (const url of ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter']) {
+                    try {
+                        const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 18000);
+                        const res = await fetch(url,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'data='+encodeURIComponent(q),signal:ctl.signal});
+                        clearTimeout(timer);
+                        if (res.ok) { data = await res.json(); break; }
+                    } catch(e) { console.warn('Repères OpenStreetMap indisponibles', e); }
+                }
+                if (!data || !Array.isArray(data.elements)) return [];
+                const ref = v3d.pts.filter((_,i)=>i%Math.max(1,Math.floor(v3d.pts.length/500))===0);
+                const dist = (lon,lat) => Math.min(...ref.map(p => {
+                    const x=(lon-p[0])*111320*Math.cos(lat*Math.PI/180), y=(lat-p[1])*110540; return Math.hypot(x,y);
+                }));
+                const out=[], seen=new Set();
+                for (const e of data.elements) {
+                    if (e.type!=='node'||!e.tags||!e.tags.name) continue;
+                    let genre='',rang=9,portee=1000;
+                    if (['city','town','village','hamlet'].includes(e.tags.place)) { genre=e.tags.place==='hamlet'?'hameau':(e.tags.place==='village'?'village':'ville'); rang={city:1,town:2,village:3,hamlet:5}[e.tags.place]; portee=genre==='hameau'?600:1200; }
+                    else if(e.tags.natural==='peak') {genre='sommet';rang=4;portee=1500;}
+                    else if(e.tags.mountain_pass==='yes'||e.tags.natural==='saddle') {genre='col';rang=2;portee=500;}
+                    else continue;
+                    const ec=dist(e.lon,e.lat), key=e.tags.name.toLowerCase()+genre;
+                    if(ec>portee||seen.has(key)) continue;
+                    seen.add(key); out.push({nom:e.tags.name,genre,rang,ec,coord:[e.lon,e.lat],alt:parseInt(e.tags.ele,10)});
+                }
+                out.sort((a,b)=>a.rang-b.rang||a.ec-b.ec);
+                const gardes=[];
+                for(const l of out) { if(gardes.length>=18) break; if(gardes.every(g=>distanceM(g.coord,l.coord)>=600)) gardes.push(l); }
+                return gardes;
+            }
+            function viderReperesV3d() { v3d.reperes.forEach(m=>m.remove()); v3d.reperes=[]; }
+            function majVisibiliteReperesV3d() { v3d.reperes.forEach(m=>m.getElement().classList.toggle('v3d-cache',!v3d.repereVisibles)); }
+            async function poserReperesV3d() {
+                const carte=v3d.carte; viderReperesV3d();
+                const raides=tronconsRaidesV3d(15), liste=raides.length?raides:tronconsRaidesV3d(10).sort((a,b)=>b.valeur-a.valeur).slice(0,3);
+                liste.sort((a,b)=>b.valeur-a.valeur).slice(0,8).forEach(t=>{
+                    const m=new window.maplibregl.Marker({element:elementPanneauV3d(t.valeur,t.signe),anchor:'bottom'}).setLngLat(pointA(t.d)).addTo(carte); v3d.reperes.push(m);
+                });
+                majVisibiliteReperesV3d(); majBoutonsV3d();
+                let lieux=[]; try { lieux=await chercherLieuxV3d(); } catch(e) { console.warn(e); }
+                if(v3d.carte!==carte) return;
+                lieux.forEach(l=>{
+                    const el=document.createElement('div'); el.className='v3d-lieu'+(['sommet','col'].includes(l.genre)?' v3d-lieu-haut':'');
+                    const ic=l.genre==='sommet'?'⛰️':l.genre==='col'?'🏔️':'🏘️';
+                    el.textContent=ic+' '+l.nom+(Number.isFinite(l.alt)&&['sommet','col'].includes(l.genre)?' · '+l.alt+' m':'');
+                    v3d.reperes.push(new window.maplibregl.Marker({element:el,anchor:'bottom'}).setLngLat(l.coord).addTo(carte));
+                });
+                majVisibiliteReperesV3d(); majBoutonsV3d();
             }
 
             function messageV3d(texte) {
@@ -7248,6 +7337,10 @@ def accueil():
                 couleur.style.display = (v3d.pentes.length && aTerrain) ? '' : 'none';
                 remplirBouton(couleur, 'incl', v3d.mode === 'pente' ? 'Couleurs : pente' : 'Couleurs : terrain');
                 const autres = document.getElementById('v3dAutres');
+                const rep = document.getElementById('v3dReperes');
+                remplirBouton(rep, 'montagne', 'Repères');
+                rep.classList.toggle('actif', v3d.repereVisibles);
+                rep.style.display = (v3d.reperes.length || v3d.prete) ? '' : 'none';
                 remplirBouton(autres, 'incl', 'Mes parcours');
                 autres.classList.toggle('actif', v3d.voirAutres);
                 autres.style.display = v3d.autres.length ? '' : 'none';
@@ -7627,6 +7720,7 @@ def accueil():
                 v3d.sortieId = sortie.id;
                 v3d.photos = placerPhotos(sortie);
                 v3d.voirAutres = true;
+                v3d.repereVisibles = true;
                 v3d.decalage = 0;
                 v3d.mode = 'pente';
                 v3d.surfaces = sortie.surfaces || '';
@@ -7656,6 +7750,7 @@ def accueil():
                         if (!v3d.carte) return;
                         installerCouches();
                         poserMarqueursV3d();
+                        poserReperesV3d();
                         majLegendeV3d();
                         majBoutonsV3d();
                         vueEnsemble();
@@ -7679,6 +7774,7 @@ def accueil():
                 majBoutonsV3d();
 
                 bouton('v3dFermer', fermerV3d);
+                bouton('v3dReperes', () => { v3d.repereVisibles = !v3d.repereVisibles; majVisibiliteReperesV3d(); majBoutonsV3d(); });
                 bouton('v3dLecture', () => lectureV3d(!v3d.jouer));
                 bouton('v3dVitesse', () => {
                     v3d.vitesse = VITESSES[(VITESSES.indexOf(v3d.vitesse) + 1) % VITESSES.length];
