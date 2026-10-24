@@ -7263,23 +7263,36 @@ def accueil():
                 const lons = v3d.pts.map(p => p[0]), lats = v3d.pts.map(p => p[1]), marge = 0.006;
                 const sud = Math.min(...lats)-marge, nord = Math.max(...lats)+marge, ouest = Math.min(...lons)-marge, est = Math.max(...lons)+marge;
                 const zone = '('+sud+','+ouest+','+nord+','+est+')';
-                const q = '[out:json][timeout:35];(nwr["place"~"^(city|town|village|hamlet|isolated_dwelling|suburb|locality|neighbourhood)$"]["name"]'+zone+';nwr["natural"="peak"]["name"]'+zone+';nwr["mountain_pass"="yes"]["name"]'+zone+';nwr["natural"="saddle"]["name"]'+zone+';);out center tags;';
+                const q = '[out:json][timeout:12];(nwr["place"~"^(city|town|village|hamlet|isolated_dwelling|suburb|locality|neighbourhood)$"]["name"]'+zone+';nwr["natural"="peak"]["name"]'+zone+';nwr["mountain_pass"="yes"]["name"]'+zone+';nwr["natural"="saddle"]["name"]'+zone+';);out center tags;';
+                // Les deux serveurs sont interrogés en parallèle : on utilise le premier
+                // résultat valide au lieu d'attendre deux délais d'attente successifs.
                 let data = null;
                 let derniereErreur = null;
-                for (const base of ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter']) {
+                const serveurs = ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
+                const controles = serveurs.map(() => new AbortController());
+                const requetes = serveurs.map(async (base, i) => {
+                    const timer = setTimeout(() => controles[i].abort(), 14000);
                     try {
-                        const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 38000);
                         const res = await fetch(base, {
                             method:'POST',
                             headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},
                             body:'data='+encodeURIComponent(q),
-                            signal:ctl.signal
+                            signal:controles[i].signal
                         });
+                        if (!res.ok) throw new Error('HTTP '+res.status+' sur '+base);
+                        const json = await res.json();
+                        if (!json || !Array.isArray(json.elements)) throw new Error('Réponse Overpass invalide');
+                        return json;
+                    } finally {
                         clearTimeout(timer);
-                        if (res.ok) { data = await res.json(); break; }
-                        derniereErreur = 'HTTP '+res.status+' sur '+base;
-                        console.warn('Recherche de lieux OSM :', derniereErreur);
-                    } catch(e) { derniereErreur = String(e); console.warn('Repères OpenStreetMap indisponibles', e); }
+                    }
+                });
+                try {
+                    data = await Promise.any(requetes);
+                    controles.forEach(c => c.abort());
+                } catch(e) {
+                    derniereErreur = String(e);
+                    console.warn('Repères OpenStreetMap indisponibles', e);
                 }
                 if (!data || !Array.isArray(data.elements)) {
                     console.warn('Aucun résultat exploitable pour les lieux du survol 3D.', derniereErreur || 'réponse vide');
