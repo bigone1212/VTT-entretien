@@ -6803,6 +6803,7 @@ def accueil():
             // Villes et villages autour des sorties (OpenStreetMap). Le pays est découpé en carrés de 0,25 degré :
             // on ne demande que les carrés où il y a des sorties, et chaque carré est gardé 30 jours sur l'appareil.
             let zonesErreur = '';
+            let zonesEtat = 'attente';
             async function chargerLieuxZones(centres) {
                 const PAS = 0.25, MARGE = 0.1;
                 let memo = { cases: {} };
@@ -6827,7 +6828,7 @@ def accueil():
                     let data = null;
                     for (const base of ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter']) {
                         try {
-                            const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 25000);
+                            const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 15000);
                             const res = await fetch(base, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
@@ -6867,7 +6868,11 @@ def accueil():
                 select.innerHTML = '';
                 const toutes = document.createElement('option');
                 toutes.value = '';
-                toutes.textContent = noms.length ? 'Toutes les zones' : 'Toutes les zones (liste indisponible' + (zonesErreur ? ' : ' + zonesErreur : '') + ')';
+                toutes.textContent = noms.length ? 'Toutes les zones'
+                    : zonesEtat === 'recherche' ? 'Recherche des zones…'
+                    : zonesEtat === 'sans-trace' ? 'Toutes les zones (aucune sortie localisée)'
+                    : zonesEtat === 'attente' ? 'Toutes les zones'
+                    : 'Toutes les zones (liste indisponible' + (zonesErreur ? ' : ' + zonesErreur : '') + ')';
                 select.appendChild(toutes);
                 noms.forEach(nom => {
                     const o = document.createElement('option');
@@ -6883,6 +6888,8 @@ def accueil():
                 const signature = sorties.map(s => s.id).join(',');
                 if (signature === zonesSignature || zonesEnCours || Date.now() - zonesDernierEchec < 120000) return;
                 zonesEnCours = true;
+                zonesEtat = 'recherche';
+                remplirListeZones();
                 try {
                     await calculerZonesSortiesInterne(sorties, signature);
                 } finally {
@@ -6893,9 +6900,9 @@ def accueil():
             async function calculerZonesSortiesInterne(sorties, signature) {
                 zonesSignature = signature;
                 const centres = sorties.map(s => ({ id: s.id, c: centreSortie(s) })).filter(x => x.c);
-                if (!centres.length) return;
+                if (!centres.length) { zonesEtat = 'sans-trace'; remplirListeZones(); return; }
                 const lieux = await chargerLieuxZones(centres.map(x => x.c));
-                if (!lieux.length) { zonesSignature = ''; zonesDernierEchec = Date.now(); remplirListeZones(); return; }
+                if (!lieux.length) { zonesSignature = ''; zonesDernierEchec = Date.now(); zonesEtat = 'echec'; if (!zonesErreur) zonesErreur = 'aucun village trouvé'; remplirListeZones(); return; }
                 const parSortie = {};
                 centres.forEach(x => {
                     let meilleur = null, dMin = 9;
@@ -6906,6 +6913,7 @@ def accueil():
                     if (meilleur) parSortie[x.id] = meilleur;
                 });
                 zonesSorties = { parSortie: parSortie, noms: {} };
+                zonesEtat = 'ok';
                 remplirListeZones();
             }
 
