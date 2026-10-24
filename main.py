@@ -7258,9 +7258,10 @@ def accueil():
             }
             async function chercherLieuxV3d() {
                 if (v3d.pts.length < 2) return [];
-                const lons = v3d.pts.map(p => p[0]), lats = v3d.pts.map(p => p[1]), marge = 0.012;
+                // Recherche dans une bande proche du parcours : évite les grandes zones
+                // qui faisaient échouer Overpass et n'affiche que les lieux traversés/proches.
+                const lons = v3d.pts.map(p => p[0]), lats = v3d.pts.map(p => p[1]), marge = 0.006;
                 const sud = Math.min(...lats)-marge, nord = Math.max(...lats)+marge, ouest = Math.min(...lons)-marge, est = Math.max(...lons)+marge;
-                if (nord-sud > 0.6 || est-ouest > 0.8) return [];
                 const zone = '('+sud+','+ouest+','+nord+','+est+')';
                 const q = '[out:json][timeout:35];(nwr["place"~"^(city|town|village|hamlet|isolated_dwelling|suburb|locality|neighbourhood)$"]["name"]'+zone+';nwr["natural"="peak"]["name"]'+zone+';nwr["mountain_pass"="yes"]["name"]'+zone+';nwr["natural"="saddle"]["name"]'+zone+';);out center tags;';
                 let data = null;
@@ -7295,11 +7296,11 @@ def accueil():
                     const lon = Number.isFinite(e.lon) ? e.lon : e.center && e.center.lon;
                     const lat = Number.isFinite(e.lat) ? e.lat : e.center && e.center.lat;
                     if (!Number.isFinite(lon)||!Number.isFinite(lat)) continue;
-                    let genre='',rang=9,portee=5000;
+                    let genre='',rang=9,portee=350;
                     if (['city','town','village','hamlet','isolated_dwelling','suburb','locality'].includes(e.tags.place)) {
                         genre=['hamlet','isolated_dwelling','locality'].includes(e.tags.place)?'village':(e.tags.place==='village'?'village':'ville');
                         rang={city:1,town:2,suburb:3,village:4,hamlet:5,isolated_dwelling:6,locality:7}[e.tags.place] ?? 4;
-                        portee=5000;
+                        portee=350;
                     }
                     else if(e.tags.natural==='peak') {genre='sommet';rang=4;portee=1500;}
                     else if(e.tags.mountain_pass==='yes'||e.tags.natural==='saddle') {genre='col';rang=2;portee=500;}
@@ -7310,7 +7311,7 @@ def accueil():
                 }
                 out.sort((a,b)=>a.rang-b.rang||a.ec-b.ec);
                 const gardes=[];
-                for(const l of out) { if(gardes.length>=18) break; if(gardes.every(g=>distanceM(g.coord,l.coord)>=600)) gardes.push(l); }
+                for(const l of out) { if(gardes.length>=30) break; if(gardes.every(g=>distanceM(g.coord,l.coord)>=350)) gardes.push(l); }
                 return gardes;
             }
             function viderReperesV3d() {
