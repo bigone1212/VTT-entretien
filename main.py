@@ -6800,39 +6800,61 @@ def accueil():
                 return 12742 * Math.asin(Math.sqrt(h));
             }
 
-            // Villes et villages autour des sorties (OpenStreetMap), gardés 30 jours sur l'appareil.
+            // Villes et villages autour des sorties (OpenStreetMap). Le pays est découpé en carrés de 0,25 degré :
+            // on ne demande que les carrés où il y a des sorties, et chaque carré est gardé 30 jours sur l'appareil.
+            let zonesErreur = '';
             async function chargerLieuxZones(centres) {
-                const lats = centres.map(c => c[0]), lons = centres.map(c => c[1]), marge = 0.1;
-                const zone = [Math.min(...lats) - marge, Math.min(...lons) - marge, Math.max(...lats) + marge, Math.max(...lons) + marge];
+                const PAS = 0.25, MARGE = 0.1;
+                let memo = { cases: {} };
                 try {
-                    const memo = JSON.parse(localStorage.getItem('maillons_lieux_zones') || 'null');
-                    if (memo && Array.isArray(memo.lieux) && memo.lieux.length && Date.now() - memo.t < 30 * 86400000
-                        && memo.zone[0] <= zone[0] && memo.zone[1] <= zone[1] && memo.zone[2] >= zone[2] && memo.zone[3] >= zone[3]) {
-                        return memo.lieux;
+                    const lu = JSON.parse(localStorage.getItem('maillons_lieux_zones2') || 'null');
+                    if (lu && lu.cases) memo = lu;
+                } catch (e) { /* pas de mémoire */ }
+                const maintenant = Date.now();
+                const voulues = [];
+                centres.forEach(c => {
+                    const cle = Math.floor(c[0] / PAS) + ',' + Math.floor(c[1] / PAS);
+                    if (!voulues.includes(cle)) voulues.push(cle);
+                });
+                const manquantes = voulues.filter(cle => !memo.cases[cle] || maintenant - memo.cases[cle].t > 30 * 86400000).slice(0, 12);
+                zonesErreur = '';
+                if (manquantes.length) {
+                    const boites = manquantes.map(cle => {
+                        const p = cle.split(',').map(Number);
+                        return '(' + [p[0] * PAS - MARGE, p[1] * PAS - MARGE, (p[0] + 1) * PAS + MARGE, (p[1] + 1) * PAS + MARGE].join(',') + ')';
+                    });
+                    const q = '[out:json][timeout:40];(' + boites.map(b => 'node["place"~"^(city|town|village)$"]["name"]' + b + ';').join('') + ');out;';
+                    let data = null;
+                    for (const base of ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter']) {
+                        try {
+                            const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 25000);
+                            const res = await fetch(base, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+                                body: 'data=' + encodeURIComponent(q),
+                                signal: ctl.signal
+                            });
+                            clearTimeout(timer);
+                            if (!res.ok) { zonesErreur = 'HTTP ' + res.status; continue; }
+                            const d = await res.json();
+                            if (d && Array.isArray(d.elements)) { data = d; break; }
+                            zonesErreur = 'réponse vide';
+                        } catch (e) { zonesErreur = String(e); console.warn('Zones : serveur indisponible', e); }
                     }
-                } catch (e) { /* pas de mémoire : on interroge le serveur */ }
-                if (zone[2] - zone[0] > 2 || zone[3] - zone[1] > 3) return [];
-                const q = '[out:json][timeout:30];node["place"~"^(city|town|village)$"]["name"](' + zone.join(',') + ');out;';
-                for (const base of ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']) {
-                    try {
-                        const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 20000);
-                        const res = await fetch(base, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
-                            body: 'data=' + encodeURIComponent(q),
-                            signal: ctl.signal
+                    if (data) {
+                        manquantes.forEach(cle => { memo.cases[cle] = { t: maintenant, lieux: [] }; });
+                        data.elements.forEach(e => {
+                            if (!e.tags || !e.tags.name || !Number.isFinite(e.lat) || !Number.isFinite(e.lon)) return;
+                            const cle = Math.floor(e.lat / PAS) + ',' + Math.floor(e.lon / PAS);
+                            const cible = memo.cases[cle] || (memo.cases[cle] = { t: maintenant, lieux: [] });
+                            cible.lieux.push([e.tags.name, e.lat, e.lon]);
                         });
-                        clearTimeout(timer);
-                        if (!res.ok) continue;
-                        const data = await res.json();
-                        if (!data || !Array.isArray(data.elements)) continue;
-                        const lieux = data.elements.filter(e => e.tags && e.tags.name && Number.isFinite(e.lat) && Number.isFinite(e.lon))
-                            .map(e => [e.tags.name, e.lat, e.lon]);
-                        try { localStorage.setItem('maillons_lieux_zones', JSON.stringify({ t: Date.now(), zone: zone, lieux: lieux })); } catch (e) { /* stockage plein ou refusé */ }
-                        return lieux;
-                    } catch (e) { console.warn('Zones : serveur indisponible', e); }
+                        try { localStorage.setItem('maillons_lieux_zones2', JSON.stringify(memo)); } catch (e) { /* stockage refusé */ }
+                    }
                 }
-                return [];
+                const tous = [];
+                Object.keys(memo.cases).forEach(cle => memo.cases[cle].lieux.forEach(l => tous.push(l)));
+                return tous;
             }
 
             function remplirListeZones() {
@@ -6845,7 +6867,7 @@ def accueil():
                 select.innerHTML = '';
                 const toutes = document.createElement('option');
                 toutes.value = '';
-                toutes.textContent = noms.length ? 'Toutes les zones' : 'Toutes les zones (liste indisponible)';
+                toutes.textContent = noms.length ? 'Toutes les zones' : 'Toutes les zones (liste indisponible' + (zonesErreur ? ' : ' + zonesErreur : '') + ')';
                 select.appendChild(toutes);
                 noms.forEach(nom => {
                     const o = document.createElement('option');
