@@ -2189,7 +2189,7 @@ def accueil():
                 border: 1px solid rgba(255,255,255,0.2);
             }
 
-            .v3d-recherche { position: absolute; z-index: 5; left: 50%; top: 56%; transform: translateX(-50%); display: flex; align-items: center; padding: 8px 14px; border-radius: 999px; font-size: 0.85rem; font-weight: 600; white-space: nowrap; color: #fff; background: rgba(10,25,31,0.92); border: 1px solid rgba(255,255,255,0.25); box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+            .v3d-recherche { position: absolute; z-index: 5; left: 50%; top: 64%; transform: translateX(-50%); display: flex; align-items: center; padding: 8px 14px; border-radius: 999px; font-size: 0.85rem; font-weight: 600; white-space: nowrap; color: #fff; background: rgba(10,25,31,0.92); border: 1px solid rgba(255,255,255,0.25); box-shadow: 0 2px 8px rgba(0,0,0,.4); }
 
             .videos-liste {
                 flex: 0 0 100%;
