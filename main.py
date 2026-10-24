@@ -7809,9 +7809,9 @@ def accueil():
                 const q = '[out:json][timeout:35];(nwr["place"~"^(city|town|village|hamlet|isolated_dwelling|suburb|locality|neighbourhood)$"]["name"]'+zone+';nwr["natural"="peak"]["name"]'+zone+';nwr["mountain_pass"="yes"]["name"]'+zone+';nwr["natural"="saddle"]["name"]'+zone+';);out center tags;';
                 let data = null;
                 let derniereErreur = null;
-                for (const base of ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter']) {
+                for (const base of ['https://overpass-api.de/api/interpreter','https://overpass.private.coffee/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter']) {
                     try {
-                        const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 38000);
+                        const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 20000);
                         const res = await fetch(base, {
                             method:'POST',
                             headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},
@@ -7826,8 +7826,10 @@ def accueil():
                 }
                 if (!data || !Array.isArray(data.elements)) {
                     console.warn('Aucun résultat exploitable pour les lieux du survol 3D.', derniereErreur || 'réponse vide');
+                    v3d.lieuxEtat = 'panne';
                     return [];
                 }
+                v3d.lieuxEtat = data.elements.length ? 'ok' : 'vide';
                 console.info('Survol 3D : objets OpenStreetMap reçus', data.elements.length);
                 const ref = v3d.pts.filter((_,i)=>i%Math.max(1,Math.floor(v3d.pts.length/500))===0);
                 const dist = (lon,lat) => Math.min(...ref.map(p => {
@@ -7881,6 +7883,7 @@ def accueil():
                 majVisibiliteReperesV3d(); majBoutonsV3d();
                 let lieux=[]; try { lieux=await chercherLieuxV3d(); } catch(e) { console.warn(e); }
                 if(v3d.carte!==carte) return;
+                if(v3d.lieuxEtat==='panne') { messageV3d('Noms de lieux indisponibles : le serveur OpenStreetMap ne répond pas.'); setTimeout(()=>messageV3d(''),6000); }
                 lieux.forEach(l=>{
                     const el=document.createElement('div'); el.className='v3d-lieu'+(['sommet','col'].includes(l.genre)?' v3d-lieu-haut':'');
                     const ic=l.genre==='sommet'?'⛰️':l.genre==='col'?'🏔️':'🏘️';
