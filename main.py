@@ -316,6 +316,13 @@ def init_db():
     conn = db.connect()
     cursor = conn.cursor()
 
+    # Évite que le service de production et un aperçu Render exécutent
+    # les migrations PostgreSQL en même temps sur la même base Neon.
+    # Le verrou transactionnel est libéré au commit ou à la fermeture
+    # de la connexion.
+    if db.USE_PG:
+        cursor.execute("SELECT pg_advisory_xact_lock(84720124)")
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS velo (
             id INTEGER PRIMARY KEY CHECK (id = 1),
