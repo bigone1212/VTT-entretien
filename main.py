@@ -2867,7 +2867,7 @@ def accueil():
             .ftv-grille {
                 display: grid;
                 grid-template-columns: repeat(2, minmax(0, 1fr));
-                gap: 8px;
+                gap: 10px;
                 padding: 4px 0 10px;
             }
 
@@ -2876,25 +2876,36 @@ def accueil():
                 align-items: flex-start;
                 gap: 10px;
                 min-width: 0;
-                padding: 11px 8px;
-                background: transparent;
-                border: 0;
-                border-bottom: 1px solid var(--line3);
-                border-radius: 0;
+                padding: 12px 10px;
+                background: var(--fill);
+                border: 1px solid var(--line);
+                border-radius: 12px;
             }
 
             .ftv-icone {
                 display: grid;
                 place-items: center;
-                width: 36px;
-                height: 36px;
+                width: 38px;
+                height: 38px;
                 flex: none;
                 color: var(--accent);
-                background: transparent;
-                border-radius: 8px;
+                background: rgba(40, 200, 185, 0.12);
+                border: 1px solid rgba(40, 200, 185, 0.22);
+                border-radius: 10px;
             }
 
-            .ftv-icone svg, .ftv-icone img { display: block; width: 30px; height: 30px; object-fit: contain; }
+            .ftv-icone svg {
+                display: block;
+                width: 27px;
+                height: 27px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 1.8;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+
+            .ftv-item > span:last-child { min-width: 0; }
 
             .ftv-libelle {
                 display: block;
@@ -2923,8 +2934,8 @@ def accueil():
             @media (max-width: 380px) {
                 .ftv-grille { gap: 6px; }
                 .ftv-item { gap: 7px; padding: 9px 7px; }
-                .ftv-icone { width: 34px; height: 34px; }
-                .ftv-icone svg { width: 27px; height: 27px; }
+                .ftv-icone { width: 32px; height: 32px; border-radius: 8px; }
+                .ftv-icone svg { width: 24px; height: 24px; }
                 .ftv-valeur { font-size: 0.79rem; }
             }
 
@@ -3100,7 +3111,7 @@ def accueil():
             <summary class="ftv-resume">
                 <span class="ftv-entete">
                     <strong class="titre-pastille ftv-titre-pastille">
-                        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="M5.5 17.5 9 9h4l5.5 8.5M9 9l4.5 8.5H5.5M8 6h3"/></svg>
+                        
                         <span>Fiche technique du vélo</span>
                     </strong>
                     <span class="ftv-sous-titre">CUBE Stereo Hybrid ONE44 EXC 800 · 2025</span>
@@ -3119,35 +3130,35 @@ def accueil():
             </div>
             <div class="ftv-grille">
                 <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><img src="https://opticycles.com/images/motor.svg" alt="" loading="lazy"></span>
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M13 10h15l7 7v14l-7 7H13l-5-7V17z"/><path d="M17 16h9v16h-9z"/><path d="M20 12v4m4-4v4M20 32v4m4-4v4M8 21H4m4 8H4m31-8h5m-5 8h5"/></svg></span>
                     <span><span class="ftv-libelle">Moteur</span><span class="ftv-valeur">Bosch Performance Line CX</span><span class="ftv-libelle">Couple maximal 85 Nm</span></span>
                 </div>
                 <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><img src="https://opticycles.com/images/battery.svg" alt="" loading="lazy"></span>
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="10" y="10" width="27" height="29" rx="4"/><path d="M18 6h11v4M37 19h4v11h-4"/><path d="M24 15l-6 11h6l-2 8 9-13h-6l2-6"/></svg></span>
                     <span><span class="ftv-libelle">Batterie</span><span class="ftv-valeur">Bosch PowerTube</span><span class="ftv-libelle">Capacité 800 Wh</span></span>
                 </div>
                 <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><img src="https://opticycles.com/images/fork.png" alt="" loading="lazy"></span>
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M16 7h9l4 5-3 5-5 20-5 4-4-2 3-6 4-17-3-5z"/><path d="M29 12l6 5-4 5M13 39l-3 3m9-3 4 2"/></svg></span>
                     <span><span class="ftv-libelle">Fourche avant</span><span class="ftv-valeur">Fox 36 Float AWL</span><span class="ftv-libelle">Débattement 140 mm</span></span>
                 </div>
                 <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="9" cy="9" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="39" cy="39" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M12 12l24 24" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/><path d="M15 15l-4 4 5 5-4 4 5 5-4 4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M23 9l7 7m-3-10 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="11" cy="10" r="4"/><circle cx="37" cy="38" r="4"/><path d="M14 13l20 22"/><path d="M16 14l-4 5 5 4-4 5 5 4-3 4"/><path d="M24 9l7 7m-2-11 7 7"/></svg></span>
                     <span><span class="ftv-libelle">Amortisseur arrière</span><span class="ftv-valeur">Fox Float Rhythm RC</span><span class="ftv-libelle">Débattement arrière 140 mm</span></span>
                 </div>
                 <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="12" cy="35" r="8"/><circle cx="34" cy="13" r="6"/><circle cx="12" cy="35" r="3"/><circle cx="34" cy="13" r="2"/><path d="M17 30l12-12M12 27V15h9m5 20h9v-8"/><path class="ftv-fin" d="M5 35h14M34 7v12"/></svg></span>
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="12" cy="34" r="8"/><circle cx="35" cy="13" r="6"/><circle cx="12" cy="34" r="2"/><circle cx="35" cy="13" r="1.5"/><path d="M17 29l13-12M12 26V15h9m5 19h9v-8"/></svg></span>
                     <span><span class="ftv-libelle">Transmission</span><span class="ftv-valeur">Shimano XT · 12 vitesses</span><span class="ftv-libelle">Cassette Deore 10–51 dents</span></span>
                 </div>
                 <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><img src="https://opticycles.com/images/brake.png" alt="" loading="lazy"></span>
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="16"/><circle cx="24" cy="24" r="4"/><path d="M24 8v5m0 22v5M8 24h5m22 0h5M13 13l4 4m14 14 4 4M35 13l-4 4M17 31l-4 4"/><path d="M24 20v-8"/></svg></span>
                     <span><span class="ftv-libelle">Freinage</span><span class="ftv-valeur">Shimano XT hydrauliques</span><span class="ftv-libelle">Disques 203 mm avant et arrière</span></span>
                 </div>
                 <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><img src="https://opticycles.com/images/wheels.png" alt="" loading="lazy"></span>
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="17"/><circle cx="24" cy="24" r="3"/><path d="M24 7v14m0 6v14M7 24h14m6 0h14M12 12l9 9m6 6 9 9M36 12l-9 9m-6 6-9 9"/></svg></span>
                     <span><span class="ftv-libelle">Roues et pneus</span><span class="ftv-valeur">Schwalbe Nobby Nic</span><span class="ftv-libelle">Section 2,6 pouces · roues <strong id="ftvTailleRoues">29 pouces</strong></span></span>
                 </div>
                 <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><rect class="ftv-rempli" x="6" y="7" width="36" height="27" rx="5"/><rect x="6" y="7" width="36" height="27" rx="5"/><path d="M17 41h14M24 34v7M12 13h24M12 18h10"/><circle cx="33" cy="24" r="4"/></svg></span>
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="7" y="7" width="34" height="27" rx="5"/><path d="M17 41h14m-7-7v7M12 13h24M12 18h11"/><circle cx="32" cy="25" r="4"/></svg></span>
                     <span><span class="ftv-libelle">Commande et écran</span><span class="ftv-valeur">Bosch Purion 200</span><span class="ftv-libelle">Écran intégré</span></span>
                 </div>
             </div>
