@@ -2112,6 +2112,8 @@ def accueil():
             .v3d-lieu { padding: 4px 7px; border-radius: 6px; color: #fff; background: rgba(15,23,42,.88); border: 1px solid rgba(255,255,255,.8); font-size: 12px; font-weight: 700; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,.45); }
             .v3d-lieu-haut { background: rgba(20,83,45,.92); }
             .v3d-cache { display: none !important; }
+            .v3d-tourne { display: inline-block; width: 14px; height: 14px; margin-right: 8px; vertical-align: -2px; border-radius: 50%; border: 2px solid rgba(255,255,255,.35); border-top-color: #fff; animation: v3d-tour .8s linear infinite; }
+            @keyframes v3d-tour { to { transform: rotate(360deg); } }
 
             .v3d-legende {
                 position: absolute;
@@ -7881,8 +7883,12 @@ def accueil():
                     v3d.panneauxPente.push({marqueur:m,debut:t.debut,fin:t.fin});
                 });
                 majVisibiliteReperesV3d(); majBoutonsV3d();
-                let lieux=[]; try { lieux=await chercherLieuxV3d(); } catch(e) { console.warn(e); }
+                let lieux=[];
+                const msgLieux=document.getElementById('v3dMessage');
+                if(msgLieux) { msgLieux.innerHTML='<span class="v3d-tourne"></span>Recherche des noms de lieux…'; msgLieux.style.display='block'; }
+                try { lieux=await chercherLieuxV3d(); } catch(e) { console.warn(e); }
                 if(v3d.carte!==carte) return;
+                if(msgLieux && msgLieux.querySelector('.v3d-tourne')) messageV3d('');
                 if(v3d.lieuxEtat==='panne') { messageV3d('Noms de lieux indisponibles : le serveur OpenStreetMap ne répond pas.'); setTimeout(()=>messageV3d(''),6000); }
                 lieux.forEach(l=>{
                     const el=document.createElement('div'); el.className='v3d-lieu'+(['sommet','col'].includes(l.genre)?' v3d-lieu-haut':'');
