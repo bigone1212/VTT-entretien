@@ -7259,7 +7259,7 @@ def accueil():
             async function chercherLieuxV3d() {
                 const pts = v3d.pts;
                 if (!Array.isArray(pts) || pts.length < 2) return [];
-                // Recherche autour de points échantillonnés sur le parcours plutôt que dans une grande boîte.
+                // Échantillonne le parcours, puis découpe la recherche en requêtes courtes pour éviter les délais Overpass.
                 const nb = Math.min(24, pts.length), echantillons = [], deja = new Set();
                 for (let i = 0; i < nb; i++) {
                     const p = pts[Math.round(i * (pts.length - 1) / Math.max(1, nb - 1))];
@@ -7268,32 +7268,37 @@ def accueil():
                     if (!deja.has(cle)) { deja.add(cle); echantillons.push(p); }
                 }
                 if (!echantillons.length) return [];
-                const clauses = [];
-                for (const p of echantillons) {
-                    const lat = p[1], lon = p[0];
-                    clauses.push('nwr(around:600,'+lat+','+lon+')["place"~"^(city|town|village|hamlet|isolated_dwelling|suburb|locality|neighbourhood)$"]["name"];');
-                    clauses.push('nwr(around:1500,'+lat+','+lon+')["natural"="peak"]["name"];');
-                    clauses.push('nwr(around:500,'+lat+','+lon+')["mountain_pass"="yes"]["name"];');
-                    clauses.push('nwr(around:500,'+lat+','+lon+')["natural"="saddle"]["name"];');
-                }
-                const q = '[out:json][timeout:20];(' + clauses.join('') + ');out center tags;';
                 const serveurs = ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
-                const tentatives = serveurs.map(async base => {
-                    const controle = new AbortController(), timer = setTimeout(() => controle.abort(), 22000);
-                    try {
-                        const res = await fetch(base, { method:'POST',
-                            headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},
-                            body:'data='+encodeURIComponent(q), signal:controle.signal });
-                        if (!res.ok) throw new Error('HTTP '+res.status+' sur '+base);
-                        const json = await res.json();
-                        if (!json || !Array.isArray(json.elements) || !json.elements.length)
-                            throw new Error('Réponse Overpass vide ou invalide');
-                        return json.elements;
-                    } finally { clearTimeout(timer); }
-                });
-                let elements;
-                try { elements = await Promise.any(tentatives); }
-                catch(e) { console.warn('Repères OpenStreetMap indisponibles', e); return []; }
+                async function chercherLot(lot) {
+                    const clauses = [];
+                    for (const p of lot) {
+                        const lat = p[1], lon = p[0];
+                        clauses.push('nwr(around:600,'+lat+','+lon+')["place"~"^(city|town|village|hamlet|isolated_dwelling|suburb|locality|neighbourhood)$"]["name"];');
+                        clauses.push('nwr(around:1500,'+lat+','+lon+')["natural"="peak"]["name"];');
+                        clauses.push('nwr(around:500,'+lat+','+lon+')["mountain_pass"="yes"]["name"];');
+                        clauses.push('nwr(around:500,'+lat+','+lon+')["natural"="saddle"]["name"];');
+                    }
+                    const q = '[out:json][timeout:12];(' + clauses.join('') + ');out center tags;';
+                    const tentatives = serveurs.map(async base => {
+                        const controle = new AbortController(), timer = setTimeout(() => controle.abort(), 14000);
+                        try {
+                            const res = await fetch(base, { method:'POST',
+                                headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},
+                                body:'data='+encodeURIComponent(q), signal:controle.signal });
+                            if (!res.ok) throw new Error('HTTP '+res.status+' sur '+base);
+                            const json = await res.json();
+                            if (!json || !Array.isArray(json.elements) || !json.elements.length)
+                                throw new Error('Réponse Overpass vide ou invalide');
+                            return json.elements;
+                        } finally { clearTimeout(timer); }
+                    });
+                    try { return await Promise.any(tentatives); }
+                    catch(e) { console.warn('Zone de lieux indisponible', e); return []; }
+                }
+                const lots = [];
+                for (let i=0; i<echantillons.length; i+=6) lots.push(echantillons.slice(i,i+6));
+                const reponses = await Promise.all(lots.map(chercherLot));
+                const elements = reponses.flat();
                 const uniques = new Map();
                 for (const e of elements) {
                     const t = e.tags || {};
