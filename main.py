@@ -7262,7 +7262,7 @@ def accueil():
                 const sud = Math.min(...lats)-marge, nord = Math.max(...lats)+marge, ouest = Math.min(...lons)-marge, est = Math.max(...lons)+marge;
                 if (nord-sud > 0.6 || est-ouest > 0.8) return [];
                 const zone = '('+sud+','+ouest+','+nord+','+est+')';
-                const q = '[out:json][timeout:20];(nwr["place"~"^(city|town|village|hamlet|isolated_dwelling)$"]["name"]'+zone+';nwr["natural"="peak"]["name"]'+zone+';nwr["mountain_pass"="yes"]["name"]'+zone+';nwr["natural"="saddle"]["name"]'+zone+';);out center tags;';
+                const q = '[out:json][timeout:25];(nwr["place"~"^(city|town|village|hamlet|isolated_dwelling|suburb|locality)$"]["name"]'+zone+';nwr["natural"="peak"]["name"]'+zone+';nwr["mountain_pass"="yes"]["name"]'+zone+';nwr["natural"="saddle"]["name"]'+zone+';);out center tags;';
                 let data = null;
                 for (const base of ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter']) {
                     try {
@@ -7283,8 +7283,12 @@ def accueil():
                     const lon = Number.isFinite(e.lon) ? e.lon : e.center && e.center.lon;
                     const lat = Number.isFinite(e.lat) ? e.lat : e.center && e.center.lat;
                     if (!Number.isFinite(lon)||!Number.isFinite(lat)) continue;
-                    let genre='',rang=9,portee=1000;
-                    if (['city','town','village','hamlet'].includes(e.tags.place)) { genre=e.tags.place==='hamlet'?'hameau':(e.tags.place==='village'?'village':'ville'); rang={city:1,town:2,village:3,hamlet:5}[e.tags.place]; portee=genre==='hameau'?600:1200; }
+                    let genre='',rang=9,portee=5000;
+                    if (['city','town','village','hamlet','isolated_dwelling','suburb','locality'].includes(e.tags.place)) {
+                        genre=['hamlet','isolated_dwelling','locality'].includes(e.tags.place)?'village':(e.tags.place==='village'?'village':'ville');
+                        rang={city:1,town:2,suburb:3,village:4,hamlet:5,isolated_dwelling:6,locality:7}[e.tags.place] ?? 4;
+                        portee=5000;
+                    }
                     else if(e.tags.natural==='peak') {genre='sommet';rang=4;portee=1500;}
                     else if(e.tags.mountain_pass==='yes'||e.tags.natural==='saddle') {genre='col';rang=2;portee=500;}
                     else continue;
