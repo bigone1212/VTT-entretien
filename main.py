@@ -7259,54 +7259,43 @@ def accueil():
             async function chercherLieuxV3d() {
                 const pts = v3d.pts;
                 if (!Array.isArray(pts) || pts.length < 2) return [];
-                // Échantillonne le parcours, puis découpe la recherche en requêtes courtes pour éviter les délais Overpass.
-                const nb = Math.min(24, pts.length), echantillons = [], deja = new Set();
-                for (let i = 0; i < nb; i++) {
-                    const p = pts[Math.round(i * (pts.length - 1) / Math.max(1, nb - 1))];
-                    if (!p || !Number.isFinite(p[0]) || !Number.isFinite(p[1])) continue;
-                    const cle = p[0].toFixed(4) + ',' + p[1].toFixed(4);
-                    if (!deja.has(cle)) { deja.add(cle); echantillons.push(p); }
-                }
-                if (!echantillons.length) return [];
-                const serveurs = ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
-                async function chercherLot(lot) {
-                    const clauses = [];
-                    for (const p of lot) {
-                        const lat = p[1], lon = p[0];
-                        clauses.push('nwr(around:600,'+lat+','+lon+')["place"~"^(city|town|village|hamlet|isolated_dwelling|suburb|locality|neighbourhood)$"]["name"];');
-                        clauses.push('nwr(around:1500,'+lat+','+lon+')["natural"="peak"]["name"];');
-                        clauses.push('nwr(around:500,'+lat+','+lon+')["mountain_pass"="yes"]["name"];');
-                        clauses.push('nwr(around:500,'+lat+','+lon+')["natural"="saddle"]["name"];');
+                // Reprendre la méthode qui avait fonctionné : une requête Overpass POST sur la zone du parcours.
+                const lons = pts.map(p => p[0]).filter(Number.isFinite);
+                const lats = pts.map(p => p[1]).filter(Number.isFinite);
+                if (!lons.length || !lats.length) return [];
+                const marge = 0.012;
+                const sud = Math.min(...lats)-marge, nord = Math.max(...lats)+marge;
+                const ouest = Math.min(...lons)-marge, est = Math.max(...lons)+marge;
+                const zone = '('+sud+','+ouest+','+nord+','+est+')';
+                const q = '[out:json][timeout:35];(nwr["place"~"^(city|town|village|hamlet|isolated_dwelling|suburb|locality|neighbourhood)$"]["name"]'+zone+';nwr["natural"="peak"]["name"]'+zone+';nwr["mountain_pass"="yes"]["name"]'+zone+';nwr["natural"="saddle"]["name"]'+zone+';);out center tags;';
+                let data = null;
+                let derniereErreur = null;
+                for (const base of ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter']) {
+                    const ctl = new AbortController();
+                    const timer = setTimeout(() => ctl.abort(), 38000);
+                    try {
+                        const res = await fetch(base, {
+                            method:'POST',
+                            headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},
+                            body:'data='+encodeURIComponent(q),
+                            signal:ctl.signal
+                        });
+                        if (!res.ok) throw new Error('HTTP '+res.status+' sur '+base);
+                        const json = await res.json();
+                        if (!json || !Array.isArray(json.elements)) throw new Error('Réponse Overpass invalide');
+                        data = json;
+                        console.info('Recherche de lieux OSM :', json.elements.length, 'objets reçus depuis', base);
+                        break;
+                    } catch(e) {
+                        derniereErreur = String(e);
+                        console.warn('Recherche de lieux OSM échouée sur '+base, e);
+                    } finally {
+                        clearTimeout(timer);
                     }
-                    const q = '[out:json][timeout:12];(' + clauses.join('') + ');out center tags;';
-                    const tentatives = serveurs.map(async base => {
-                        const controle = new AbortController(), timer = setTimeout(() => controle.abort(), 14000);
-                        try {
-                            const res = await fetch(base, { method:'POST',
-                                headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},
-                                body:'data='+encodeURIComponent(q), signal:controle.signal });
-                            if (!res.ok) throw new Error('HTTP '+res.status+' sur '+base);
-                            const json = await res.json();
-                            if (!json || !Array.isArray(json.elements) || !json.elements.length)
-                                throw new Error('Réponse Overpass vide ou invalide');
-                            return json.elements;
-                        } finally { clearTimeout(timer); }
-                    });
-                    try { return await Promise.any(tentatives); }
-                    catch(e) { console.warn('Zone de lieux indisponible', e); return []; }
                 }
-                const lots = [];
-                for (let i=0; i<echantillons.length; i+=6) lots.push(echantillons.slice(i,i+6));
-                const reponses = await Promise.all(lots.map(chercherLot));
-                const elements = reponses.flat();
-                const uniques = new Map();
-                for (const e of elements) {
-                    const t = e.tags || {};
-                    if (!t.name) continue;
-                    const lon = Number.isFinite(e.lon) ? e.lon : e.center && e.center.lon;
-                    const lat = Number.isFinite(e.lat) ? e.lat : e.center && e.center.lat;
-                    if (Number.isFinite(lon) && Number.isFinite(lat))
-                        uniques.set((e.type || '') + '/' + (e.id || (t.name+'/'+lon+'/'+lat)), e);
+                if (!data) {
+                    console.warn('Aucun résultat exploitable pour les lieux du survol 3D.', derniereErreur || 'réponse vide');
+                    return [];
                 }
                 const ref = pts.filter((_,i)=>i%Math.max(1,Math.floor(pts.length/700))===0);
                 const dist = (lon,lat) => {
@@ -7317,24 +7306,39 @@ def accueil():
                     }
                     return minimum;
                 };
+                const uniques = new Map();
+                for (const e of data.elements) {
+                    const t=e.tags || {};
+                    if (!t.name) continue;
+                    const lon=Number.isFinite(e.lon)?e.lon:e.center&&e.center.lon;
+                    const lat=Number.isFinite(e.lat)?e.lat:e.center&&e.center.lat;
+                    if (Number.isFinite(lon) && Number.isFinite(lat))
+                        uniques.set((e.type || '')+'/'+(e.id || (t.name+'/'+lon+'/'+lat)), e);
+                }
                 const out=[], seen=new Set();
                 for (const e of uniques.values()) {
-                    const t=e.tags, lon=Number.isFinite(e.lon)?e.lon:e.center&&e.center.lon,
-                        lat=Number.isFinite(e.lat)?e.lat:e.center&&e.center.lat;
+                    const t=e.tags || {};
+                    const lon=Number.isFinite(e.lon)?e.lon:e.center&&e.center.lon;
+                    const lat=Number.isFinite(e.lat)?e.lat:e.center&&e.center.lat;
+                    if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
                     let genre='',rang=9,portee=600;
                     if (['city','town','village','hamlet','isolated_dwelling','suburb','locality','neighbourhood'].includes(t.place)) {
                         genre=['hamlet','isolated_dwelling','locality','neighbourhood'].includes(t.place)?'village':(t.place==='village'?'village':'ville');
                         rang={city:1,town:2,suburb:3,village:4,hamlet:5,isolated_dwelling:6,locality:7,neighbourhood:8}[t.place] ?? 4;
-                    } else if(t.natural==='peak') {genre='sommet';rang=4;portee=1500;}
-                    else if(t.mountain_pass==='yes'||t.natural==='saddle') {genre='col';rang=2;portee=500;}
+                    } else if(t.natural==='peak') { genre='sommet'; rang=4; portee=1500; }
+                    else if(t.mountain_pass==='yes'||t.natural==='saddle') { genre='col'; rang=2; portee=500; }
                     else continue;
                     const ec=dist(lon,lat), key=t.name.toLowerCase()+genre;
-                    if(ec>portee||seen.has(key)) continue;
-                    seen.add(key); out.push({nom:t.name,genre,rang,ec,coord:[lon,lat],alt:parseInt(t.ele,10)});
+                    if(ec>portee || seen.has(key)) continue;
+                    seen.add(key);
+                    out.push({nom:t.name,genre,rang,ec,coord:[lon,lat],alt:parseInt(t.ele,10)});
                 }
                 out.sort((a,b)=>a.rang-b.rang||a.ec-b.ec);
                 const gardes=[];
-                for(const l of out) { if(gardes.length>=40) break; if(gardes.every(g=>distanceM(g.coord,l.coord)>=250)) gardes.push(l); }
+                for (const l of out) {
+                    if (gardes.length>=40) break;
+                    if (gardes.every(g=>distanceM(g.coord,l.coord)>=250)) gardes.push(l);
+                }
                 console.info('Survol 3D : lieux affichables', gardes.length);
                 return gardes;
             }
