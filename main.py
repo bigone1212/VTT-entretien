@@ -537,7 +537,7 @@ class ReglagesRequest(BaseModel):
 
 
 MES_REGLAGES_CLES = {
-    "pneu_av", "pneu_ar",
+    "taille_cadre", "pneu_av", "pneu_ar",
     "fourche_psi", "fourche_sag", "fourche_detente", "fourche_bagues",
     "amorto_psi", "amorto_sag", "amorto_detente", "amorto_bagues",
     "notes",
@@ -3111,11 +3111,11 @@ def accueil():
                     <span><span class="ftv-libelle">Batterie</span><span class="ftv-valeur">Bosch PowerTube</span><span class="ftv-libelle">800 Wh</span></span>
                 </div>
                 <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 3h10l-1 5 2 3-2 10H8L6 11l2-3-1-5Z"/><path d="M8 8h8M8 13h8M9 17h6"/></svg></span>
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M14 5h20l-2 7 3 4-3 23H25L23 18l-3-4z" fill="currentColor" opacity=".12" stroke="currentColor" stroke-width="1.8"/><path d="M20 13h10M22 17l2 19M30 17l-2 19" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><path d="M22 38h-7m13 0h7M15 38v4m20-4v4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M18 5V3h12v2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
                     <span><span class="ftv-libelle">Fourche avant</span><span class="ftv-valeur">Fox 36 Float AWL</span><span class="ftv-libelle">Débattement 140 mm</span></span>
                 </div>
                 <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 5h14l-2 4 2 10H5L7 9 5 5Z"/><path d="M7 9h10M8 13h8M9 16h6"/></svg></span>
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="9" cy="9" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="39" cy="39" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M12 12l24 24" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/><path d="M15 15l-4 4 5 5-4 4 5 5-4 4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M23 9l7 7m-3-10 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
                     <span><span class="ftv-libelle">Amortisseur arrière</span><span class="ftv-valeur">Fox Float Rhythm RC</span><span class="ftv-libelle">Débattement arrière 140 mm</span></span>
                 </div>
                 <div class="ftv-item">
@@ -3123,12 +3123,12 @@ def accueil():
                     <span><span class="ftv-libelle">Transmission</span><span class="ftv-valeur">Shimano XT · 12 vitesses</span><span class="ftv-libelle">Cassette Deore 10–51 dents</span></span>
                 </div>
                 <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 3v6M21 12h-6M12 21v-6M3 12h6"/></svg></span>
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="22" cy="25" r="17" fill="none" stroke="currentColor" stroke-width="3"/><circle cx="22" cy="25" r="5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="22" cy="25" r="11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2 3"/><path d="M31 8h9v10h-5l-4 5-4-3" fill="currentColor" opacity=".16" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M35 14l-4 6" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></span>
                     <span><span class="ftv-libelle">Freinage</span><span class="ftv-valeur">Shimano XT hydrauliques</span><span class="ftv-libelle">Disques 203 mm avant et arrière</span></span>
                 </div>
                 <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><path d="M12 3v4M21 12h-4M12 21v-4M3 12h4"/></svg></span>
-                    <span><span class="ftv-libelle">Pneus</span><span class="ftv-valeur">Schwalbe Nobby Nic</span><span class="ftv-libelle">Section 2,6 pouces</span></span>
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="19" fill="none" stroke="currentColor" stroke-width="5"/><circle cx="24" cy="24" r="13" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="24" cy="24" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M24 5v5M24 38v5M5 24h5M38 24h5M10.5 10.5l4 4M33.5 33.5l4 4M37.5 10.5l-4 4M14.5 33.5l-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
+                    <span><span class="ftv-libelle">Roues et pneus</span><span class="ftv-valeur">Schwalbe Nobby Nic</span><span class="ftv-libelle">Section 2,6 pouces · roues <strong id="ftvTailleRoues">29 pouces</strong></span></span>
                 </div>
                 <div class="ftv-item">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4M7 9h3M7 12h7"/></svg></span>
@@ -3619,6 +3619,8 @@ def accueil():
             }
 
             const MR_GROUPES = [
+                { titre: '🚲 Mon vélo', champs: [
+                    ['taille_cadre', 'Taille du cadre'] ] },
                 { titre: '🛞 Pneus', champs: [
                     ['pneu_av', 'Avant (bar)'], ['pneu_ar', 'Arrière (bar)'] ] },
                 { titre: '🔱 Fourche', champs: [
@@ -3737,17 +3739,28 @@ def accueil():
                         ligne.appendChild(l);
 
                         if (mrEdition) {
-                            const inp = document.createElement('input');
-                            inp.type = 'text';
-                            inp.inputMode = cle === 'notes' ? 'text' : 'decimal';
+                            let inp;
+                            if (cle === 'taille_cadre') {
+                                inp = document.createElement('select');
+                                ['S', 'M', 'L', 'XL'].forEach(val => {
+                                    const opt = document.createElement('option');
+                                    opt.value = val;
+                                    opt.textContent = val;
+                                    inp.appendChild(opt);
+                                });
+                            } else {
+                                inp = document.createElement('input');
+                                inp.type = 'text';
+                                inp.inputMode = cle === 'notes' ? 'text' : 'decimal';
+                                inp.maxLength = 200;
+                            }
                             inp.id = 'mr-' + cle;
-                            inp.maxLength = 200;
-                            inp.value = mrValeurs[cle] || '';
+                            inp.value = mrValeurs[cle] || (cle === 'taille_cadre' ? 'M' : '');
                             if (cle === 'notes') { inp.style.width = '100%'; inp.style.flex = '1'; inp.style.maxWidth = '200px'; }
                             ligne.appendChild(inp);
                         } else {
                             const v = document.createElement('b');
-                            v.textContent = mrValeurs[cle] || '—';
+                            v.textContent = mrValeurs[cle] || (cle === 'taille_cadre' ? 'M' : '—');
                             ligne.appendChild(v);
                         }
                         bloc.appendChild(ligne);
@@ -3770,6 +3783,12 @@ def accueil():
                 document.getElementById('mrDate').textContent = txt;
             }
 
+            function mettreAJourTailleRoues() {
+                const taille = mrValeurs.taille_cadre || 'M';
+                const roues = document.getElementById('ftvTailleRoues');
+                if (roues) roues.textContent = taille === 'S' ? '27,5 pouces' : '29 pouces';
+            }
+
             async function chargerReglagesVelo() {
                 try {
                     const res = await fetch('/api/mes-reglages', { headers: getHeaders() });
@@ -3781,6 +3800,7 @@ def accueil():
                     mrValeurs = {};
                 }
                 if (!mrEdition) afficherReglagesVelo();
+                mettreAJourTailleRoues();
             }
 
             function modifierReglagesVelo() {
