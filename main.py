@@ -2611,7 +2611,7 @@ def accueil():
             .verifs-titre .titre-pastille.titre-pastille { margin: 0; }
 
             /* ---- Page Sorties : formulaire d'import plus net (apparence seulement) ---- */
-            #page-sorties .history-section > label,
+            #page-sorties .import-gpx > label,
             #page-sorties #blocStrava label {
                 display: block;
                 margin: 16px 2px 6px;
@@ -2631,7 +2631,7 @@ def accueil():
                 border-radius: 14px;
             }
 
-            #page-sorties .history-section > .form-help {
+            #page-sorties .import-gpx > .form-help {
                 margin: 8px 2px 4px;
                 line-height: 1.45;
             }
@@ -2645,6 +2645,15 @@ def accueil():
             }
 
             #page-sorties #blocStrava[open] summary { margin-bottom: 4px; }
+
+            /* Import : caché par défaut, ouvert depuis le menu trois points de « Mes sorties » */
+            #blocImport { margin-bottom: 20px; padding: 14px; background: var(--fill); border: 1px solid var(--line2); border-radius: 18px; }
+            #blocImport[data-mode="gpx"] #blocStrava { display: none; }
+            #blocImport[data-mode="strava"] .import-gpx { display: none; }
+            #blocImport #blocStrava { margin-top: 0; }
+            .import-entete { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-weight: 800; color: var(--strong); }
+            .import-fermer { width: 36px; height: 36px; padding: 0; display: inline-flex; align-items: center; justify-content: center; flex: none; color: var(--strong); background: var(--fill); border: 1px solid var(--line); border-radius: 50%; cursor: pointer; }
+            .import-fermer svg { width: 18px; height: 18px; fill: none; stroke: currentColor; }
 
             /* ---- Pastilles rouges de nouveauté ---- */
             .onglet { position: relative; }
@@ -3481,8 +3490,12 @@ def accueil():
 
         <div class="page" id="page-sorties" style="display:none;">
         <div class="history-section" style="margin-bottom: 20px;">
-            <h2 class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h8a3 3 0 0 0 0-6H8a3 3 0 0 1 0-6h8"/></svg><span>Sorties</span></h2>
-
+            <div id="blocImport" data-mode="gpx" style="display:none;">
+            <div class="import-entete">
+                <span>Importer des sorties</span>
+                <button type="button" id="importFermer" class="import-fermer" aria-label="Fermer l'import" onclick="fermerImport()"></button>
+            </div>
+            <div class="import-gpx">
             <label for="gpxFile">Importer une ou plusieurs sorties (fichiers GPX de Komoot)</label>
             <input
                 type="file"
@@ -3531,6 +3544,7 @@ def accueil():
             </button>
 
             <p class="form-help" id="gpxMessage" style="margin-top: 10px;"></p>
+            </div>
 
             <details id="blocStrava" style="margin-top: 20px;">
                 <summary style="cursor: pointer; font-weight: 600;">
@@ -3579,8 +3593,9 @@ def accueil():
 
                 <p class="form-help" id="stravaMessage" style="margin-top: 10px;"></p>
             </details>
+            </div>
 
-            <div class="hist-entete sorties-entete" style="margin:24px 0 12px;">
+            <div class="hist-entete sorties-entete" style="margin:0 0 12px;">
                 <h2 class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h8a3 3 0 0 0 0-6H8a3 3 0 0 1 0-6h8"/></svg><span>Mes sorties</span></h2>
                 <div id="sortiesMenuZone"></div>
             </div>
@@ -3596,6 +3611,10 @@ def accueil():
                         <input id="kmMinSorties" class="champ-km" type="text" inputmode="decimal" placeholder="Min" aria-label="Distance minimale en kilomètres" oninput="appliquerFiltresSorties()">
                         <input id="kmMaxSorties" class="champ-km" type="text" inputmode="decimal" placeholder="Max" aria-label="Distance maximale en kilomètres" oninput="appliquerFiltresSorties()">
                     </div>
+                    <label for="zoneSorties">Zone géographique</label>
+                    <select id="zoneSorties" aria-label="Filtrer par zone géographique" onchange="appliquerFiltresSorties()">
+                        <option value="">Toutes les zones</option>
+                    </select>
                     <label for="triSorties">Trier les sorties</label>
                     <select id="triSorties" aria-label="Trier les sorties" onchange="appliquerFiltresSorties()">
                         <option value="date-desc">Plus récentes</option>
@@ -3843,6 +3862,7 @@ def accueil():
             ICONES.auto = '<circle cx="12" cy="12" r="9"/><path d="M12 3v18"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/>';
             ICONES.filtre = '<path d="M3.5 5h17l-6.5 8v6l-4-2v-4z"/>';
             ICONES.vide = '';
+            ICONES.importer = '<path d="M12 15V4"/><path d="M7 9l5-5 5 5"/><path d="M5 20h14"/>';
             ICONES.plus = '<path d="M12 5v14M5 12h14"/>';
             ICONES.telecharger = '<path d="M12 4v11"/><path d="M7 11l5 5 5-5"/><path d="M5 20h14"/>';
             ICONES.cases = '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/>';
@@ -6678,12 +6698,32 @@ def accueil():
                 zone.appendChild(bouton);
 
                 // Le menu trois points est conservé, mais reste vide pour le moment.
-                ajouterMenuPoints(zone, 'Actions des sorties', []);
+                ajouterMenuPoints(zone, 'Actions des sorties', [
+                    { icone: 'importer', texte: 'Importer des fichiers GPX', action: () => ouvrirImport('gpx') },
+                    { icone: 'importer', texte: 'Importer une archive Strava (.zip)', action: () => ouvrirImport('strava') }
+                ]);
+                const fermerImportBtn = document.getElementById('importFermer');
+                if (fermerImportBtn) remplirBouton(fermerImportBtn, 'fermer', '');
                 // Garder le panneau aligné sous l'icône pendant le défilement
                 // et lorsque l'orientation ou la largeur du téléphone change.
                 window.addEventListener('scroll', positionnerPanneauFiltresSorties, true);
                 window.addEventListener('resize', positionnerPanneauFiltresSorties);
                 actualiserBoutonFiltreSorties();
+            }
+
+            function ouvrirImport(mode) {
+                const bloc = document.getElementById('blocImport');
+                if (!bloc) return;
+                bloc.setAttribute('data-mode', mode);
+                bloc.style.display = 'block';
+                const strava = document.getElementById('blocStrava');
+                if (strava) strava.open = (mode === 'strava');
+                bloc.scrollIntoView({ block: 'center' });
+            }
+
+            function fermerImport() {
+                const bloc = document.getElementById('blocImport');
+                if (bloc) bloc.style.display = 'none';
             }
 
             function positionnerPanneauFiltresSorties() {
@@ -6719,6 +6759,7 @@ def accueil():
                     || sortiesPeriode.fin
                     || kmSaisi('kmMinSorties') !== null
                     || kmSaisi('kmMaxSorties') !== null
+                    || Boolean((document.getElementById('zoneSorties') || {}).value)
                     || document.getElementById('triSorties').value !== 'date-desc'
                 );
                 const boutonPeriode = document.getElementById('periodeSortiesBtn');
@@ -6735,8 +6776,120 @@ def accueil():
                 return Number.isFinite(n) ? n : null;
             }
 
+            // ---- Zones géographiques : le village ou la ville la plus proche du centre de chaque sortie ----
+            let zonesSorties = { parSortie: {}, noms: {} };
+            let zonesSignature = '';
+            let zonesDernierEchec = 0;
+            let zonesEnCours = false;
+
+            function centreSortie(sortie) {
+                const trace = Array.isArray(sortie.trace) ? sortie.trace : [];
+                let sud = 90, nord = -90, ouest = 180, est = -180;
+                trace.forEach(p => {
+                    if (!Array.isArray(p) || !Number.isFinite(p[0]) || !Number.isFinite(p[1])) return;
+                    sud = Math.min(sud, p[0]); nord = Math.max(nord, p[0]);
+                    ouest = Math.min(ouest, p[1]); est = Math.max(est, p[1]);
+                });
+                return sud > nord ? null : [(sud + nord) / 2, (ouest + est) / 2];
+            }
+
+            function distanceKmGps(a, b) {
+                const rad = Math.PI / 180;
+                const dLat = (b[0] - a[0]) * rad, dLon = (b[1] - a[1]) * rad;
+                const h = Math.sin(dLat / 2) ** 2 + Math.cos(a[0] * rad) * Math.cos(b[0] * rad) * Math.sin(dLon / 2) ** 2;
+                return 12742 * Math.asin(Math.sqrt(h));
+            }
+
+            // Villes et villages autour des sorties (OpenStreetMap), gardés 30 jours sur l'appareil.
+            async function chargerLieuxZones(centres) {
+                const lats = centres.map(c => c[0]), lons = centres.map(c => c[1]), marge = 0.1;
+                const zone = [Math.min(...lats) - marge, Math.min(...lons) - marge, Math.max(...lats) + marge, Math.max(...lons) + marge];
+                try {
+                    const memo = JSON.parse(localStorage.getItem('maillons_lieux_zones') || 'null');
+                    if (memo && Array.isArray(memo.lieux) && memo.lieux.length && Date.now() - memo.t < 30 * 86400000
+                        && memo.zone[0] <= zone[0] && memo.zone[1] <= zone[1] && memo.zone[2] >= zone[2] && memo.zone[3] >= zone[3]) {
+                        return memo.lieux;
+                    }
+                } catch (e) { /* pas de mémoire : on interroge le serveur */ }
+                if (zone[2] - zone[0] > 2 || zone[3] - zone[1] > 3) return [];
+                const q = '[out:json][timeout:30];node["place"~"^(city|town|village)$"]["name"](' + zone.join(',') + ');out;';
+                for (const base of ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']) {
+                    try {
+                        const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 20000);
+                        const res = await fetch(base, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+                            body: 'data=' + encodeURIComponent(q),
+                            signal: ctl.signal
+                        });
+                        clearTimeout(timer);
+                        if (!res.ok) continue;
+                        const data = await res.json();
+                        if (!data || !Array.isArray(data.elements)) continue;
+                        const lieux = data.elements.filter(e => e.tags && e.tags.name && Number.isFinite(e.lat) && Number.isFinite(e.lon))
+                            .map(e => [e.tags.name, e.lat, e.lon]);
+                        try { localStorage.setItem('maillons_lieux_zones', JSON.stringify({ t: Date.now(), zone: zone, lieux: lieux })); } catch (e) { /* stockage plein ou refusé */ }
+                        return lieux;
+                    } catch (e) { console.warn('Zones : serveur indisponible', e); }
+                }
+                return [];
+            }
+
+            function remplirListeZones() {
+                const select = document.getElementById('zoneSorties');
+                if (!select) return;
+                const precedent = select.value;
+                const compte = {};
+                Object.values(zonesSorties.parSortie).forEach(z => { compte[z] = (compte[z] || 0) + 1; });
+                const noms = Object.keys(compte).sort((a, b) => compte[b] - compte[a] || a.localeCompare(b, 'fr'));
+                select.innerHTML = '';
+                const toutes = document.createElement('option');
+                toutes.value = '';
+                toutes.textContent = noms.length ? 'Toutes les zones' : 'Toutes les zones (liste indisponible)';
+                select.appendChild(toutes);
+                noms.forEach(nom => {
+                    const o = document.createElement('option');
+                    o.value = nom;
+                    o.textContent = 'Côté de ' + nom + ' (' + compte[nom] + ')';
+                    select.appendChild(o);
+                });
+                select.value = noms.includes(precedent) ? precedent : '';
+                actualiserBoutonFiltreSorties();
+            }
+
+            async function calculerZonesSorties(sorties) {
+                const signature = sorties.map(s => s.id).join(',');
+                if (signature === zonesSignature || zonesEnCours || Date.now() - zonesDernierEchec < 120000) return;
+                zonesEnCours = true;
+                try {
+                    await calculerZonesSortiesInterne(sorties, signature);
+                } finally {
+                    zonesEnCours = false;
+                }
+            }
+
+            async function calculerZonesSortiesInterne(sorties, signature) {
+                zonesSignature = signature;
+                const centres = sorties.map(s => ({ id: s.id, c: centreSortie(s) })).filter(x => x.c);
+                if (!centres.length) return;
+                const lieux = await chargerLieuxZones(centres.map(x => x.c));
+                if (!lieux.length) { zonesSignature = ''; zonesDernierEchec = Date.now(); remplirListeZones(); return; }
+                const parSortie = {};
+                centres.forEach(x => {
+                    let meilleur = null, dMin = 9;
+                    lieux.forEach(l => {
+                        const d = distanceKmGps(x.c, [l[1], l[2]]);
+                        if (d < dMin) { dMin = d; meilleur = l[0]; }
+                    });
+                    if (meilleur) parSortie[x.id] = meilleur;
+                });
+                zonesSorties = { parSortie: parSortie, noms: {} };
+                remplirListeZones();
+            }
+
             function preparerFiltresSorties(sorties) {
                 actualiserBoutonFiltreSorties();
+                calculerZonesSorties(sorties).catch(e => console.warn(e));
             }
 
             // Jour (aaaa-mm-jj) d'une sortie, à l'heure locale.
@@ -6773,6 +6926,8 @@ def accueil():
                     const km = Number(s.distance_km || 0);
                     if (kmMin !== null && km < kmMin) return false;
                     if (kmMax !== null && km > kmMax) return false;
+                    const zoneChoisie = (document.getElementById('zoneSorties') || {}).value;
+                    if (zoneChoisie && zonesSorties.parSortie[s.id] !== zoneChoisie) return false;
                     return true;
                 });
                 const tri = document.getElementById('triSorties').value;
@@ -6797,6 +6952,8 @@ def accueil():
                 sortiesPeriode = { debut: '', fin: '' };
                 document.getElementById('kmMinSorties').value = '';
                 document.getElementById('kmMaxSorties').value = '';
+                const zoneSel = document.getElementById('zoneSorties');
+                if (zoneSel) zoneSel.value = '';
                 document.getElementById('triSorties').value = 'date-desc';
                 actualiserBoutonFiltreSorties();
                 chargerSorties(true);
