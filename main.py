@@ -1411,6 +1411,8 @@ def accueil():
             /* Partage et favori : à gauche du menu trois points de chaque sortie */
             .menu-sortie-btn.bouton-partage { right: 38px; }
             .menu-sortie-btn.bouton-favori { right: 76px; }
+            .menu-sortie-btn.occupe { opacity: 0.6; }
+            .menu-sortie-btn.occupe svg { animation: v3d-tour 0.9s linear infinite; }
             .menu-sortie-btn.bouton-favori.actif { color: var(--danger); }
             .menu-sortie-btn.bouton-favori.actif svg { fill: currentColor; }
             .history-item.sortie-item .titre-sortie,
@@ -6759,29 +6761,180 @@ def accueil():
                 b.setAttribute('aria-pressed', sortiesFavorisSeuls ? 'true' : 'false');
             }
 
-            async function partagerSortie(s) {
-                const jour = new Date(s.debut).toLocaleDateString('fr-FR');
-                const lignes = [
-                    '🚵 ' + s.nom + ' · ' + jour,
-                    s.distance_km + ' km · ' + s.denivele_pos + ' m D+ · ' + formaterDuree(s.duree_s) + ' · ' + s.vitesse_moy + ' km/h'
-                ];
-                const depart = Array.isArray(s.trace) ? s.trace.find(p => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1])) : null;
-                if (depart) {
-                    lignes.push('📍 https://www.openstreetmap.org/?mlat=' + depart[0].toFixed(5) + '&mlon=' + depart[1].toFixed(5)
-                        + '#map=14/' + depart[0].toFixed(5) + '/' + depart[1].toFixed(5));
+            // Image de partage façon Komoot : carte avec le parcours, profil et chiffres clés.
+            function chargerImageCarte(url) {
+                return new Promise(resolve => {
+                    const img = new Image();
+                    const fin = setTimeout(() => resolve(null), 10000);
+                    img.crossOrigin = 'anonymous';
+                    img.onload = () => { clearTimeout(fin); resolve(img); };
+                    img.onerror = () => { clearTimeout(fin); resolve(null); };
+                    img.src = url;
+                });
+            }
+
+            async function creerImagePartage(s, avecFond) {
+                const brut = (Array.isArray(s.trace) ? s.trace : []).filter(p => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1]));
+                if (brut.length < 2) return null;
+                const pas = Math.max(1, Math.ceil(brut.length / 1500));
+                const pts = brut.filter((p, k) => k % pas === 0 || k === brut.length - 1);
+                const L = 1080, H = 1350, MH = 860, MARGE = 120;
+                const proj = (lat, lon, W) => {
+                    const r = lat * Math.PI / 180;
+                    return [(lon + 180) / 360 * W, (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * W];
+                };
+                const lats = pts.map(p => p[0]), lons = pts.map(p => p[1]);
+                const sud = Math.min(...lats), nord = Math.max(...lats), ouest = Math.min(...lons), est = Math.max(...lons);
+                let z = 16;
+                for (; z > 6; z--) {
+                    const W = 512 * Math.pow(2, z);
+                    const a = proj(nord, ouest, W), b = proj(sud, est, W);
+                    if (b[0] - a[0] <= L - 2 * MARGE && b[1] - a[1] <= MH - 2 * MARGE) break;
                 }
-                const texte = lignes.join(String.fromCharCode(10));
-                if (navigator.share) {
-                    try {
-                        await navigator.share({ title: s.nom, text: texte });
-                    } catch (e) {
-                        if (e && e.name !== 'AbortError') console.warn(e);
+                const W = 512 * Math.pow(2, z);
+                const hautGauche = proj(nord, ouest, W), basDroite = proj(sud, est, W);
+                const ox = (hautGauche[0] + basDroite[0]) / 2 - L / 2;
+                const oy = (hautGauche[1] + basDroite[1]) / 2 - MH / 2;
+
+                const canvas = document.createElement('canvas');
+                canvas.width = L; canvas.height = H;
+                const ctx = canvas.getContext('2d');
+
+                // Fond de carte (tuiles CARTO / OpenStreetMap)
+                ctx.save();
+                ctx.beginPath(); ctx.rect(0, 0, L, MH); ctx.clip();
+                const fond = ctx.createLinearGradient(0, 0, 0, MH);
+                fond.addColorStop(0, '#dfeceb'); fond.addColorStop(1, '#c6dcd9');
+                ctx.fillStyle = fond; ctx.fillRect(0, 0, L, MH);
+                let tuilesOk = 0;
+                if (avecFond) {
+                    const n = Math.pow(2, z), taches = [];
+                    for (let ty = Math.floor(oy / 512); ty <= Math.floor((oy + MH) / 512); ty++) {
+                        if (ty < 0 || ty >= n) continue;
+                        for (let tx = Math.floor(ox / 512); tx <= Math.floor((ox + L) / 512); tx++) {
+                            const txm = ((tx % n) + n) % n;
+                            const url = 'https://' + 'abcd'.charAt((txm + ty) % 4) + '.basemaps.cartocdn.com/rastertiles/voyager/' + z + '/' + txm + '/' + ty + '@2x.png';
+                            taches.push(chargerImageCarte(url).then(img => { if (img) { ctx.drawImage(img, tx * 512 - ox, ty * 512 - oy, 512, 512); tuilesOk++; } }));
+                        }
                     }
+                    await Promise.all(taches);
+                }
+                // Parcours
+                const xy = pts.map(p => { const q = proj(p[0], p[1], W); return [q[0] - ox, q[1] - oy]; });
+                const tracer = (largeur, couleur) => {
+                    ctx.beginPath();
+                    xy.forEach((q, k) => { if (k === 0) ctx.moveTo(q[0], q[1]); else ctx.lineTo(q[0], q[1]); });
+                    ctx.lineWidth = largeur; ctx.strokeStyle = couleur; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.stroke();
+                };
+                tracer(20, 'rgba(255,255,255,0.95)');
+                tracer(11, '#0a8f9c');
+                const pastille = (q, couleur) => {
+                    ctx.beginPath(); ctx.arc(q[0], q[1], 19, 0, Math.PI * 2);
+                    ctx.fillStyle = couleur; ctx.fill(); ctx.lineWidth = 7; ctx.strokeStyle = '#fff'; ctx.stroke();
+                };
+                const debut = xy[0], fin = xy[xy.length - 1];
+                pastille(debut, '#22c55e');
+                if (Math.hypot(fin[0] - debut[0], fin[1] - debut[1]) > 40) pastille(fin, '#ef4444');
+                // Mention obligatoire des sources de la carte
+                if (tuilesOk) {
+                    const mention = '© OpenStreetMap · © CARTO';
+                    ctx.font = '22px system-ui, sans-serif';
+                    const lm = ctx.measureText(mention).width + 20;
+                    ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.fillRect(L - lm, MH - 34, lm, 34);
+                    ctx.fillStyle = '#334155'; ctx.textAlign = 'left'; ctx.fillText(mention, L - lm + 10, MH - 10);
+                }
+                ctx.restore();
+
+                // Bandeau du bas
+                ctx.fillStyle = '#0b1a20'; ctx.fillRect(0, MH, L, H - MH);
+                const barre = ctx.createLinearGradient(0, 0, L, 0);
+                barre.addColorStop(0, '#35e0c8'); barre.addColorStop(1, '#0a8f9c');
+                ctx.fillStyle = barre; ctx.fillRect(0, MH, L, 8);
+                ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+                ctx.fillStyle = '#ffffff';
+                let taille = 60;
+                ctx.font = '800 ' + taille + 'px system-ui, sans-serif';
+                while (ctx.measureText(s.nom || 'Sortie').width > L - 100 && taille > 32) { taille -= 4; ctx.font = '800 ' + taille + 'px system-ui, sans-serif'; }
+                ctx.fillText(s.nom || 'Sortie', 50, MH + 92);
+                ctx.fillStyle = '#9fb4ba'; ctx.font = '500 32px system-ui, sans-serif';
+                ctx.fillText(new Date(s.debut).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }), 50, MH + 140);
+
+                // Profil d'altitude
+                const alts = brut.map(p => Number(p[3])).filter(a => Number.isFinite(a));
+                if (alts.length > brut.length * 0.5 && alts.length > 5) {
+                    const pasA = Math.max(1, Math.ceil(alts.length / 300));
+                    const a2 = alts.filter((a, k) => k % pasA === 0);
+                    const mn = Math.min(...a2), mx = Math.max(...a2), x0 = 50, x1 = L - 50, y0 = MH + 170, y1 = MH + 250;
+                    ctx.beginPath(); ctx.moveTo(x0, y1);
+                    a2.forEach((a, k) => ctx.lineTo(x0 + (x1 - x0) * k / Math.max(1, a2.length - 1), y1 - (y1 - y0) * (mx > mn ? (a - mn) / (mx - mn) : 0.5)));
+                    ctx.lineTo(x1, y1); ctx.closePath();
+                    const rempl = ctx.createLinearGradient(0, y0, 0, y1);
+                    rempl.addColorStop(0, 'rgba(53,224,200,0.75)'); rempl.addColorStop(1, 'rgba(53,224,200,0.12)');
+                    ctx.fillStyle = rempl; ctx.fill();
+                }
+
+                // Chiffres clés
+                const chiffres = [
+                    [String(s.distance_km).replace('.', ','), 'km'],
+                    [String(Math.round(s.denivele_pos)), 'm D+'],
+                    [formaterDuree(s.duree_s), 'durée'],
+                    [String(s.vitesse_moy).replace('.', ','), 'km/h']
+                ];
+                chiffres.forEach((c, k) => {
+                    const x = 50 + k * ((L - 100) / 4);
+                    ctx.fillStyle = '#ffffff'; ctx.font = '800 50px system-ui, sans-serif'; ctx.fillText(c[0], x, MH + 340);
+                    ctx.fillStyle = '#9fb4ba'; ctx.font = '500 28px system-ui, sans-serif'; ctx.fillText(c[1], x, MH + 380);
+                });
+                ctx.fillStyle = '#35e0c8'; ctx.font = '800 30px system-ui, sans-serif'; ctx.textAlign = 'right';
+                ctx.fillText('Maillons', L - 50, H - 30);
+
+                return await new Promise((resolve, reject) => {
+                    try { canvas.toBlob(b => b ? resolve(b) : reject(new Error('image vide')), 'image/jpeg', 0.92); }
+                    catch (e) { reject(e); }
+                });
+            }
+
+            async function partagerSortie(s, bouton) {
+                const jour = new Date(s.debut).toLocaleDateString('fr-FR');
+                const texte = '🚵 ' + s.nom + ' · ' + jour + String.fromCharCode(10)
+                    + s.distance_km + ' km · ' + s.denivele_pos + ' m D+ · ' + formaterDuree(s.duree_s) + ' · ' + s.vitesse_moy + ' km/h';
+                if (bouton) { bouton.classList.add('occupe'); bouton.disabled = true; }
+                let blob = null;
+                try {
+                    try { blob = await creerImagePartage(s, true); }
+                    catch (e) { console.warn('Image avec fond de carte impossible, essai sans fond', e); blob = await creerImagePartage(s, false); }
+                } catch (e) {
+                    console.warn('Image de partage impossible', e);
+                } finally {
+                    if (bouton) { bouton.classList.remove('occupe'); bouton.disabled = false; }
+                }
+                const nomFichier = (String(s.nom || 'sortie').replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '') || 'sortie') + '.jpg';
+                if (blob) {
+                    const fichier = new File([blob], nomFichier, { type: 'image/jpeg' });
+                    if (navigator.canShare && navigator.canShare({ files: [fichier] })) {
+                        try {
+                            await navigator.share({ files: [fichier], title: s.nom, text: texte });
+                        } catch (e) {
+                            if (e && e.name !== 'AbortError') console.warn(e);
+                        }
+                        return;
+                    }
+                    const lien = document.createElement('a');
+                    lien.href = URL.createObjectURL(blob);
+                    lien.download = nomFichier;
+                    document.body.appendChild(lien);
+                    lien.click();
+                    lien.remove();
+                    setTimeout(() => URL.revokeObjectURL(lien.href), 4000);
+                    return;
+                }
+                if (navigator.share) {
+                    try { await navigator.share({ title: s.nom, text: texte }); } catch (e) { /* annulé */ }
                     return;
                 }
                 try {
                     await navigator.clipboard.writeText(texte);
-                    alert("Le partage n'est pas disponible sur cet appareil : le résumé de la sortie est copié, tu peux le coller dans un message.");
+                    alert("Le partage n'est pas disponible sur cet appareil : le résumé de la sortie est copié.");
                 } catch (e) {
                     prompt('Copie ce résumé pour le partager :', texte);
                 }
@@ -7317,7 +7470,7 @@ def accueil():
                         boutonPartage.addEventListener('click', (e) => {
                             e.stopPropagation();
                             fermerMenusSortie();
-                            partagerSortie(s);
+                            partagerSortie(s, boutonPartage);
                         });
 
                         const boutonFavori = document.createElement('button');
