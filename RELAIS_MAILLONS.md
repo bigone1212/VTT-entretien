@@ -47,7 +47,21 @@ Ce fichier ne doit **pas** être mis à jour seulement à la fin : une session p
 
 ## Tâche en cours
 
-**Statut : AUCUNE TÂCHE EN COURS** (dernière mise à jour : 25/10/2026, fin de la mise en place du protocole).
+Statut : EN COURS
+Objectif : demande de Math en 4 temps, traités un par un. Temps 1 (pastille plus petite) terminé, commit `67e6a92`. Temps 2 (maintenant) : choix des couleurs de l'appli dans Réglages, apparence seulement. Temps 3 : choix des unités (distance, temps, etc.) dans Réglages. Temps 4 : profil d'altitude de l'onglet Sorties un peu plus haut pour les longues distances.
+Démarrée : 25/10/2026, vers 20h10 — par : Claude
+Étapes prévues (temps 2) :
+  [ ] 1. Repérer les couleurs d'accent dans main.py (variables et valeurs écrites en dur)
+  [ ] 2. Ajouter un choix de palette dans Réglages > Apparence (mémorisé sur le téléphone, clé `maillon_palette`)
+  [ ] 3. Tester dans un navigateur (thèmes clair et sombre), puis envoyer sur la branche `reprise/2026-10-25-couleurs`
+  [ ] 4. Fusion dans `main` seulement avec l'accord de Math
+Enregistré sur GitHub : rien pour ce temps 2.
+Local, non enregistré : rien
+Fichiers modifiés : aucun pour l'instant (`main.py` seulement ensuite)
+Tests : non faits
+Problèmes rencontrés : l'appli complète ne peut pas être démarrée dans l'espace de travail de Claude (installation de FastAPI refusée) ; test de l'apparence par génération de la page HTML seule.
+Prochaine action : repérer les couleurs d'accent.
+Dernier commit de main connu : `2078847`    Branche de reprise éventuelle : `reprise/2026-10-25-couleurs` (pas encore créée)
 
 À remplir dès qu'une tâche significative démarre, puis à effacer (en reportant l'essentiel en sections 2 à 8) quand elle est **terminée et vérifiée**. Modèle :
 
