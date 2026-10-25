@@ -36,6 +36,13 @@ Ce fichier ne doit **pas** être mis à jour seulement à la fin : une session p
 6. **Ne jamais marquer une tâche ou une étape comme terminée** si elle ne l'est pas. États autorisés : `[ ]` à faire, `[~]` commencée ou non vérifiée, `[x]` terminée **et** vérifiée.
 7. **Si une session s'est arrêtée sans mettre à jour ce fichier**, ce qui est écrit ici est le dernier état *connu*, pas forcément l'état réel. Celui qui reprend (Claude ou ChatGPT) doit **vérifier le code réel avant de poursuivre** : comparer `git log` de `main` avec le dernier commit noté ci-dessous (tout commit plus récent est un travail non consigné : lire son contenu), chercher d'éventuelles branches `reprise/…`, relire les fichiers concernés, puis corriger ce fichier avant de continuer. Les modifications « locales » d'une session interrompue sont à considérer comme perdues, sauf si elles figurent sur une branche `reprise/…`.
 
+**Règle de publication — décidée par Math le 25/10/2026, valable pour Claude et ChatGPT**
+- **Toute modification du code de l'appli** (`main.py`, `db.py`, `gpx_import.py`, `requirements.txt`) est d'abord enregistrée et testée sur une **branche séparée** `reprise/AAAA-MM-JJ` (on peut ajouter un mot sur le sujet, ex. `reprise/2026-10-26-filtre-zone`). Cette branche sert aussi de point de reprise.
+- **Fusion dans `main` uniquement avec l'accord explicite de Math**, après test. Render se met à jour à partir de `main` (mise à jour automatique non vérifiée) : fusionner dans `main` revient peut-être à **déployer**. Aucun déploiement sans l'accord de Math.
+- Les mises à jour de **ce fichier seul** (journal, état, décisions) vont directement sur `main`, car elles ne changent pas l'appli. Elles peuvent provoquer un redéploiement identique (voir section 8).
+- Avant de fusionner : relire l'état de `main` (quelqu'un d'autre a pu y enregistrer du travail) et ne rien écraser.
+- Ne pas modifier d'autres fichiers que ceux prévus par la tâche sans en informer Math.
+
 *Limite connue : le numéro d'un commit n'existe qu'une fois ce commit créé ; il ne peut donc pas figurer dans le fichier qui l'accompagne. Il est ajouté à la mise à jour suivante. Entre-temps, `git log` fait foi.*
 
 ## Tâche en cours
@@ -77,6 +84,11 @@ Dernier commit de main connu : …    Branche de reprise éventuelle : …
 *Fonctions décrites par Math et visibles dans l'historique des commits (non re-testées lors de la création de ce fichier) :* Historique (filtre, calendrier), Réglages (fiche technique du vélo, apparence), Sorties (import GPX et Strava via le menu trois points ; filtres période / distance / favoris / zone géographique), pastilles rouges de nouveautés, fiche de sortie (carte satellite, profil, météo), vue 3D avec noms de lieux et panneaux de pente, favoris, partage d'une image de la sortie, export GPX.
 
 ## 2. Dernière intervention
+
+**Intervention 3 — 25/10/2026 : règle de publication**
+- Math a validé : modifications de code sur branche `reprise/…` d'abord, fusion dans `main` seulement avec son accord (détail en section 0 bis). ChatGPT a confirmé le même jour avoir accès au dépôt et avoir lu ce fichier (déclaration de Math, non vérifiée par Claude).
+- Fichier modifié : `RELAIS_MAILLONS.md` uniquement. Aucun code de l'appli modifié. Aucun déploiement déclenché volontairement.
+- État des branches constaté sur GitHub : `main` et `feature/fiche-technique-velo` (**non examinée** ; contenu et utilité inconnus). Aucune branche `reprise/…`.
 
 **Intervention 2 — 25/10/2026 (après la création du fichier) : protocole de reprise après interruption**
 - Objectif : permettre la reprise du travail même si une session s'arrête en pleine tâche (limite d'utilisation).
@@ -146,6 +158,7 @@ Dernier commit de main connu : …    Branche de reprise éventuelle : …
 
 - **En cours** : rien (voir la section « Tâche en cours » : statut AUCUNE TÂCHE EN COURS).
 - **À faire** : aucune tâche en attente n'est consignée dans le dépôt. La prochaine demande vient de Math.
+- **À faire (sans urgence, non commencé)** : examiner la branche `feature/fiche-technique-velo` par rapport à `main` (lecture seule) et consigner ici ce qu'elle contient, avant toute décision.
 - **Prochaine étape recommandée** : à la prochaine modification, démarrer l'appli (ou la tester sur Render) et consigner en section 4 ce qui a été réellement vérifié.
 
 ## 7. Précautions
@@ -166,7 +179,9 @@ Dernier commit de main connu : …    Branche de reprise éventuelle : …
 ## 8. État GitHub / Render
 
 - **Dernier commit connu de `main` lors de la rédaction : `67e6a926af0e6be6f12703f5a97c3067e6aa7aa0`** (25/10/2026, 19:44 +0100, « Pastille rouge des onglets : un peu plus petite »). Vérifié le 25/10/2026 : le dépôt distant était bien à ce commit au moment de la lecture.
-- Commits de relais : `6ac4728` (création du fichier, vérifié sur GitHub le 25/10/2026). Le commit de l'intervention 2 (protocole de reprise) vient **après** : son numéro n'est pas connu au moment de l'écriture, consulter l'historique de `main` sur GitHub.
+- Commits de relais : `6ac4728` (création du fichier) et `b8ef78e` (protocole de reprise), tous deux vérifiés sur GitHub le 25/10/2026. Le commit de l'intervention 3 (règle de publication) vient **après** : son numéro n'est pas connu au moment de l'écriture, consulter l'historique de `main` sur GitHub.
+- Dernier commit de **l'appli** (code) : `67e6a92`. Les commits de relais ne modifient que ce fichier.
+- Branches sur GitHub le 25/10/2026 : `main`, `feature/fiche-technique-velo` (non examinée).
 - Chaque envoi sur `main` peut déclencher une mise à jour de Render si la mise à jour automatique est active (non vérifié) : un commit qui ne modifie que ce fichier ne change pas l'appli, mais peut provoquer un redéploiement identique.
 - **Render : correspondance NON vérifiée.** Cette session n'a pas accès au tableau de bord Render et l'adresse de l'appli n'est pas dans le dépôt. D'après Math, Render se met à jour à partir de GitHub ; on ne sait pas ici si la mise à jour automatique est active, ni quel commit est actuellement en ligne.
 - **Comment vérifier la prochaine fois** : dans Render, ouvrir le service puis l'onglet des déploiements ; comparer le commit affiché avec le dernier commit de `main` sur GitHub. Noter ici le résultat avec la date.
