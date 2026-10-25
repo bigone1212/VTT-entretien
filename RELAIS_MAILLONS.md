@@ -51,17 +51,18 @@ Statut : EN COURS
 Objectif : demande de Math en 4 temps, traités un par un. Temps 1 (pastille plus petite) terminé, commit `67e6a92`. Temps 2 (maintenant) : choix des couleurs de l'appli dans Réglages, apparence seulement. Temps 3 : choix des unités (distance, temps, etc.) dans Réglages. Temps 4 : profil d'altitude de l'onglet Sorties un peu plus haut pour les longues distances.
 Démarrée : 25/10/2026, vers 20h10 — par : Claude
 Étapes prévues (temps 2) :
-  [ ] 1. Repérer les couleurs d'accent dans main.py (variables et valeurs écrites en dur)
-  [ ] 2. Ajouter un choix de palette dans Réglages > Apparence (mémorisé sur le téléphone, clé `maillon_palette`)
-  [ ] 3. Tester dans un navigateur (thèmes clair et sombre), puis envoyer sur la branche `reprise/2026-10-25-couleurs`
-  [ ] 4. Fusion dans `main` seulement avec l'accord de Math
-Enregistré sur GitHub : rien pour ce temps 2.
+  [x] 1. Repérer les couleurs d'accent dans main.py (50 lignes de CSS/logo passées en variables `--ac1`, `--ac2`, `--ac3`, `--ac-rgb`, `--ac2-rgb`, `--on-grad`)
+  [x] 2. Choix de palette dans Réglages > Apparence : 6 couleurs (turquoise par défaut, bleu, vert, orange, rose, violet), clé `maillon_palette`, attribut `data-palette` sur la racine
+  [x] 3. Testé dans un navigateur (nuit et jour), envoyé sur la branche `reprise/2026-10-25-couleurs`
+  [ ] 4. Fusion dans `main` seulement avec l'accord de Math (en attente)
+Enregistré sur GitHub : branche `reprise/2026-10-25-couleurs` (commit à lire dans `git log` de la branche). Rien de nouveau dans le code de `main`.
 Local, non enregistré : rien
-Fichiers modifiés : aucun pour l'instant (`main.py` seulement ensuite)
-Tests : non faits
-Problèmes rencontrés : l'appli complète ne peut pas être démarrée dans l'espace de travail de Claude (installation de FastAPI refusée) ; test de l'apparence par génération de la page HTML seule.
-Prochaine action : repérer les couleurs d'accent.
-Dernier commit de main connu : `2078847`    Branche de reprise éventuelle : `reprise/2026-10-25-couleurs` (pas encore créée)
+Fichiers modifiés : `main.py` (branche reprise) et ce fichier
+Tests : faits, sur la page HTML générée (appli complète non démarrable dans l'espace de travail de Claude). Résultats : 6 palettes x 2 thèmes appliquent bien la couleur et la mémorisent ; aucune erreur JavaScript ; en turquoise, les onglets Entretien, Historique et Sorties sont identiques pixel pour pixel à la version précédente (nuit et jour) ; aucun backslash ajouté. Non testé : sur téléphone, sur Render.
+Limites voulues : l'image de partage, l'icône du téléphone (favicon) et les couleurs de la carte 3D restent turquoise (JavaScript / image, non touchés pour ne pas changer le fonctionnement).
+Problèmes rencontrés : un test automatique perdait parfois la mémoire du navigateur ; cause trouvée dans le test lui-même (il réécrivait la mémoire à chaque chargement), pas dans l'appli.
+Prochaine action : attendre l'accord de Math pour fusionner dans `main`, puis passer au temps 3 (unités).
+Dernier commit de main connu : `2078847`    Branche de reprise éventuelle : `reprise/2026-10-25-couleurs`
 
 À remplir dès qu'une tâche significative démarre, puis à effacer (en reportant l'essentiel en sections 2 à 8) quand elle est **terminée et vérifiée**. Modèle :
 
