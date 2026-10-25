@@ -6534,12 +6534,12 @@ def accueil():
                         x1: xx, x2: xx, y1: 0, y2: hautGraph + (codes ? 8 + hautBande : 4),
                         stroke: 'rgba(255,255,255,0.7)', 'stroke-width': 1, 'stroke-dasharray': '3 3'
                     });
-                    const km = d / 1000;
-                    texte(Number.isInteger(km) ? `${km} km` : `${km.toFixed(1)} km`,
+                    const distance = fmtDistance(d / 1000, 1);
+                    texte(`${distance.texte} ${distance.unite}`,
                         { x: xx, y: baseAxe, 'text-anchor': 'middle' });
                 }
                 texte('0', { x: x(0) + (grand ? 0 : 2), y: baseAxe, 'text-anchor': grand ? 'middle' : 'start' });
-                texte(`${(total / 1000).toFixed(1)} km`, { x: largeur - 2, y: baseAxe, 'text-anchor': 'end' });
+                texte(fmtDistance(total / 1000, 1).complet, { x: largeur - 2, y: baseAxe, 'text-anchor': 'end' });
 
                 if (grand) {
                     [mini, (mini + maxi) / 2, maxi].forEach(a => {
@@ -6547,7 +6547,7 @@ def accueil():
                             x1: margeG, x2: largeur, y1: y(a), y2: y(a),
                             stroke: 'rgba(255,255,255,0.25)', 'stroke-width': 1
                         });
-                        texte(`${Math.round(a)} m`, { x: margeG - 4, y: y(a) + 4, 'text-anchor': 'end' });
+                        texte(fmtAltitude(a).complet, { x: margeG - 4, y: y(a) + 4, 'text-anchor': 'end' });
                     });
                 }
 
@@ -6623,7 +6623,7 @@ def accueil():
                     const k = indiceA(profil.cum, d);
                     const pente = profil.pentes[Math.min(k, profil.pentes.length - 1)];
                     const fleche = pente > 0.5 ? '↑' : (pente < -0.5 ? '↓' : '→');
-                    let ligne = `${(d / 1000).toFixed(1)} km · ${Math.round(profil.alt[k])} m · pente ${Math.round(Math.abs(pente))} % ${fleche}`;
+                    let ligne = `${fmtDistance(d / 1000, 1).complet} · ${fmtAltitude(profil.alt[k]).complet} · pente ${Math.round(Math.abs(pente))} % ${fleche}`;
                     if (g.codes) {
                         ligne += ` · ${(TYPES_CHEMIN[g.codes[k]] || TYPES_CHEMIN.u).nom}`;
                     }
@@ -8001,7 +8001,7 @@ def accueil():
                     pastille.style.background = p.couleur;
                     ligne.appendChild(pastille);
                     ligne.appendChild(document.createTextNode(
-                        `${p.libelle} · ${fmtFr(p.km, 1)} km (${Math.round((p.km / total) * 100)} %)`
+                        `${p.libelle} · ${fmtDistance(p.km, 1).complet} (${Math.round((p.km / total) * 100)} %)`
                     ));
                     legende.appendChild(ligne);
                 });
