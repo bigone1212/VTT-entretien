@@ -7,7 +7,7 @@
 ## 0. Mode d'emploi du relais
 
 **Au début d'une intervention**
-1. Lire ce fichier en entier, puis vérifier que le dernier commit de `main` correspond bien à la section 8. S'il y a des commits plus récents, lire leurs messages : quelqu'un a travaillé entre-temps.
+1. Lire ce fichier en entier, **en commençant par la section « Tâche en cours »** (juste après celle-ci), puis vérifier que le dernier commit de `main` correspond bien à la section 8 et à la section « Tâche en cours ». S'il y a des commits plus récents, lire leurs messages : quelqu'un a travaillé entre-temps, parfois sans avoir pu mettre ce fichier à jour.
 2. Avant de réécrire un gros morceau de `main.py`, comparer l'ancienne et la nouvelle version : le 24/10/2026, la fiche de sortie a **disparu lors d'un assemblage** de versions (voir section 3).
 
 **À la fin d'une intervention significative**
@@ -23,6 +23,43 @@
 3. Tester avant de livrer, puis lui dire ce qu'il a à faire (attendre Render, rouvrir l'appli…).
 4. Pour une demande de graphisme, **ne pas changer le fonctionnement** de l'appli.
 5. Ne pas toucher aux autres fichiers que `main.py` sans le lui dire.
+
+## 0 bis. Protocole de reprise après interruption
+
+Ce fichier ne doit **pas** être mis à jour seulement à la fin : une session peut s'arrêter à tout moment (limite d'utilisation atteinte, coupure). Pour chaque tâche significative :
+
+1. **Avant de commencer** : écrire dans la section « Tâche en cours » l'objectif et les étapes prévues, et enregistrer sur GitHub (commit de ce seul fichier). Pas de modification de code avant.
+2. **Pendant le travail** : mettre à jour la section après chaque étape importante, et en particulier après chaque modification de code **vérifiée et enregistrée**. Le plus simple : une même étape = un commit contenant le code vérifié **et** la mise à jour de ce fichier.
+3. **Contenu de chaque mise à jour** : fichiers modifiés, changements réalisés, tests effectués et leur résultat, problèmes rencontrés, prochaine action.
+4. **Deux listes séparées, toujours** : « Enregistré sur GitHub » (avec le numéro de commit, vérifié) et « Local, non enregistré » (modifications qui n'existent que dans l'espace de travail de la session et qui seraient perdues).
+5. **Limite d'utilisation proche** : l'enregistrement d'un point de reprise fiable passe avant tout le reste. Ne rien abandonner : tout changement non enregistré est soit enregistré, soit décrit précisément dans « Local, non enregistré ». Ne jamais écraser le travail existant (relire l'état de GitHub avant d'envoyer). Du code **non testé** ne va **pas** sur `main` (Render peut le publier) : il est envoyé sur une branche séparée nommée `reprise/AAAA-MM-JJ`, dont le nom est noté dans la section « Tâche en cours » sur `main`. Elle n'est fusionnée dans `main` qu'après test.
+6. **Ne jamais marquer une tâche ou une étape comme terminée** si elle ne l'est pas. États autorisés : `[ ]` à faire, `[~]` commencée ou non vérifiée, `[x]` terminée **et** vérifiée.
+7. **Si une session s'est arrêtée sans mettre à jour ce fichier**, ce qui est écrit ici est le dernier état *connu*, pas forcément l'état réel. Celui qui reprend (Claude ou ChatGPT) doit **vérifier le code réel avant de poursuivre** : comparer `git log` de `main` avec le dernier commit noté ci-dessous (tout commit plus récent est un travail non consigné : lire son contenu), chercher d'éventuelles branches `reprise/…`, relire les fichiers concernés, puis corriger ce fichier avant de continuer. Les modifications « locales » d'une session interrompue sont à considérer comme perdues, sauf si elles figurent sur une branche `reprise/…`.
+
+*Limite connue : le numéro d'un commit n'existe qu'une fois ce commit créé ; il ne peut donc pas figurer dans le fichier qui l'accompagne. Il est ajouté à la mise à jour suivante. Entre-temps, `git log` fait foi.*
+
+## Tâche en cours
+
+**Statut : AUCUNE TÂCHE EN COURS** (dernière mise à jour : 25/10/2026, fin de la mise en place du protocole).
+
+À remplir dès qu'une tâche significative démarre, puis à effacer (en reportant l'essentiel en sections 2 à 8) quand elle est **terminée et vérifiée**. Modèle :
+
+```
+Statut : EN COURS / BLOQUÉE / TERMINÉE
+Objectif : …
+Démarrée : date et heure — par : Claude ou ChatGPT
+Étapes prévues :
+  [ ] 1. …
+  [~] 2. … (commencée, non vérifiée)
+  [x] 3. … (terminée et vérifiée)
+Enregistré sur GitHub : étape → commit (vérifié le … )
+Local, non enregistré : fichiers et nature des changements (ou « rien »)
+Fichiers modifiés : …
+Tests : fait / résultat — non fait
+Problèmes rencontrés : …
+Prochaine action : …
+Dernier commit de main connu : …    Branche de reprise éventuelle : …
+```
 
 ## 1. État du projet
 
@@ -41,7 +78,14 @@
 
 ## 2. Dernière intervention
 
-**Cette intervention — 25/10/2026**
+**Intervention 2 — 25/10/2026 (après la création du fichier) : protocole de reprise après interruption**
+- Objectif : permettre la reprise du travail même si une session s'arrête en pleine tâche (limite d'utilisation).
+- Fichier modifié : `RELAIS_MAILLONS.md` uniquement (ajout des sections « 0 bis » et « Tâche en cours », mise à jour des sections 0, 2, 6, 8). **Aucun autre fichier. Aucun déploiement déclenché volontairement.**
+- Vérifié avant modification : dépôt local et GitHub identiques au commit `6ac4728`, aucune modification locale en attente.
+- Décision à signaler : le code non testé, en cas de limite proche, va sur une branche `reprise/AAAA-MM-JJ` et non sur `main` (voir 0 bis, point 5). Choix fait pour ne pas risquer de publier du code non testé ; Math peut le modifier.
+- Aucune branche `reprise/…` n'existe à ce jour.
+
+**Intervention 1 — 25/10/2026 : création du fichier de relais (commit `6ac4728`)**
 - Objectif : mettre en place ce fichier de relais.
 - Fichier créé : `RELAIS_MAILLONS.md` (racine). **Aucun autre fichier modifié. Aucun déploiement déclenché.**
 - Méthode : lecture du dépôt (clone, historique des 40 derniers commits, code), vérifications de la section 4.
@@ -100,7 +144,7 @@
 
 ## 6. Travail restant
 
-- **En cours** : rien d'enregistré dans le dépôt.
+- **En cours** : rien (voir la section « Tâche en cours » : statut AUCUNE TÂCHE EN COURS).
 - **À faire** : aucune tâche en attente n'est consignée dans le dépôt. La prochaine demande vient de Math.
 - **Prochaine étape recommandée** : à la prochaine modification, démarrer l'appli (ou la tester sur Render) et consigner en section 4 ce qui a été réellement vérifié.
 
@@ -122,6 +166,7 @@
 ## 8. État GitHub / Render
 
 - **Dernier commit connu de `main` lors de la rédaction : `67e6a926af0e6be6f12703f5a97c3067e6aa7aa0`** (25/10/2026, 19:44 +0100, « Pastille rouge des onglets : un peu plus petite »). Vérifié le 25/10/2026 : le dépôt distant était bien à ce commit au moment de la lecture.
-- Le commit qui ajoute ce fichier vient **après** celui-ci : pour connaître le tout dernier état, consulter l'historique de `main` sur GitHub.
+- Commits de relais : `6ac4728` (création du fichier, vérifié sur GitHub le 25/10/2026). Le commit de l'intervention 2 (protocole de reprise) vient **après** : son numéro n'est pas connu au moment de l'écriture, consulter l'historique de `main` sur GitHub.
+- Chaque envoi sur `main` peut déclencher une mise à jour de Render si la mise à jour automatique est active (non vérifié) : un commit qui ne modifie que ce fichier ne change pas l'appli, mais peut provoquer un redéploiement identique.
 - **Render : correspondance NON vérifiée.** Cette session n'a pas accès au tableau de bord Render et l'adresse de l'appli n'est pas dans le dépôt. D'après Math, Render se met à jour à partir de GitHub ; on ne sait pas ici si la mise à jour automatique est active, ni quel commit est actuellement en ligne.
 - **Comment vérifier la prochaine fois** : dans Render, ouvrir le service puis l'onglet des déploiements ; comparer le commit affiché avec le dernier commit de `main` sur GitHub. Noter ici le résultat avec la date.
