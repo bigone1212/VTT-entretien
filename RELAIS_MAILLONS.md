@@ -54,14 +54,14 @@ Démarrée : 25/10/2026, vers 20h10 — par : Claude
   [x] 1. Repérer les couleurs d'accent dans main.py (50 lignes de CSS/logo passées en variables `--ac1`, `--ac2`, `--ac3`, `--ac-rgb`, `--ac2-rgb`, `--on-grad`)
   [x] 2. Choix de palette dans Réglages > Apparence : 6 couleurs (turquoise par défaut, bleu, vert, orange, rose, violet), clé `maillon_palette`, attribut `data-palette` sur la racine
   [x] 3. Testé dans un navigateur (nuit et jour), envoyé sur la branche `reprise/2026-10-25-couleurs`
-  [ ] 4. Fusion dans `main` seulement avec l'accord de Math (en attente)
-Enregistré sur GitHub : branche `reprise/2026-10-25-couleurs` (commit à lire dans `git log` de la branche). Rien de nouveau dans le code de `main`.
+  [x] 4. Fusion dans `main` faite le 25/10/2026 avec l'accord explicite de Math (fusion sans conflit : commit `41f2129` est maintenant dans `main`)
+Enregistré sur GitHub : `41f2129` (choix des couleurs), sur la branche `reprise/2026-10-25-couleurs` puis dans `main`.
 Local, non enregistré : rien
 Fichiers modifiés : `main.py` (branche reprise) et ce fichier
 Tests : faits, sur la page HTML générée (appli complète non démarrable dans l'espace de travail de Claude). Résultats : 6 palettes x 2 thèmes appliquent bien la couleur et la mémorisent ; aucune erreur JavaScript ; en turquoise, les onglets Entretien, Historique et Sorties sont identiques pixel pour pixel à la version précédente (nuit et jour) ; aucun backslash ajouté. Non testé : sur téléphone, sur Render.
 Limites voulues : l'image de partage, l'icône du téléphone (favicon) et les couleurs de la carte 3D restent turquoise (JavaScript / image, non touchés pour ne pas changer le fonctionnement).
 Problèmes rencontrés : un test automatique perdait parfois la mémoire du navigateur ; cause trouvée dans le test lui-même (il réécrivait la mémoire à chaque chargement), pas dans l'appli.
-Prochaine action : attendre l'accord de Math pour fusionner dans `main`, puis passer au temps 3 (unités).
+Prochaine action : temps 3 (choix des unités dans Réglages), sur une nouvelle branche `reprise/…`. À vérifier par Math : Render a bien redéployé et le choix des couleurs apparaît dans Réglages.
 Dernier commit de main connu : `2078847`    Branche de reprise éventuelle : `reprise/2026-10-25-couleurs`
 
 À remplir dès qu'une tâche significative démarre, puis à effacer (en reportant l'essentiel en sections 2 à 8) quand elle est **terminée et vérifiée**. Modèle :
@@ -99,6 +99,11 @@ Dernier commit de main connu : …    Branche de reprise éventuelle : …
 *Fonctions décrites par Math et visibles dans l'historique des commits (non re-testées lors de la création de ce fichier) :* Historique (filtre, calendrier), Réglages (fiche technique du vélo, apparence), Sorties (import GPX et Strava via le menu trois points ; filtres période / distance / favoris / zone géographique), pastilles rouges de nouveautés, fiche de sortie (carte satellite, profil, météo), vue 3D avec noms de lieux et panneaux de pente, favoris, partage d'une image de la sortie, export GPX.
 
 ## 2. Dernière intervention
+
+**Intervention 4 — 25/10/2026 : demande de Math en 4 temps (temps 1 et 2 terminés)**
+- Temps 1 : pastille rouge des onglets plus petite (`67e6a92`, directement dans `main`, avant la règle de publication).
+- Temps 2 : choix des couleurs de l'appli (6 palettes) dans Réglages > Apparence, `41f2129`, fusionné dans `main` avec l'accord de Math. Apparence seulement ; image de partage, icône du téléphone et couleurs de la carte 3D restent turquoise. Tests : voir « Tâche en cours ». Déploiement Render non vérifié.
+- Temps 3 (unités) et temps 4 (profil d'altitude plus haut pour les longues distances) : pas encore faits.
 
 **Intervention 3 — 25/10/2026 : règle de publication**
 - Math a validé : modifications de code sur branche `reprise/…` d'abord, fusion dans `main` seulement avec son accord (détail en section 0 bis). ChatGPT a confirmé le même jour avoir accès au dépôt et avoir lu ce fichier (déclaration de Math, non vérifiée par Claude).
