@@ -48,21 +48,21 @@ Ce fichier ne doit **pas** être mis à jour seulement à la fin : une session p
 ## Tâche en cours
 
 Statut : EN COURS
-Objectif : demande de Math en 4 temps, traités un par un. Temps 1 (pastille) et temps 2 (couleurs) terminés et dans `main`. Temps 3 (maintenant) : choix des unités dans Réglages (distance km/mi, altitude m/ft, vitesse km/h/mph, température °C/°F, heure 24 h/12 h). Temps 4 : profil d'altitude de l'onglet Sorties un peu plus haut pour les longues distances.
-Démarrée : 25/10/2026, vers 20h20 — par : Claude
-Décision de conception (temps 3) : changement d'AFFICHAGE seulement. Les données restent en km et en mètres dans la base. En métrique (défaut), les textes affichés doivent rester identiques à avant. Les valeurs que Math saisit lui-même (kilométrage total du vélo, seuils d'usure, kilométrage d'une intervention) restent en km, volontairement : convertir en miles puis reconvertir ferait glisser son vrai kilométrage. À proposer plus tard si besoin.
-Étapes prévues (temps 3) :
-  [x] 1. Repérer les affichages principaux : liste des sorties, filtre distance, fiche de sortie, météo, profils d'altitude, survol 3D, image de partage et confirmation d'import
-  [x] 2. Ajouter la carte « Unités » dans Réglages (clé `maillon_unites`) et les fonctions de conversion : code enregistré sur la branche de reprise
-  [~] 3. Brancher les affichages et vérifier que le métrique reste identique et que l'impérial est correct : conversions branchées dans les principaux affichages ; tests d'exécution et d'interface encore nécessaires
-  [~] 4. Fusion dans `main` : accord explicite donné par Math le 25/10/2026 ; PR #2 créée, conflit du fichier de relais à résoudre avant fusion
-Enregistré sur GitHub : `main.py` sur `reprise/2026-10-25-unites`, dernier commit de code `7c9ff2086de8c82ff25b306e736f0b77a20c57b2` ; relais de branche mis à jour en `e147cc8898cb0a5e302be89b8a906c29e10e3990` avant résolution du conflit
+Objectif : temps 4 de la demande en quatre temps de Math : améliorer légèrement la hauteur du profil d'altitude dans l'onglet Sorties pour que les pics restent lisibles sur les longues distances, sans modifier les données GPX ni les autres fonctions.
+Démarrée : 25/10/2026 — par : ChatGPT
+Étapes prévues :
+  [x] 1. Lire ce fichier de relais et vérifier les derniers commits de `main` : `1b1d4847808ac0bd2028cb5ce612b40eeb7132a5` est le commit actuel vérifié.
+  [x] 2. Examiner le code actuel de `main.py` : le profil est construit par `construireProfil(s, profil, largeur, hauteur, grand)`, lignes autour de 6477 ; le profil de la liste Sorties passe par `dessinerProfil(s)` et utilise une largeur fixe de 600.
+  [~] 3. Ajuster de manière ciblée l'échelle verticale du profil pour les longues distances, sans changer les données, l'analyse des pentes, le profil agrandi ni le profil de partage.
+  [ ] 4. Vérifier le diff et la syntaxe ; effectuer les tests possibles et documenter clairement les tests navigateur/téléphone qui restent à faire.
+  [ ] 5. Ouvrir une PR depuis une branche de reprise ; ne pas fusionner dans `main` sans accord explicite de Math.
+Enregistré sur GitHub : état initial vérifié sur `main`, commit `1b1d4847808ac0bd2028cb5ce612b40eeb7132a5`; le présent état de reprise sera consigné par le commit de ce fichier.
 Local, non enregistré : rien
-Fichiers modifiés : `main.py` sur la branche de reprise ; `RELAIS_MAILLONS.md` sur `main` puis à réconcilier sur la branche de reprise
-Tests : vérification statique des éléments attendus, comparaison avec `main` et calculs de conversion simples faits (10 km ≈ 6,21 mi ; 100 m ≈ 328 ft ; 30 km/h ≈ 18,64 mph ; 20 °C = 68 °F). Tests Python, JavaScript en navigateur, téléphone et Render non faits
-Problèmes rencontrés : pas d'erreur d'enregistrement signalée ; l'exécution réelle de l'application n'est pas disponible dans cet environnement
-Prochaine action : vérifier le code et les conversions, notamment les libellés métriques inchangés, puis faire des tests avant de considérer l'étape terminée.
-Dernier commit de `main` vérifié avant résolution : `e9be649035259226433923f420415821bc840606`. Branche de reprise : `reprise/2026-10-25-unites` (code non fusionné à cet instant)
+Fichiers prévus : `main.py` uniquement pour le code de l'application ; `RELAIS_MAILLONS.md` pour le journal de reprise.
+Tests : code actuel relu ; tests de la correction non effectués à ce stade.
+Problèmes rencontrés : aucun à ce stade.
+Prochaine action : enregistrer ce point de reprise, puis créer une branche depuis le dernier `main` et effectuer une modification minimale.
+Dernier commit de `main` avant cette mise à jour du relais : `1b1d4847808ac0bd2028cb5ce612b40eeb7132a5`.
 
 À remplir dès qu'une tâche significative démarre, puis à effacer (en reportant l'essentiel en sections 2 à 8) quand elle est **terminée et vérifiée**. Modèle :
 
