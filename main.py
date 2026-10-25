@@ -8901,11 +8901,17 @@ def accueil():
                 const xmlPoints = points.map(p => {
                     const latitude = Number(p[0]);
                     const longitude = Number(p[1]);
+                    // Les points sont enregistrés [latitude, longitude, secondes depuis le départ, altitude].
                     let altitude = '';
-                    if (p[2] !== null && p[2] !== undefined && p[2] !== '' && Number.isFinite(Number(p[2]))) {
-                        altitude = `<ele>${Number(p[2])}</ele>`;
+                    if (p[3] !== null && p[3] !== undefined && p[3] !== '' && Number.isFinite(Number(p[3]))) {
+                        altitude = `<ele>${Number(p[3])}</ele>`;
                     }
-                    return `<trkpt lat="${latitude}" lon="${longitude}">${altitude}</trkpt>`;
+                    let heure = '';
+                    const depart = Date.parse(sortie.debut);
+                    if (Number.isFinite(depart) && p[2] !== null && p[2] !== undefined && p[2] !== '' && Number.isFinite(Number(p[2]))) {
+                        heure = `<time>${new Date(depart + Number(p[2]) * 1000).toISOString()}</time>`;
+                    }
+                    return `<trkpt lat="${latitude}" lon="${longitude}">${altitude}${heure}</trkpt>`;
                 });
 
                 const xml = [
