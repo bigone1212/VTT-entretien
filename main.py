@@ -8163,8 +8163,8 @@ def accueil():
                             tuile(g, 'Min · max', fmtTemperature(m.tempMin).texte + ' à ' + fmtTemperature(m.tempMax).complet);
                         }
                         if (m.pluie !== null) tuile(g, 'Pluie', `${fmtFr(m.pluie, 1)} mm`);
-                        if (m.vent !== null) tuile(g, 'Vent moyen', fmtVitesse(m.vent).complet);
-                        if (m.rafales !== null) tuile(g, 'Rafales max', fmtVitesse(m.rafales).complet);
+                        if (m.vent !== null) tuile(g, 'Vent moyen', fmtVitesse(m.vent, 0).complet);
+                        if (m.rafales !== null) tuile(g, 'Rafales max', fmtVitesse(m.rafales, 0).complet);
                     }).catch(() => {
                         if (jeton !== ficheJeton) return;
                         texteMeteo.textContent = 'Météo indisponible (il faut une connexion internet).';
