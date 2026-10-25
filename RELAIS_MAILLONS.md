@@ -48,21 +48,21 @@ Ce fichier ne doit **pas** être mis à jour seulement à la fin : une session p
 ## Tâche en cours
 
 Statut : EN COURS
-Objectif : demande de Math en 4 temps, traités un par un. Temps 1 (pastille plus petite) terminé, commit `67e6a92`. Temps 2 (maintenant) : choix des couleurs de l'appli dans Réglages, apparence seulement. Temps 3 : choix des unités (distance, temps, etc.) dans Réglages. Temps 4 : profil d'altitude de l'onglet Sorties un peu plus haut pour les longues distances.
-Démarrée : 25/10/2026, vers 20h10 — par : Claude
-Étapes prévues (temps 2) :
-  [x] 1. Repérer les couleurs d'accent dans main.py (50 lignes de CSS/logo passées en variables `--ac1`, `--ac2`, `--ac3`, `--ac-rgb`, `--ac2-rgb`, `--on-grad`)
-  [x] 2. Choix de palette dans Réglages > Apparence : 6 couleurs (turquoise par défaut, bleu, vert, orange, rose, violet), clé `maillon_palette`, attribut `data-palette` sur la racine
-  [x] 3. Testé dans un navigateur (nuit et jour), envoyé sur la branche `reprise/2026-10-25-couleurs`
-  [x] 4. Fusion dans `main` faite le 25/10/2026 avec l'accord explicite de Math (fusion sans conflit : commit `41f2129` est maintenant dans `main`)
-Enregistré sur GitHub : `41f2129` (choix des couleurs), sur la branche `reprise/2026-10-25-couleurs` puis dans `main`.
+Objectif : demande de Math en 4 temps, traités un par un. Temps 1 (pastille) et temps 2 (couleurs) terminés et dans `main`. Temps 3 (maintenant) : choix des unités dans Réglages (distance km/mi, altitude m/ft, vitesse km/h/mph, température °C/°F, heure 24 h/12 h). Temps 4 : profil d'altitude de l'onglet Sorties un peu plus haut pour les longues distances.
+Démarrée : 25/10/2026, vers 20h20 — par : Claude
+Décision de conception (temps 3) : changement d'AFFICHAGE seulement. Les données restent en km et en mètres dans la base. En métrique (défaut), les textes affichés doivent rester identiques à avant. Les valeurs que Math saisit lui-même (kilométrage total du vélo, seuils d'usure, kilométrage d'une intervention) restent en km, volontairement : convertir en miles puis reconvertir ferait glisser son vrai kilométrage. À proposer plus tard si besoin.
+Étapes prévues (temps 3) :
+  [ ] 1. Repérer les affichages (distance, dénivelé/altitude, vitesse, température, heure) dans les onglets Sorties, fiche de sortie, profil, vue 3D, image de partage
+  [ ] 2. Ajouter la carte « Unités » dans Réglages (clé `maillon_unites`) et les fonctions de conversion
+  [ ] 3. Brancher les affichages, tester (métrique identique à avant ; impérial correct), envoyer sur la branche `reprise/2026-10-25-unites`
+  [ ] 4. Fusion dans `main` seulement avec l'accord de Math
+Enregistré sur GitHub : rien pour ce temps 3.
 Local, non enregistré : rien
-Fichiers modifiés : `main.py` (branche reprise) et ce fichier
-Tests : faits, sur la page HTML générée (appli complète non démarrable dans l'espace de travail de Claude). Résultats : 6 palettes x 2 thèmes appliquent bien la couleur et la mémorisent ; aucune erreur JavaScript ; en turquoise, les onglets Entretien, Historique et Sorties sont identiques pixel pour pixel à la version précédente (nuit et jour) ; aucun backslash ajouté. Non testé : sur téléphone, sur Render.
-Limites voulues : l'image de partage, l'icône du téléphone (favicon) et les couleurs de la carte 3D restent turquoise (JavaScript / image, non touchés pour ne pas changer le fonctionnement).
-Problèmes rencontrés : un test automatique perdait parfois la mémoire du navigateur ; cause trouvée dans le test lui-même (il réécrivait la mémoire à chaque chargement), pas dans l'appli.
-Prochaine action : temps 3 (choix des unités dans Réglages), sur une nouvelle branche `reprise/…`. À vérifier par Math : Render a bien redéployé et le choix des couleurs apparaît dans Réglages.
-Dernier commit de main connu : `2078847`    Branche de reprise éventuelle : `reprise/2026-10-25-couleurs`
+Fichiers modifiés : aucun pour l'instant (`main.py` seulement ensuite)
+Tests : non faits
+Problèmes rencontrés : aucun pour l'instant
+Prochaine action : repérer les affichages.
+Dernier commit de main connu : `8a6ed0a`    Branche de reprise éventuelle : `reprise/2026-10-25-unites` (pas encore créée)
 
 À remplir dès qu'une tâche significative démarre, puis à effacer (en reportant l'essentiel en sections 2 à 8) quand elle est **terminée et vérifiée**. Modèle :
 
