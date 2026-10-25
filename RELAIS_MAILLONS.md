@@ -52,17 +52,17 @@ Objectif : demande de Math en 4 temps, traités un par un. Temps 1 (pastille) et
 Démarrée : 25/10/2026, vers 20h20 — par : Claude
 Décision de conception (temps 3) : changement d'AFFICHAGE seulement. Les données restent en km et en mètres dans la base. En métrique (défaut), les textes affichés doivent rester identiques à avant. Les valeurs que Math saisit lui-même (kilométrage total du vélo, seuils d'usure, kilométrage d'une intervention) restent en km, volontairement : convertir en miles puis reconvertir ferait glisser son vrai kilométrage. À proposer plus tard si besoin.
 Étapes prévues (temps 3) :
-  [~] 1. Repérer les affichages dans le `main.py` actuel : première lecture effectuée, plusieurs affichages métriques repérés ; inventaire détaillé en cours
-  [ ] 2. Ajouter la carte « Unités » dans Réglages (clé `maillon_unites`) et les fonctions de conversion
-  [ ] 3. Brancher les affichages, tester (métrique identique à avant ; impérial correct), enregistrer sur `reprise/2026-10-25-unites`
-  [ ] 4. Fusion dans `main` seulement avec l'accord explicite de Math
-Enregistré sur GitHub : démarrage de tâche à consigner par ce commit de relais
+  [x] 1. Repérer les affichages principaux : liste des sorties, filtre distance, fiche de sortie, météo, profils d'altitude, survol 3D, image de partage et confirmation d'import
+  [x] 2. Ajouter la carte « Unités » dans Réglages (clé `maillon_unites`) et les fonctions de conversion : code enregistré sur la branche de reprise
+  [~] 3. Brancher les affichages et vérifier que le métrique reste identique et que l'impérial est correct : conversions branchées dans les principaux affichages ; tests d'exécution et d'interface encore nécessaires
+  [~] 4. Fusion dans `main` : accord explicite donné par Math le 25/10/2026 ; PR #2 créée, conflit du fichier de relais à résoudre avant fusion
+Enregistré sur GitHub : `main.py` sur `reprise/2026-10-25-unites`, dernier commit de code `7c9ff2086de8c82ff25b306e736f0b77a20c57b2` ; relais de branche mis à jour en `e147cc8898cb0a5e302be89b8a906c29e10e3990` avant résolution du conflit
 Local, non enregistré : rien
-Fichiers modifiés : `RELAIS_MAILLONS.md` uniquement pour enregistrer le démarrage ; aucun code de l'application modifié
-Tests : non faits pour cette tâche
-Problèmes rencontrés : aucun constaté pour l'instant
-Prochaine action : terminer le repérage précis des affichages et points d'intégration dans `main.py`.
-Dernier commit de main connu : `e60656b` avant ce commit de relais    Branche de reprise : `reprise/2026-10-25-unites` (à créer après l'enregistrement de ce journal)
+Fichiers modifiés : `main.py` sur la branche de reprise ; `RELAIS_MAILLONS.md` sur `main` puis à réconcilier sur la branche de reprise
+Tests : vérification statique des éléments attendus, comparaison avec `main` et calculs de conversion simples faits (10 km ≈ 6,21 mi ; 100 m ≈ 328 ft ; 30 km/h ≈ 18,64 mph ; 20 °C = 68 °F). Tests Python, JavaScript en navigateur, téléphone et Render non faits
+Problèmes rencontrés : pas d'erreur d'enregistrement signalée ; l'exécution réelle de l'application n'est pas disponible dans cet environnement
+Prochaine action : vérifier le code et les conversions, notamment les libellés métriques inchangés, puis faire des tests avant de considérer l'étape terminée.
+Dernier commit de `main` vérifié avant résolution : `e9be649035259226433923f420415821bc840606`. Branche de reprise : `reprise/2026-10-25-unites` (code non fusionné à cet instant)
 
 À remplir dès qu'une tâche significative démarre, puis à effacer (en reportant l'essentiel en sections 2 à 8) quand elle est **terminée et vérifiée**. Modèle :
 
@@ -101,12 +101,11 @@ Dernier commit de main connu : …    Branche de reprise éventuelle : …
 ## 2. Dernière intervention
 
 **Intervention 5 — 25/10/2026 : reprise des unités d'affichage sur branche de test**
-- Branche : `reprise/2026-10-25-unites`. Code de l'application modifié uniquement dans `main.py`, en 5 commits ; dernier commit `7c9ff2086de8c82ff25b306e736f0b77a20c57b2`.
-- Ajout des réglages d'unités distance (km/mi), altitude/dénivelé (m/ft), vitesse (km/h/mph), température (°C/°F) et heure (24 h/12 h), conservés dans `localStorage` (`maillon_unites`). Conversions d'affichage ; valeurs enregistrées et saisies pour l'entretien restent dans les unités de stockage existantes.
-- Vérifications statiques faites : valeurs métriques par défaut, options autorisées, lecture/écriture localStorage, conversion du filtre miles vers km, formules de conversion et maintien du kilométrage d'entretien en km. Calculs numériques de conversion contrôlés séparément.
-- **Non vérifié** : syntaxe complète Python/JavaScript dans un environnement d'exécution, démarrage de l'application, navigation navigateur/mobile, affichage réel, conservation visuelle exacte du rendu métrique. Aucun déploiement déclenché.
-- État Git : branche de reprise en avance de 5 commits et en retard de 2 commits sur `main`. Le diff de code consulté concerne `main.py` ; les deux commits de retard doivent être comparés avant toute PR/fusion. Le code n'est pas fusionné dans `main`.
-- Temps 4 (profil d'altitude plus haut pour les longues distances) **non commencé**, à traiter après validation du temps 3.
+- Branche : `reprise/2026-10-25-unites`. Code de l'application modifié uniquement dans `main.py`, dernier commit de code `7c9ff2086de8c82ff25b306e736f0b77a20c57b2`.
+- Ajout des réglages d'unités distance (km/mi), altitude/dénivelé (m/ft), vitesse (km/h/mph), température (°C/°F) et heure (24 h/12 h), conservés dans `localStorage` (`maillon_unites`). Conversions d'affichage ; données d'entretien conservées dans les unités internes existantes.
+- Vérifications statiques et calculs de conversion simples effectués. Tests Python/JavaScript en exécution, navigateur, téléphone et rendu visuel non effectués ; le code ne doit pas être considéré comme validé.
+- Math a accepté la fusion et le déploiement automatique Render le 25/10/2026. PR #2 créée ; fusion en attente de résolution du conflit de relais.
+- Temps 4 (profil d'altitude plus haut pour les longues distances) non commencé, à traiter après validation des unités.
 - Temps 1 : pastille rouge des onglets plus petite (`67e6a92`, dans `main`). Temps 2 : choix des couleurs de l'appli (`41f2129`), fusionné dans `main` avec l'accord de Math.
 
 **Intervention 3 — 25/10/2026 : règle de publication**
@@ -180,10 +179,11 @@ Dernier commit de main connu : …    Branche de reprise éventuelle : …
 
 ## 6. Travail restant
 
-- **En cours** : temps 3, unités d'affichage, sur `reprise/2026-10-25-unites`. Vérifications statiques partielles effectuées ; pas de test d'exécution ou de navigateur.
-- **Prochaine étape** : exécuter des contrôles Python/JavaScript et tester l'application en navigateur/ordinateur/téléphone si l'environnement le permet. Si ces tests ne sont pas possibles ici, consigner la limite et demander à Math un essai guidé avant fusion. Ne pas fusionner sans accord explicite.
-- **Ensuite** : temps 4, remonter légèrement le profil d'altitude de l'onglet Sorties pour les longues distances, seulement après validation des unités.
-- **À faire (sans urgence)** : examiner la branche `feature/fiche-technique-velo` par rapport à `main`, en lecture seule, avant toute décision.
+- **En cours** : temps 3, unités d'affichage, sur `reprise/2026-10-25-unites`. Vérifications statiques partielles faites ; pas de test d'exécution ni de navigateur.
+- **Prochaine étape** : résoudre le conflit de `RELAIS_MAILLONS.md` en conservant les informations récentes des deux branches, puis vérifier le diff de la PR avant fusion. L'accord de Math pour fusionner et accepter l'auto-déploiement Render a été donné le 25/10/2026.
+- **À faire après les unités** : remonter légèrement le profil d'altitude de l'onglet Sorties pour les longues distances.
+- **À faire (sans urgence, non commencé)** : examiner la branche `feature/fiche-technique-velo` par rapport à `main` (lecture seule) et consigner ici ce qu'elle contient, avant toute décision.
+- **Prochaine étape recommandée** : à la prochaine modification, démarrer l'appli (ou la tester sur Render) et consigner en section 4 ce qui a été réellement vérifié.
 
 ## 7. Précautions
 
@@ -202,10 +202,9 @@ Dernier commit de main connu : …    Branche de reprise éventuelle : …
 
 ## 8. État GitHub / Render
 
-- **Dernier commit connu avant la reprise actuelle : `e60656b6cef866116331646d6a29f2c799c2d9c4`** (25/10/2026, message « Relais : tâche en cours (choix des unités) »). Vérifié sur GitHub au début de la reprise.
+- **Dernier commit de `main` vérifié avant résolution du conflit : `e9be649035259226433923f420415821bc840606`** (25/10/2026).
 - Commits de relais : `6ac4728` (création du fichier) et `b8ef78e` (protocole de reprise), tous deux vérifiés sur GitHub le 25/10/2026. Le commit de l'intervention 3 (règle de publication) vient **après** : son numéro n'est pas connu au moment de l'écriture, consulter l'historique de `main` sur GitHub.
 - Dernier commit de **l'appli** (code) : `67e6a92`. Les commits de relais ne modifient que ce fichier.
-- Branches vérifiées sur GitHub au début de la reprise : `main`, `feature/fiche-technique-velo` (non examinée), `reprise/2026-10-25-couleurs`. Aucune branche `reprise/2026-10-25-unites` n'existait alors.
+- Branches vérifiées lors de la reprise : `main`, `feature/fiche-technique-velo` (non examinée), `reprise/2026-10-25-couleurs` et `reprise/2026-10-25-unites`. La branche unités n'est pas fusionnée dans `main`.
 - Chaque envoi sur `main` peut déclencher une mise à jour de Render si la mise à jour automatique est active (non vérifié) : un commit qui ne modifie que ce fichier ne change pas l'appli, mais peut provoquer un redéploiement identique.
-- **Render : correspondance NON vérifiée.** Cette session n'a pas accès au tableau de bord Render et l'adresse de l'appli n'est pas dans le dépôt. D'après Math, Render se met à jour à partir de GitHub ; on ne sait pas ici si la mise à jour automatique est active, ni quel commit est actuellement en ligne.
-- **Comment vérifier la prochaine fois** : dans Render, ouvrir le service puis l'onglet des déploiements ; comparer le commit affiché avec le dernier commit de `main` sur GitHub. Noter ici le résultat avec la date.
+- **Render : vérifié via la connexion Render le 25/10/2026**. Service `VTT-entretien`, branche `main`, auto-déploiement activé à chaque commit. URL : `https://vtt-entretien.onrender.com`. La fusion déclenchera donc un déploiement automatique ; le résultat du déploiement après fusion reste à vérifier.
