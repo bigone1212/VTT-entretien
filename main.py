@@ -1407,6 +1407,16 @@ def accueil():
             }
 
             .menu-sortie-btn:hover, .menu-sortie-btn[aria-expanded="true"] { background: var(--fill2); color: var(--strong); }
+
+            /* Partage et favori : à gauche du menu trois points de chaque sortie */
+            .menu-sortie-btn.bouton-partage { right: 38px; }
+            .menu-sortie-btn.bouton-favori { right: 76px; }
+            .menu-sortie-btn.bouton-favori.actif { color: var(--danger); }
+            .menu-sortie-btn.bouton-favori.actif svg { fill: currentColor; }
+            .history-item.sortie-item .titre-sortie,
+            .history-item.sortie-item .history-details > div:nth-child(2) { padding-right: 78px; }
+            .menu-sortie button.hist-periode-btn.actif { border-color: var(--danger); }
+            .menu-sortie button.hist-periode-btn.actif .ico { stroke: var(--danger); fill: var(--danger); }
             .menu-sortie-btn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; }
 
             .menu-sortie {
@@ -3611,6 +3621,8 @@ def accueil():
                         <input id="kmMinSorties" class="champ-km" type="text" inputmode="decimal" placeholder="Min" aria-label="Distance minimale en kilomètres" oninput="appliquerFiltresSorties()">
                         <input id="kmMaxSorties" class="champ-km" type="text" inputmode="decimal" placeholder="Max" aria-label="Distance maximale en kilomètres" oninput="appliquerFiltresSorties()">
                     </div>
+                    <label for="favorisSortiesBtn">Favoris</label>
+                    <button type="button" id="favorisSortiesBtn" class="hist-periode-btn" aria-pressed="false" onclick="basculerFiltreFavoris()"></button>
                     <label for="zoneSorties">Zone géographique</label>
                     <select id="zoneSorties" aria-label="Filtrer par zone géographique" onchange="appliquerFiltresSorties()">
                         <option value="">Toutes les zones</option>
@@ -3862,6 +3874,8 @@ def accueil():
             ICONES.auto = '<circle cx="12" cy="12" r="9"/><path d="M12 3v18"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/>';
             ICONES.filtre = '<path d="M3.5 5h17l-6.5 8v6l-4-2v-4z"/>';
             ICONES.vide = '';
+            ICONES.partage = '<circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8l7.6-4.4M8.2 13.2l7.6 4.4"/>';
+            ICONES.coeur = '<path d="M12 20.5s-7.5-4.8-9.3-9.6C1.5 7.5 3.6 4.5 6.9 4.5c2.1 0 3.8 1 5.1 3 1.3-2 3-3 5.1-3 3.3 0 5.4 3 4.2 6.4-1.8 4.8-9.3 9.6-9.3 9.6z"/>';
             ICONES.importer = '<path d="M12 15V4"/><path d="M7 9l5-5 5 5"/><path d="M5 20h14"/>';
             ICONES.plus = '<path d="M12 5v14M5 12h14"/>';
             ICONES.telecharger = '<path d="M12 4v11"/><path d="M7 11l5 5 5-5"/><path d="M5 20h14"/>';
@@ -6711,6 +6725,68 @@ def accueil():
                 actualiserBoutonFiltreSorties();
             }
 
+            // ---- Favoris (gardés sur cet appareil) et partage ----
+            let sortiesFavorisSeuls = false;
+
+            function lireFavoris() {
+                try {
+                    const l = JSON.parse(localStorage.getItem('maillons_favoris') || '[]');
+                    return Array.isArray(l) ? l.map(String) : [];
+                } catch (e) { return []; }
+            }
+
+            function estFavori(id) { return lireFavoris().includes(String(id)); }
+
+            function basculerFavori(id) {
+                const liste = lireFavoris();
+                const cle = String(id);
+                const i = liste.indexOf(cle);
+                if (i >= 0) liste.splice(i, 1); else liste.push(cle);
+                try { localStorage.setItem('maillons_favoris', JSON.stringify(liste)); } catch (e) { /* stockage refusé */ }
+                return i < 0;
+            }
+
+            function basculerFiltreFavoris() {
+                sortiesFavorisSeuls = !sortiesFavorisSeuls;
+                appliquerFiltresSorties();
+            }
+
+            function majBoutonFiltreFavoris() {
+                const b = document.getElementById('favorisSortiesBtn');
+                if (!b) return;
+                remplirBouton(b, 'coeur', sortiesFavorisSeuls ? 'Favoris seulement' : 'Toutes les sorties');
+                b.classList.toggle('actif', sortiesFavorisSeuls);
+                b.setAttribute('aria-pressed', sortiesFavorisSeuls ? 'true' : 'false');
+            }
+
+            async function partagerSortie(s) {
+                const jour = new Date(s.debut).toLocaleDateString('fr-FR');
+                const lignes = [
+                    '🚵 ' + s.nom + ' · ' + jour,
+                    s.distance_km + ' km · ' + s.denivele_pos + ' m D+ · ' + formaterDuree(s.duree_s) + ' · ' + s.vitesse_moy + ' km/h'
+                ];
+                const depart = Array.isArray(s.trace) ? s.trace.find(p => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1])) : null;
+                if (depart) {
+                    lignes.push('📍 https://www.openstreetmap.org/?mlat=' + depart[0].toFixed(5) + '&mlon=' + depart[1].toFixed(5)
+                        + '#map=14/' + depart[0].toFixed(5) + '/' + depart[1].toFixed(5));
+                }
+                const texte = lignes.join(String.fromCharCode(10));
+                if (navigator.share) {
+                    try {
+                        await navigator.share({ title: s.nom, text: texte });
+                    } catch (e) {
+                        if (e && e.name !== 'AbortError') console.warn(e);
+                    }
+                    return;
+                }
+                try {
+                    await navigator.clipboard.writeText(texte);
+                    alert("Le partage n'est pas disponible sur cet appareil : le résumé de la sortie est copié, tu peux le coller dans un message.");
+                } catch (e) {
+                    prompt('Copie ce résumé pour le partager :', texte);
+                }
+            }
+
             function ouvrirImport(mode) {
                 const bloc = document.getElementById('blocImport');
                 if (!bloc) return;
@@ -6760,8 +6836,10 @@ def accueil():
                     || kmSaisi('kmMinSorties') !== null
                     || kmSaisi('kmMaxSorties') !== null
                     || Boolean((document.getElementById('zoneSorties') || {}).value)
+                    || sortiesFavorisSeuls
                     || document.getElementById('triSorties').value !== 'date-desc'
                 );
+                majBoutonFiltreFavoris();
                 const boutonPeriode = document.getElementById('periodeSortiesBtn');
                 if (boutonPeriode) remplirBouton(boutonPeriode, 'calendrier', textePeriodeHist(sortiesPeriode));
                 bouton.classList.toggle('actif', actif);
@@ -6945,6 +7023,7 @@ def accueil():
                     const km = Number(s.distance_km || 0);
                     if (kmMin !== null && km < kmMin) return false;
                     if (kmMax !== null && km > kmMax) return false;
+                    if (sortiesFavorisSeuls && !estFavori(s.id)) return false;
                     const zoneChoisie = (document.getElementById('zoneSorties') || {}).value;
                     if (zoneChoisie && zonesSorties.parSortie[s.id] !== zoneChoisie) return false;
                     return true;
@@ -6973,6 +7052,7 @@ def accueil():
                 document.getElementById('kmMaxSorties').value = '';
                 const zoneSel = document.getElementById('zoneSorties');
                 if (zoneSel) zoneSel.value = '';
+                sortiesFavorisSeuls = false;
                 document.getElementById('triSorties').value = 'date-desc';
                 actualiserBoutonFiltreSorties();
                 chargerSorties(true);
@@ -7227,6 +7307,40 @@ def accueil():
                             }
                         });
 
+                        item.classList.add('sortie-item');
+
+                        const boutonPartage = document.createElement('button');
+                        boutonPartage.type = 'button';
+                        boutonPartage.className = 'menu-sortie-btn bouton-partage';
+                        boutonPartage.setAttribute('aria-label', 'Partager la sortie');
+                        remplirBouton(boutonPartage, 'partage', '');
+                        boutonPartage.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            fermerMenusSortie();
+                            partagerSortie(s);
+                        });
+
+                        const boutonFavori = document.createElement('button');
+                        boutonFavori.type = 'button';
+                        boutonFavori.className = 'menu-sortie-btn bouton-favori';
+                        const majFavori = () => {
+                            const actif = estFavori(s.id);
+                            boutonFavori.classList.toggle('actif', actif);
+                            boutonFavori.setAttribute('aria-pressed', actif ? 'true' : 'false');
+                            boutonFavori.setAttribute('aria-label', actif ? 'Retirer des favoris' : 'Ajouter aux favoris');
+                        };
+                        remplirBouton(boutonFavori, 'coeur', '');
+                        majFavori();
+                        boutonFavori.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            fermerMenusSortie();
+                            basculerFavori(s.id);
+                            majFavori();
+                            if (sortiesFavorisSeuls) chargerSorties(true);
+                        });
+
+                        item.appendChild(boutonFavori);
+                        item.appendChild(boutonPartage);
                         item.appendChild(kebab);
                         item.appendChild(menu);
 
