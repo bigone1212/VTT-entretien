@@ -3708,8 +3708,8 @@ def accueil():
                     <button type="button" id="periodeSortiesBtn" class="hist-periode-btn" aria-label="Filtrer par période" onclick="ouvrirCalendrierSorties()"></button>
                     <label for="kmMinSorties">Distance (<span id="uniteFiltreDistance">km</span>)</label>
                     <div class="sorties-km">
-                        <input id="kmMinSorties" class="champ-km" type="text" inputmode="decimal" placeholder="Min" aria-label="Distance minimale en kilomètres" oninput="appliquerFiltresSorties()">
-                        <input id="kmMaxSorties" class="champ-km" type="text" inputmode="decimal" placeholder="Max" aria-label="Distance maximale en kilomètres" oninput="appliquerFiltresSorties()">
+                        <input id="kmMinSorties" class="champ-km" type="text" inputmode="decimal" placeholder="Min" aria-label="Distance minimale" oninput="appliquerFiltresSorties()">
+                        <input id="kmMaxSorties" class="champ-km" type="text" inputmode="decimal" placeholder="Max" aria-label="Distance maximale" oninput="appliquerFiltresSorties()">
                     </div>
                     <label for="favorisSortiesBtn">Favoris</label>
                     <button type="button" id="favorisSortiesBtn" class="hist-periode-btn" aria-pressed="false" onclick="basculerFiltreFavoris()"></button>
@@ -7127,10 +7127,10 @@ def accueil():
 
                 // Chiffres clés
                 const chiffres = [
-                    [String(s.distance_km).replace('.', ','), fmtDistance(s.distance_km).unite],
-                    [String(Math.round(s.denivele_pos)), fmtAltitude(s.denivele_pos).unite + ' D+'],
+                    [unites.distance === 'km' ? String(s.distance_km).replace('.', ',') : fmtDistance(s.distance_km).texte, fmtDistance(s.distance_km).unite],
+                    [unites.altitude === 'm' ? String(Math.round(s.denivele_pos)) : fmtAltitude(s.denivele_pos).texte, fmtAltitude(s.denivele_pos).unite + ' D+'],
                     [formaterDuree(s.duree_s), 'durée'],
-                    [String(s.vitesse_moy).replace('.', ','), fmtVitesse(s.vitesse_moy).unite]
+                    [unites.vitesse === 'kmh' ? String(s.vitesse_moy).replace('.', ',') : fmtVitesse(s.vitesse_moy).texte, fmtVitesse(s.vitesse_moy).unite]
                 ];
                 chiffres.forEach((c, k) => {
                     const x = 50 + k * ((L - 100) / 4);
@@ -9997,7 +9997,7 @@ def accueil():
 
                     afficherLignes(message, [
                         `✅ Sortie importée : ${fmtDistance(data.distance_km).complet}, ` +
-                        `${fmtAltitude(data.denivele_pos).complet} D+. ` +
+                        `${unites.altitude === 'm' ? String(data.denivele_pos) + ' m' : fmtAltitude(data.denivele_pos).complet} D+. ` +
                         (data.ajoute_au_total
                             ? `Kilométrage total : ${data.km_total} km.`
                             : "Cette sortie date d'avant votre dernière mise à jour " +
