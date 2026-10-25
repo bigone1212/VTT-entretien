@@ -55,15 +55,15 @@ Démarrée : 25/10/2026 — par : ChatGPT
   [x] 2. Examiner le code actuel de `main.py` : le profil est construit par `construireProfil(s, profil, largeur, hauteur, grand)`, autour de la ligne 6477 ; le profil dans la liste Sorties passe par `dessinerProfil(s)`.
   [x] 3. Ajustement ciblé enregistré sur la branche de reprise : seule l'échelle verticale du profil dans la liste Sorties est assouplie pour les longues distances. Les autres usages de `construireProfil` conservent leur échelle.
   [~] 4. Vérifier le diff et la syntaxe ; vérifications statiques faites, tests d'exécution et navigateur/téléphone non disponibles dans cette session.
-  [x] 5. Ouvrir la PR #5 ; GitHub la signale fusionnable. Ne pas fusionner dans `main` sans accord explicite de Math.
+  [x] 5. Ouvrir la PR #6 ; GitHub la signale fusionnable. Ne pas fusionner dans `main` sans accord explicite de Math.
 Enregistré sur GitHub :
 - `main` : point de reprise `1d29868089a6b39675f4014e704402fe94e65467`.
-- Branche `reprise/2026-10-25-profil-altitude` : modification `main.py`, commit `f79c07fb0cd0f8e01c8732aff4e6c95df1ab773c`.
+- Branche `reprise/2026-10-25-profil-altitude-v2` : modification `main.py`, commit `286fcfa0b0d9e940117f4f835fa1a3987680e3dc`.
 Local, non enregistré : rien
 Fichiers modifiés pour cette étape : `main.py` uniquement pour le code de l'application ; ce fichier de relais pour le suivi.
-Tests : comparaison GitHub : branche en avance d'un commit et en retard de zéro commit au moment de la première comparaison, avec uniquement `main.py` modifié (3 insertions, 3 suppressions). Les vérifications navigateur/téléphone ne sont pas faites. PR #5 ouverte : https://github.com/bigone1212/VTT-entretien/pull/5 ; après actualisation, GitHub indique qu'elle est fusionnable. La branche a un commit de code d'avance et un commit de relais de retard sur `main`, sans conflit détecté.
+Tests : comparaison GitHub : branche en avance d'un commit et en retard de zéro commit au moment de la première comparaison, avec uniquement `main.py` modifié (3 insertions, 3 suppressions). Les vérifications navigateur/téléphone ne sont pas faites. PR #6 ouverte : https://github.com/bigone1212/VTT-entretien/pull/6 ; GitHub confirme qu'elle est fusionnable. La branche est à jour avec `main` et ne modifie que `main.py`. L'ancienne PR #5, qui était derrière des commits de relais, a été fermée comme remplacée.
 Problèmes rencontrés : aucun à ce stade.
-Prochaine action : faire vérifier le rendu sur une sortie longue dès qu'un test visuel est possible ; demander l'accord explicite de Math avant toute fusion/déploiement.
+Prochaine action : faire vérifier le rendu sur une sortie longue dès qu'un test visuel est possible ; demander l'accord explicite de Math avant toute fusion/déploiement. PR #5 fermée comme remplacée ; PR #6 est la version à suivre.
 Dernier commit de `main` avant la mise à jour de ce relais : `1d29868089a6b39675f4014e704402fe94e65467`.
 
 À remplir dès qu'une tâche significative démarre, puis à effacer (en reportant l'essentiel en sections 2 à 8) quand elle est **terminée et vérifiée**. Modèle :
@@ -103,7 +103,7 @@ Dernier commit de main connu : …    Branche de reprise éventuelle : …
 ## 2. Dernière intervention
 
 **Intervention 6 — 25/10/2026 : profil d'altitude un peu plus haut sur les longues sorties (en cours)**
-- Code préparé sur la branche `reprise/2026-10-25-profil-altitude`, commit `f79c07fb0cd0f8e01c8732aff4e6c95df1ab773c`, fichier `main.py) uniquement.
+- Code préparé sur la branche `reprise/2026-10-25-profil-altitude-v2`, commit `286fcfa0b0d9e940117f4f835fa1a3987680e3dc`, fichier `main.py) uniquement.
 - Modification ciblée : le profil compact de la liste Sorties utilise désormais `total / 40` au lieu de `total / 30` comme borne de l'échelle verticale liée à la distance, seulement hors mode paysage et uniquement dans la liste. Cela devrait rendre les pics un peu plus hauts sur les longues sorties. La fenêtre agrandie et les autres profils ne changent pas.
 - Vérification GitHub : comparaison de branche effectuée ; 1 commit sur la branche, 0 en retard au moment de la vérification, uniquement `main.py` modifié (3 insertions, 3 suppressions).
 - Pas de test navigateur/téléphone ni de test visuel réel effectué. La modification n'est pas fusionnée et n'est pas déployée.
@@ -188,7 +188,7 @@ Dernier commit de main connu : …    Branche de reprise éventuelle : …
 
 ## 6. Travail restant
 
-- **En cours** : temps 4, profil d'altitude un peu plus haut pour les longues sorties ; code préparé sur `reprise/2026-10-25-profil-altitude`, commit `f79c07fb0cd0f8e01c8732aff4e6c95df1ab773c`, non fusionné.
+- **En cours** : temps 4, profil d'altitude un peu plus haut pour les longues sorties ; code préparé sur `reprise/2026-10-25-profil-altitude-v2`, commit `286fcfa0b0d9e940117f4f835fa1a3987680e3dc`, non fusionné.
 - **Terminé** : temps 3, choix des unités d'affichage fusionné dans `main` avec les corrections du carnet d'entretien et du compteur total ; Math a confirmé que l'affichage fonctionne.
 - **Prochaine étape** : ouvrir et vérifier la PR du temps 4. Fusion dans `main` seulement après accord explicite de Math.
 - **À faire (sans urgence, non commencé)** : examiner la branche `feature/fiche-technique-velo` par rapport à `main` (lecture seule) et consigner ici ce qu'elle contient, avant toute décision.
