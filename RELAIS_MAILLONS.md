@@ -47,7 +47,7 @@ Ce fichier ne doit **pas** être mis à jour seulement à la fin : une session p
 
 ## Tâche en cours
 
-Statut : EN COURS
+Statut : EN COURS — fusion effectuée, validation visuelle utilisateur en attente
 Objectif : temps 4 de la demande en quatre temps de Math : améliorer légèrement la hauteur du profil d'altitude dans l'onglet Sorties pour que les pics restent lisibles sur les longues distances, sans modifier les données GPX ni les autres fonctions.
 Démarrée : 25/10/2026 — par : ChatGPT
 Étapes prévues :
@@ -55,15 +55,15 @@ Démarrée : 25/10/2026 — par : ChatGPT
   [x] 2. Examiner le code actuel de `main.py` : le profil est construit par `construireProfil(s, profil, largeur, hauteur, grand)`, autour de la ligne 6477 ; le profil dans la liste Sorties passe par `dessinerProfil(s)`.
   [x] 3. Ajustement ciblé enregistré sur la branche de reprise : seule l'échelle verticale du profil dans la liste Sorties est assouplie pour les longues distances. Les autres usages de `construireProfil` conservent leur échelle.
   [~] 4. Vérifier le diff et la syntaxe ; vérifications statiques faites, tests d'exécution et navigateur/téléphone non disponibles dans cette session.
-  [x] 5. Ouvrir la PR #6 ; GitHub la signale fusionnable. Ne pas fusionner dans `main` sans accord explicite de Math.
+  [x] 5. PR #6 fusionnée avec l'accord explicite de Math le 25/10/2026 ; commit de fusion `9a0ad76e6ca01487a06dfb7cf743b34ef67d5b3f`.
 Enregistré sur GitHub :
 - `main` : point de reprise `1d29868089a6b39675f4014e704402fe94e65467`.
-- Branche `reprise/2026-10-25-profil-altitude-v2` : modification `main.py`, commit `286fcfa0b0d9e940117f4f835fa1a3987680e3dc`.
+- Branche `reprise/2026-10-25-profil-altitude-v2` : modification `main.py`, commit `286fcfa0b0d9e940117f4f835fa1a3987680e3dc`, fusionnée dans `main` par le commit `9a0ad76e6ca01487a06dfb7cf743b34ef67d5b3f`.
 Local, non enregistré : rien
 Fichiers modifiés pour cette étape : `main.py` uniquement pour le code de l'application ; ce fichier de relais pour le suivi.
-Tests : comparaison GitHub : branche en avance d'un commit et en retard de zéro commit au moment de la première comparaison, avec uniquement `main.py` modifié (3 insertions, 3 suppressions). Les vérifications navigateur/téléphone ne sont pas faites. PR #6 ouverte : https://github.com/bigone1212/VTT-entretien/pull/6 ; GitHub confirme qu'elle est fusionnable. La branche est à jour avec `main` et ne modifie que `main.py`. L'ancienne PR #5, qui était derrière des commits de relais, a été fermée comme remplacée.
+Tests : diff GitHub relu ; seul `main.py` a été modifié (3 insertions, 3 suppressions). Tests navigateur/téléphone non faits. PR #6 fusionnée : https://github.com/bigone1212/VTT-entretien/pull/6. Déploiement Render déclenché automatiquement et en cours de construction au dernier contrôle ; attendre le déploiement, puis demander à Math de vérifier une longue sortie. L'ancienne PR #5 a été fermée comme remplacée.
 Problèmes rencontrés : aucun à ce stade.
-Prochaine action : faire vérifier le rendu sur une sortie longue dès qu'un test visuel est possible ; demander l'accord explicite de Math avant toute fusion/déploiement. PR #5 fermée comme remplacée ; PR #6 est la version à suivre.
+Prochaine action : attendre la fin du déploiement Render, puis demander à Math de vérifier le rendu sur une longue sortie, sur ordinateur et téléphone si possible.
 Dernier commit de `main` avant la mise à jour de ce relais : `1d29868089a6b39675f4014e704402fe94e65467`.
 
 À remplir dès qu'une tâche significative démarre, puis à effacer (en reportant l'essentiel en sections 2 à 8) quand elle est **terminée et vérifiée**. Modèle :
