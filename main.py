@@ -1441,6 +1441,7 @@ def accueil():
             }
 
             .menu-sortie.ouvert { display: flex; }
+            .menu-sortie.vers-haut { top: auto; bottom: 44px; }
 
             .menu-sortie button {
                 display: flex;
@@ -1905,8 +1906,10 @@ def accueil():
             }
 
             .segments button.actif {
-                color: #04231f;
+                color: #ffffff;
                 background: linear-gradient(135deg, #35e0c8, #0a8f9c);
+                -webkit-text-stroke: 0.4px #000;
+                paint-order: stroke fill;
             }
 
             .card-tools button.danger:hover {
@@ -5001,6 +5004,7 @@ def accueil():
                     fermerMenusSortie();
                     if (!etaitOuvert) {
                         menu.classList.add('ouvert');
+                        placerMenuSortie(menu);
                         kebab.setAttribute('aria-expanded', 'true');
                     }
                 });
@@ -6663,6 +6667,18 @@ def accueil():
                 if (afaire.length > 0) analyserSorties(afaire);
             }
 
+            // Ouvre le menu vers le haut s'il dépasserait en bas de l'écran (sous la barre d'onglets).
+            function placerMenuSortie(menu) {
+                menu.classList.remove('vers-haut');
+                const limiteBas = window.innerHeight - 96;
+                if (menu.getBoundingClientRect().bottom <= limiteBas) return;
+                menu.classList.add('vers-haut');
+                if (menu.getBoundingClientRect().top < 70) {
+                    menu.classList.remove('vers-haut');
+                    window.scrollBy(0, Math.ceil(menu.getBoundingClientRect().bottom - limiteBas));
+                }
+            }
+
             function fermerMenusSortie() {
                 document.querySelectorAll('.menu-sortie.ouvert').forEach(m => m.classList.remove('ouvert'));
                 document.querySelectorAll('.menu-sortie-btn').forEach(b => b.setAttribute('aria-expanded', 'false'));
@@ -7514,6 +7530,7 @@ def accueil():
                             fermerMenusSortie();
                             if (!etaitOuvert) {
                                 menu.classList.add('ouvert');
+                                placerMenuSortie(menu);
                                 kebab.setAttribute('aria-expanded', 'true');
                             }
                         });
