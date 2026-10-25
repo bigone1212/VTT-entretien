@@ -3218,7 +3218,7 @@ def accueil():
         </div>
 
         <div class="sync-card">
-            <label for="kmInput">Kilométrage total du VTTAE</label>
+            <label for="kmInput">Kilométrage total du VTTAE (saisie en km)</label>
 
             <div class="sync-row">
                 <input
@@ -3549,7 +3549,7 @@ def accueil():
                 <label for="histDate">Date de l'intervention</label>
                 <input type="date" id="histDate" required>
 
-                <label for="histKm">Kilométrage au moment de l'intervention</label>
+                <label for="histKm">Kilométrage au moment de l'intervention (saisie en km)</label>
                 <input
                     type="number"
                     id="histKm"
@@ -4709,7 +4709,7 @@ def accueil():
                 info.className = 'vd-info';
                 info.textContent = v.seuil_jours > 0
                     ? `Fait il y a ${v.jours_ecoules} j · à refaire tous les ${v.seuil_jours} j`
-                    : `Seuil : ${v.seuil_alerte} km`;
+                    : `Seuil : ${fmtDistance(v.seuil_alerte).complet}`;
                 detail.appendChild(nom);
                 detail.appendChild(info);
 
@@ -4877,8 +4877,7 @@ def accueil():
                     kmTotalActuel = Number(data.km_total) || 0;
                     etatComposants = data.composants;
 
-                    document.getElementById('veloInfo').innerText =
-                        `${Number(data.km_total).toLocaleString('fr-FR')} km`;
+                    document.getElementById('veloInfo').innerText = fmtDistance(data.km_total).complet;
 
                     const container =
                         document.getElementById('composantsList');
@@ -4985,11 +4984,11 @@ def accueil():
                         if (c.seuil_alerte > 0) {
                             const kmText = document.createElement('span');
                             kmText.textContent =
-                                `Parcouru depuis l'intervention : ${c.km_actuel} km`;
+                                `Parcouru depuis l'intervention : ${fmtDistance(c.km_actuel).complet}`;
 
                             const thresholdText = document.createElement('span');
                             thresholdText.textContent =
-                                `Seuil : ${c.seuil_alerte} km`;
+                                `Seuil : ${fmtDistance(c.seuil_alerte).complet}`;
 
                             statsRow.appendChild(kmText);
                             statsRow.appendChild(thresholdText);
@@ -5056,7 +5055,7 @@ def accueil():
                             usureInfo.className = 'form-help';
                             usureInfo.style.margin = '0 0 6px';
                             usureInfo.textContent =
-                                `Usure estimée selon vos sorties : ${c.km_usure} km`;
+                                `Usure estimée selon vos sorties : ${fmtDistance(c.km_usure, 1).complet}`;
                             detail.appendChild(usureInfo);
                         }
 
@@ -5846,7 +5845,7 @@ def accueil():
 
                     const kmText =
                         h.km_intervention !== null && h.km_intervention !== undefined
-                            ? `🚲 À ${h.km_intervention} km`
+                            ? `🚲 À ${fmtDistance(h.km_intervention).complet}`
                             : '🚲 Kilométrage non renseigné';
 
                     detailText.textContent =
