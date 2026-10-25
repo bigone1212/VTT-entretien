@@ -3266,6 +3266,46 @@ def accueil():
             </div>
         </section>
 
+        <section class="apparence" aria-label="Unités">
+            <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="8" cy="7" r="2"/><circle cx="15" cy="17" r="2"/></svg><span>Unités</span></strong>
+            <p class="form-help" style="margin:0 0 12px;">Choisis les unités utilisées pour afficher les sorties. Les données enregistrées restent inchangées.</p>
+            <div class="mr-ligne">
+                <label for="unitesDistance">Distance</label>
+                <select id="unitesDistance">
+                    <option value="km">Kilomètres (km)</option>
+                    <option value="mi">Miles (mi)</option>
+                </select>
+            </div>
+            <div class="mr-ligne">
+                <label for="unitesAltitude">Altitude et dénivelé</label>
+                <select id="unitesAltitude">
+                    <option value="m">Mètres (m)</option>
+                    <option value="ft">Pieds (ft)</option>
+                </select>
+            </div>
+            <div class="mr-ligne">
+                <label for="unitesVitesse">Vitesse</label>
+                <select id="unitesVitesse">
+                    <option value="kmh">Kilomètres par heure (km/h)</option>
+                    <option value="mph">Miles par heure (mph)</option>
+                </select>
+            </div>
+            <div class="mr-ligne">
+                <label for="unitesTemperature">Température</label>
+                <select id="unitesTemperature">
+                    <option value="c">Celsius (°C)</option>
+                    <option value="f">Fahrenheit (°F)</option>
+                </select>
+            </div>
+            <div class="mr-ligne">
+                <label for="unitesHeure">Heure</label>
+                <select id="unitesHeure">
+                    <option value="24">24 heures</option>
+                    <option value="12">12 heures (AM/PM)</option>
+                </select>
+            </div>
+        </section>
+
         <details class="fiche-technique-velo">
             <summary class="ftv-resume">
                 <span class="ftv-entete">
@@ -3666,10 +3706,10 @@ def accueil():
                     <input id="rechercheSorties" type="search" placeholder="Nom, note, activité..." aria-label="Rechercher une sortie" oninput="appliquerFiltresSorties()">
                     <label for="periodeSortiesBtn">Période</label>
                     <button type="button" id="periodeSortiesBtn" class="hist-periode-btn" aria-label="Filtrer par période" onclick="ouvrirCalendrierSorties()"></button>
-                    <label for="kmMinSorties">Distance (km)</label>
+                    <label for="kmMinSorties">Distance (<span id="uniteFiltreDistance">km</span>)</label>
                     <div class="sorties-km">
-                        <input id="kmMinSorties" class="champ-km" type="text" inputmode="decimal" placeholder="Min" aria-label="Distance minimale en kilomètres" oninput="appliquerFiltresSorties()">
-                        <input id="kmMaxSorties" class="champ-km" type="text" inputmode="decimal" placeholder="Max" aria-label="Distance maximale en kilomètres" oninput="appliquerFiltresSorties()">
+                        <input id="kmMinSorties" class="champ-km" type="text" inputmode="decimal" placeholder="Min" aria-label="Distance minimale" oninput="appliquerFiltresSorties()">
+                        <input id="kmMaxSorties" class="champ-km" type="text" inputmode="decimal" placeholder="Max" aria-label="Distance maximale" oninput="appliquerFiltresSorties()">
                     </div>
                     <label for="favorisSortiesBtn">Favoris</label>
                     <button type="button" id="favorisSortiesBtn" class="hist-periode-btn" aria-pressed="false" onclick="basculerFiltreFavoris()"></button>
@@ -4006,6 +4046,94 @@ def accueil():
                 b.addEventListener('click', () => appliquerPalette(b.dataset.paletteChoix));
             });
             appliquerPalette(paletteChoisie());
+
+            const UNITES_DEFAUT = { distance: 'km', altitude: 'm', vitesse: 'kmh', temperature: 'c', heure: '24' };
+            const UNITES_VALIDES = {
+                distance: ['km', 'mi'],
+                altitude: ['m', 'ft'],
+                vitesse: ['kmh', 'mph'],
+                temperature: ['c', 'f'],
+                heure: ['24', '12']
+            };
+
+            function lireUnites() {
+                try {
+                    const u = JSON.parse(localStorage.getItem('maillon_unites') || '{}');
+                    const resultat = {};
+                    Object.keys(UNITES_DEFAUT).forEach(cle => {
+                        resultat[cle] = UNITES_VALIDES[cle].includes(u[cle]) ? u[cle] : UNITES_DEFAUT[cle];
+                    });
+                    return resultat;
+                } catch (e) {
+                    return { ...UNITES_DEFAUT };
+                }
+            }
+
+            let unites = lireUnites();
+
+            function appliquerUnites() {
+                ['Distance', 'Altitude', 'Vitesse', 'Temperature', 'Heure'].forEach(nom => {
+                    const cle = nom.toLowerCase();
+                    const el = document.getElementById('unites' + nom);
+                    if (el) el.value = unites[cle];
+                });
+                try { localStorage.setItem('maillon_unites', JSON.stringify(unites)); } catch (e) {}
+            }
+
+            ['Distance', 'Altitude', 'Vitesse', 'Temperature', 'Heure'].forEach(nom => {
+                const el = document.getElementById('unites' + nom);
+                if (el) el.addEventListener('change', () => {
+                    const cle = nom.toLowerCase();
+                    unites[cle] = UNITES_VALIDES[cle].includes(el.value) ? el.value : UNITES_DEFAUT[cle];
+                    appliquerUnites();
+                    if (sortiesConnues.length) chargerSorties(true);
+                });
+            });
+
+            function fmtDistance(km, decimales) {
+                const valeur = Number(km) * (unites.distance === 'mi' ? 0.621371 : 1);
+                const unite = unites.distance === 'mi' ? 'mi' : 'km';
+                let texte;
+                if (decimales === undefined) {
+                    texte = unites.distance === 'mi' ? String(Number(valeur.toFixed(2))) : String(km);
+                } else {
+                    texte = fmtFr(valeur, decimales);
+                }
+                return { valeur: valeur, unite: unite, texte: texte, complet: texte + ' ' + unite };
+            }
+
+            function fmtDistanceProfil(km) {
+                const valeur = Number(km) * (unites.distance === 'mi' ? 0.621371 : 1);
+                return valeur.toFixed(1) + (unites.distance === 'mi' ? ' mi' : ' km');
+            }
+
+            function fmtAltitude(m, decimales) {
+                const valeur = Number(m) * (unites.altitude === 'ft' ? 3.28084 : 1);
+                const unite = unites.altitude === 'ft' ? 'ft' : 'm';
+                const texte = decimales === undefined ? String(Math.round(valeur)) : fmtFr(valeur, decimales);
+                return { valeur: valeur, unite: unite, texte: texte, complet: texte + ' ' + unite };
+            }
+
+            function fmtVitesse(kmh, decimales) {
+                const valeur = Number(kmh) * (unites.vitesse === 'mph' ? 0.621371 : 1);
+                const unite = unites.vitesse === 'mph' ? 'mph' : 'km/h';
+                const texte = decimales === undefined ? String(unites.vitesse === 'mph' ? Number(valeur.toFixed(2)) : kmh) : fmtFr(valeur, decimales);
+                return { valeur: valeur, unite: unite, texte: texte, complet: texte + ' ' + unite };
+            }
+
+            function fmtTemperature(c, decimales) {
+                const valeur = unites.temperature === 'f' ? Number(c) * 9 / 5 + 32 : Number(c);
+                const unite = unites.temperature === 'f' ? '°F' : '°C';
+                return { valeur: valeur, unite: unite, texte: fmtFr(valeur, decimales === undefined ? 0 : decimales), complet: fmtFr(valeur, decimales === undefined ? 0 : decimales) + ' ' + unite };
+            }
+
+            function formaterHeure(date) {
+                return date.toLocaleTimeString('fr-FR', unites.heure === '12'
+                    ? { hour: 'numeric', minute: '2-digit', hour12: true }
+                    : { hour: '2-digit', minute: '2-digit', hour12: false });
+            }
+
+            appliquerUnites();
             if (window.matchMedia) {
                 window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
                     if (themeChoisi() === 'auto') appliquerTheme('auto');
@@ -6417,11 +6545,13 @@ def accueil():
                         stroke: 'rgba(255,255,255,0.7)', 'stroke-width': 1, 'stroke-dasharray': '3 3'
                     });
                     const km = d / 1000;
-                    texte(Number.isInteger(km) ? `${km} km` : `${km.toFixed(1)} km`,
-                        { x: xx, y: baseAxe, 'text-anchor': 'middle' });
+                    const libelle = unites.distance === 'km'
+                        ? (Number.isInteger(km) ? `${km} km` : `${km.toFixed(1)} km`)
+                        : fmtDistanceProfil(km);
+                    texte(libelle, { x: xx, y: baseAxe, 'text-anchor': 'middle' });
                 }
                 texte('0', { x: x(0) + (grand ? 0 : 2), y: baseAxe, 'text-anchor': grand ? 'middle' : 'start' });
-                texte(`${(total / 1000).toFixed(1)} km`, { x: largeur - 2, y: baseAxe, 'text-anchor': 'end' });
+                texte(fmtDistanceProfil(total / 1000), { x: largeur - 2, y: baseAxe, 'text-anchor': 'end' });
 
                 if (grand) {
                     [mini, (mini + maxi) / 2, maxi].forEach(a => {
@@ -6429,7 +6559,7 @@ def accueil():
                             x1: margeG, x2: largeur, y1: y(a), y2: y(a),
                             stroke: 'rgba(255,255,255,0.25)', 'stroke-width': 1
                         });
-                        texte(`${Math.round(a)} m`, { x: margeG - 4, y: y(a) + 4, 'text-anchor': 'end' });
+                        texte(fmtAltitude(a).complet, { x: margeG - 4, y: y(a) + 4, 'text-anchor': 'end' });
                     });
                 }
 
@@ -6482,9 +6612,9 @@ def accueil():
                 zone.appendChild(g.svg);
 
                 const resume = [
-                    `${(g.total / 1000).toFixed(1)} km`,
-                    `${s.denivele_pos} m D+`,
-                    `${s.denivele_neg} m D-`,
+                    fmtDistanceProfil(g.total / 1000),
+                    fmtAltitude(s.denivele_pos).texte + ' ' + fmtAltitude(s.denivele_pos).unite + ' D+',
+                    fmtAltitude(s.denivele_neg).texte + ' ' + fmtAltitude(s.denivele_neg).unite + ' D-',
                     `pente max ${Math.round(Math.max(...profil.pentes.map(Math.abs)))} %`
                 ].join(' · ');
                 info.textContent = `${resume} — touche le graphique pour lire un point`;
@@ -6505,7 +6635,7 @@ def accueil():
                     const k = indiceA(profil.cum, d);
                     const pente = profil.pentes[Math.min(k, profil.pentes.length - 1)];
                     const fleche = pente > 0.5 ? '↑' : (pente < -0.5 ? '↓' : '→');
-                    let ligne = `${(d / 1000).toFixed(1)} km · ${Math.round(profil.alt[k])} m · pente ${Math.round(Math.abs(pente))} % ${fleche}`;
+                    let ligne = `${fmtDistanceProfil(d / 1000)} · ${fmtAltitude(profil.alt[k]).complet} · pente ${Math.round(Math.abs(pente))} % ${fleche}`;
                     if (g.codes) {
                         ligne += ` · ${(TYPES_CHEMIN[g.codes[k]] || TYPES_CHEMIN.u).nom}`;
                     }
@@ -6603,7 +6733,7 @@ def accueil():
 
                 const info = document.createElement('div');
                 info.className = 'profil-legende';
-                info.textContent = `Altitude ${Math.round(g.mini)} à ${Math.round(g.maxi)} m sur ${(g.total / 1000).toFixed(1)} km · touche le profil pour l'agrandir`;
+                info.textContent = `Altitude ${fmtAltitude(g.mini).texte} à ${fmtAltitude(g.maxi).complet} sur ${fmtDistance(g.total / 1000, 1).complet} · touche le profil pour l'agrandir`;
                 bloc.appendChild(info);
                 bloc.appendChild(legendesProfil(s, profil));
 
@@ -6997,10 +7127,10 @@ def accueil():
 
                 // Chiffres clés
                 const chiffres = [
-                    [String(s.distance_km).replace('.', ','), 'km'],
-                    [String(Math.round(s.denivele_pos)), 'm D+'],
+                    [unites.distance === 'km' ? String(s.distance_km).replace('.', ',') : fmtDistance(s.distance_km).texte, fmtDistance(s.distance_km).unite],
+                    [unites.altitude === 'm' ? String(Math.round(s.denivele_pos)) : fmtAltitude(s.denivele_pos).texte, fmtAltitude(s.denivele_pos).unite + ' D+'],
                     [formaterDuree(s.duree_s), 'durée'],
-                    [String(s.vitesse_moy).replace('.', ','), 'km/h']
+                    [unites.vitesse === 'kmh' ? String(s.vitesse_moy).replace('.', ',') : fmtVitesse(s.vitesse_moy).texte, fmtVitesse(s.vitesse_moy).unite]
                 ];
                 chiffres.forEach((c, k) => {
                     const x = 50 + k * ((L - 100) / 4);
@@ -7045,7 +7175,7 @@ def accueil():
             function resumeSortie(s) {
                 const jour = new Date(s.debut).toLocaleDateString('fr-FR');
                 return s.nom + ' · ' + jour + String.fromCharCode(10)
-                    + s.distance_km + ' km · ' + s.denivele_pos + ' m D+ · ' + formaterDuree(s.duree_s) + ' · ' + s.vitesse_moy + ' km/h';
+                    + fmtDistance(s.distance_km).texte + ' ' + fmtDistance(s.distance_km).unite + ' · ' + fmtAltitude(s.denivele_pos).texte + ' ' + fmtAltitude(s.denivele_pos).unite + ' D+ · ' + formaterDuree(s.duree_s) + ' · ' + fmtVitesse(s.vitesse_moy).texte + ' ' + fmtVitesse(s.vitesse_moy).unite;
             }
 
             // Partage de l'image de la sortie (carte, parcours, chiffres).
@@ -7289,6 +7419,8 @@ def accueil():
 
             function preparerFiltresSorties(sorties) {
                 actualiserBoutonFiltreSorties();
+                const uniteFiltre = document.getElementById('uniteFiltreDistance');
+                if (uniteFiltre) uniteFiltre.textContent = unites.distance === 'mi' ? 'mi' : 'km';
                 calculerZonesSorties(sorties).catch(e => console.warn(e));
             }
 
@@ -7322,7 +7454,10 @@ def accueil():
                         if (sortiesPeriode.debut && jour < sortiesPeriode.debut) return false;
                         if (sortiesPeriode.fin && jour > sortiesPeriode.fin) return false;
                     }
-                    const kmMin = kmSaisi('kmMinSorties'), kmMax = kmSaisi('kmMaxSorties');
+                    const facteurFiltre = unites.distance === 'mi' ? 1 / 0.621371 : 1;
+                    const minSaisi = kmSaisi('kmMinSorties'), maxSaisi = kmSaisi('kmMaxSorties');
+                    const kmMin = minSaisi === null ? null : minSaisi * facteurFiltre;
+                    const kmMax = maxSaisi === null ? null : maxSaisi * facteurFiltre;
                     const km = Number(s.distance_km || 0);
                     if (kmMin !== null && km < kmMin) return false;
                     if (kmMax !== null && km > kmMax) return false;
@@ -7428,8 +7563,8 @@ def accueil():
                         ligne1.style.color = 'var(--text-muted)';
                         ligne1.style.marginTop = '4px';
                         ligne1.textContent =
-                            `${s.distance_km} km · ${s.denivele_pos} m D+ · ` +
-                            `${formaterDuree(s.duree_s)} · ${s.vitesse_moy} km/h`;
+                            `${fmtDistance(s.distance_km).texte} ${fmtDistance(s.distance_km).unite} · ${fmtAltitude(s.denivele_pos).texte} ${fmtAltitude(s.denivele_pos).unite} D+ · ` +
+                            `${formaterDuree(s.duree_s)} · ${fmtVitesse(s.vitesse_moy).texte} ${fmtVitesse(s.vitesse_moy).unite}`;
 
                         const ligne2 = document.createElement('div');
                         ligne2.style.color = 'var(--text-muted)';
@@ -7878,7 +8013,7 @@ def accueil():
                     pastille.style.background = p.couleur;
                     ligne.appendChild(pastille);
                     ligne.appendChild(document.createTextNode(
-                        `${p.libelle} · ${fmtFr(p.km, 1)} km (${Math.round((p.km / total) * 100)} %)`
+                        `${p.libelle} · ${fmtDistance(p.km, 1).complet} (${Math.round((p.km / total) * 100)} %)`
                     ));
                     legende.appendChild(ligne);
                 });
@@ -7953,7 +8088,7 @@ def accueil():
                     const dateTexte = isNaN(debut.getTime())
                         ? ''
                         : debut.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-                            + ' · départ ' + debut.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+                            + ' · départ ' + formaterHeure(debut);
 
                     // En-tête
                     const haut = document.createElement('div');
@@ -7990,15 +8125,15 @@ def accueil():
                     blocStats.appendChild(grille);
                     const altitudes = trace.map(p => (Array.isArray(p) ? p[3] : null)).filter(a => typeof a === 'number');
                     const vmax = vitesseMaxSortie(trace);
-                    tuile(grille, 'Distance', `${fmtFr(s.distance_km, 1)} km`);
+                    tuile(grille, 'Distance', fmtDistance(s.distance_km, 1).complet);
                     tuile(grille, 'Durée', formaterDuree(s.duree_s));
-                    tuile(grille, 'Vitesse moyenne', `${fmtFr(s.vitesse_moy, 1)} km/h`);
-                    tuile(grille, 'Vitesse maximum', vmax === null ? '—' : `${fmtFr(vmax, 1)} km/h`);
-                    tuile(grille, 'Dénivelé positif', `${fmtFr(s.denivele_pos)} m`);
-                    tuile(grille, 'Dénivelé négatif', `${fmtFr(s.denivele_neg)} m`);
+                    tuile(grille, 'Vitesse moyenne', fmtVitesse(s.vitesse_moy, 1).complet);
+                    tuile(grille, 'Vitesse maximum', vmax === null ? '—' : fmtVitesse(vmax, 1).complet);
+                    tuile(grille, 'Dénivelé positif', fmtAltitude(s.denivele_pos).complet);
+                    tuile(grille, 'Dénivelé négatif', fmtAltitude(s.denivele_neg).complet);
                     if (altitudes.length) {
-                        tuile(grille, 'Altitude maximum', `${fmtFr(Math.max(...altitudes))} m`);
-                        tuile(grille, 'Altitude minimum', `${fmtFr(Math.min(...altitudes))} m`);
+                        tuile(grille, 'Altitude maximum', fmtAltitude(Math.max(...altitudes)).complet);
+                        tuile(grille, 'Altitude minimum', fmtAltitude(Math.min(...altitudes)).complet);
                     }
                     if (profil) {
                         tuile(grille, 'Pente max en montée', `${Math.round(Math.max(...profil.pentes))} %`);
@@ -8024,12 +8159,12 @@ def accueil():
                         g.className = 'fiche-grille';
                         blocMeteo.appendChild(g);
                         if (m.temp !== null) {
-                            tuile(g, 'Température', `${fmtFr(m.temp)} °C`);
-                            tuile(g, 'Min · max', `${fmtFr(m.tempMin)} à ${fmtFr(m.tempMax)} °C`);
+                            tuile(g, 'Température', fmtTemperature(m.temp).complet);
+                            tuile(g, 'Min · max', fmtTemperature(m.tempMin).texte + ' à ' + fmtTemperature(m.tempMax).complet);
                         }
                         if (m.pluie !== null) tuile(g, 'Pluie', `${fmtFr(m.pluie, 1)} mm`);
-                        if (m.vent !== null) tuile(g, 'Vent moyen', `${fmtFr(m.vent)} km/h`);
-                        if (m.rafales !== null) tuile(g, 'Rafales max', `${fmtFr(m.rafales)} km/h`);
+                        if (m.vent !== null) tuile(g, 'Vent moyen', fmtVitesse(m.vent, 0).complet);
+                        if (m.rafales !== null) tuile(g, 'Rafales max', fmtVitesse(m.rafales, 0).complet);
                     }).catch(() => {
                         if (jeton !== ficheJeton) return;
                         texteMeteo.textContent = 'Météo indisponible (il faut une connexion internet).';
@@ -8546,7 +8681,7 @@ def accueil():
                 lieux.forEach(l=>{
                     const el=document.createElement('div'); el.className='v3d-lieu'+(['sommet','col'].includes(l.genre)?' v3d-lieu-haut':'');
                     const ic=l.genre==='sommet'?'⛰️':l.genre==='col'?'🏔️':'🏘️';
-                    el.textContent=ic+' '+l.nom+(Number.isFinite(l.alt)&&['sommet','col'].includes(l.genre)?' · '+l.alt+' m':'');
+                    el.textContent=ic+' '+l.nom+(Number.isFinite(l.alt)&&['sommet','col'].includes(l.genre)?' · '+fmtAltitude(l.alt).complet:'');
                     v3d.reperes.push(new window.maplibregl.Marker({element:el,anchor:'bottom'}).setLngLat(l.coord).addTo(carte));
                 });
                 majVisibiliteReperesV3d(); majBoutonsV3d();
@@ -8616,7 +8751,7 @@ def accueil():
                 }
                 document.getElementById('v3dProgres').value = String(Math.round(v3d.f * 1000));
                 document.getElementById('v3dInfo').textContent =
-                    `${(d / 1000).toFixed(1)} km sur ${(v3d.total / 1000).toFixed(1)} km`;
+                    `${fmtDistance(d / 1000, 1).complet} sur ${fmtDistance(v3d.total / 1000, 1).complet}`;
                 majVisibiliteReperesV3d();
             }
 
@@ -9861,8 +9996,8 @@ def accueil():
                     const data = r.data;
 
                     afficherLignes(message, [
-                        `✅ Sortie importée : ${data.distance_km} km, ` +
-                        `${data.denivele_pos} m D+. ` +
+                        `✅ Sortie importée : ${fmtDistance(data.distance_km).complet}, ` +
+                        `${unites.altitude === 'm' ? String(data.denivele_pos) + ' m' : fmtAltitude(data.denivele_pos).complet} D+. ` +
                         (data.ajoute_au_total
                             ? `Kilométrage total : ${data.km_total} km.`
                             : "Cette sortie date d'avant votre dernière mise à jour " +
