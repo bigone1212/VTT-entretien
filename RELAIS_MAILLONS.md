@@ -100,10 +100,14 @@ Dernier commit de main connu : …    Branche de reprise éventuelle : …
 
 ## 2. Dernière intervention
 
-**Intervention 4 — 25/10/2026 : demande de Math en 4 temps (temps 1 et 2 terminés)**
-- Temps 1 : pastille rouge des onglets plus petite (`67e6a92`, directement dans `main`, avant la règle de publication).
-- Temps 2 : choix des couleurs de l'appli (6 palettes) dans Réglages > Apparence, `41f2129`, fusionné dans `main` avec l'accord de Math. Apparence seulement ; image de partage, icône du téléphone et couleurs de la carte 3D restent turquoise. Tests : voir « Tâche en cours ». Déploiement Render non vérifié.
-- Temps 3 (unités) et temps 4 (profil d'altitude plus haut pour les longues distances) : pas encore faits.
+**Intervention 5 — 25/10/2026 : reprise des unités d'affichage sur branche de test**
+- Branche : `reprise/2026-10-25-unites`. Code de l'application modifié uniquement dans `main.py`, en 5 commits ; dernier commit `7c9ff2086de8c82ff25b306e736f0b77a20c57b2`.
+- Ajout des réglages d'unités distance (km/mi), altitude/dénivelé (m/ft), vitesse (km/h/mph), température (°C/°F) et heure (24 h/12 h), conservés dans `localStorage` (`maillon_unites`). Conversions d'affichage ; valeurs enregistrées et saisies pour l'entretien restent dans les unités de stockage existantes.
+- Vérifications statiques faites : valeurs métriques par défaut, options autorisées, lecture/écriture localStorage, conversion du filtre miles vers km, formules de conversion et maintien du kilométrage d'entretien en km. Calculs numériques de conversion contrôlés séparément.
+- **Non vérifié** : syntaxe complète Python/JavaScript dans un environnement d'exécution, démarrage de l'application, navigation navigateur/mobile, affichage réel, conservation visuelle exacte du rendu métrique. Aucun déploiement déclenché.
+- État Git : branche de reprise en avance de 5 commits et en retard de 2 commits sur `main`. Le diff de code consulté concerne `main.py` ; les deux commits de retard doivent être comparés avant toute PR/fusion. Le code n'est pas fusionné dans `main`.
+- Temps 4 (profil d'altitude plus haut pour les longues distances) **non commencé**, à traiter après validation du temps 3.
+- Temps 1 : pastille rouge des onglets plus petite (`67e6a92`, dans `main`). Temps 2 : choix des couleurs de l'appli (`41f2129`), fusionné dans `main` avec l'accord de Math.
 
 **Intervention 3 — 25/10/2026 : règle de publication**
 - Math a validé : modifications de code sur branche `reprise/…` d'abord, fusion dans `main` seulement avec son accord (détail en section 0 bis). ChatGPT a confirmé le même jour avoir accès au dépôt et avoir lu ce fichier (déclaration de Math, non vérifiée par Claude).
@@ -176,10 +180,10 @@ Dernier commit de main connu : …    Branche de reprise éventuelle : …
 
 ## 6. Travail restant
 
-- **En cours** : rien (voir la section « Tâche en cours » : statut AUCUNE TÂCHE EN COURS).
-- **À faire** : aucune tâche en attente n'est consignée dans le dépôt. La prochaine demande vient de Math.
-- **À faire (sans urgence, non commencé)** : examiner la branche `feature/fiche-technique-velo` par rapport à `main` (lecture seule) et consigner ici ce qu'elle contient, avant toute décision.
-- **Prochaine étape recommandée** : à la prochaine modification, démarrer l'appli (ou la tester sur Render) et consigner en section 4 ce qui a été réellement vérifié.
+- **En cours** : temps 3, unités d'affichage, sur `reprise/2026-10-25-unites`. Vérifications statiques partielles effectuées ; pas de test d'exécution ou de navigateur.
+- **Prochaine étape** : exécuter des contrôles Python/JavaScript et tester l'application en navigateur/ordinateur/téléphone si l'environnement le permet. Si ces tests ne sont pas possibles ici, consigner la limite et demander à Math un essai guidé avant fusion. Ne pas fusionner sans accord explicite.
+- **Ensuite** : temps 4, remonter légèrement le profil d'altitude de l'onglet Sorties pour les longues distances, seulement après validation des unités.
+- **À faire (sans urgence)** : examiner la branche `feature/fiche-technique-velo` par rapport à `main`, en lecture seule, avant toute décision.
 
 ## 7. Précautions
 
