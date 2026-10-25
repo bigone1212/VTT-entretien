@@ -1,13 +1,15 @@
-from fastapi import FastAPI, HTTPException, Header
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, HTTPException, Header, Request
+from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, Field
 import base64
 import db
 import gpx_import
 import hmac
+import html as html_lib
 import json
 import math
 import os
+import secrets
 import time
 from typing import Optional, List, Dict
 from datetime import date, datetime, timedelta, timezone
@@ -397,6 +399,16 @@ def init_db():
     ajouter_colonne(cursor, "sorties", "photos", "TEXT")
     ajouter_colonne(cursor, "sorties", "videos", "TEXT")
     ajouter_colonne(cursor, "sorties", "surfaces", "TEXT")
+
+    # Liens de partage secrets : une ligne par sortie partagée.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS partages (
+            jeton TEXT PRIMARY KEY,
+            sortie_id INTEGER NOT NULL UNIQUE,
+            image TEXT,
+            cree_le TEXT
+        )
+    """)
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS reglages (
@@ -6929,24 +6941,97 @@ def accueil():
                 }
 
                 return await new Promise((resolve, reject) => {
-                    try { canvas.toBlob(b => b ? resolve(b) : reject(new Error('image vide')), 'image/jpeg', 0.92); }
+                    try { canvas.toBlob(b => b ? resolve(b) : reject(new Error('image vide')), 'image/jpeg', 0.82); }
                     catch (e) { reject(e); }
                 });
             }
 
-            async function partagerSortie(s, bouton) {
+            // Fabrique l'image de partage : satellite, sinon plan, sinon fond uni.
+            async function fabriquerImagePartage(s) {
+                for (const fond of ['sat', 'plan', '']) {
+                    try {
+                        const blob = await creerImagePartage(s, fond);
+                        if (blob) return blob;
+                    } catch (e) {
+                        console.warn('Image de partage : fond « ' + fond + ' » impossible', e);
+                    }
+                }
+                return null;
+            }
+
+            function resumeSortie(s) {
                 const jour = new Date(s.debut).toLocaleDateString('fr-FR');
-                const texte = s.nom + ' · ' + jour + String.fromCharCode(10)
+                return s.nom + ' · ' + jour + String.fromCharCode(10)
                     + s.distance_km + ' km · ' + s.denivele_pos + ' m D+ · ' + formaterDuree(s.duree_s) + ' · ' + s.vitesse_moy + ' km/h';
+            }
+
+            // Partage par lien secret : le lien ouvre une page en lecture seule avec l'image de la sortie.
+            async function partagerLien(s, bouton) {
+                const texte = resumeSortie(s);
+                if (bouton) { bouton.classList.add('occupe'); bouton.disabled = true; }
+                let url = '';
+                try {
+                    const blob = await fabriquerImagePartage(s);
+                    if (!blob) throw new Error('image impossible');
+                    const donnees = await new Promise((resolve, reject) => {
+                        const lecteur = new FileReader();
+                        lecteur.onload = () => resolve(lecteur.result);
+                        lecteur.onerror = () => reject(new Error('lecture impossible'));
+                        lecteur.readAsDataURL(blob);
+                    });
+                    const res = await fetch('/api/sorties/' + s.id + '/partage', {
+                        method: 'POST',
+                        headers: getHeaders(),
+                        body: JSON.stringify({ image: donnees })
+                    });
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    const reponse = await res.json();
+                    url = location.origin + reponse.chemin;
+                    s.partage = true;
+                } catch (e) {
+                    console.warn('Lien de partage impossible', e);
+                } finally {
+                    if (bouton) { bouton.classList.remove('occupe'); bouton.disabled = false; }
+                }
+                if (!url) {
+                    alert("Le lien de partage n'a pas pu être créé (connexion ?). Tu peux partager l'image seule depuis le menu des trois points.");
+                    return;
+                }
+                if (navigator.share) {
+                    try {
+                        await navigator.share({ title: s.nom, text: texte, url: url });
+                    } catch (e) {
+                        if (e && e.name !== 'AbortError') console.warn(e);
+                    }
+                    return;
+                }
+                try {
+                    await navigator.clipboard.writeText(texte + String.fromCharCode(10) + url);
+                    alert('Le lien est copié, tu peux le coller dans un message.');
+                } catch (e) {
+                    prompt('Copie ce lien pour le partager :', url);
+                }
+            }
+
+            async function arreterPartageLien(s) {
+                if (!confirm("Arrêter le partage de cette sortie ? Le lien déjà envoyé ne marchera plus pour personne.")) return;
+                try {
+                    const res = await fetch('/api/sorties/' + s.id + '/partage/supprimer', { method: 'POST', headers: getHeaders() });
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    s.partage = false;
+                    alert('Le lien de partage est désactivé.');
+                } catch (e) {
+                    alert("Impossible d'arrêter le partage pour le moment (connexion ?).");
+                }
+            }
+
+            // Partage de l'image seule (sans lien).
+            async function partagerSortie(s, bouton) {
+                const texte = resumeSortie(s);
                 if (bouton) { bouton.classList.add('occupe'); bouton.disabled = true; }
                 let blob = null;
                 try {
-                    for (const fond of ['sat', 'plan', '']) {
-                        try { blob = await creerImagePartage(s, fond); if (blob) break; }
-                        catch (e) { console.warn('Image de partage : fond « ' + fond + ' » impossible', e); }
-                    }
-                } catch (e) {
-                    console.warn('Image de partage impossible', e);
+                    blob = await fabriquerImagePartage(s);
                 } finally {
                     if (bouton) { bouton.classList.remove('occupe'); bouton.disabled = false; }
                 }
@@ -7488,6 +7573,8 @@ def accueil():
                         ajouterAction('appareil', 'Ajouter des photos', () => choixPhotos.click(), false, nbPhotos >= MAX_PHOTOS);
                         ajouterAction('video', 'Ajouter une vidéo', () => ajouterVideo(s.id), false, nbVideos >= MAX_VIDEOS);
                         ajouterAction('crayon', 'Modifier les notes', () => modifierNotesSortie(s), false, false);
+                        ajouterAction('partage', "Partager l'image seule", () => partagerSortie(s, boutonPartage), false, !Array.isArray(s.trace) || s.trace.length < 2);
+                        if (s.partage) ajouterAction('poubelle', 'Arrêter le partage par lien', () => arreterPartageLien(s), false, false);
                         ajouterAction('telecharger', 'Exporter en GPX', () => exporterSortieGpx(s), false, !Array.isArray(s.trace) || s.trace.length < 2);
                         ajouterAction('crayon', 'Renommer', () => renommerSortie(s), false, false);
                         ajouterAction('poubelle', 'Supprimer', () => supprimerSortie(s.id), true, false);
@@ -7512,7 +7599,7 @@ def accueil():
                         boutonPartage.addEventListener('click', (e) => {
                             e.stopPropagation();
                             fermerMenusSortie();
-                            partagerSortie(s, boutonPartage);
+                            partagerLien(s, boutonPartage);
                         });
 
                         const boutonFavori = document.createElement('button');
@@ -8019,8 +8106,20 @@ def accueil():
                             center: pts[0],
                             zoom: 11,
                             cooperativeGestures: true,
-                            attributionControl: true
+                            attributionControl: false
                         });
+                        // Mention des sources : repliée derrière le « i », qui l'ouvre au toucher.
+                        carte.addControl(new ml.AttributionControl({ compact: true }));
+                        const replierMention = () => {
+                            const el = carte.getContainer().querySelector('.maplibregl-ctrl-attrib');
+                            if (!el) return;
+                            el.classList.remove('maplibregl-compact-show');
+                            el.removeAttribute('open');
+                        };
+                        replierMention();
+                        carte.once('load', replierMention);
+                        carte.once('idle', replierMention);
+                        setTimeout(replierMention, 500);
                         ficheCarte = carte;
                         carte.on('load', () => {
                             if (jeton !== ficheJeton) return;
@@ -11769,10 +11868,14 @@ def lister_sorties(x_code_acces: Optional[str] = Header(default=None)):
         lignes_sorties = cursor.fetchall()
         reglages_usure = lire_reglages(cursor)
 
+        cursor.execute("SELECT sortie_id FROM partages")
+        sorties_partagees = {r[0] for r in cursor.fetchall()}
+
         resultat = []
 
         for row in lignes_sorties:
             sortie = dict(row)
+            sortie["partage"] = sortie["id"] in sorties_partagees
 
             try:
                 sortie["trace"] = json.loads(sortie["trace"] or "[]")
@@ -11830,6 +11933,7 @@ def supprimer_sortie(sortie_id: int, x_code_acces: Optional[str] = Header(defaul
         if ligne[1]:
             ajuster_km_total(cursor, -float(ligne[0] or 0))
 
+        cursor.execute("DELETE FROM partages WHERE sortie_id = ?", (sortie_id,))
         cursor.execute("DELETE FROM sorties WHERE id = ?", (sortie_id,))
         conn.commit()
 
@@ -12298,6 +12402,232 @@ def obtenir_photo(
 
     finally:
         conn.close()
+
+
+# ============================================================
+# PARTAGE PAR LIEN SECRET
+# ============================================================
+
+MAX_CHARS_IMAGE_PARTAGE = 2_500_000
+
+
+class PartageRequest(BaseModel):
+    # Image JPEG de la sortie (carte, parcours, chiffres), en base64.
+    image: str = Field(min_length=100, max_length=MAX_CHARS_IMAGE_PARTAGE)
+
+
+def duree_en_texte(secondes):
+    total = int(secondes or 0)
+    heures, reste = divmod(total, 3600)
+    minutes = reste // 60
+    return f"{heures} h {minutes:02d}" if heures else f"{minutes} min"
+
+
+def infos_sortie_partagee(cursor, jeton):
+    """Renvoie (sortie, image) d'un lien de partage, ou None."""
+    cursor.execute(
+        "SELECT sortie_id, image FROM partages WHERE jeton = ?", (jeton,)
+    )
+    partage = cursor.fetchone()
+
+    if partage is None:
+        return None
+
+    cursor.execute(
+        "SELECT nom, debut, distance_km, denivele_pos, duree_s, vitesse_moy "
+        "FROM sorties WHERE id = ?",
+        (partage[0],)
+    )
+    sortie = cursor.fetchone()
+
+    if sortie is None:
+        return None
+
+    return sortie, partage[1]
+
+
+@app.post("/api/sorties/{sortie_id}/partage")
+def creer_lien_partage(
+    sortie_id: int,
+    data: PartageRequest,
+    x_code_acces: Optional[str] = Header(default=None)
+):
+    """Crée (ou met à jour) le lien secret d'une sortie."""
+    verifier_auth(x_code_acces)
+    image = data.image.strip()
+
+    if image.startswith("data:"):
+        image = image.split(",", 1)[-1]
+
+    try:
+        octets = base64.b64decode(image, validate=True)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Image invalide.")
+
+    if not octets.startswith(bytes([255, 216, 255])):
+        raise HTTPException(status_code=400, detail="L'image doit être un JPEG.")
+
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("SELECT id FROM sorties WHERE id = ?", (sortie_id,))
+
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Sortie introuvable.")
+
+        cursor.execute(
+            "SELECT jeton FROM partages WHERE sortie_id = ?", (sortie_id,)
+        )
+        existant = cursor.fetchone()
+
+        if existant is None:
+            jeton = secrets.token_urlsafe(16)
+            cursor.execute(
+                "INSERT INTO partages (jeton, sortie_id, image, cree_le) "
+                "VALUES (?, ?, ?, ?)",
+                (jeton, sortie_id, image, maintenant_utc())
+            )
+        else:
+            jeton = existant[0]
+            cursor.execute(
+                "UPDATE partages SET image = ? WHERE sortie_id = ?",
+                (image, sortie_id)
+            )
+
+        conn.commit()
+        return {"statut": "success", "chemin": f"/s/{jeton}"}
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+
+@app.post("/api/sorties/{sortie_id}/partage/supprimer")
+def supprimer_lien_partage(
+    sortie_id: int,
+    x_code_acces: Optional[str] = Header(default=None)
+):
+    """Désactive le lien secret : il ne marche plus pour personne."""
+    verifier_auth(x_code_acces)
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("DELETE FROM partages WHERE sortie_id = ?", (sortie_id,))
+        conn.commit()
+        return {"statut": "success"}
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+
+@app.get("/s/{jeton}/image.jpg")
+def image_partagee(jeton: str):
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        trouve = infos_sortie_partagee(cursor, jeton)
+    finally:
+        conn.close()
+
+    if trouve is None or not trouve[1]:
+        raise HTTPException(status_code=404, detail="Lien inconnu.")
+
+    return Response(
+        content=base64.b64decode(trouve[1]),
+        media_type="image/jpeg",
+        headers={
+            "Cache-Control": "public, max-age=300",
+            "X-Robots-Tag": "noindex, nofollow",
+        },
+    )
+
+
+@app.get("/s/{jeton}", response_class=HTMLResponse)
+def page_partagee(jeton: str, request: Request):
+    """Page publique en lecture seule d'une sortie partagée par lien secret."""
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        trouve = infos_sortie_partagee(cursor, jeton)
+    finally:
+        conn.close()
+
+    if trouve is None:
+        return HTMLResponse(
+            "<!doctype html><meta charset='utf-8'><meta name='robots' content='noindex'>"
+            "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+            "<body style='font-family:system-ui;background:#0b1a20;color:#fff;"
+            "display:grid;place-items:center;min-height:100vh;margin:0;text-align:center'>"
+            "<p>Ce lien de partage n'existe plus.</p></body>",
+            status_code=404,
+        )
+
+    sortie = trouve[0]
+    protocole = request.headers.get("x-forwarded-proto", "https").split(",")[0].strip()
+    hote = request.headers.get("host", "")
+    image_url = f"{protocole}://{hote}/s/{jeton}/image.jpg"
+
+    nom = html_lib.escape(str(sortie[0] or "Sortie"))
+    try:
+        jour = datetime.fromisoformat(str(sortie[1]).replace("Z", "")).strftime("%d/%m/%Y")
+    except ValueError:
+        jour = ""
+    distance = f"{float(sortie[2] or 0):g}".replace(".", ",")
+    resume = (
+        f"{distance} km · {int(sortie[3] or 0)} m D+ · "
+        f"{duree_en_texte(sortie[4])} · {float(sortie[5] or 0):g}".replace(".", ",")
+        + " km/h"
+    )
+    titre = f"{nom} · {jour}" if jour else nom
+    resume_html = html_lib.escape(resume)
+
+    page = f"""<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>{titre} · Maillons</title>
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Maillons">
+<meta property="og:title" content="{titre}">
+<meta property="og:description" content="{resume_html}">
+<meta property="og:image" content="{image_url}">
+<meta property="og:image:width" content="1080">
+<meta property="og:image:height" content="1350">
+<meta name="twitter:card" content="summary_large_image">
+<style>
+  body {{ margin: 0; background: #0b1a20; color: #fff; font-family: system-ui, sans-serif; }}
+  main {{ max-width: 560px; margin: 0 auto; padding: 16px; text-align: center; }}
+  img {{ width: 100%; height: auto; border-radius: 18px; display: block; }}
+  h1 {{ font-size: 1.3rem; margin: 18px 0 6px; }}
+  p {{ color: #9fb4ba; margin: 0 0 6px; }}
+  small {{ color: #35e0c8; font-weight: 700; }}
+</style>
+</head>
+<body>
+<main>
+  <img src="/s/{jeton}/image.jpg" alt="Parcours de la sortie">
+  <h1>{titre}</h1>
+  <p>{resume_html}</p>
+  <small>Maillons</small>
+</main>
+</body>
+</html>"""
+
+    return HTMLResponse(page, headers={"X-Robots-Tag": "noindex, nofollow"})
+
 
 
 @app.get("/api/sauvegarde")
