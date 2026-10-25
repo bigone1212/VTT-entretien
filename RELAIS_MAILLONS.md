@@ -56,13 +56,13 @@ Décision de conception (temps 3) : changement d'AFFICHAGE seulement. Les donné
   [~] 2. Ajouter la carte « Unités » dans Réglages (clé `maillon_unites`) et les fonctions de conversion : code ajouté sur la branche de reprise, tests d'interface non faits
   [~] 3. Brancher les affichages et vérifier que le métrique reste identique et que l'impérial est correct : conversions branchées dans les principaux affichages, vérification complète restante
   [ ] 4. Fusion dans `main` seulement avec l'accord explicite de Math
-Enregistré sur GitHub : `main.py` sur `reprise/2026-10-25-unites`, derniers commits de code connus : `1b67d7a`, `0b323e9`, `1ed6277`, `e38061a` (le plus récent ; code relu après enregistrement)
+Enregistré sur GitHub : `main.py` sur `reprise/2026-10-25-unites`, derniers commits de code connus : `1b67d7a`, `0b323e9`, `1ed6277`, `e38061a`, `7c9ff20` (le plus récent ; code relu après enregistrement)
 Local, non enregistré : rien
 Fichiers modifiés : `main.py` uniquement sur la branche de reprise ; `RELAIS_MAILLONS.md` uniquement sur `main`
-Tests : vérifications statiques des éléments attendus et comparaison des versions GitHub faites ; tests Python, JavaScript en navigateur, téléphone et Render non faits
+Tests : vérification statique des éléments attendus, comparaison avec `main` et calculs de conversion simples faits (10 km ≈ 6,21 mi ; 100 m ≈ 328 ft ; 30 km/h ≈ 18,64 mph ; 20 °C = 68 °F). Tests Python, JavaScript en navigateur, téléphone et Render non faits
 Problèmes rencontrés : pas d'erreur d'enregistrement signalée ; l'exécution réelle de l'application n'est pas disponible dans cet environnement
 Prochaine action : vérifier le code et les conversions, notamment les libellés métriques inchangés, puis faire des tests avant de considérer l'étape terminée.
-Dernier commit de main connu avant la présente mise à jour : `e6e1f8f`    Branche de reprise : `reprise/2026-10-25-unites` (créée, code non fusionné)
+Dernier commit de main connu avant la présente mise à jour : `799d20d`    Branche de reprise : `reprise/2026-10-25-unites` (créée, code non fusionné)
 
 À remplir dès qu'une tâche significative démarre, puis à effacer (en reportant l'essentiel en sections 2 à 8) quand elle est **terminée et vérifiée**. Modèle :
 
@@ -199,7 +199,7 @@ Dernier commit de main connu : …    Branche de reprise éventuelle : …
 
 ## 8. État GitHub / Render
 
-- **Dernier commit de `main` vérifié avant cette mise à jour : `e6e1f8fceb2804dbe995871c843dd75779e9f49c`** (25/10/2026, journal de démarrage du travail sur les unités).
+- **Dernier commit de `main` vérifié avant cette mise à jour : `799d20de812ba25b78a7c931ed4e351bb030471a`** (25/10/2026, journal de progression du travail sur les unités).
 - Commits de relais : `6ac4728` (création du fichier) et `b8ef78e` (protocole de reprise), tous deux vérifiés sur GitHub le 25/10/2026. Le commit de l'intervention 3 (règle de publication) vient **après** : son numéro n'est pas connu au moment de l'écriture, consulter l'historique de `main` sur GitHub.
 - Dernier commit de **l'appli** (code) : `67e6a92`. Les commits de relais ne modifient que ce fichier.
 - Branches vérifiées lors de la reprise : `main`, `feature/fiche-technique-velo` (non examinée), `reprise/2026-10-25-couleurs` et `reprise/2026-10-25-unites`. La branche unités n'est pas fusionnée dans `main`.
