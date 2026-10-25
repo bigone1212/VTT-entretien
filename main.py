@@ -2679,10 +2679,10 @@ def accueil():
             .onglet.avec-pastille::after {
                 content: "";
                 position: absolute;
-                top: 4px;
-                left: calc(50% + 12px);
-                width: 12px;
-                height: 12px;
+                top: 6px;
+                left: calc(50% + 14px);
+                width: 9px;
+                height: 9px;
                 border-radius: 50%;
                 background: var(--danger);
                 border: 2px solid var(--bg-color);
