@@ -6474,7 +6474,7 @@ def accueil():
 
             // Dessine le profil (pente en couleurs, type de chemin, repères en km).
             // `grand` : version de la fenêtre (axe des altitudes, plus de place).
-            function construireProfil(s, profil, largeur, hauteur, grand) {
+            function construireProfil(s, profil, largeur, hauteur, grand, liste) {
                 const ns = 'http://www.w3.org/2000/svg';
                 const codes = s.surfaces && s.surfaces.length === s.trace.length ? s.surfaces : null;
                 const police = grand ? 12 : 16;
@@ -6490,7 +6490,7 @@ def accueil():
                 const paysageEcran = document.documentElement.classList.contains('paysage');
                 const etendue = paysageEcran
                     ? Math.max(30, maxi - mini)
-                    : Math.max(60, (maxi - mini) * 1.3, total / 30);
+                    : Math.max(60, (maxi - mini) * 1.3, liste ? total / 40 : total / 30);
                 const x = (d) => margeG + (d / total) * (largeur - margeG);
                 const y = (a) => 8 + (1 - (a - mini) / etendue) * (hautGraph - 16);
 
@@ -6721,7 +6721,7 @@ def accueil():
                 const g = construireProfil(
                     s, profil, 600,
                     document.documentElement.classList.contains('paysage') ? 175 : 235,
-                    false
+                    false, true
                 );
                 g.svg.style.cursor = 'pointer';
                 g.svg.addEventListener('click', () => ouvrirProfil(s));
