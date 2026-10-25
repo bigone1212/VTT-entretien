@@ -52,17 +52,17 @@ Objectif : demande de Math en 4 temps, traités un par un. Temps 1 (pastille) et
 Démarrée : 25/10/2026, vers 20h20 — par : Claude
 Décision de conception (temps 3) : changement d'AFFICHAGE seulement. Les données restent en km et en mètres dans la base. En métrique (défaut), les textes affichés doivent rester identiques à avant. Les valeurs que Math saisit lui-même (kilométrage total du vélo, seuils d'usure, kilométrage d'une intervention) restent en km, volontairement : convertir en miles puis reconvertir ferait glisser son vrai kilométrage. À proposer plus tard si besoin.
 Étapes prévues (temps 3) :
-  [ ] 1. Repérer les affichages (distance, dénivelé/altitude, vitesse, température, heure) dans les onglets Sorties, fiche de sortie, profil, vue 3D, image de partage
+  [~] 1. Repérer les affichages dans le `main.py` actuel : première lecture effectuée, plusieurs affichages métriques repérés ; inventaire détaillé en cours
   [ ] 2. Ajouter la carte « Unités » dans Réglages (clé `maillon_unites`) et les fonctions de conversion
-  [ ] 3. Brancher les affichages, tester (métrique identique à avant ; impérial correct), envoyer sur la branche `reprise/2026-10-25-unites`
-  [ ] 4. Fusion dans `main` seulement avec l'accord de Math
-Enregistré sur GitHub : rien pour ce temps 3.
+  [ ] 3. Brancher les affichages, tester (métrique identique à avant ; impérial correct), enregistrer sur `reprise/2026-10-25-unites`
+  [ ] 4. Fusion dans `main` seulement avec l'accord explicite de Math
+Enregistré sur GitHub : démarrage de tâche à consigner par ce commit de relais
 Local, non enregistré : rien
-Fichiers modifiés : aucun pour l'instant (`main.py` seulement ensuite)
-Tests : non faits
-Problèmes rencontrés : aucun pour l'instant
-Prochaine action : repérer les affichages.
-Dernier commit de main connu : `8a6ed0a`    Branche de reprise éventuelle : `reprise/2026-10-25-unites` (pas encore créée)
+Fichiers modifiés : `RELAIS_MAILLONS.md` uniquement pour enregistrer le démarrage ; aucun code de l'application modifié
+Tests : non faits pour cette tâche
+Problèmes rencontrés : aucun constaté pour l'instant
+Prochaine action : terminer le repérage précis des affichages et points d'intégration dans `main.py`.
+Dernier commit de main connu : `e60656b` avant ce commit de relais    Branche de reprise : `reprise/2026-10-25-unites` (à créer après l'enregistrement de ce journal)
 
 À remplir dès qu'une tâche significative démarre, puis à effacer (en reportant l'essentiel en sections 2 à 8) quand elle est **terminée et vérifiée**. Modèle :
 
@@ -198,10 +198,10 @@ Dernier commit de main connu : …    Branche de reprise éventuelle : …
 
 ## 8. État GitHub / Render
 
-- **Dernier commit connu de `main` lors de la rédaction : `67e6a926af0e6be6f12703f5a97c3067e6aa7aa0`** (25/10/2026, 19:44 +0100, « Pastille rouge des onglets : un peu plus petite »). Vérifié le 25/10/2026 : le dépôt distant était bien à ce commit au moment de la lecture.
+- **Dernier commit connu avant la reprise actuelle : `e60656b6cef866116331646d6a29f2c799c2d9c4`** (25/10/2026, message « Relais : tâche en cours (choix des unités) »). Vérifié sur GitHub au début de la reprise.
 - Commits de relais : `6ac4728` (création du fichier) et `b8ef78e` (protocole de reprise), tous deux vérifiés sur GitHub le 25/10/2026. Le commit de l'intervention 3 (règle de publication) vient **après** : son numéro n'est pas connu au moment de l'écriture, consulter l'historique de `main` sur GitHub.
 - Dernier commit de **l'appli** (code) : `67e6a92`. Les commits de relais ne modifient que ce fichier.
-- Branches sur GitHub le 25/10/2026 : `main`, `feature/fiche-technique-velo` (non examinée).
+- Branches vérifiées sur GitHub au début de la reprise : `main`, `feature/fiche-technique-velo` (non examinée), `reprise/2026-10-25-couleurs`. Aucune branche `reprise/2026-10-25-unites` n'existait alors.
 - Chaque envoi sur `main` peut déclencher une mise à jour de Render si la mise à jour automatique est active (non vérifié) : un commit qui ne modifie que ce fichier ne change pas l'appli, mais peut provoquer un redéploiement identique.
 - **Render : correspondance NON vérifiée.** Cette session n'a pas accès au tableau de bord Render et l'adresse de l'appli n'est pas dans le dépôt. D'après Math, Render se met à jour à partir de GitHub ; on ne sait pas ici si la mise à jour automatique est active, ni quel commit est actuellement en ligne.
 - **Comment vérifier la prochaine fois** : dans Render, ouvrir le service puis l'onglet des déploiements ; comparer le commit affiché avec le dernier commit de `main` sur GitHub. Noter ici le résultat avec la date.
