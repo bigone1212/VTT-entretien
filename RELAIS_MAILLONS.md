@@ -51,18 +51,20 @@ Statut : EN COURS
 Objectif : temps 4 de la demande en quatre temps de Math : améliorer légèrement la hauteur du profil d'altitude dans l'onglet Sorties pour que les pics restent lisibles sur les longues distances, sans modifier les données GPX ni les autres fonctions.
 Démarrée : 25/10/2026 — par : ChatGPT
 Étapes prévues :
-  [x] 1. Lire ce fichier de relais et vérifier les derniers commits de `main` : `1b1d4847808ac0bd2028cb5ce612b40eeb7132a5` est le commit actuel vérifié.
-  [x] 2. Examiner le code actuel de `main.py` : le profil est construit par `construireProfil(s, profil, largeur, hauteur, grand)`, lignes autour de 6477 ; le profil de la liste Sorties passe par `dessinerProfil(s)` et utilise une largeur fixe de 600.
-  [~] 3. Ajuster de manière ciblée l'échelle verticale du profil pour les longues distances, sans changer les données, l'analyse des pentes, le profil agrandi ni le profil de partage.
-  [ ] 4. Vérifier le diff et la syntaxe ; effectuer les tests possibles et documenter clairement les tests navigateur/téléphone qui restent à faire.
-  [ ] 5. Ouvrir une PR depuis une branche de reprise ; ne pas fusionner dans `main` sans accord explicite de Math.
-Enregistré sur GitHub : état initial vérifié sur `main`, commit `1b1d4847808ac0bd2028cb5ce612b40eeb7132a5`; le présent état de reprise sera consigné par le commit de ce fichier.
+  [x] 1. Lire ce fichier de relais et vérifier les derniers commits de `main` : le code de l'application est à jour après le commit `1b1d4847808ac0bd2028cb5ce612b40eeb7132a5`.
+  [x] 2. Examiner le code actuel de `main.py` : le profil est construit par `construireProfil(s, profil, largeur, hauteur, grand)`, autour de la ligne 6477 ; le profil dans la liste Sorties passe par `dessinerProfil(s)`.
+  [x] 3. Ajustement ciblé enregistré sur la branche de reprise : seule l'échelle verticale du profil dans la liste Sorties est assouplie pour les longues distances. Les autres usages de `construireProfil` conservent leur échelle.
+  [~] 4. Vérifier le diff et la syntaxe ; vérifications statiques faites, tests d'exécution et navigateur/téléphone non disponibles dans cette session.
+  [~] 5. Ouvrir une PR depuis la branche de reprise ; ne pas fusionner dans `main` sans accord explicite de Math.
+Enregistré sur GitHub :
+- `main` : point de reprise `1d29868089a6b39675f4014e704402fe94e65467`.
+- Branche `reprise/2026-10-25-profil-altitude` : modification `main.py`, commit `f79c07fb0cd0f8e01c8732aff4e6c95df1ab773c`.
 Local, non enregistré : rien
-Fichiers prévus : `main.py` uniquement pour le code de l'application ; `RELAIS_MAILLONS.md` pour le journal de reprise.
-Tests : code actuel relu ; tests de la correction non effectués à ce stade.
+Fichiers modifiés pour cette étape : `main.py` uniquement pour le code de l'application ; ce fichier de relais pour le suivi.
+Tests : comparaison GitHub : branche en avance d'un commit et en retard de zéro commit au moment de la première comparaison, avec uniquement `main.py` modifié (3 insertions, 3 suppressions). Les vérifications navigateur/téléphone ne sont pas faites.
 Problèmes rencontrés : aucun à ce stade.
-Prochaine action : enregistrer ce point de reprise, puis créer une branche depuis le dernier `main` et effectuer une modification minimale.
-Dernier commit de `main` avant cette mise à jour du relais : `1b1d4847808ac0bd2028cb5ce612b40eeb7132a5`.
+Prochaine action : ouvrir la PR, vérifier sa différence avec `main`, puis demander l'accord explicite de Math avant toute fusion/déploiement.
+Dernier commit de `main` avant la mise à jour de ce relais : `1d29868089a6b39675f4014e704402fe94e65467`.
 
 À remplir dès qu'une tâche significative démarre, puis à effacer (en reportant l'essentiel en sections 2 à 8) quand elle est **terminée et vérifiée**. Modèle :
 
@@ -99,6 +101,13 @@ Dernier commit de main connu : …    Branche de reprise éventuelle : …
 *Fonctions décrites par Math et visibles dans l'historique des commits (non re-testées lors de la création de ce fichier) :* Historique (filtre, calendrier), Réglages (fiche technique du vélo, apparence), Sorties (import GPX et Strava via le menu trois points ; filtres période / distance / favoris / zone géographique), pastilles rouges de nouveautés, fiche de sortie (carte satellite, profil, météo), vue 3D avec noms de lieux et panneaux de pente, favoris, partage d'une image de la sortie, export GPX.
 
 ## 2. Dernière intervention
+
+**Intervention 6 — 25/10/2026 : profil d'altitude un peu plus haut sur les longues sorties (en cours)**
+- Code préparé sur la branche `reprise/2026-10-25-profil-altitude`, commit `f79c07fb0cd0f8e01c8732aff4e6c95df1ab773c`, fichier `main.py) uniquement.
+- Modification ciblée : le profil compact de la liste Sorties utilise désormais `total / 40` au lieu de `total / 30` comme borne de l'échelle verticale liée à la distance, seulement hors mode paysage et uniquement dans la liste. Cela devrait rendre les pics un peu plus hauts sur les longues sorties. La fenêtre agrandie et les autres profils ne changent pas.
+- Vérification GitHub : comparaison de branche effectuée ; 1 commit sur la branche, 0 en retard au moment de la vérification, uniquement `main.py` modifié (3 insertions, 3 suppressions).
+- Pas de test navigateur/téléphone ni de test visuel réel effectué. La modification n'est pas fusionnée et n'est pas déployée.
+- Prochaine action : ouvrir et vérifier la PR, puis attendre l'accord explicite de Math avant la fusion.
 
 **Intervention 5 — 25/10/2026 : reprise des unités d'affichage sur branche de test**
 - Branche : `reprise/2026-10-25-unites`. Code de l'application modifié uniquement dans `main.py`, dernier commit de code `7c9ff2086de8c82ff25b306e736f0b77a20c57b2`.
@@ -179,9 +188,9 @@ Dernier commit de main connu : …    Branche de reprise éventuelle : …
 
 ## 6. Travail restant
 
-- **En cours** : temps 3, unités d'affichage, sur `reprise/2026-10-25-unites`. Vérifications statiques partielles faites ; pas de test d'exécution ni de navigateur.
-- **Prochaine étape** : résoudre le conflit de `RELAIS_MAILLONS.md` en conservant les informations récentes des deux branches, puis vérifier le diff de la PR avant fusion. L'accord de Math pour fusionner et accepter l'auto-déploiement Render a été donné le 25/10/2026.
-- **À faire après les unités** : remonter légèrement le profil d'altitude de l'onglet Sorties pour les longues distances.
+- **En cours** : temps 4, profil d'altitude un peu plus haut pour les longues sorties ; code préparé sur `reprise/2026-10-25-profil-altitude`, commit `f79c07fb0cd0f8e01c8732aff4e6c95df1ab773c`, non fusionné.
+- **Terminé** : temps 3, choix des unités d'affichage fusionné dans `main` avec les corrections du carnet d'entretien et du compteur total ; Math a confirmé que l'affichage fonctionne.
+- **Prochaine étape** : ouvrir et vérifier la PR du temps 4. Fusion dans `main` seulement après accord explicite de Math.
 - **À faire (sans urgence, non commencé)** : examiner la branche `feature/fiche-technique-velo` par rapport à `main` (lecture seule) et consigner ici ce qu'elle contient, avant toute décision.
 - **Prochaine étape recommandée** : à la prochaine modification, démarrer l'appli (ou la tester sur Render) et consigner en section 4 ce qui a été réellement vérifié.
 
@@ -202,7 +211,7 @@ Dernier commit de main connu : …    Branche de reprise éventuelle : …
 
 ## 8. État GitHub / Render
 
-- **Dernier commit de `main` vérifié avant résolution du conflit : `e9be649035259226433923f420415821bc840606`** (25/10/2026).
+- **Dernier commit de `main` vérifié avant mise à jour du relais : `1d29868089a6b39675f4014e704402fe94e65467`** (25/10/2026).
 - Commits de relais : `6ac4728` (création du fichier) et `b8ef78e` (protocole de reprise), tous deux vérifiés sur GitHub le 25/10/2026. Le commit de l'intervention 3 (règle de publication) vient **après** : son numéro n'est pas connu au moment de l'écriture, consulter l'historique de `main` sur GitHub.
 - Dernier commit de **l'appli** (code) : `67e6a92`. Les commits de relais ne modifient que ce fichier.
 - Branches vérifiées lors de la reprise : `main`, `feature/fiche-technique-velo` (non examinée), `reprise/2026-10-25-couleurs` et `reprise/2026-10-25-unites`. La branche unités n'est pas fusionnée dans `main`.
