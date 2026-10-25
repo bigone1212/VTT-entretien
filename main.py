@@ -4093,8 +4093,18 @@ def accueil():
             function fmtDistance(km, decimales) {
                 const valeur = Number(km) * (unites.distance === 'mi' ? 0.621371 : 1);
                 const unite = unites.distance === 'mi' ? 'mi' : 'km';
-                const texte = decimales === undefined ? String(unites.distance === 'mi' ? Number(valeur.toFixed(2)) : km) : fmtFr(valeur, decimales);
+                let texte;
+                if (decimales === undefined) {
+                    texte = unites.distance === 'mi' ? String(Number(valeur.toFixed(2))) : String(km);
+                } else {
+                    texte = fmtFr(valeur, decimales);
+                }
                 return { valeur: valeur, unite: unite, texte: texte, complet: texte + ' ' + unite };
+            }
+
+            function fmtDistanceProfil(km) {
+                const valeur = Number(km) * (unites.distance === 'mi' ? 0.621371 : 1);
+                return valeur.toFixed(1) + (unites.distance === 'mi' ? ' mi' : ' km');
             }
 
             function fmtAltitude(m, decimales) {
@@ -6534,12 +6544,14 @@ def accueil():
                         x1: xx, x2: xx, y1: 0, y2: hautGraph + (codes ? 8 + hautBande : 4),
                         stroke: 'rgba(255,255,255,0.7)', 'stroke-width': 1, 'stroke-dasharray': '3 3'
                     });
-                    const distance = fmtDistance(d / 1000, 1);
-                    texte(`${distance.texte} ${distance.unite}`,
-                        { x: xx, y: baseAxe, 'text-anchor': 'middle' });
+                    const km = d / 1000;
+                    const libelle = unites.distance === 'km'
+                        ? (Number.isInteger(km) ? `${km} km` : `${km.toFixed(1)} km`)
+                        : fmtDistanceProfil(km);
+                    texte(libelle, { x: xx, y: baseAxe, 'text-anchor': 'middle' });
                 }
                 texte('0', { x: x(0) + (grand ? 0 : 2), y: baseAxe, 'text-anchor': grand ? 'middle' : 'start' });
-                texte(fmtDistance(total / 1000, 1).complet, { x: largeur - 2, y: baseAxe, 'text-anchor': 'end' });
+                texte(fmtDistanceProfil(total / 1000), { x: largeur - 2, y: baseAxe, 'text-anchor': 'end' });
 
                 if (grand) {
                     [mini, (mini + maxi) / 2, maxi].forEach(a => {
@@ -6600,7 +6612,7 @@ def accueil():
                 zone.appendChild(g.svg);
 
                 const resume = [
-                    fmtDistance(g.total / 1000, 1).complet,
+                    fmtDistanceProfil(g.total / 1000),
                     fmtAltitude(s.denivele_pos).texte + ' ' + fmtAltitude(s.denivele_pos).unite + ' D+',
                     fmtAltitude(s.denivele_neg).texte + ' ' + fmtAltitude(s.denivele_neg).unite + ' D-',
                     `pente max ${Math.round(Math.max(...profil.pentes.map(Math.abs)))} %`
@@ -6623,7 +6635,7 @@ def accueil():
                     const k = indiceA(profil.cum, d);
                     const pente = profil.pentes[Math.min(k, profil.pentes.length - 1)];
                     const fleche = pente > 0.5 ? '↑' : (pente < -0.5 ? '↓' : '→');
-                    let ligne = `${fmtDistance(d / 1000, 1).complet} · ${fmtAltitude(profil.alt[k]).complet} · pente ${Math.round(Math.abs(pente))} % ${fleche}`;
+                    let ligne = `${fmtDistanceProfil(d / 1000)} · ${fmtAltitude(profil.alt[k]).complet} · pente ${Math.round(Math.abs(pente))} % ${fleche}`;
                     if (g.codes) {
                         ligne += ` · ${(TYPES_CHEMIN[g.codes[k]] || TYPES_CHEMIN.u).nom}`;
                     }
@@ -7115,10 +7127,10 @@ def accueil():
 
                 // Chiffres clés
                 const chiffres = [
-                    [fmtDistance(s.distance_km).texte, fmtDistance(s.distance_km).unite],
-                    [fmtAltitude(s.denivele_pos).texte, fmtAltitude(s.denivele_pos).unite + ' D+'],
+                    [String(s.distance_km).replace('.', ','), fmtDistance(s.distance_km).unite],
+                    [String(Math.round(s.denivele_pos)), fmtAltitude(s.denivele_pos).unite + ' D+'],
                     [formaterDuree(s.duree_s), 'durée'],
-                    [fmtVitesse(s.vitesse_moy).texte, fmtVitesse(s.vitesse_moy).unite]
+                    [String(s.vitesse_moy).replace('.', ','), fmtVitesse(s.vitesse_moy).unite]
                 ];
                 chiffres.forEach((c, k) => {
                     const x = 50 + k * ((L - 100) / 4);
@@ -9984,8 +9996,8 @@ def accueil():
                     const data = r.data;
 
                     afficherLignes(message, [
-                        `✅ Sortie importée : ${data.distance_km} km, ` +
-                        `${data.denivele_pos} m D+. ` +
+                        `✅ Sortie importée : ${fmtDistance(data.distance_km).complet}, ` +
+                        `${fmtAltitude(data.denivele_pos).complet} D+. ` +
                         (data.ajoute_au_total
                             ? `Kilométrage total : ${data.km_total} km.`
                             : "Cette sortie date d'avant votre dernière mise à jour " +
