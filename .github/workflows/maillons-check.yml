@@ -415,6 +415,11 @@ jobs:
           assert import_result["statut"] == "success", import_result
           assert import_result["ajoute_au_total"] is True, import_result
 
+          sorties_route = main.lister_sorties(velo_id=route_id, x_code_acces="test")
+          sorties_electrique = main.lister_sorties(velo_id=electrique_id, x_code_acces="test")
+          assert any(s["nom"] == "Sortie test vélo A" for s in sorties_route)
+          assert all(s["nom"] != "Sortie test vélo A" for s in sorties_electrique)
+
           conn = db.connect()
           cursor = conn.cursor()
           cursor.execute("SELECT id, velo_id, distance_km, km_compte FROM sorties WHERE debut = ?", ("2026-10-26T08:00:00Z",))
@@ -514,6 +519,11 @@ jobs:
           )
           historique_id = cursor.fetchone()[0]
           conn.close()
+
+          historique_route = main.obtenir_historique(velo_id=route_id, x_code_acces="test")
+          historique_electrique = main.obtenir_historique(velo_id=electrique_id, x_code_acces="test")
+          assert any(h["id"] == historique_id for h in historique_route)
+          assert all(h["id"] != historique_id for h in historique_electrique)
 
           try:
               main.modifier_intervention(
