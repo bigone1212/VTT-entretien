@@ -48,15 +48,15 @@ Ce fichier ne doit **pas** être mis à jour seulement à la fin : une session p
 ## Tâche en cours
 
 REPRISE PAR CHATGPT — 26/10/2026 :
-- Objectif : poursuivre les vérifications de l'étape C3(a) « Plusieurs vélos » sans toucher à la production.
-- État GitHub : la branche `reprise/2026-10-26-plusieurs-velos` est divergente de `main` (15 commits en avance et 2 commits de `main` absents au dernier comparatif) ; ne pas fusionner automatiquement.
-- Tests réellement effectués : workflow GitHub Actions `40350937620` réussi. Compilation de `main.py` OK ; dépendances installées ; véritable démarrage de l'application via `import main` sur une base SQLite temporaire avec données historiques ; conservation vérifiée des 2700 km, date d'achat, date de mise à jour, composant, intervention, sortie et réglage de fiche technique ; deuxième démarrage sans doublon ; simulation SQLite indépendante réussie.
-- Étapes : [x] 1. Lire le relais, le code et le workflow. [x] 2. Enregistrer le point de reprise sur `main`, commit `c99b6f67738c5ff5742c4731f1a1a7ffc565b560`. [x] 3. Renforcer le workflow, commit `c6835b394ee24d7e67349fd60e6c3a7643ec9599`. [x] 4. Vérifier le résultat GitHub Actions, job `121670474806`, succès le 26/10/2026.
-- Enregistré sur GitHub : workflow de test `.github/workflows/maillons-check.yml`, commit `c6835b394ee24d7e67349fd60e6c3a7643ec9599` ; relais de reprise mis à jour par ce commit de suivi.
+- Objectif : après le test SQLite réel réussi, vérifier la migration C3(a) sur un vrai moteur PostgreSQL jetable hébergé dans GitHub Actions. Aucune connexion à Neon ni à Render.
+- État vérifié : branche `reprise/2026-10-26-plusieurs-velos`, dernier code d'application `main.py` SHA `0c5f2c21d42d2a817406968fafbda57f8eb0ca87`; workflow SQLite `40350937620` réussi. `main` et la branche restent divergentes ; ne pas fusionner.
+- Étapes : [x] 1. Relire le relais, la migration et le workflow. [x] 2. Vérifier la réussite du test SQLite réel. [~] 3. Ajouter un service PostgreSQL éphémère au workflow de la branche de test et y exécuter le vrai démarrage de `main.py` sur un schéma historique de démonstration. [ ] 4. Vérifier conservation des données et relance sans doublons. [ ] 5. Lire le résultat GitHub Actions et mettre à jour le relais.
+- Enregistré sur GitHub : workflow SQLite `.github/workflows/maillons-check.yml`, commit `c6835b394ee24d7e67349fd60e6c3a7643ec9599`; test réussi, job `121670474806`.
 - Local, non enregistré : rien.
-- Fichiers modifiés pour cette étape : `.github/workflows/maillons-check.yml` et `RELAIS_MAILLONS.md). Aucun changement à `main.py` ou `db.py`.
-- Limites : SQLite temporaire seulement. PostgreSQL/Neon, navigateur, téléphone et Render non testés. Aucun accès ni changement à la base de production, aucune fusion de code ni déploiement de code.
-- Prochaine action : évaluer comment tester PostgreSQL sur une base jetable et isolée, sans utiliser la base Neon de production. Fusion dans `main` uniquement avec l'accord explicite de Math.
+- Fichiers prévus : `.github/workflows/maillons-check.yml` et ce fichier relais. Aucun changement à `main.py`, `db.py` ou `requirements.txt`.
+- Sécurité : PostgreSQL de test démarré comme service temporaire par GitHub Actions, avec identifiants de test non secrets. Ne pas lire ni utiliser `DATABASE_URL` de Render/Neon. Pas de fusion, pas de déploiement de code.
+- Tests : SQLite réel réussi ; test PostgreSQL pas encore exécuté.
+- Prochaine action : enregistrer le workflow PostgreSQL sur la branche de test, attendre le résultat, puis corriger les éventuels échecs uniquement sur cette branche.
 
 
 NOUVELLE DEMANDE de Math — 26/10/2026, par Claude (3 demandes, traitées une par une ; les quatre premières demandes du 25/10 sont terminées et fusionnées) :
