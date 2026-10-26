@@ -374,18 +374,6 @@ def init_db():
     ajouter_colonne(cursor, "velos", "km_maj_le", "TEXT")
     ajouter_colonne(cursor, "velos", "date_achat", "TEXT")
 
-    # Copie idempotente des valeurs actuelles du vélo historique vers le CUBE.
-    # La table velo reste intacte et demeure la référence pendant cette étape.
-    cursor.execute("""
-        UPDATE velos
-        SET km_total = (SELECT km_total FROM velo WHERE id = 1),
-            km_frac = (SELECT km_frac FROM velo WHERE id = 1),
-            km_maj_le = (SELECT km_maj_le FROM velo WHERE id = 1),
-            date_achat = (SELECT date_achat FROM velo WHERE id = 1)
-        WHERE legacy_velo_id = 1
-    """)
-
-
     cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS composants (
             id {db.AUTO_ID},
@@ -496,6 +484,19 @@ def init_db():
         "UPDATE velo SET km_maj_le = ? WHERE id = 1 AND km_maj_le IS NULL",
         (maintenant_utc(),)
     )
+
+
+    # Copie idempotente des valeurs actuelles du vélo historique vers le CUBE.
+    # À faire après l'ajout des colonnes historiques, pour les anciennes bases.
+    # La table velo reste intacte et demeure la référence pendant cette étape.
+    cursor.execute("""
+        UPDATE velos
+        SET km_total = (SELECT km_total FROM velo WHERE id = 1),
+            km_frac = (SELECT km_frac FROM velo WHERE id = 1),
+            km_maj_le = (SELECT km_maj_le FROM velo WHERE id = 1),
+            date_achat = (SELECT date_achat FROM velo WHERE id = 1)
+        WHERE legacy_velo_id = 1
+    """)
 
     cursor.execute("SELECT COUNT(*) FROM composants")
 
