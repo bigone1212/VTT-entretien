@@ -4257,7 +4257,8 @@ def accueil():
                 fetch('/api/etat', { headers: getHeaders() }).then(async res => {
                     if (res.ok) {
                         document.getElementById('authScreen').style.display = 'none';
-                        chargerEtat();
+                        await chargerVelos();
+                        await chargerEtat();
                     }
                 });
             }
