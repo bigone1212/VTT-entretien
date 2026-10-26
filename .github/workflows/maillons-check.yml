@@ -1,0 +1,381 @@
+name: Vérifications Maillons (branche de test)
+
+on:
+  push:
+    branches:
+      - reprise/2026-10-26-multivelos-base-main
+    paths:
+      - "main.py"
+      - ".github/workflows/maillons-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  syntaxe-et-migration-sqlite:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: maillons_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d maillons_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+      - name: Installer Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Vérifier la syntaxe Python complète
+        run: python -m py_compile main.py
+      - name: Installer les dépendances de l'application
+        run: pip install -r requirements.txt
+      - name: Démarrer l'application sur une copie SQLite isolée et vérifier la migration réelle
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-migration-test.db
+        run: |
+          python - <<'PY'
+          import os
+          import sqlite3
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          path = Path(os.environ["SQLITE_PATH"])
+          if path.exists():
+              path.unlink()
+
+          # Ancien schéma représentatif, avec données à préserver.
+          db = sqlite3.connect(path)
+          db.executescript("""
+              CREATE TABLE velo (
+                  id INTEGER PRIMARY KEY CHECK (id = 1),
+                  km_total INTEGER DEFAULT 2700,
+                  date_achat TEXT,
+                  km_maj_le TEXT,
+                  km_frac REAL DEFAULT 0
+              );
+              INSERT INTO velo VALUES (1, 2700, '2025-11-18', '2026-10-26T14:33:17Z', 0);
+              CREATE TABLE composants (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  nom TEXT NOT NULL,
+                  km_depart INTEGER DEFAULT 0,
+                  seuil_alerte INTEGER NOT NULL,
+                  categorie TEXT DEFAULT 'piece',
+                  pos_x INTEGER DEFAULT 50,
+                  pos_y INTEGER DEFAULT 50
+              );
+              INSERT INTO composants (id, nom, km_depart, seuil_alerte, categorie)
+              VALUES (1, 'Composant historique test', 1200, 2000, 'piece');
+              CREATE TABLE historique (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  composant_id INTEGER,
+                  date_remplacement TEXT,
+                  cout DOUBLE PRECISION DEFAULT 0,
+                  notes TEXT,
+                  km_intervention INTEGER
+              );
+              INSERT INTO historique VALUES (1, 1, '2026-03-05', 0, 'Historique à conserver', 1236);
+              CREATE TABLE sorties (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  nom TEXT,
+                  debut TEXT NOT NULL UNIQUE,
+                  sport TEXT,
+                  distance_km DOUBLE PRECISION,
+                  denivele_pos INTEGER,
+                  denivele_neg INTEGER,
+                  duree_s INTEGER,
+                  vitesse_moy DOUBLE PRECISION,
+                  alt_max INTEGER,
+                  pente_moy_montee DOUBLE PRECISION,
+                  terrain TEXT DEFAULT 'mixte',
+                  notes TEXT,
+                  km_compte INTEGER DEFAULT 0,
+                  trace TEXT
+              );
+              INSERT INTO sorties (id, nom, debut, distance_km)
+              VALUES (1, 'Sortie historique test', '2026-10-20T08:00:00Z', 25.5);
+              CREATE TABLE reglages (cle TEXT PRIMARY KEY, valeur DOUBLE PRECISION NOT NULL);
+              INSERT INTO reglages VALUES ('terrain_route', 1.0);
+              CREATE TABLE mes_reglages (
+                  cle TEXT PRIMARY KEY,
+                  valeur TEXT NOT NULL,
+                  maj_le TEXT
+              );
+              INSERT INTO mes_reglages VALUES ('taille_cadre', 'L', '2026-10-01');
+          """)
+          db.commit()
+          db.close()
+
+          # L'import de main appelle init_db : on teste donc le vrai démarrage
+          # et les migrations, dans un processus séparé et une base temporaire.
+          env = os.environ.copy()
+          env.pop("DATABASE_URL", None)
+          subprocess.run([sys.executable, "-c", "import main"], env=env, check=True)
+
+          db = sqlite3.connect(path)
+          db.row_factory = sqlite3.Row
+          bike = db.execute("SELECT * FROM velos WHERE legacy_velo_id=1").fetchone()
+          assert bike is not None, "Le CUBE historique n'a pas été créé"
+          assert bike["km_total"] == 2700, dict(bike)
+          assert bike["date_achat"] == "2025-11-18", dict(bike)
+          assert bike["km_maj_le"] == "2026-10-26T14:33:17Z", dict(bike)
+          assert db.execute("SELECT nom FROM composants WHERE id=1").fetchone()[0] == "Composant historique test"
+          assert db.execute("SELECT km_intervention FROM historique WHERE id=1").fetchone()[0] == 1236
+          assert db.execute("SELECT distance_km FROM sorties WHERE id=1").fetchone()[0] == 25.5
+          assert db.execute("SELECT valeur FROM mes_reglages WHERE cle='taille_cadre'").fetchone()[0] == "L"
+          assert db.execute("SELECT velo_id FROM composants WHERE id=1").fetchone()[0] == 1
+          assert db.execute("SELECT velo_id FROM sorties WHERE id=1").fetchone()[0] == 1
+          count_bikes = db.execute("SELECT COUNT(*) FROM velos").fetchone()[0]
+          count_components = db.execute("SELECT COUNT(*) FROM composants").fetchone()[0]
+          db.close()
+
+          # Deuxième démarrage : la migration doit être relançable sans doublons.
+          subprocess.run([sys.executable, "-c", "import main"], env=env, check=True)
+          db = sqlite3.connect(path)
+          assert db.execute("SELECT COUNT(*) FROM velos").fetchone()[0] == count_bikes
+          assert db.execute("SELECT COUNT(*) FROM composants").fetchone()[0] == count_components
+          db.close()
+          print("OK: démarrage réel sur SQLite temporaire, conservation des données et seconde migration sans doublon.")
+          PY
+      - name: Démarrer Maillons sur PostgreSQL temporaire et vérifier la migration réelle
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/maillons_test
+        run: |
+          python - <<'PY'
+          import os
+          import subprocess
+          import sys
+          import time
+          import psycopg
+
+          url = os.environ["DATABASE_URL"]
+
+          # Prépare un schéma historique représentatif dans le conteneur PostgreSQL
+          # jetable de ce job. Aucune adresse de base externe n'est utilisée.
+          with psycopg.connect(url) as conn:
+              conn.execute("""
+                  CREATE TABLE velo (
+                      id INTEGER PRIMARY KEY CHECK (id = 1),
+                      km_total INTEGER DEFAULT 2700,
+                      date_achat TEXT,
+                      km_maj_le TEXT,
+                      km_frac DOUBLE PRECISION DEFAULT 0
+                  )
+              """)
+              conn.execute(
+                  "INSERT INTO velo VALUES (1, 2700, '2025-11-18', '2026-10-26T14:33:17Z', 0)"
+              )
+              conn.execute("""
+                  CREATE TABLE composants (
+                      id SERIAL PRIMARY KEY,
+                      nom TEXT NOT NULL,
+                      km_depart INTEGER DEFAULT 0,
+                      seuil_alerte INTEGER NOT NULL,
+                      categorie TEXT DEFAULT 'piece',
+                      pos_x INTEGER DEFAULT 50,
+                      pos_y INTEGER DEFAULT 50
+                  )
+              """)
+              conn.execute("""
+                  INSERT INTO composants (nom, km_depart, seuil_alerte, categorie)
+                  VALUES ('Composant historique test', 1200, 2000, 'piece')
+              """)
+              conn.execute("""
+                  CREATE TABLE historique (
+                      id SERIAL PRIMARY KEY,
+                      composant_id INTEGER REFERENCES composants(id),
+                      date_remplacement TEXT,
+                      cout DOUBLE PRECISION DEFAULT 0,
+                      notes TEXT,
+                      km_intervention INTEGER
+                  )
+              """)
+              conn.execute("""
+                  INSERT INTO historique
+                      (composant_id, date_remplacement, cout, notes, km_intervention)
+                  VALUES (1, '2026-03-05', 0, 'Historique à conserver', 1236)
+              """)
+              conn.execute("""
+                  CREATE TABLE sorties (
+                      id SERIAL PRIMARY KEY,
+                      nom TEXT,
+                      debut TEXT NOT NULL UNIQUE,
+                      sport TEXT,
+                      distance_km DOUBLE PRECISION,
+                      denivele_pos INTEGER,
+                      denivele_neg INTEGER,
+                      duree_s INTEGER,
+                      vitesse_moy DOUBLE PRECISION,
+                      alt_max INTEGER,
+                      pente_moy_montee DOUBLE PRECISION,
+                      terrain TEXT DEFAULT 'mixte',
+                      notes TEXT,
+                      km_compte INTEGER DEFAULT 0,
+                      trace TEXT
+                  )
+              """)
+              conn.execute("""
+                  INSERT INTO sorties (nom, debut, distance_km)
+                  VALUES ('Sortie historique test', '2026-10-20T08:00:00Z', 25.5)
+              """)
+              conn.execute("""
+                  CREATE TABLE reglages (
+                      cle TEXT PRIMARY KEY,
+                      valeur DOUBLE PRECISION NOT NULL
+                  )
+              """)
+              conn.execute("INSERT INTO reglages VALUES ('terrain_route', 1.0)")
+              conn.execute("""
+                  CREATE TABLE mes_reglages (
+                      cle TEXT PRIMARY KEY,
+                      valeur TEXT NOT NULL,
+                      maj_le TEXT
+                  )
+              """)
+              conn.execute(
+                  "INSERT INTO mes_reglages VALUES ('taille_cadre', 'L', '2026-10-01')"
+              )
+
+          env = os.environ.copy()
+          env.pop("SQLITE_PATH", None)
+          subprocess.run([sys.executable, "-c", "import main"], env=env, check=True)
+
+          with psycopg.connect(url) as conn:
+              bike = conn.execute(
+                  "SELECT * FROM velos WHERE legacy_velo_id = 1"
+              ).fetchone()
+              assert bike is not None, "Le CUBE historique n'a pas été créé"
+              assert bike[8] == 2700, bike
+              assert bike[10] == "2026-10-26T14:33:17Z", bike
+              assert bike[11] == "2025-11-18", bike
+              assert conn.execute(
+                  "SELECT nom FROM composants WHERE id = 1"
+              ).fetchone()[0] == "Composant historique test"
+              assert conn.execute(
+                  "SELECT km_intervention FROM historique WHERE id = 1"
+              ).fetchone()[0] == 1236
+              assert conn.execute(
+                  "SELECT distance_km FROM sorties WHERE id = 1"
+              ).fetchone()[0] == 25.5
+              assert conn.execute(
+                  "SELECT valeur FROM mes_reglages WHERE cle = 'taille_cadre'"
+              ).fetchone()[0] == "L"
+              assert conn.execute(
+                  "SELECT velo_id FROM composants WHERE id = 1"
+              ).fetchone()[0] == 1
+              assert conn.execute(
+                  "SELECT velo_id FROM sorties WHERE id = 1"
+              ).fetchone()[0] == 1
+              count_bikes = conn.execute("SELECT COUNT(*) FROM velos").fetchone()[0]
+              count_components = conn.execute("SELECT COUNT(*) FROM composants").fetchone()[0]
+
+          # Deuxième démarrage réel : vérifier l'idempotence sur PostgreSQL aussi.
+          subprocess.run([sys.executable, "-c", "import main"], env=env, check=True)
+          with psycopg.connect(url) as conn:
+              assert conn.execute("SELECT COUNT(*) FROM velos").fetchone()[0] == count_bikes
+              assert conn.execute("SELECT COUNT(*) FROM composants").fetchone()[0] == count_components
+
+          print("OK: démarrage réel PostgreSQL temporaire, données historiques conservées, relance sans doublons.")
+          PY
+      - name: Vérifier le script de migration SQLite sur une base temporaire
+        run: |
+          python - <<'PY'
+          import sqlite3
+          from pathlib import Path
+
+          source = Path("main.py").read_text(encoding="utf-8")
+          required = [
+              "CREATE TABLE IF NOT EXISTS velos",
+              "INSERT INTO velos",
+              "legacy_velo_id",
+              "UPDATE velos",
+              "SET km_total =",
+              'ajouter_colonne(cursor, "composants", "velo_id", "INTEGER DEFAULT 1")',
+              'ajouter_colonne(cursor, "sorties", "velo_id", "INTEGER DEFAULT 1")',
+          ]
+          missing = [item for item in required if item not in source]
+          assert not missing, f"Instructions de migration introuvables dans main.py: {missing}"
+
+          db = sqlite3.connect(":memory:")
+          db.row_factory = sqlite3.Row
+          db.executescript("""
+              CREATE TABLE velo (
+                  id INTEGER PRIMARY KEY,
+                  km_total INTEGER NOT NULL DEFAULT 0,
+                  date_achat TEXT
+              );
+              INSERT INTO velo (id, km_total, date_achat)
+              VALUES (1, 2700, '2025-11-18');
+              CREATE TABLE composants (id INTEGER PRIMARY KEY, nom TEXT);
+              INSERT INTO composants (id, nom) VALUES (1, 'Freins');
+              CREATE TABLE sorties (id INTEGER PRIMARY KEY, nom TEXT);
+              INSERT INTO sorties (id, nom) VALUES (1, 'Sortie test');
+          """)
+          db.execute("ALTER TABLE velo ADD COLUMN km_maj_le TEXT")
+          db.execute("ALTER TABLE velo ADD COLUMN km_frac REAL DEFAULT 0")
+          db.execute("UPDATE velo SET km_maj_le = '2026-10-26T14:33:17Z' WHERE km_maj_le IS NULL")
+          db.execute("""
+              CREATE TABLE IF NOT EXISTS velos (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  nom TEXT,
+                  type TEXT,
+                  marque TEXT,
+                  modele TEXT,
+                  annee INTEGER,
+                  km_total INTEGER DEFAULT 0,
+                  km_frac REAL DEFAULT 0,
+                  km_maj_le TEXT,
+                  date_achat TEXT,
+                  legacy_velo_id INTEGER UNIQUE
+              )
+          """)
+          db.execute("""
+              INSERT INTO velos
+                (nom, type, marque, modele, annee, km_total, km_frac,
+                 km_maj_le, date_achat, legacy_velo_id)
+              VALUES ('Mon CUBE', 'electrique', 'Cube',
+                      'Stereo Hybrid ONE44 EXC 800 (Bosch)', 2025,
+                      2700, 0, NULL, NULL, 1)
+              ON CONFLICT (legacy_velo_id) DO NOTHING
+          """)
+          db.execute("""
+              UPDATE velos
+              SET km_total=(SELECT km_total FROM velo WHERE id=1),
+                  km_frac=(SELECT km_frac FROM velo WHERE id=1),
+                  km_maj_le=(SELECT km_maj_le FROM velo WHERE id=1),
+                  date_achat=(SELECT date_achat FROM velo WHERE id=1)
+              WHERE legacy_velo_id=1
+          """)
+          db.execute("ALTER TABLE composants ADD COLUMN velo_id INTEGER DEFAULT 1")
+          db.execute("ALTER TABLE sorties ADD COLUMN velo_id INTEGER DEFAULT 1")
+          db.execute("UPDATE composants SET velo_id=1 WHERE velo_id IS NULL")
+          db.execute("UPDATE sorties SET velo_id=1 WHERE velo_id IS NULL")
+          # Rejouer l'insertion vérifie que la contrainte évite les doublons.
+          db.execute("""
+              INSERT INTO velos
+                (nom, type, marque, modele, annee, km_total, km_frac,
+                 km_maj_le, date_achat, legacy_velo_id)
+              VALUES ('Mon CUBE', 'electrique', 'Cube',
+                      'Stereo Hybrid ONE44 EXC 800 (Bosch)', 2025,
+                      2700, 0, NULL, NULL, 1)
+              ON CONFLICT (legacy_velo_id) DO NOTHING
+          """)
+          bike = db.execute("SELECT * FROM velos WHERE legacy_velo_id=1").fetchone()
+          assert bike["km_total"] == 2700, dict(bike)
+          assert bike["date_achat"] == "2025-11-18", dict(bike)
+          assert db.execute("SELECT COUNT(*) FROM velos").fetchone()[0] == 1
+          assert db.execute("SELECT velo_id FROM composants WHERE id=1").fetchone()[0] == 1
+          assert db.execute("SELECT velo_id FROM sorties WHERE id=1").fetchone()[0] == 1
+          print("OK: syntaxe de main.py, copie du CUBE, conservation des kilomètres, attribution composants/sorties et absence de doublon.")
+          PY
