@@ -8077,6 +8077,7 @@ def accueil():
                         ajouterAction('crayon', 'Modifier les notes', () => modifierNotesSortie(s), false, false);
                         ajouterAction('telecharger', 'Exporter en GPX', () => exporterSortieGpx(s), false, !Array.isArray(s.trace) || s.trace.length < 2);
                         ajouterAction('crayon', 'Renommer', () => renommerSortie(s), false, false);
+                        ajouterAction('repere', 'Changer de vélo', () => changerVeloSortie(s), false, velosDisponibles.length < 2);
                         ajouterAction('poubelle', 'Supprimer', () => supprimerSortie(s.id), true, false);
 
                         kebab.addEventListener('click', (e) => {
@@ -11194,6 +11195,36 @@ def accueil():
                 .addEventListener('change', majCompteStrava);
 
 
+            async function changerVeloSortie(sortie) {
+                const autres = velosDisponibles.filter(v => Number(v.id) !== veloActifId);
+                if (!autres.length) return;
+                const choix = prompt(
+                    'Choisissez le vélo de destination en saisissant son numéro :\n' +
+                    autres.map((v, i) => (i + 1) + '. ' + v.nom).join('\n')
+                );
+                if (choix === null) return;
+                const index = Number.parseInt(choix, 10) - 1;
+                if (!Number.isInteger(index) || index < 0 || index >= autres.length) {
+                    alert('Numéro de vélo non valide.');
+                    return;
+                }
+                const cible = autres[index];
+                if (!confirm('Affecter « ' + sortie.nom + ' » à « ' + cible.nom + ' » ? Le kilométrage et l’usure seront recalculés.')) return;
+                try {
+                    const res = await fetch('/api/sorties/' + sortie.id + '/velo', {
+                        method: 'POST',
+                        headers: getHeaders(),
+                        body: JSON.stringify({ nouveau_velo_id: Number(cible.id) })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Changement de vélo impossible.');
+                    await rechargerDonneesVelo();
+                } catch (e) {
+                    alert(e.message || 'Changement de vélo impossible.');
+                }
+            }
+
+
             async function supprimerSortie(id) {
                 if (!confirm("Supprimer cette sortie ?")) {
                     return;
@@ -11532,11 +11563,11 @@ def creer_velo(
                 nom, type, marque, modele, annee, taille, actif, km_total,
                 km_frac, km_maj_le, date_achat, moteur, batterie
             )
-            VALUES (?, ?, ?, ?, ?, ?, 1, 0, 0, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, 1, 0, 0, NULL, ?, ?, ?)
         """, (
             nom, type_velo, (data.marque or "").strip() or None,
             (data.modele or "").strip() or None, data.annee,
-            (data.taille or "").strip() or None, maintenant_utc(),
+            (data.taille or "").strip() or None,
             date_achat or date.today().isoformat(),
             ((data.moteur or "").strip() or None) if electrique else None,
             ((data.batterie or "").strip() or None) if electrique else None
@@ -12615,7 +12646,7 @@ def importer_sortie(
         velo = cursor.fetchone()
         derniere_maj = velo[0] if velo else None
 
-        compte = 1 if (derniere_maj and s["debut"] > derniere_maj) else 0
+        compte = 1 if (not derniere_maj or s["debut"] > derniere_maj) else 0
 
         cursor.execute("""
             INSERT INTO sorties (
@@ -12654,6 +12685,69 @@ def importer_sortie(
         conn.rollback()
         raise
 
+    finally:
+        conn.close()
+
+
+class AffecterSortieVeloRequest(BaseModel):
+    nouveau_velo_id: int = Field(ge=1)
+
+
+@app.post("/api/sorties/{sortie_id}/velo")
+def affecter_sortie_a_un_autre_velo(
+    sortie_id: int,
+    data: AffecterSortieVeloRequest,
+    velo_id: int = 1,
+    x_code_acces: Optional[str] = Header(default=None)
+):
+    verifier_auth(x_code_acces)
+    nouveau_velo_id = data.nouveau_velo_id
+    if nouveau_velo_id == velo_id:
+        raise HTTPException(status_code=400, detail="Cette sortie est déjà affectée à ce vélo.")
+
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "SELECT debut, distance_km, km_compte FROM sorties WHERE id = ? AND velo_id = ?",
+            (sortie_id, velo_id)
+        )
+        sortie = cursor.fetchone()
+        if sortie is None:
+            raise HTTPException(status_code=404, detail="Sortie introuvable pour ce vélo.")
+
+        cursor.execute(
+            "SELECT id FROM velos WHERE id = ? AND actif = 1",
+            (nouveau_velo_id,)
+        )
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Le vélo de destination est introuvable.")
+
+        debut, distance_km, km_compte_actuel = sortie[0], float(sortie[1] or 0), bool(sortie[2])
+        if km_compte_actuel:
+            ajuster_km_total(cursor, -distance_km, velo_id)
+
+        cursor.execute("SELECT km_maj_le FROM velos WHERE id = ?", (nouveau_velo_id,))
+        ligne_maj = cursor.fetchone()
+        derniere_maj = ligne_maj[0] if ligne_maj else None
+        nouveau_compte = 1 if (not derniere_maj or debut > derniere_maj) else 0
+        if nouveau_compte:
+            ajuster_km_total(cursor, distance_km, nouveau_velo_id)
+
+        cursor.execute(
+            "UPDATE sorties SET velo_id = ?, km_compte = ? WHERE id = ? AND velo_id = ?",
+            (nouveau_velo_id, nouveau_compte, sortie_id, velo_id)
+        )
+        conn.commit()
+        return {
+            "statut": "success",
+            "velo_precedent": velo_id,
+            "velo_nouveau": nouveau_velo_id,
+            "km_compte": bool(nouveau_compte)
+        }
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
