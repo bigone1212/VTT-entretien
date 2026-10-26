@@ -336,9 +336,49 @@ def init_db():
         ON CONFLICT (id) DO NOTHING
     """)
 
+    # Registre multi-vélos : ajout uniquement, sans remplacer la table historique
+    # velo ni supprimer les données déjà présentes.
+    cursor.execute(f"""
+        CREATE TABLE IF NOT EXISTS velos (
+            id {db.AUTO_ID},
+            nom TEXT NOT NULL,
+            type TEXT NOT NULL DEFAULT 'electrique',
+            marque TEXT,
+            modele TEXT,
+            annee INTEGER,
+            taille TEXT,
+            actif INTEGER DEFAULT 1,
+            km_total INTEGER DEFAULT 0,
+            km_frac DOUBLE PRECISION DEFAULT 0,
+            km_maj_le TEXT,
+            date_achat TEXT,
+            legacy_velo_id INTEGER UNIQUE
+        )
+    """)
+
+    # Colonnes également ajoutées si le registre velos existait déjà
+    # sur la branche de test avant cette correction.
+    ajouter_colonne(cursor, "velos", "km_total", "INTEGER DEFAULT 0")
+    ajouter_colonne(cursor, "velos", "km_frac", "DOUBLE PRECISION DEFAULT 0")
+    ajouter_colonne(cursor, "velos", "km_maj_le", "TEXT")
+    ajouter_colonne(cursor, "velos", "date_achat", "TEXT")
+
+    cursor.execute("""
+        INSERT INTO velos (
+            nom, type, marque, modele, annee, km_total,
+            km_frac, km_maj_le, date_achat, legacy_velo_id
+        )
+        VALUES ('Mon CUBE', 'electrique', 'Cube',
+                'Stereo Hybrid ONE44 EXC 800 (Bosch)', 2025,
+                2700, 0, NULL, NULL, 1)
+        ON CONFLICT (legacy_velo_id) DO NOTHING
+    """)
+
+
     cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS composants (
             id {db.AUTO_ID},
+            velo_id INTEGER DEFAULT 1,
             nom TEXT NOT NULL,
             km_depart INTEGER DEFAULT 0,
             seuil_alerte INTEGER NOT NULL,
@@ -377,6 +417,7 @@ def init_db():
     cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS sorties (
             id {db.AUTO_ID},
+            velo_id INTEGER DEFAULT 1,
             nom TEXT,
             debut TEXT NOT NULL UNIQUE,
             sport TEXT,
@@ -423,6 +464,12 @@ def init_db():
         )
     """)
 
+    # Colonnes ajoutées aussi aux bases existantes, sans perdre les données.
+    ajouter_colonne(cursor, "composants", "velo_id", "INTEGER DEFAULT 1")
+    ajouter_colonne(cursor, "sorties", "velo_id", "INTEGER DEFAULT 1")
+    cursor.execute("UPDATE composants SET velo_id = 1 WHERE velo_id IS NULL")
+    cursor.execute("UPDATE sorties SET velo_id = 1 WHERE velo_id IS NULL")
+
     ajouter_colonne(cursor, "composants", "seuil_jours", "INTEGER DEFAULT 0")
     ajouter_colonne(cursor, "composants", "verification", "INTEGER DEFAULT 0")
     ajouter_colonne(cursor, "composants", "coef_usure", "DOUBLE PRECISION DEFAULT 1")
@@ -434,6 +481,16 @@ def init_db():
 
     ajouter_colonne(cursor, "velo", "km_maj_le", "TEXT")
     ajouter_colonne(cursor, "velo", "km_frac", "DOUBLE PRECISION DEFAULT 0")
+
+    # Copie du kilométrage et des dates vers le registre, après migration des colonnes.
+    cursor.execute("""
+        UPDATE velos
+        SET km_total = (SELECT km_total FROM velo WHERE id = 1),
+            km_frac = (SELECT km_frac FROM velo WHERE id = 1),
+            km_maj_le = (SELECT km_maj_le FROM velo WHERE id = 1),
+            date_achat = (SELECT date_achat FROM velo WHERE id = 1)
+        WHERE legacy_velo_id = 1
+    """)
 
     cursor.execute(
         "UPDATE velo SET km_maj_le = ? WHERE id = 1 AND km_maj_le IS NULL",
