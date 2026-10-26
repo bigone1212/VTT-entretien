@@ -11438,14 +11438,14 @@ def ajouter_historique(
     finally:
         conn.close()
 
-def retirer_intervention(cursor, historique_id):
+def retirer_intervention(cursor, historique_id, velo_id=1):
     """Supprime une intervention et remet la pièce dans l'état d'avant.
 
     Retourne (composant_id, km_depart), ou None si elle n'existe pas.
     """
     cursor.execute(
-        "SELECT composant_id, km_avant FROM historique WHERE id = ?",
-        (historique_id,)
+        "SELECT composant_id, km_avant FROM historique WHERE id = ? AND velo_id = ?",
+        (historique_id, velo_id)
     )
     ligne = cursor.fetchone()
 
@@ -11456,11 +11456,11 @@ def retirer_intervention(cursor, historique_id):
     km_avant = ligne[1]
 
     cursor.execute(
-        "DELETE FROM historique WHERE id = ?",
-        (historique_id,)
+        "DELETE FROM historique WHERE id = ? AND velo_id = ?",
+        (historique_id, velo_id)
     )
 
-    cursor.execute("SELECT km_depart FROM composants WHERE id = ?", (composant_id,))
+    cursor.execute("SELECT km_depart FROM composants WHERE id = ? AND velo_id = ?", (composant_id, velo_id))
     actuel = cursor.fetchone()
     km_depart = (actuel[0] or 0) if actuel else 0
 
@@ -11468,10 +11468,10 @@ def retirer_intervention(cursor, historique_id):
         cursor.execute("""
             SELECT id
             FROM historique
-            WHERE composant_id = ? AND id > ?
+            WHERE composant_id = ? AND velo_id = ? AND id > ?
             ORDER BY id
             LIMIT 1
-        """, (composant_id, historique_id))
+        """, (composant_id, velo_id, historique_id))
         suivante = cursor.fetchone()
 
         if suivante is None:
@@ -11485,16 +11485,16 @@ def retirer_intervention(cursor, historique_id):
                 cursor.execute("""
                     SELECT km_intervention
                     FROM historique
-                    WHERE composant_id = ? AND km_intervention IS NOT NULL
+                    WHERE composant_id = ? AND velo_id = ? AND km_intervention IS NOT NULL
                     ORDER BY id DESC
                     LIMIT 1
-                """, (composant_id,))
+                """, (composant_id, velo_id))
                 derniere = cursor.fetchone()
                 km_depart = derniere[0] if derniere else 0
 
             cursor.execute(
-                "UPDATE composants SET km_depart = ? WHERE id = ?",
-                (km_depart, composant_id)
+                "UPDATE composants SET km_depart = ? WHERE id = ? AND velo_id = ?",
+                (km_depart, composant_id, velo_id)
             )
         else:
             # Une intervention plus récente existe : l'état actuel de
@@ -11511,6 +11511,7 @@ def retirer_intervention(cursor, historique_id):
 @app.post("/api/historique/{historique_id}/supprimer")
 def supprimer_intervention(
     historique_id: int,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     verifier_auth(x_code_acces)
@@ -11518,7 +11519,7 @@ def supprimer_intervention(
     cursor = conn.cursor()
 
     try:
-        resultat = retirer_intervention(cursor, historique_id)
+        resultat = retirer_intervention(cursor, historique_id, velo_id)
 
         if resultat is None:
             raise HTTPException(
@@ -11545,6 +11546,7 @@ def supprimer_intervention(
 @app.post("/api/historique/supprimer-plusieurs")
 def supprimer_plusieurs_interventions(
     data: SupprimerPlusieursRequest,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     """Supprime plusieurs interventions d'un coup (tout ou rien)."""
@@ -11558,7 +11560,7 @@ def supprimer_plusieurs_interventions(
         # Les plus récentes d'abord : chaque pièce repasse ainsi par
         # ses états successifs, dans le bon ordre.
         for historique_id in sorted(set(data.ids), reverse=True):
-            if retirer_intervention(cursor, historique_id) is not None:
+            if retirer_intervention(cursor, historique_id, velo_id) is not None:
                 supprimees += 1
 
         conn.commit()
@@ -11577,6 +11579,7 @@ def supprimer_plusieurs_interventions(
 def modifier_intervention(
     historique_id: int,
     data: HistoriqueModifRequest,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     """Modifie la date, le kilométrage, le coût et les notes d'une intervention."""
@@ -11592,8 +11595,8 @@ def modifier_intervention(
 
     try:
         cursor.execute(
-            "SELECT composant_id FROM historique WHERE id = ?",
-            (historique_id,)
+            "SELECT composant_id FROM historique WHERE id = ? AND velo_id = ?",
+            (historique_id, velo_id)
         )
         ligne = cursor.fetchone()
 
@@ -11605,7 +11608,7 @@ def modifier_intervention(
 
         composant_id = ligne[0]
 
-        cursor.execute("SELECT km_total FROM velo WHERE id = 1")
+        cursor.execute("SELECT km_total FROM velos WHERE id = ?", (velo_id,))
         velo = cursor.fetchone()
         km_total = velo[0] if velo and velo[0] is not None else 2700
 
@@ -11623,31 +11626,32 @@ def modifier_intervention(
         cursor.execute("""
             UPDATE historique
             SET date_remplacement = ?, cout = ?, notes = ?, km_intervention = ?
-            WHERE id = ?
+            WHERE id = ? AND velo_id = ?
         """, (
             data.date_remplacement[:10],
             data.cout or 0.0,
             notes,
             data.km_intervention,
-            historique_id
+            historique_id,
+            velo_id
         ))
 
         if composant_id is not None:
             cursor.execute("""
                 SELECT id
                 FROM historique
-                WHERE composant_id = ? AND id > ?
+                WHERE composant_id = ? AND velo_id = ? AND id > ?
                 ORDER BY id
                 LIMIT 1
-            """, (composant_id, historique_id))
+            """, (composant_id, velo_id, historique_id))
             suivante = cursor.fetchone()
 
             if suivante is None:
                 # C'est la dernière intervention : elle fixe le point de
                 # départ actuel de la pièce.
                 cursor.execute(
-                    "UPDATE composants SET km_depart = ? WHERE id = ?",
-                    (data.km_intervention, composant_id)
+                    "UPDATE composants SET km_depart = ? WHERE id = ? AND velo_id = ?",
+                    (data.km_intervention, composant_id, velo_id)
                 )
             else:
                 # Sinon, c'est l'état « d'avant » de l'intervention suivante.
@@ -11696,6 +11700,7 @@ def synchroniser_kilometrage(data: SynchroRequest, x_code_acces: Optional[str] =
 def remplacer_composant(
     composant_id: int,
     data: RemplacementRequest,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     verifier_auth(x_code_acces)
@@ -11704,8 +11709,8 @@ def remplacer_composant(
 
     try:
         cursor.execute(
-            "SELECT id FROM composants WHERE id = ?",
-            (composant_id,)
+            "SELECT id FROM composants WHERE id = ? AND velo_id = ?",
+            (composant_id, velo_id)
         )
 
         if cursor.fetchone() is None:
@@ -11714,7 +11719,7 @@ def remplacer_composant(
                 detail="Composant introuvable."
             )
 
-        cursor.execute("SELECT km_total FROM velo WHERE id = 1")
+        cursor.execute("SELECT km_total FROM velos WHERE id = ?", (velo_id,))
         velo = cursor.fetchone()
 
         km_global = (
@@ -11750,14 +11755,16 @@ def remplacer_composant(
         cursor.execute("""
             UPDATE composants
             SET km_depart = ?
-            WHERE id = ?
+            WHERE id = ? AND velo_id = ?
         """, (
             km_global,
-            composant_id
+            composant_id,
+            velo_id
         ))
 
         cursor.execute("""
             INSERT INTO historique (
+                velo_id,
                 composant_id,
                 date_remplacement,
                 cout,
@@ -11765,8 +11772,9 @@ def remplacer_composant(
                 km_intervention,
                 km_avant
             )
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (
+            velo_id,
             composant_id,
             date_resp,
             cout_resp,
