@@ -11123,6 +11123,45 @@ def accueil():
 
 
 # ============================================================
+# API : REGISTRE DES VÉLOS
+# ============================================================
+
+@app.get("/api/velos")
+def obtenir_velos(x_code_acces: Optional[str] = Header(default=None)):
+    verifier_auth(x_code_acces)
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("""
+            SELECT id, nom, type, marque, modele, annee, taille, actif,
+                   km_total, km_frac, km_maj_le, date_achat
+            FROM velos
+            WHERE actif = 1
+            ORDER BY id
+        """)
+        return [
+            {
+                "id": row["id"],
+                "nom": row["nom"],
+                "type": row["type"],
+                "marque": row["marque"],
+                "modele": row["modele"],
+                "annee": row["annee"],
+                "taille": row["taille"],
+                "actif": row["actif"],
+                "km_total": row["km_total"],
+                "km_frac": row["km_frac"],
+                "km_maj_le": row["km_maj_le"],
+                "date_achat": row["date_achat"]
+            }
+            for row in cursor.fetchall()
+        ]
+    finally:
+        conn.close()
+
+
+# ============================================================
 # API : ÉTAT DU VÉLO ET POURCENTAGES D'USURE
 # ============================================================
 
