@@ -356,6 +356,13 @@ def init_db():
         )
     """)
 
+    # Colonnes également ajoutées si le registre velos existait déjà
+    # sur la branche de test avant cette correction.
+    ajouter_colonne(cursor, "velos", "km_total", "INTEGER DEFAULT 0")
+    ajouter_colonne(cursor, "velos", "km_frac", "DOUBLE PRECISION DEFAULT 0")
+    ajouter_colonne(cursor, "velos", "km_maj_le", "TEXT")
+    ajouter_colonne(cursor, "velos", "date_achat", "TEXT")
+
     cursor.execute("""
         INSERT INTO velos (
             nom, type, marque, modele, annee, km_total,
@@ -366,13 +373,6 @@ def init_db():
                 2700, 0, NULL, NULL, 1)
         ON CONFLICT (legacy_velo_id) DO NOTHING
     """)
-
-    # Colonnes également ajoutées si le registre velos existait déjà
-    # sur la branche de test avant cette correction.
-    ajouter_colonne(cursor, "velos", "km_total", "INTEGER DEFAULT 0")
-    ajouter_colonne(cursor, "velos", "km_frac", "DOUBLE PRECISION DEFAULT 0")
-    ajouter_colonne(cursor, "velos", "km_maj_le", "TEXT")
-    ajouter_colonne(cursor, "velos", "date_achat", "TEXT")
 
     cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS composants (
