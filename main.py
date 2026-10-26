@@ -3565,8 +3565,8 @@ def accueil():
             <div class="mr-ligne"><span>Modèle</span><b id="ficheAutreModele">—</b></div>
             <div class="mr-ligne"><span>Année</span><b id="ficheAutreAnnee">—</b></div>
             <div class="mr-ligne"><span>Taille du cadre</span><b id="ficheAutreTaille">—</b></div>
-            <div class="mr-ligne"><span>Moteur</span><b id="ficheAutreMoteur">—</b></div>
-            <div class="mr-ligne"><span>Batterie</span><b id="ficheAutreBatterie">—</b></div>
+            <div class="mr-ligne" id="ficheAutreMoteurLigne"><span>Moteur</span><b id="ficheAutreMoteur">—</b></div>
+            <div class="mr-ligne" id="ficheAutreBatterieLigne"><span>Batterie</span><b id="ficheAutreBatterie">—</b></div>
         </section>
 
         <section class="mes-reglages mr-repliable" id="mesReglages" aria-label="Mes réglages vélo">
@@ -3924,7 +3924,7 @@ def accueil():
 
             function lireVus() {
                 try {
-                    const texte = localStorage.getItem('maillons_vus');
+                    const texte = localStorage.getItem('maillons_vus_' + veloActifId);
                     return texte ? JSON.parse(texte) : null;
                 } catch (e) {
                     return null;
@@ -3933,7 +3933,7 @@ def accueil():
 
             function ecrireVus(v) {
                 try {
-                    localStorage.setItem('maillons_vus', JSON.stringify(v));
+                    localStorage.setItem('maillons_vus_' + veloActifId, JSON.stringify(v));
                 } catch (e) {}
             }
 
@@ -4113,7 +4113,12 @@ def accueil():
                     if (ficheAnnee) ficheAnnee.textContent = velo.annee || 'Non renseignée';
                     if (ficheTaille) ficheTaille.textContent = velo.taille || 'Non renseignée';
                     if (ficheMoteur) ficheMoteur.textContent = velo.moteur || 'Non concerné ou non renseigné';
-                    if (ficheBatterie) ficheBatterie.textContent = velo.batterie || 'Non concernée ou non renseignée';
+                    if (ficheBatterie) ficheBatterie.textContent = velo.batterie || 'Non renseignée';
+                    const estElectriqueVelo = ['vtt_electrique', 'gravel_electrique', 'route_electrique', 'electrique'].includes(velo.type);
+                    const ligneMoteur = document.getElementById('ficheAutreMoteurLigne');
+                    const ligneBatterie = document.getElementById('ficheAutreBatterieLigne');
+                    if (ligneMoteur) ligneMoteur.style.display = estElectriqueVelo ? '' : 'none';
+                    if (ligneBatterie) ligneBatterie.style.display = estElectriqueVelo ? '' : 'none';
                 }
                 const electriques = document.getElementById('champsElectriques');
                 const type = document.getElementById('nouveauVeloType');
@@ -11432,7 +11437,7 @@ def creer_velo(
             nom, type_velo, (data.marque or "").strip() or None,
             (data.modele or "").strip() or None, data.annee,
             (data.taille or "").strip() or None, maintenant_utc(),
-            date_achat,
+            date_achat or date.today().isoformat(),
             ((data.moteur or "").strip() or None) if electrique else None,
             ((data.batterie or "").strip() or None) if electrique else None
         ))
@@ -13142,6 +13147,12 @@ def sauvegarde(x_code_acces: Optional[str] = Header(default=None)):
         cursor.execute("SELECT km_total FROM velo WHERE id = 1")
         velo = cursor.fetchone()
 
+        cursor.execute("SELECT * FROM velos ORDER BY id")
+        velos = [dict(r) for r in cursor.fetchall()]
+
+        cursor.execute("SELECT * FROM mes_reglages_velo ORDER BY velo_id, cle")
+        reglages_personnels = [dict(r) for r in cursor.fetchall()]
+
         cursor.execute("SELECT * FROM composants ORDER BY id")
         composants = [dict(r) for r in cursor.fetchall()]
 
@@ -13154,6 +13165,8 @@ def sauvegarde(x_code_acces: Optional[str] = Header(default=None)):
         return {
             "date_sauvegarde": str(date.today()),
             "km_total": velo[0] if velo else None,
+            "velos": velos,
+            "reglages_personnels_par_velo": reglages_personnels,
             "composants": composants,
             "historique": historique,
             "sorties": sorties,
