@@ -12315,6 +12315,7 @@ def supprimer_sortie(
 def changer_terrain(
     sortie_id: int,
     data: TerrainRequest,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     verifier_auth(x_code_acces)
@@ -12327,14 +12328,17 @@ def changer_terrain(
     cursor = conn.cursor()
 
     try:
-        cursor.execute("SELECT id FROM sorties WHERE id = ?", (sortie_id,))
+        cursor.execute(
+            "SELECT id FROM sorties WHERE id = ? AND velo_id = ?",
+            (sortie_id, velo_id)
+        )
 
         if cursor.fetchone() is None:
-            raise HTTPException(status_code=404, detail="Sortie introuvable.")
+            raise HTTPException(status_code=404, detail="Sortie introuvable pour ce vélo.")
 
         cursor.execute(
-            "UPDATE sorties SET terrain = ? WHERE id = ?",
-            (terrain, sortie_id)
+            "UPDATE sorties SET terrain = ? WHERE id = ? AND velo_id = ?",
+            (terrain, sortie_id, velo_id)
         )
         conn.commit()
 
@@ -12417,6 +12421,7 @@ class SortieModifRequest(BaseModel):
 def modifier_sortie(
     sortie_id: int,
     data: SortieModifRequest,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     # Modifie les notes sans toucher au parcours ni au kilométrage.
@@ -12426,11 +12431,17 @@ def modifier_sortie(
     cursor = conn.cursor()
 
     try:
-        cursor.execute("SELECT id FROM sorties WHERE id = ?", (sortie_id,))
+        cursor.execute(
+            "SELECT id FROM sorties WHERE id = ? AND velo_id = ?",
+            (sortie_id, velo_id)
+        )
         if cursor.fetchone() is None:
-            raise HTTPException(status_code=404, detail="Sortie introuvable.")
+            raise HTTPException(status_code=404, detail="Sortie introuvable pour ce vélo.")
 
-        cursor.execute("UPDATE sorties SET notes = ? WHERE id = ?", (notes, sortie_id))
+        cursor.execute(
+            "UPDATE sorties SET notes = ? WHERE id = ? AND velo_id = ?",
+            (notes, sortie_id, velo_id)
+        )
         conn.commit()
         return {"statut": "success", "notes": notes}
 
@@ -12446,6 +12457,7 @@ def modifier_sortie(
 def renommer_sortie(
     sortie_id: int,
     data: RenommerRequest,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     """Change le nom d'une sortie."""
@@ -12459,12 +12471,18 @@ def renommer_sortie(
     cursor = conn.cursor()
 
     try:
-        cursor.execute("SELECT id FROM sorties WHERE id = ?", (sortie_id,))
+        cursor.execute(
+            "SELECT id FROM sorties WHERE id = ? AND velo_id = ?",
+            (sortie_id, velo_id)
+        )
 
         if cursor.fetchone() is None:
-            raise HTTPException(status_code=404, detail="Sortie introuvable.")
+            raise HTTPException(status_code=404, detail="Sortie introuvable pour ce vélo.")
 
-        cursor.execute("UPDATE sorties SET nom = ? WHERE id = ?", (nom, sortie_id))
+        cursor.execute(
+            "UPDATE sorties SET nom = ? WHERE id = ? AND velo_id = ?",
+            (nom, sortie_id, velo_id)
+        )
         conn.commit()
 
         return {"statut": "success", "nom": nom}
@@ -12487,6 +12505,7 @@ class SurfacesRequest(BaseModel):
 def enregistrer_surfaces(
     sortie_id: int,
     data: SurfacesRequest,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     """Enregistre le type de chemin (route, sentier...) le long du tracé."""
@@ -12499,14 +12518,17 @@ def enregistrer_surfaces(
     cursor = conn.cursor()
 
     try:
-        cursor.execute("SELECT id FROM sorties WHERE id = ?", (sortie_id,))
+        cursor.execute(
+            "SELECT id FROM sorties WHERE id = ? AND velo_id = ?",
+            (sortie_id, velo_id)
+        )
 
         if cursor.fetchone() is None:
-            raise HTTPException(status_code=404, detail="Sortie introuvable.")
+            raise HTTPException(status_code=404, detail="Sortie introuvable pour ce vélo.")
 
         cursor.execute(
-            "UPDATE sorties SET surfaces = ? WHERE id = ?",
-            (data.codes, sortie_id)
+            "UPDATE sorties SET surfaces = ? WHERE id = ? AND velo_id = ?",
+            (data.codes, sortie_id, velo_id)
         )
         conn.commit()
 
@@ -12524,6 +12546,7 @@ def enregistrer_surfaces(
 def ajouter_video(
     sortie_id: int,
     data: VideoRequest,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     """Ajoute le lien d'une vidéo (YouTube, Google Photos...) à une sortie."""
@@ -12546,8 +12569,8 @@ def ajouter_video(
 
     try:
         cursor.execute(
-            "SELECT videos FROM sorties WHERE id = ?",
-            (sortie_id,)
+            "SELECT videos FROM sorties WHERE id = ? AND velo_id = ?",
+            (sortie_id, velo_id)
         )
         ligne = cursor.fetchone()
 
@@ -12565,8 +12588,8 @@ def ajouter_video(
         videos.append({"url": url, "titre": titre})
 
         cursor.execute(
-            "UPDATE sorties SET videos = ? WHERE id = ?",
-            (json.dumps(videos), sortie_id)
+            "UPDATE sorties SET videos = ? WHERE id = ? AND velo_id = ?",
+            (json.dumps(videos), sortie_id, velo_id)
         )
         conn.commit()
 
@@ -12584,6 +12607,7 @@ def ajouter_video(
 def retirer_video(
     sortie_id: int,
     numero: int,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     verifier_auth(x_code_acces)
@@ -12592,8 +12616,8 @@ def retirer_video(
 
     try:
         cursor.execute(
-            "SELECT videos FROM sorties WHERE id = ?",
-            (sortie_id,)
+            "SELECT videos FROM sorties WHERE id = ? AND velo_id = ?",
+            (sortie_id, velo_id)
         )
         ligne = cursor.fetchone()
 
@@ -12608,8 +12632,8 @@ def retirer_video(
         del videos[numero]
 
         cursor.execute(
-            "UPDATE sorties SET videos = ? WHERE id = ?",
-            (json.dumps(videos), sortie_id)
+            "UPDATE sorties SET videos = ? WHERE id = ? AND velo_id = ?",
+            (json.dumps(videos), sortie_id, velo_id)
         )
         conn.commit()
 
@@ -12627,6 +12651,7 @@ def retirer_video(
 def ajouter_photos(
     sortie_id: int,
     data: AjoutPhotosRequest,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     """Joint des photos à une sortie déjà importée (8 au total maximum)."""
@@ -12647,8 +12672,8 @@ def ajouter_photos(
 
     try:
         cursor.execute(
-            "SELECT photos FROM sorties WHERE id = ?",
-            (sortie_id,)
+            "SELECT photos FROM sorties WHERE id = ? AND velo_id = ?",
+            (sortie_id, velo_id)
         )
         ligne = cursor.fetchone()
 
@@ -12672,8 +12697,8 @@ def ajouter_photos(
         total = existantes + nouvelles
 
         cursor.execute(
-            "UPDATE sorties SET photos = ? WHERE id = ?",
-            (json.dumps(total), sortie_id)
+            "UPDATE sorties SET photos = ? WHERE id = ? AND velo_id = ?",
+            (json.dumps(total), sortie_id, velo_id)
         )
         conn.commit()
 
@@ -12691,6 +12716,7 @@ def ajouter_photos(
 def retirer_photo(
     sortie_id: int,
     numero: int,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     """Retire une seule photo d'une sortie (les autres restent)."""
@@ -12700,8 +12726,8 @@ def retirer_photo(
 
     try:
         cursor.execute(
-            "SELECT photos FROM sorties WHERE id = ?",
-            (sortie_id,)
+            "SELECT photos FROM sorties WHERE id = ? AND velo_id = ?",
+            (sortie_id, velo_id)
         )
         ligne = cursor.fetchone()
 
@@ -12719,8 +12745,8 @@ def retirer_photo(
         del photos[numero]
 
         cursor.execute(
-            "UPDATE sorties SET photos = ? WHERE id = ?",
-            (json.dumps(photos) if photos else None, sortie_id)
+            "UPDATE sorties SET photos = ? WHERE id = ? AND velo_id = ?",
+            (json.dumps(photos) if photos else None, sortie_id, velo_id)
         )
         conn.commit()
 
@@ -12738,6 +12764,7 @@ def retirer_photo(
 def obtenir_photo(
     sortie_id: int,
     numero: int,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     verifier_auth(x_code_acces)
@@ -12746,8 +12773,8 @@ def obtenir_photo(
 
     try:
         cursor.execute(
-            "SELECT photos FROM sorties WHERE id = ?",
-            (sortie_id,)
+            "SELECT photos FROM sorties WHERE id = ? AND velo_id = ?",
+            (sortie_id, velo_id)
         )
         ligne = cursor.fetchone()
 
