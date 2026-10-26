@@ -362,6 +362,8 @@ def init_db():
     ajouter_colonne(cursor, "velos", "km_frac", "DOUBLE PRECISION DEFAULT 0")
     ajouter_colonne(cursor, "velos", "km_maj_le", "TEXT")
     ajouter_colonne(cursor, "velos", "date_achat", "TEXT")
+    ajouter_colonne(cursor, "velos", "moteur", "TEXT")
+    ajouter_colonne(cursor, "velos", "batterie", "TEXT")
 
     cursor.execute("""
         INSERT INTO velos (
@@ -471,6 +473,23 @@ def init_db():
             valeur TEXT NOT NULL,
             maj_le TEXT
         )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS mes_reglages_velo (
+            velo_id INTEGER NOT NULL,
+            cle TEXT NOT NULL,
+            valeur TEXT NOT NULL,
+            maj_le TEXT,
+            PRIMARY KEY (velo_id, cle)
+        )
+    """)
+    # Copie idempotente des anciens réglages personnels vers le CUBE.
+    cursor.execute("""
+        INSERT INTO mes_reglages_velo (velo_id, cle, valeur, maj_le)
+        SELECT 1, cle, valeur, maj_le
+        FROM mes_reglages
+        WHERE 1
+        ON CONFLICT (velo_id, cle) DO NOTHING
     """)
 
     # Colonnes ajoutées aussi aux bases existantes, sans perdre les données.
@@ -3239,7 +3258,8 @@ def accueil():
             <svg class="logo" role="img" aria-label="Maillons"><use href="#logo-maillon"/></svg>
             <div class="header-titres">
                 <h1>Maillons</h1>
-                <p class="header-velo">Cube Stereo Hybrid ONE44</p>
+                <p class="header-velo" id="headerVeloNom">Mon CUBE</p>
+                <select id="selectVelo" aria-label="Choisir mon vélo" style="margin:4px 0 0; padding:6px 9px; font-size:0.82rem; max-width:100%;"></select>
             </div>
             <span class="km-pill" id="veloInfo">… km</span>
         </header>
@@ -3315,6 +3335,43 @@ def accueil():
         </div>
 
         <div class="page" id="page-reglages" style="display:none;">
+        <section class="mes-reglages" id="blocAjouterVelo">
+            <div class="mr-titre"><strong>Ajouter un vélo</strong></div>
+            <p class="form-help">Chaque vélo aura ses sorties, ses kilomètres et son carnet d'entretien séparés. La photo personnalisée sera ajoutée lors d'une étape ultérieure.</p>
+            <form id="formAjouterVelo">
+                <label for="nouveauVeloNom">Nom du vélo</label>
+                <input id="nouveauVeloNom" name="nom" type="text" maxlength="80" placeholder="Ex. : Mon gravel" required>
+                <label for="nouveauVeloType">Type de vélo</label>
+                <select id="nouveauVeloType" name="type" required>
+                    <option value="vtt_electrique">VTT électrique</option>
+                    <option value="vtt">VTT sans moteur</option>
+                    <option value="enduro">Enduro</option>
+                    <option value="descente">Descente</option>
+                    <option value="gravel">Gravel</option>
+                    <option value="gravel_electrique">Gravel électrique</option>
+                    <option value="route">Route</option>
+                    <option value="route_electrique">Route électrique</option>
+                </select>
+                <label for="nouveauVeloMarque">Marque (facultatif)</label>
+                <input id="nouveauVeloMarque" name="marque" type="text" maxlength="80">
+                <label for="nouveauVeloModele">Modèle (facultatif)</label>
+                <input id="nouveauVeloModele" name="modele" type="text" maxlength="120">
+                <label for="nouveauVeloAnnee">Année (facultatif)</label>
+                <input id="nouveauVeloAnnee" name="annee" type="number" min="1950" max="2100">
+                <label for="nouveauVeloTaille">Taille du cadre (facultatif)</label>
+                <input id="nouveauVeloTaille" name="taille" type="text" maxlength="30">
+                <label for="nouveauVeloDate">Date d'achat (facultatif)</label>
+                <input id="nouveauVeloDate" name="date_achat" type="date">
+                <div id="champsElectriques">
+                    <label for="nouveauVeloMoteur">Moteur (vélo électrique uniquement)</label>
+                    <input id="nouveauVeloMoteur" name="moteur" type="text" maxlength="120">
+                    <label for="nouveauVeloBatterie">Batterie (vélo électrique uniquement)</label>
+                    <input id="nouveauVeloBatterie" name="batterie" type="text" maxlength="120">
+                </div>
+                <button class="btn-primary" type="submit" style="width:100%; margin-top:8px;">Créer le vélo</button>
+                <p class="form-help" id="nouveauVeloMessage"></p>
+            </form>
+        </section>
         <section class="apparence mr-repliable" id="blocApparence" aria-label="Apparence">
             <div class="mr-titre">
                 <button type="button" class="mr-entete" aria-expanded="false" aria-controls="blocApparenceCorps">
@@ -3951,6 +4008,22 @@ def accueil():
                 if (nouvellesSorties.length) chargerSorties(true);
             }
 
+            let veloActifId = Number(sessionStorage.getItem('maillons_velo_id')) || 1;
+            let velosDisponibles = [];
+            const fetchOriginal = window.fetch.bind(window);
+
+            function fetch(url, options) {
+                let cible = url;
+                if (typeof url === 'string' && url.startsWith('/api/')) {
+                    const globales = ['/api/velos', '/api/sauvegarde', '/api/reglages'];
+                    if (!globales.some(p => url === p || url.startsWith(p + '?'))) {
+                        const separateur = url.includes('?') ? '&' : '?';
+                        cible = url + separateur + 'velo_id=' + encodeURIComponent(veloActifId);
+                    }
+                }
+                return fetchOriginal(cible, options);
+            }
+
             window.addEventListener('hashchange', afficherPage);
             afficherPage();
 
@@ -3962,6 +4035,113 @@ def accueil():
                 };
             }
 
+            const TYPES_VELO = {
+                vtt_electrique: 'VTT électrique',
+                vtt: 'VTT sans moteur',
+                enduro: 'Enduro',
+                descente: 'Descente',
+                gravel: 'Gravel',
+                gravel_electrique: 'Gravel électrique',
+                route: 'Route',
+                route_electrique: 'Route électrique',
+                electrique: 'VTT électrique'
+            };
+
+            async function chargerVelos() {
+                try {
+                    const res = await fetch('/api/velos', { headers: getHeaders() });
+                    if (!res.ok) throw new Error();
+                    velosDisponibles = await res.json();
+                    if (!velosDisponibles.length) throw new Error();
+                    if (!velosDisponibles.some(v => Number(v.id) === veloActifId)) {
+                        veloActifId = Number(velosDisponibles[0].id);
+                    }
+                    sessionStorage.setItem('maillons_velo_id', String(veloActifId));
+                    const select = document.getElementById('selectVelo');
+                    select.replaceChildren();
+                    velosDisponibles.forEach(v => {
+                        const option = document.createElement('option');
+                        option.value = String(v.id);
+                        option.textContent = v.nom + ' · ' + (TYPES_VELO[v.type] || v.type);
+                        select.appendChild(option);
+                    });
+                    select.value = String(veloActifId);
+                    afficherNomVeloActif();
+                } catch (e) {
+                    console.error('Impossible de charger les vélos', e);
+                }
+            }
+
+            function afficherNomVeloActif() {
+                const velo = velosDisponibles.find(v => Number(v.id) === veloActifId);
+                const titre = document.getElementById('headerVeloNom');
+                if (titre) titre.textContent = velo ? velo.nom : 'Mon vélo';
+                const electriques = document.getElementById('champsElectriques');
+                const type = document.getElementById('nouveauVeloType');
+                if (electriques && type) {
+                    electriques.style.display = ['vtt_electrique', 'gravel_electrique', 'route_electrique'].includes(type.value) ? 'block' : 'none';
+                }
+            }
+
+            async function rechargerDonneesVelo() {
+                sortiesConnues = [];
+                historiqueDonnees = [];
+                etatComposants = [];
+                histSelection.clear();
+                await chargerEtat();
+                await chargerHistorique();
+                await chargerSorties(false);
+                await chargerReglagesVelo();
+                await chargerReglages();
+                afficherNomVeloActif();
+            }
+
+            async function changerVeloActif() {
+                const prochain = Number(document.getElementById('selectVelo').value);
+                if (!prochain || prochain === veloActifId) return;
+                veloActifId = prochain;
+                sessionStorage.setItem('maillons_velo_id', String(veloActifId));
+                await rechargerDonneesVelo();
+            }
+
+            document.getElementById('selectVelo').addEventListener('change', changerVeloActif);
+            document.getElementById('nouveauVeloType').addEventListener('change', afficherNomVeloActif);
+
+            document.getElementById('formAjouterVelo').addEventListener('submit', async event => {
+                event.preventDefault();
+                const formulaire = event.currentTarget;
+                const message = document.getElementById('nouveauVeloMessage');
+                const type = document.getElementById('nouveauVeloType').value;
+                const electrique = ['vtt_electrique', 'gravel_electrique', 'route_electrique'].includes(type);
+                const valeurs = Object.fromEntries(new FormData(formulaire).entries());
+                if (!electrique) {
+                    delete valeurs.moteur;
+                    delete valeurs.batterie;
+                }
+                if (valeurs.annee === '') delete valeurs.annee;
+                else if (valeurs.annee) valeurs.annee = Number(valeurs.annee);
+                Object.keys(valeurs).forEach(cle => {
+                    if (typeof valeurs[cle] === 'string' && valeurs[cle].trim() === '') delete valeurs[cle];
+                });
+                try {
+                    const res = await fetch('/api/velos', {
+                        method: 'POST',
+                        headers: getHeaders(),
+                        body: JSON.stringify(valeurs)
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Création impossible.');
+                    veloActifId = Number(data.velo_id);
+                    sessionStorage.setItem('maillons_velo_id', String(veloActifId));
+                    formulaire.reset();
+                    message.textContent = 'Vélo créé. Chargement de ses données…';
+                    await chargerVelos();
+                    await rechargerDonneesVelo();
+                } catch (e) {
+                    message.textContent = e.message || 'Création impossible.';
+                }
+            });
+
             async function tenterConnexion() {
                 const code = document.getElementById('authInput').value;
                 sessionStorage.setItem('vtt_code', code);
@@ -3970,6 +4150,7 @@ def accueil():
                     const res = await fetch('/api/etat', { headers: getHeaders() });
                     if (res.ok) {
                         document.getElementById('authScreen').style.display = 'none';
+                        await chargerVelos();
                         chargerEtat();
                     } else {
                         document.getElementById('authError').textContent =
@@ -11135,7 +11316,7 @@ def obtenir_velos(x_code_acces: Optional[str] = Header(default=None)):
     try:
         cursor.execute("""
             SELECT id, nom, type, marque, modele, annee, taille, actif,
-                   km_total, km_frac, km_maj_le, date_achat
+                   km_total, km_frac, km_maj_le, date_achat, moteur, batterie
             FROM velos
             WHERE actif = 1
             ORDER BY id
@@ -11153,10 +11334,106 @@ def obtenir_velos(x_code_acces: Optional[str] = Header(default=None)):
                 "km_total": row["km_total"],
                 "km_frac": row["km_frac"],
                 "km_maj_le": row["km_maj_le"],
-                "date_achat": row["date_achat"]
+                "date_achat": row["date_achat"],
+                "moteur": row["moteur"],
+                "batterie": row["batterie"]
             }
             for row in cursor.fetchall()
         ]
+    finally:
+        conn.close()
+
+
+class NouveauVeloRequest(BaseModel):
+    nom: str = Field(min_length=1, max_length=80)
+    type: str = Field(min_length=1, max_length=40)
+    marque: Optional[str] = Field(default=None, max_length=80)
+    modele: Optional[str] = Field(default=None, max_length=120)
+    annee: Optional[int] = Field(default=None, ge=1950, le=2100)
+    taille: Optional[str] = Field(default=None, max_length=30)
+    date_achat: Optional[str] = Field(default=None, max_length=10)
+    moteur: Optional[str] = Field(default=None, max_length=120)
+    batterie: Optional[str] = Field(default=None, max_length=120)
+
+
+@app.post("/api/velos")
+def creer_velo(
+    data: NouveauVeloRequest,
+    x_code_acces: Optional[str] = Header(default=None)
+):
+    verifier_auth(x_code_acces)
+    types_autorises = {
+        "vtt_electrique", "vtt", "enduro", "descente",
+        "gravel", "gravel_electrique", "route", "route_electrique"
+    }
+    type_velo = data.type.strip().lower()
+    nom = " ".join(data.nom.split())
+    if type_velo not in types_autorises:
+        raise HTTPException(status_code=400, detail="Type de vélo inconnu.")
+    if not nom:
+        raise HTTPException(status_code=400, detail="Donnez un nom au vélo.")
+    date_achat = data.date_achat.strip() if data.date_achat else None
+    if date_achat:
+        try:
+            date.fromisoformat(date_achat)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Date d'achat non valide.")
+
+    electrique = type_velo in {"vtt_electrique", "gravel_electrique", "route_electrique"}
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO velos (
+                nom, type, marque, modele, annee, taille, actif, km_total,
+                km_frac, km_maj_le, date_achat, moteur, batterie
+            )
+            VALUES (?, ?, ?, ?, ?, ?, 1, 0, 0, ?, ?, ?, ?)
+        """, (
+            nom, type_velo, (data.marque or "").strip() or None,
+            (data.modele or "").strip() or None, data.annee,
+            (data.taille or "").strip() or None, maintenant_utc(),
+            date_achat,
+            ((data.moteur or "").strip() or None) if electrique else None,
+            ((data.batterie or "").strip() or None) if electrique else None
+        ))
+        cursor.execute("SELECT id FROM velos WHERE nom = ? ORDER BY id DESC LIMIT 1", (nom,))
+        velo_id = cursor.fetchone()[0]
+
+        composants_base = [
+            ("Chaîne ou transmission", 1500, 180, "piece", 30, 65),
+            ("Frein avant", 1500, 180, "piece", 72, 60),
+            ("Frein arrière", 1500, 180, "piece", 24, 60),
+            ("Pneus", 2500, 180, "piece", 50, 80),
+            ("Roues et rayons (contrôle)", 0, 180, "maintenance", 80, 48),
+            ("Direction et roulements (contrôle)", 0, 365, "maintenance", 50, 20),
+            ("Contrôle général et serrages", 0, 180, "maintenance", 60, 35)
+        ]
+        if electrique:
+            composants_base.extend([
+                ("Moteur électrique (contrôle)", 0, 365, "maintenance", 42, 42),
+                ("Batterie (contrôle)", 0, 180, "maintenance", 55, 50)
+            ])
+        if type_velo in {"vtt_electrique", "vtt", "enduro", "descente"}:
+            composants_base.extend([
+                ("Fourche (entretien)", 800, 365, "maintenance", 76, 38),
+                ("Suspension arrière (entretien)", 800, 365, "maintenance", 44, 48)
+            ])
+        cursor.executemany("""
+            INSERT INTO composants (
+                velo_id, nom, km_depart, seuil_alerte, seuil_jours,
+                categorie, pos_x, pos_y, verification, coef_usure
+            )
+            VALUES (?, ?, 0, ?, ?, ?, ?, ?, 0, 1)
+        """, [
+            (velo_id, nom_comp, km, jours, categorie, x, y)
+            for nom_comp, km, jours, categorie, x, y in composants_base
+        ])
+        conn.commit()
+        return {"statut": "success", "velo_id": velo_id, "nom": nom, "type": type_velo}
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -11837,13 +12114,25 @@ def ajuster_km_total(cursor, delta_km, velo_id=1):
 
 
 @app.get("/api/mes-reglages")
-def lire_mes_reglages(x_code_acces: Optional[str] = Header(default=None)):
+def lire_mes_reglages(
+    velo_id: int = 1,
+    x_code_acces: Optional[str] = Header(default=None)
+):
     verifier_auth(x_code_acces)
     conn = db.connect()
     cursor = conn.cursor()
 
     try:
-        cursor.execute("SELECT cle, valeur, maj_le FROM mes_reglages")
+        cursor.execute(
+            "SELECT id FROM velos WHERE id = ? AND actif = 1",
+            (velo_id,)
+        )
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Vélo introuvable.")
+        cursor.execute(
+            "SELECT cle, valeur, maj_le FROM mes_reglages_velo WHERE velo_id = ?",
+            (velo_id,)
+        )
         valeurs = {}
         maj = None
 
@@ -11862,6 +12151,7 @@ def lire_mes_reglages(x_code_acces: Optional[str] = Header(default=None)):
 @app.post("/api/mes-reglages")
 def enregistrer_mes_reglages(
     data: MesReglagesRequest,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     verifier_auth(x_code_acces)
@@ -11878,19 +12168,27 @@ def enregistrer_mes_reglages(
     cursor = conn.cursor()
 
     try:
+        cursor.execute(
+            "SELECT id FROM velos WHERE id = ? AND actif = 1",
+            (velo_id,)
+        )
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Vélo introuvable.")
+
         for cle, valeur in data.valeurs.items():
             valeur = valeur.strip()
-
             if valeur == "":
-                cursor.execute("DELETE FROM mes_reglages WHERE cle = ?", (cle,))
+                cursor.execute(
+                    "DELETE FROM mes_reglages_velo WHERE velo_id = ? AND cle = ?",
+                    (velo_id, cle)
+                )
                 continue
-
             cursor.execute("""
-                INSERT INTO mes_reglages (cle, valeur, maj_le)
-                VALUES (?, ?, ?)
-                ON CONFLICT (cle) DO UPDATE
+                INSERT INTO mes_reglages_velo (velo_id, cle, valeur, maj_le)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT (velo_id, cle) DO UPDATE
                 SET valeur = excluded.valeur, maj_le = excluded.maj_le
-            """, (cle, valeur, aujourdhui))
+            """, (velo_id, cle, valeur, aujourdhui))
 
         conn.commit()
 
