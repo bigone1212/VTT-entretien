@@ -296,3 +296,12 @@ MISE À JOUR CHATGPT — 26/10/2026, validation C3(a) sur base à jour :
 - Enregistré sur GitHub : commits `1f30e3eac536ee17cd6cb1477e0750c2c9b224b1`, `8c02289cc32c7fcf66a0b7498e57062c3ef23b58`, `3ee114c30c5be8521d0520824b9120d653c09b23`, puis ce relais (commit à vérifier après enregistrement).
 - Local, non enregistré : rien.
 - C3(a) migration validée sur cette branche de test. C3(b) — isolation des routes, sélecteur du vélo actif, historique/sorties/fiche technique par vélo — reste à faire. Ne pas présenter l'application comme multi-vélos fonctionnelle avant que C3(b) soit implémentée et testée.
+
+
+MISE À JOUR CHATGPT — 26/10/2026, première API de lecture des vélos :
+- Branche de travail : `reprise/2026-10-26-multivelos-base-main` uniquement.
+- Commit `4296c94162ece0a086e6663e4ed012e5549a1fbe` : ajout de `GET /api/velos` dans `main.py`. Route protégée par `verifier_auth`, retourne les vélos actifs et leurs champs descriptifs/kilométriques. Pas de modification de l'interface ni de sélection du vélo actif à ce stade.
+- Commit `25e9ed36c9aecd55b1a0498b8ad15bf42edabe42` : le workflow vérifie désormais la présence de cette route et de ses champs SQL.
+- Tests : le workflow du commit `4296c94162ece0a086e6663e4ed012e5549a1fbe` a réussi (run `40362567741`). Le workflow après ajout du contrôle statique, commit `25e9ed36c9aecd55b1a0498b8ad15bf42edabe42`, est en cours au moment de cette mise à jour (run `40362643382`) ; ne pas annoncer son succès avant de vérifier.
+- Toujours à faire pour C3(b) : sélection du vélo dans l'interface et propagation de son identifiant dans les lectures/écritures de l'état, des composants, de l'historique, des sorties, du kilométrage et des réglages. L'API de lecture seule ne rend pas encore l'application multi-vélos opérationnelle.
+- Aucun changement sur `main`, aucune fusion, aucun déploiement Render, aucune connexion à la base Neon/production.
