@@ -389,7 +389,102 @@ jobs:
           cursor.execute("SELECT km_total FROM velos WHERE id = ?", (electrique_id,))
           assert cursor.fetchone()[0] == 20
           conn.close()
-          print("OK: création, fiche modifiable, composants par type, réglages isolés et transfert de sortie avec recalcul des kilomètres.")
+          # Les interventions d'entretien doivent rester propres à chaque vélo.
+          conn = db.connect()
+          cursor = conn.cursor()
+          cursor.execute("SELECT id FROM composants WHERE velo_id = ? ORDER BY id LIMIT 1", (route_id,))
+          composant_route = cursor.fetchone()[0]
+          cursor.execute("SELECT seuil_alerte FROM composants WHERE id = ? AND velo_id = ?", (composant_route, route_id))
+          seuil_initial = cursor.fetchone()[0]
+          conn.close()
+
+          main.modifier_seuils(
+              composant_route,
+              main.SeuilsRequest(seuil_alerte=1234, seuil_jours=90),
+              velo_id=route_id,
+              x_code_acces="test"
+          )
+          try:
+              main.modifier_seuils(
+                  composant_route,
+                  main.SeuilsRequest(seuil_alerte=4321, seuil_jours=180),
+                  velo_id=electrique_id,
+                  x_code_acces="test"
+              )
+              raise AssertionError("Un vélo a pu modifier le composant d'un autre vélo")
+          except main.HTTPException as exc:
+              assert exc.status_code == 404, exc.status_code
+
+          conn = db.connect()
+          cursor = conn.cursor()
+          cursor.execute("SELECT seuil_alerte, seuil_jours FROM composants WHERE id = ? AND velo_id = ?", (composant_route, route_id))
+          assert tuple(cursor.fetchone()) == (1234, 90)
+          conn.close()
+
+          main.ajouter_historique(
+              main.HistoriqueRequest(
+                  composant_id=composant_route,
+                  date_remplacement="2026-10-26",
+                  km_intervention=0,
+                  cout=0,
+                  notes="Intervention test isolée"
+              ),
+              velo_id=route_id,
+              x_code_acces="test"
+          )
+          conn = db.connect()
+          cursor = conn.cursor()
+          cursor.execute(
+              "SELECT id FROM historique WHERE velo_id = ? AND composant_id = ? ORDER BY id DESC LIMIT 1",
+              (route_id, composant_route)
+          )
+          historique_id = cursor.fetchone()[0]
+          conn.close()
+
+          try:
+              main.modifier_intervention(
+                  historique_id,
+                  main.HistoriqueModifRequest(
+                      date_remplacement="2026-10-26",
+                      km_intervention=0,
+                      cout=0,
+                      notes="Tentative interdite"
+                  ),
+                  velo_id=electrique_id,
+                  x_code_acces="test"
+              )
+              raise AssertionError("Un vélo a pu modifier l'historique d'un autre vélo")
+          except main.HTTPException as exc:
+              assert exc.status_code == 404, exc.status_code
+
+          try:
+              main.supprimer_intervention(
+                  historique_id,
+                  velo_id=electrique_id,
+                  x_code_acces="test"
+              )
+              raise AssertionError("Un vélo a pu supprimer l'historique d'un autre vélo")
+          except main.HTTPException as exc:
+              assert exc.status_code == 404, exc.status_code
+
+          conn = db.connect()
+          cursor = conn.cursor()
+          cursor.execute("SELECT notes FROM historique WHERE id = ? AND velo_id = ?", (historique_id, route_id))
+          assert cursor.fetchone()[0] == "Intervention test isolée"
+          conn.close()
+
+          main.supprimer_intervention(
+              historique_id,
+              velo_id=route_id,
+              x_code_acces="test"
+          )
+          conn = db.connect()
+          cursor = conn.cursor()
+          cursor.execute("SELECT COUNT(*) FROM historique WHERE id = ?", (historique_id,))
+          assert cursor.fetchone()[0] == 0
+          conn.close()
+
+          print("OK: création, fiche modifiable, composants par type, réglages isolés, transfert de sortie, et isolation des interventions.")
           PY
       - name: Vérifier le script de migration SQLite sur une base temporaire
         run: |
