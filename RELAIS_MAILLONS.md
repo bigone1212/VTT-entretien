@@ -47,6 +47,15 @@ Ce fichier ne doit **pas** être mis à jour seulement à la fin : une session p
 
 ## Tâche en cours
 
+REPRISE PAR CHATGPT — 26/10/2026 : préparation complète de la fonctionnalité multi-vélos.
+- Branche dédiée créée à partir de `reprise/2026-10-26-multivelos-base-main` : `reprise/2026-10-26-multivelos-completion`. Ne pas modifier `main`, ne pas fusionner ni déployer sans accord explicite de Math.
+- Objectif : finir l'isolation des données et préparer une version multi-vélos cohérente à présenter dans une demande de fusion. Préserver le CUBE et son historique.
+- Étapes prévues : (1) auditer les routes d'écriture/suppression restantes ; (2) relier l'interface au vélo sélectionné sans oublier les appels API ; (3) décider une stratégie prudente pour les réglages personnels/techniques encore globaux, sans changer les coefficients de terrain ; (4) ajouter la création de vélos et les composants de base si l'audit confirme que le schéma actuel le permet sans migration risquée ; (5) mettre à jour ce relais, vérifier le diff, lancer et consulter les tests GitHub Actions ; (6) préparer une PR vers `main`, sans la fusionner.
+- État avant modification : branche de départ divergente de `main` (comparaison précédente : 32 commits en avance, 1 en retard). Relire le diff complet avant toute fusion. Les tests précédents ne couvrent pas Render/Neon ni le navigateur/téléphone.
+- Décisions à respecter : huit types de vélo ; sorties manuelles affectées au vélo choisi ; sorties automatiques affectées provisoirement au dernier vélo utilisé avec pastille rouge « à vérifier » ; coefficients terrain à réexaminer séparément et inchangés pour l'instant ; photos des nouveaux vélos en dernière étape.
+- Local, non enregistré : rien. Toute modification doit être enregistrée sur cette branche, et les tests doivent être décrits sans exagération.
+
+
 REPRISE PAR CHATGPT — 26/10/2026 :
 - Objectif général : poursuivre le chantier « Plusieurs vélos » sur une branche de test, sans fusionner dans `main` ni déployer sans accord explicite de Math.
 - Branche de travail vérifiée : `reprise/2026-10-26-multivelos-base-main`. Le comparatif avec `main` indique que la branche est divergente (30 commits en avance, 1 en retard) ; ne pas fusionner automatiquement et relire les différences avant toute demande de fusion.
