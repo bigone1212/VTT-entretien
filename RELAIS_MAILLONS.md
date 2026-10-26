@@ -102,6 +102,11 @@ Dernier commit de main connu : …    Branche de reprise éventuelle : …
 
 ## 2. Dernière intervention
 
+**Contrôle — 26/10/2026 (Claude) : vérification de `main` au commit `e62c807` après les ajouts de ChatGPT (unités, profil d'altitude)**
+- Comparaison avec `8a6ed0a` (couleurs fusionnées) : aucune fonction JS ni Python, aucun élément (id), aucune route supprimés ; ajouts seulement (unités : `lireUnites`, `fmtDistance`, `fmtAltitude`, `fmtVitesse`, `fmtTemperature`, `formaterHeure`, `appliquerUnites`, 5 listes dans Réglages + 1 pour le filtre de distance). Palettes de couleurs intactes.
+- Précision : l'intervention 6 ci-dessous est intitulée « en cours / non fusionnée » mais elle est bien dans `main` (PR #6, fusion `9a0ad76`), de même que les unités (PR #3 et #4).
+- Tests faits sur la page HTML générée (l'appli complète ne peut pas être démarrée dans l'espace de travail de Claude) : syntaxe OK, 0 erreur JavaScript, aucun backslash ajouté (3 caractères, inchangés, hors HTML/CSS/JS), listes d'unités et mémorisation (`maillon_unites`) OK, conversions justes (10 km = 6,21 mi ; 20 °C = 68 °F), couleurs et unités fonctionnent ensemble. Non testé : téléphone, Render, rendu du profil d'altitude sur une vraie longue sortie.
+
 **Intervention 6 — 25/10/2026 : profil d'altitude un peu plus haut sur les longues sorties (en cours)**
 - Code préparé sur la branche `reprise/2026-10-25-profil-altitude-v2`, commit `286fcfa0b0d9e940117f4f835fa1a3987680e3dc`, fichier `main.py) uniquement.
 - Modification ciblée : le profil compact de la liste Sorties utilise désormais `total / 40` au lieu de `total / 30` comme borne de l'échelle verticale liée à la distance, seulement hors mode paysage et uniquement dans la liste. Cela devrait rendre les pics un peu plus hauts sur les longues sorties. La fenêtre agrandie et les autres profils ne changent pas.
