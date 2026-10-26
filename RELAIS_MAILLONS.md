@@ -48,14 +48,15 @@ Ce fichier ne doit **pas** être mis à jour seulement à la fin : une session p
 ## Tâche en cours
 
 REPRISE PAR CHATGPT — 26/10/2026 :
-- Objectif : poursuivre les vérifications de l'étape C3(a) « Plusieurs vélos » en sécurité, avant toute fusion.
-- État GitHub : `main` a reçu uniquement une mise à jour du relais pour consigner le travail de test (commit `c99b6f67738c5ff5742c4731f1a1a7ffc565b560`). La branche `reprise/2026-10-26-plusieurs-velos` reste divergente : 15 commits en avance et 2 commits de `main` absents au dernier comparatif. Ne pas fusionner automatiquement.
-- Tests : workflow GitHub Actions `40350937620` réussi sur la branche de test. Vérifiés : compilation syntaxique de `main.py`, installation des dépendances, démarrage réel de l'application avec `import main` sur une base SQLite temporaire préremplie, conservation des 2700 km, date d'achat, date de mise à jour du kilométrage, composant, intervention, sortie et réglage de fiche technique ; relance de l'application sans doublon ; simulation SQLite séparée également réussie.
-- Enregistré sur GitHub : workflow de test renforcé, commit `c6835b394ee24d7e67349fd60e6c3a7643ec9599`; résultat vérifié le 26/10/2026 dans le job `121670474806`. Mise à jour du relais sur la branche de test à enregistrer après ce bilan.
+- Objectif : valider la migration C3(a) « Plusieurs vélos » sur des moteurs SQLite et PostgreSQL de test avant toute fusion.
+- État GitHub : branche de code `reprise/2026-10-26-plusieurs-velos`. Elle reste divergente de `main` ; le dernier comparatif avait 18 commits en avance et 4 en retard. Ne pas fusionner automatiquement.
+- Tests réussis : workflow GitHub Actions `40352096393`, commit de branche `42a16b17f86d36ce67367bb022939e003715c959`, job `121674601397`. Vérifiés dans les journaux : syntaxe de `main.py`, installation des dépendances, véritable démarrage de l'application sur SQLite temporaire et PostgreSQL 16 éphémère, conservation des données historiques (2700 km, dates, composant, intervention, sortie, réglage), rattachement des anciens composants/sorties au CUBE id 1, puis deuxième démarrage sans doublons.
+- Incident de test corrigé : le premier essai PostgreSQL `40351998345` a échoué à cause de mauvais indices dans les assertions du test (les valeurs migrées étaient bien présentes). Les indices ont été corrigés dans le workflow ; l'exécution suivante a réussi. Aucun échec applicatif identifié par cet incident.
+- Enregistré sur GitHub : workflow de test `.github/workflows/maillons-check.yml` sur la branche de reprise, commit `42a16b17f86d36ce67367bb022939e003715c959`. Mise à jour du relais de la branche de reprise à enregistrer après ce bilan.
 - Local, non enregistré : rien.
-- Fichiers modifiés pour les tests : `.github/workflows/maillons-check.yml` uniquement. Aucun changement à `main.py` ou `db.py` dans cette étape.
-- Limites : test exécuté uniquement sur SQLite temporaire et données de démonstration. PostgreSQL/Neon, navigateur, téléphone et Render non testés. Aucun accès ni changement à la base de production, aucune fusion de code ni déploiement de code.
-- Prochaine action : préparer un test PostgreSQL isolé si un environnement de test distinct est disponible ; ne jamais utiliser la base Neon de production pour cette étape. La fusion dans `main` nécessite l'accord explicite de Math.
+- Fichiers modifiés pour cette étape : `.github/workflows/maillons-check.yml` sur la branche de test uniquement. Aucun changement à `main.py`, `db.py` ou `requirements.txt`.
+- Limites : PostgreSQL testé dans un conteneur temporaire GitHub Actions, pas sur Neon ; tests navigateur, téléphone et Render non faits. Aucun accès ni changement à la base de production, aucune fusion de code ni déploiement de code.
+- Prochaine action : passer à la prochaine sous-étape C3(b/c) seulement après avoir revu précisément le périmètre et les dépendances de l'interface multi-vélos ; conserver la migration validée séparément. Fusion dans `main` uniquement avec l'accord explicite de Math.
 
 
 NOUVELLE DEMANDE de Math — 26/10/2026, par Claude (3 demandes, traitées une par une ; les quatre premières demandes du 25/10 sont terminées et fusionnées) :
