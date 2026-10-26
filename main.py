@@ -348,17 +348,41 @@ def init_db():
             annee INTEGER,
             taille TEXT,
             actif INTEGER DEFAULT 1,
+            km_total INTEGER DEFAULT 0,
+            km_frac DOUBLE PRECISION DEFAULT 0,
+            km_maj_le TEXT,
+            date_achat TEXT,
             legacy_velo_id INTEGER UNIQUE
         )
     """)
 
     cursor.execute("""
         INSERT INTO velos (
-            nom, type, marque, modele, annee, legacy_velo_id
+            nom, type, marque, modele, annee, km_total,
+            km_frac, km_maj_le, date_achat, legacy_velo_id
         )
         VALUES ('Mon CUBE', 'electrique', 'Cube',
-                'Stereo Hybrid ONE44 EXC 800 (Bosch)', 2025, 1)
+                'Stereo Hybrid ONE44 EXC 800 (Bosch)', 2025,
+                2700, 0, NULL, NULL, 1)
         ON CONFLICT (legacy_velo_id) DO NOTHING
+    """)
+
+    # Colonnes également ajoutées si le registre velos existait déjà
+    # sur la branche de test avant cette correction.
+    ajouter_colonne(cursor, "velos", "km_total", "INTEGER DEFAULT 0")
+    ajouter_colonne(cursor, "velos", "km_frac", "DOUBLE PRECISION DEFAULT 0")
+    ajouter_colonne(cursor, "velos", "km_maj_le", "TEXT")
+    ajouter_colonne(cursor, "velos", "date_achat", "TEXT")
+
+    # Copie idempotente des valeurs actuelles du vélo historique vers le CUBE.
+    # La table velo reste intacte et demeure la référence pendant cette étape.
+    cursor.execute("""
+        UPDATE velos
+        SET km_total = (SELECT km_total FROM velo WHERE id = 1),
+            km_frac = (SELECT km_frac FROM velo WHERE id = 1),
+            km_maj_le = (SELECT km_maj_le FROM velo WHERE id = 1),
+            date_achat = (SELECT date_achat FROM velo WHERE id = 1)
+        WHERE legacy_velo_id = 1
     """)
 
 
