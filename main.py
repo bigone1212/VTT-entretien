@@ -11908,6 +11908,7 @@ def enregistrer_mes_reglages(
 def modifier_seuils(
     composant_id: int,
     data: SeuilsRequest,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     verifier_auth(x_code_acces)
@@ -11922,14 +11923,17 @@ def modifier_seuils(
     cursor = conn.cursor()
 
     try:
-        cursor.execute("SELECT id FROM composants WHERE id = ?", (composant_id,))
+        cursor.execute(
+            "SELECT id FROM composants WHERE id = ? AND velo_id = ?",
+            (composant_id, velo_id)
+        )
 
         if cursor.fetchone() is None:
-            raise HTTPException(status_code=404, detail="Composant introuvable.")
+            raise HTTPException(status_code=404, detail="Composant introuvable pour ce vélo.")
 
         cursor.execute(
-            "UPDATE composants SET seuil_alerte = ?, seuil_jours = ? WHERE id = ?",
-            (data.seuil_alerte, data.seuil_jours, composant_id)
+            "UPDATE composants SET seuil_alerte = ?, seuil_jours = ? WHERE id = ? AND velo_id = ?",
+            (data.seuil_alerte, data.seuil_jours, composant_id, velo_id)
         )
         conn.commit()
 
@@ -11946,6 +11950,7 @@ def modifier_seuils(
 @app.post("/api/composants/coefficients")
 def enregistrer_coefs_pieces(
     data: CoefsPiecesRequest,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     """Enregistre le coefficient d'usure de chaque élément d'entretien."""
@@ -11973,8 +11978,18 @@ def enregistrer_coefs_pieces(
     try:
         for valeur, composant_id in a_enregistrer:
             cursor.execute(
-                "UPDATE composants SET coef_usure = ? WHERE id = ?",
-                (valeur, composant_id)
+                "SELECT id FROM composants WHERE id = ? AND velo_id = ?",
+                (composant_id, velo_id)
+            )
+            if cursor.fetchone() is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Pièce introuvable pour ce vélo."
+                )
+
+            cursor.execute(
+                "UPDATE composants SET coef_usure = ? WHERE id = ? AND velo_id = ?",
+                (valeur, composant_id, velo_id)
             )
 
         conn.commit()
@@ -11993,6 +12008,7 @@ def enregistrer_coefs_pieces(
 def deplacer_repere(
     composant_id: int,
     data: PositionRequest,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     verifier_auth(x_code_acces)
@@ -12000,14 +12016,17 @@ def deplacer_repere(
     cursor = conn.cursor()
 
     try:
-        cursor.execute("SELECT id FROM composants WHERE id = ?", (composant_id,))
+        cursor.execute(
+            "SELECT id FROM composants WHERE id = ? AND velo_id = ?",
+            (composant_id, velo_id)
+        )
 
         if cursor.fetchone() is None:
-            raise HTTPException(status_code=404, detail="Composant introuvable.")
+            raise HTTPException(status_code=404, detail="Composant introuvable pour ce vélo.")
 
         cursor.execute(
-            "UPDATE composants SET pos_x = ?, pos_y = ? WHERE id = ?",
-            (data.pos_x, data.pos_y, composant_id)
+            "UPDATE composants SET pos_x = ?, pos_y = ? WHERE id = ? AND velo_id = ?",
+            (data.pos_x, data.pos_y, composant_id, velo_id)
         )
         conn.commit()
 
@@ -12024,6 +12043,7 @@ def deplacer_repere(
 @app.post("/api/composants/{composant_id}/supprimer")
 def retirer_composant(
     composant_id: int,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     """Retire une pièce de la liste, avec son historique."""
@@ -12032,16 +12052,22 @@ def retirer_composant(
     cursor = conn.cursor()
 
     try:
-        cursor.execute("SELECT id FROM composants WHERE id = ?", (composant_id,))
+        cursor.execute(
+            "SELECT id FROM composants WHERE id = ? AND velo_id = ?",
+            (composant_id, velo_id)
+        )
 
         if cursor.fetchone() is None:
-            raise HTTPException(status_code=404, detail="Composant introuvable.")
+            raise HTTPException(status_code=404, detail="Composant introuvable pour ce vélo.")
 
         cursor.execute(
-            "DELETE FROM historique WHERE composant_id = ?",
-            (composant_id,)
+            "DELETE FROM historique WHERE composant_id = ? AND velo_id = ?",
+            (composant_id, velo_id)
         )
-        cursor.execute("DELETE FROM composants WHERE id = ?", (composant_id,))
+        cursor.execute(
+            "DELETE FROM composants WHERE id = ? AND velo_id = ?",
+            (composant_id, velo_id)
+        )
         conn.commit()
 
         return {"statut": "success"}
