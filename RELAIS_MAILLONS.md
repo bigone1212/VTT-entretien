@@ -305,3 +305,11 @@ MISE À JOUR CHATGPT — 26/10/2026, première API de lecture des vélos :
 - Tests : le workflow du commit `4296c94162ece0a086e6663e4ed012e5549a1fbe` a réussi (run `40362567741`). Le workflow après ajout du contrôle statique, commit `25e9ed36c9aecd55b1a0498b8ad15bf42edabe42`, est en cours au moment de cette mise à jour (run `40362643382`) ; ne pas annoncer son succès avant de vérifier.
 - Toujours à faire pour C3(b) : sélection du vélo dans l'interface et propagation de son identifiant dans les lectures/écritures de l'état, des composants, de l'historique, des sorties, du kilométrage et des réglages. L'API de lecture seule ne rend pas encore l'application multi-vélos opérationnelle.
 - Aucun changement sur `main`, aucune fusion, aucun déploiement Render, aucune connexion à la base Neon/production.
+
+
+MISE À JOUR CHATGPT — 26/10/2026, première isolation de l’état d’entretien :
+- Commit `7de53e354c4ddaf0f907242c8b14cdd6e2cea19b` : `GET /api/etat` accepte maintenant `velo_id` (valeur par défaut 1 pour préserver le comportement existant), vérifie que le vélo demandé est actif, et limite les composants, sorties utilisées pour l’usure et dernières interventions à ce vélo.
+- Commit `ccb2275719c07a390e569f2baa2224e497bb9fec` : ajout de contrôles statiques dans le workflow pour vérifier ces filtres.
+- Le workflow associé au commit `7de53e354c4ddaf0f907242c8b14cdd6e2cea19b` est en cours au moment de cette note (run `40362999198`) ; son résultat doit être vérifié avant de déclarer les tests réussis.
+- Limite importante : l’interface appelle encore `/api/etat` sans `velo_id`, donc elle continue à afficher le vélo 1. Aucun sélecteur de vélo n’a été ajouté. Les routes d’écriture, le carnet d’entretien, les sorties et les réglages globaux restent à isoler avant d’activer le multi-vélos.
+- Aucun changement sur `main`, aucune fusion, aucun déploiement Render, aucune connexion à la base Neon/production.
