@@ -48,15 +48,16 @@ Ce fichier ne doit **pas** être mis à jour seulement à la fin : une session p
 ## Tâche en cours
 
 REPRISE PAR CHATGPT — 26/10/2026 :
-- Objectif : après le test SQLite réel réussi, vérifier la migration C3(a) sur un vrai moteur PostgreSQL jetable hébergé dans GitHub Actions. Aucune connexion à Neon ni à Render.
-- État vérifié : branche `reprise/2026-10-26-plusieurs-velos`, dernier code d'application `main.py` SHA `0c5f2c21d42d2a817406968fafbda57f8eb0ca87`; workflow SQLite `40350937620` réussi. `main` et la branche restent divergentes ; ne pas fusionner.
-- Étapes : [x] 1. Relire le relais, la migration et le workflow. [x] 2. Vérifier la réussite du test SQLite réel. [~] 3. Ajouter un service PostgreSQL éphémère au workflow de la branche de test et y exécuter le vrai démarrage de `main.py` sur un schéma historique de démonstration. [ ] 4. Vérifier conservation des données et relance sans doublons. [ ] 5. Lire le résultat GitHub Actions et mettre à jour le relais.
-- Enregistré sur GitHub : workflow SQLite `.github/workflows/maillons-check.yml`, commit `c6835b394ee24d7e67349fd60e6c3a7643ec9599`; test réussi, job `121670474806`.
+- Objectif : valider la migration C3(a) « Plusieurs vélos » sur des moteurs SQLite et PostgreSQL de test avant toute fusion.
+- État GitHub : branche `reprise/2026-10-26-plusieurs-velos`, commit workflow testé `42a16b17f86d36ce67367bb022939e003715c959`. La branche reste divergente de `main` ; ne pas fusionner automatiquement.
+- Étapes : [x] 1. Relire le relais, le code et le workflow. [x] 2. Test réel SQLite sur base temporaire, workflow `40350937620`. [x] 3. Ajouter PostgreSQL 16 éphémère à GitHub Actions, commit `76731f29051217bd101299a8b1868048014db5ff`. [x] 4. Corriger les indices de colonnes dans le test PostgreSQL, commit `42a16b17f86d36ce67367bb022939e003715c959`. [x] 5. Vérifier le workflow final `40352096393`, job `121674601397` : succès.
+- Tests réellement réussis : compilation de `main.py), installation des dépendances, démarrage réel de l'application et migrations sur SQLite temporaire ET PostgreSQL 16 temporaire ; conservation des 2700 km, dates d'achat et de mise à jour, composant, intervention, sortie, réglage de fiche technique ; association des composants/sorties existants au vélo 1 ; relance de l'application sans doublons. Logs consultés, les deux étapes affichent leur message OK.
+- Incident : le premier workflow PostgreSQL `40351998345` a échoué uniquement parce que le test lisait les mauvais indices dans la ligne renvoyée ; les données affichées par l'erreur correspondaient bien aux valeurs attendues. Assertions corrigées, workflow suivant réussi.
+- Enregistré sur GitHub : `.github/workflows/maillons-check.yml`, commit `42a16b17f86d36ce67367bb022939e003715c959`. Mise à jour de ce relais enregistrée après les tests.
 - Local, non enregistré : rien.
-- Fichiers prévus : `.github/workflows/maillons-check.yml` et ce fichier relais. Aucun changement à `main.py`, `db.py` ou `requirements.txt`.
-- Sécurité : PostgreSQL de test démarré comme service temporaire par GitHub Actions, avec identifiants de test non secrets. Ne pas lire ni utiliser `DATABASE_URL` de Render/Neon. Pas de fusion, pas de déploiement de code.
-- Tests : SQLite réel réussi ; test PostgreSQL pas encore exécuté.
-- Prochaine action : enregistrer le workflow PostgreSQL sur la branche de test, attendre le résultat, puis corriger les éventuels échecs uniquement sur cette branche.
+- Fichiers modifiés pour cette étape : `.github/workflows/maillons-check.yml` et `RELAIS_MAILLONS.md`. Aucun changement à `main.py`, `db.py` ou `requirements.txt`.
+- Limites : PostgreSQL est un conteneur jetable GitHub Actions, pas Neon ; interface navigateur, téléphone et Render non testés. Aucun accès ni changement à la production, aucune fusion de code ni déploiement de code.
+- Prochaine action : examiner l'étape suivante du plan multi-vélos avant de toucher au code, probablement les changements d'accès aux données par vélo. Garder toute modification de code sur cette branche et fusionner uniquement avec l'accord explicite de Math.
 
 
 NOUVELLE DEMANDE de Math — 26/10/2026, par Claude (3 demandes, traitées une par une ; les quatre premières demandes du 25/10 sont terminées et fusionnées) :
