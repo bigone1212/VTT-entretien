@@ -49,6 +49,8 @@ Ce fichier ne doit **pas** être mis à jour seulement à la fin : une session p
 
 SUITE du temps 4 — 26/10/2026, par Claude : Math a vérifié sur l'appli en ligne. Verdict : profil correct dans les fenêtres qui s'ouvrent, mais encore trop écrasé dans la liste de l'onglet Sorties. Cause mesurée sur une fausse sortie de 80 km : dans la liste, le profil est dessiné en 600 x 235 puis réduit à environ 134 px de haut sur téléphone (la fenêtre agrandie fait 250 px), et l'échelle verticale minimale `total / 40` laisse les sommets à environ 30 % de la hauteur. Correction prévue sur la branche `reprise/2026-10-26-profil-liste` : échelle `total / 50` et hauteur de dessin 235 -> 270 en portrait (paysage inchangé), dans `dessinerProfil` / `construireProfil` seulement. Fusion dans `main` seulement avec l'accord de Math.
 
+Fait sur la branche `reprise/2026-10-26-profil-liste` (2 lignes de `main.py`) : échelle `total / 50` et hauteur de dessin 270 en portrait. Tests sur une fausse sortie (page HTML générée, appli complète non démarrable chez Claude) : hauteur des sommets dans la liste 37 -> 53 px (80 km) et 70 -> 101 px (40 km), contre 55 et 102 px dans la fenêtre agrandie ; 0 erreur JavaScript ; syntaxe OK ; aucun backslash ajouté. Non testé : téléphone, vraie sortie, Render. Fusion dans `main` en attente de l'accord de Math.
+
 Statut : EN COURS — fusion effectuée, validation visuelle utilisateur en attente
 Objectif : temps 4 de la demande en quatre temps de Math : améliorer légèrement la hauteur du profil d'altitude dans l'onglet Sorties pour que les pics restent lisibles sur les longues distances, sans modifier les données GPX ni les autres fonctions.
 Démarrée : 25/10/2026 — par : ChatGPT
