@@ -4210,7 +4210,7 @@ def accueil():
 
             // Vérifie si un code est déjà en mémoire
             if (sessionStorage.getItem('vtt_code')) {
-                fetch('/api/etat', { headers: getHeaders() }).then(res => {
+                fetch('/api/etat', { headers: getHeaders() }).then(async res => {
                     if (res.ok) {
                         document.getElementById('authScreen').style.display = 'none';
                         chargerEtat();
