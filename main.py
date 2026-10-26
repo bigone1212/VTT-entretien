@@ -354,11 +354,11 @@ def init_db():
 
     cursor.execute("""
         INSERT INTO velos (
-            id, nom, type, marque, modele, annee, legacy_velo_id
+            nom, type, marque, modele, annee, legacy_velo_id
         )
-        VALUES (1, 'Mon CUBE', 'electrique', 'Cube',
+        VALUES ('Mon CUBE', 'electrique', 'Cube',
                 'Stereo Hybrid ONE44 EXC 800 (Bosch)', 2025, 1)
-        ON CONFLICT (id) DO NOTHING
+        ON CONFLICT (legacy_velo_id) DO NOTHING
     """)
 
 
