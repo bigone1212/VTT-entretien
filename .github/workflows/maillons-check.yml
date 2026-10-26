@@ -35,7 +35,8 @@ jobs:
               "CREATE TABLE IF NOT EXISTS velos",
               "INSERT INTO velos",
               "legacy_velo_id",
-              "UPDATE velos SET km_total=",
+              "UPDATE velos",
+              "SET km_total=",
               'ajouter_colonne(cursor, "composants", "velo_id", "INTEGER DEFAULT 1")',
               'ajouter_colonne(cursor, "sorties", "velo_id", "INTEGER DEFAULT 1")',
           ]
