@@ -657,6 +657,105 @@ jobs:
           db.close()
           print("OK: kilomètres conservés après redémarrage, CUBE id 1, vélo suivant id 2.")
           PY
+      - name: Installer un vrai navigateur pour tester la page
+        run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: Tester la page dans un vrai navigateur (chargement et sélecteur de vélo)
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-navigateur-test.db
+          CODE_ACCES: test
+        run: |
+          python - <<'PY'
+          import json
+          import sys
+          from urllib.parse import urlparse, parse_qs
+
+          from playwright.sync_api import sync_playwright
+
+          if len(sys.argv) > 1:
+              html = open(sys.argv[1], encoding="utf-8").read()
+          else:
+              import main
+              html = main.accueil()
+
+          VELOS = [
+              {"id": 1, "nom": "Mon CUBE", "type": "vtt_electrique", "marque": "Cube", "modele": "Stereo",
+               "annee": 2025, "taille": None, "actif": 1, "km_total": 2700, "km_frac": 0, "km_maj_le": None,
+               "date_achat": "2025-11-18", "moteur": None, "batterie": None},
+              {"id": 2, "nom": "Gravel test", "type": "gravel", "marque": None, "modele": None,
+               "annee": None, "taille": None, "actif": 1, "km_total": 0, "km_frac": 0, "km_maj_le": None,
+               "date_achat": "2026-10-26", "moteur": None, "batterie": None},
+          ]
+
+
+          def composant(velo_id):
+              return {
+                  "id": 50 if velo_id == "2" else 1, "numero": 1, "verification": False,
+                  "nom": "Pièce du gravel" if velo_id == "2" else "Chaîne du CUBE",
+                  "km_actuel": 10, "km_usure": 10, "km_depart": 0, "seuil_alerte": 2000,
+                  "pourcentage_usure": 5, "seuil_jours": 0, "jours_ecoules": None, "jours_usure": None,
+                  "coef_usure": 1, "alerte_entretien": False, "categorie": "piece", "pos_x": 30, "pos_y": 60,
+              }
+
+
+          appels = []
+          erreurs_page = []
+
+          with sync_playwright() as p:
+              navigateur = p.chromium.launch()
+              contexte = navigateur.new_context(viewport={"width": 390, "height": 844})
+
+              def api(route):
+                  url = urlparse(route.request.url)
+                  appels.append(url.path + ("?" + url.query if url.query else ""))
+                  velo_id = (parse_qs(url.query).get("velo_id") or ["1"])[0]
+                  if url.path == "/api/velos":
+                      corps = VELOS
+                  elif url.path == "/api/etat":
+                      corps = {"km_total": 0 if velo_id == "2" else 2700, "composants": [composant(velo_id)]}
+                  elif url.path == "/api/mes-reglages":
+                      corps = {"valeurs": {}, "maj_le": None}
+                  elif url.path == "/api/reglages":
+                      corps = {"terrain_route": 1, "terrain_mixte": 1.2, "terrain_chemin": 1.5,
+                               "terrain_sentier": 2, "poids_denivele": 1}
+                  else:
+                      corps = []
+                  route.fulfill(status=200, content_type="application/json", body=json.dumps(corps))
+
+              contexte.route("**/localhost/api/**", api)
+              contexte.route(lambda u: not u.startswith("http://localhost/"), lambda r: r.abort())
+              contexte.add_init_script("sessionStorage.setItem('vtt_code', 'test')")
+              page = contexte.new_page()
+              page.on("pageerror", lambda e: erreurs_page.append(str(e)[:200]))
+              page.route("http://localhost/", lambda r: r.fulfill(status=200, content_type="text/html", body=html))
+              page.goto("http://localhost/", wait_until="load")
+              page.wait_for_timeout(1500)
+
+              options = page.eval_on_selector_all("#selectVelo option", "os => os.map(o => o.textContent)")
+              assert not erreurs_page, "Erreur JavaScript dans la page : " + repr(erreurs_page)
+              assert any(a == "/api/etat?velo_id=1" for a in appels), "Aucun appel /api/etat?velo_id=1 : " + repr(appels)
+              assert options == ["Mon CUBE · VTT électrique", "Gravel test · Gravel"], options
+              assert page.eval_on_selector("#selectVelo", "s => s.value") == "1"
+              assert page.eval_on_selector("#authScreen", "e => getComputedStyle(e).display") == "none"
+              pastilles1 = page.eval_on_selector_all(".hotspot", "os => os.map(o => o.title)")
+              assert pastilles1 == ["Chaîne du CUBE (5%)"], pastilles1
+
+              appels.clear()
+              page.select_option("#selectVelo", "2")
+              page.wait_for_timeout(1200)
+              for attendu in ("/api/etat?velo_id=2", "/api/historique?velo_id=2",
+                              "/api/sorties?velo_id=2", "/api/mes-reglages?velo_id=2"):
+                  assert attendu in appels, attendu + " absent : " + repr(appels)
+              pastilles2 = page.eval_on_selector_all(".hotspot", "os => os.map(o => o.title)")
+              assert pastilles2 == ["Pièce du gravel (5%)"], pastilles2
+              assert page.eval_on_selector("#headerVeloNom", "e => e.textContent") == "Gravel test"
+              assert page.evaluate("sessionStorage.getItem('maillons_velo_id')") == "2"
+              assert not erreurs_page, "Erreur JavaScript après le changement de vélo : " + repr(erreurs_page)
+              navigateur.close()
+
+          print("OK: la page se charge, le sélecteur liste les vélos, le changement de vélo recharge ses données.")
+          PY
       - name: Vérifier le script de migration SQLite sur une base temporaire
         run: |
           python - <<'PY'

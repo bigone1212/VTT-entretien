@@ -4053,7 +4053,10 @@ def accueil():
             let velosDisponibles = [];
             const fetchOriginal = window.fetch.bind(window);
 
-            function fetch(url, options) {
+            // Affectation (et non « function fetch ») : une déclaration de fonction
+            // serait remontée avant la ligne fetchOriginal ci-dessus et se rappellerait
+            // elle-même sans fin (page bloquée, "Maximum call stack size exceeded").
+            window.fetch = function (url, options) {
                 let cible = url;
                 if (typeof url === 'string' && url.startsWith('/api/')) {
                     const globales = ['/api/velos', '/api/sauvegarde', '/api/reglages'];
@@ -4063,7 +4066,7 @@ def accueil():
                     }
                 }
                 return fetchOriginal(cible, options);
-            }
+            };
 
             window.addEventListener('hashchange', afficherPage);
             afficherPage();
