@@ -63,7 +63,7 @@ jobs:
           import re
           import subprocess
 
-          scripts = re.findall(r"<script[^>]*>([\\s\\S]*?)</script>", source)
+          scripts = re.findall(r"<script[^>]*>([\s\S]*?)</script>", source)
           assert scripts, "Aucun script JavaScript intégré trouvé"
           for numero, script in enumerate(scripts, start=1):
               subprocess.run(["node", "--check"], input=script, text=True, check=True)
