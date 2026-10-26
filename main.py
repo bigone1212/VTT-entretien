@@ -11166,26 +11166,32 @@ def obtenir_velos(x_code_acces: Optional[str] = Header(default=None)):
 # ============================================================
 
 @app.get("/api/etat")
-def obtenir_etat(x_code_acces: Optional[str] = Header(default=None)):
+def obtenir_etat(
+    velo_id: int = 1,
+    x_code_acces: Optional[str] = Header(default=None)
+):
     verifier_auth(x_code_acces)
     conn = db.connect()
     cursor = conn.cursor()
 
     try:
-        cursor.execute("SELECT km_total FROM velo WHERE id = 1")
+        cursor.execute("""
+            SELECT id, km_total, date_achat
+            FROM velos
+            WHERE id = ? AND actif = 1
+        """, (velo_id,))
         velo = cursor.fetchone()
 
-        km_global = (
-            velo["km_total"]
-            if velo and velo["km_total"] is not None
-            else 2700
+        if velo is None:
+            raise HTTPException(status_code=404, detail="Vélo introuvable.")
+
+        km_global = velo["km_total"] if velo["km_total"] is not None else 0
+        date_achat = velo["date_achat"] or DATE_ACHAT_PAR_DEFAUT
+
+        cursor.execute(
+            "SELECT * FROM composants WHERE velo_id = ? ORDER BY id",
+            (velo_id,)
         )
-
-        cursor.execute("SELECT date_achat FROM velo WHERE id = 1")
-        ligne_achat = cursor.fetchone()
-        date_achat = ligne_achat[0] if ligne_achat and ligne_achat[0] else DATE_ACHAT_PAR_DEFAUT
-
-        cursor.execute("SELECT * FROM composants ORDER BY id")
         rows = cursor.fetchall()
 
         reglages = lire_reglages(cursor)
@@ -11195,7 +11201,8 @@ def obtenir_etat(x_code_acces: Optional[str] = Header(default=None)):
             SELECT debut, distance_km, denivele_pos, denivele_neg, terrain,
                    trace, surfaces
             FROM sorties
-        """)
+            WHERE velo_id = ?
+        """, (velo_id,))
         sorties = cursor.fetchall()
         coefs_sorties = [
             coef_terrain_sortie(s[5], s[6], s[4] or "mixte", reglages)[0]
@@ -11203,10 +11210,12 @@ def obtenir_etat(x_code_acces: Optional[str] = Header(default=None)):
         ]
 
         cursor.execute("""
-            SELECT composant_id, MAX(date_remplacement)
-            FROM historique
-            GROUP BY composant_id
-        """)
+            SELECT h.composant_id, MAX(h.date_remplacement)
+            FROM historique h
+            JOIN composants c ON c.id = h.composant_id
+            WHERE h.velo_id = ? AND c.velo_id = ?
+            GROUP BY h.composant_id
+        """, (velo_id, velo_id))
         dernier_entretien = {r[0]: r[1] for r in cursor.fetchall()}
 
         resultat = []
