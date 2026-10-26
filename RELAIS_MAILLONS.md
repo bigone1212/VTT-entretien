@@ -334,3 +334,14 @@ Dernier commit de main connu : …    Branche de reprise éventuelle : …
 - Le test d'import simule le résultat du parseur `gpx_import`; il ne remplace pas un test du parseur sur un véritable fichier GPX. Aucun test visuel navigateur/téléphone ni test sur Neon/Render.
 - État de publication vérifié : `main` reste au SHA `69142d7f095b350c4393965e093d7c9c7a37140e`; PR #7 toujours ouverte, brouillon et non fusionnée. GitHub signale actuellement `mergeable_state: dirty`; la branche de test et `main` ont divergé, avec un commit supplémentaire sur `main` qui ne modifie que `RELAIS_MAILLONS.md`. Réconcilier le relais avant toute fusion future. Ne pas résoudre cela en modifiant `main` maintenant.
 - Prochain travail utile : vérification visuelle de la sélection et du changement de vélo sur navigateur et téléphone. Photos personnalisées et import automatique restent des étapes séparées ; l'import automatique nécessite de définir l'intégration/source avant de pouvoir attribuer les futures sorties avec le statut « à vérifier ».
+
+
+## Vérification de l’interface — 26/10/2026
+
+- Inspection du JavaScript de main.py : un défaut a été repéré dans la reconnexion automatique quand le code d'accès était déjà conservé en session. Le démarrage appelait /api/etat mais n'appelait pas chargerVelos(), donc le sélecteur « Mon vélo » pouvait rester vide jusqu'à une nouvelle connexion manuelle.
+- Correction ciblée enregistrée sur la branche de test dans main.py, commit 86c3ebf043a06008c378a18acda77ea6739c8e86 : au démarrage/reconnexion automatique, charger d'abord la liste des vélos, puis charger l'état et les données associées.
+- Contrôle ajouté dans .github/workflows/maillons-check.yml : vérifier que le sélecteur est chargé avant l'état et vérifier la syntaxe de chaque script JavaScript intégré avec Node.
+- Workflow 40379653916, commit 6330866a9b09120f31f59730367be3d35ef0b440 : **succès**. Syntaxe Python, contrôle du démarrage et syntaxe JavaScript, migrations SQLite/PostgreSQL temporaires et tests d'intégration multi-vélos passés : https://github.com/bigone1212/VTT-entretien/actions/runs/40379653916
+- Le premier essai du nouveau contrôle JavaScript (40379448708) a échoué à cause d'une expression de recherche trop échappée dans le test, avant d'atteindre les tests d'application. Le contrôle a été corrigé et le run final 40379653916 passe entièrement.
+- Vérification visuelle réelle dans un navigateur sur ordinateur/téléphone : **non réalisée** faute d'outil navigateur disponible dans cette session. La validation actuelle reste statique et automatique; elle ne prouve pas le rendu visuel ni les interactions en situation réelle.
+- Aucun déploiement déclenché. Ne pas toucher à main. La PR #7 reste brouillon et non fusionnée; GitHub signalait encore un état de fusion dirty car main a une mise à jour distincte du fichier de relais. Réconcilier ce fichier avant toute fusion future, avec l'accord explicite de Math.
