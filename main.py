@@ -336,9 +336,36 @@ def init_db():
         ON CONFLICT (id) DO NOTHING
     """)
 
+    # Registre multi-vélos : ajout uniquement, sans remplacer la table historique
+    # velo ni supprimer les données déjà présentes.
+    cursor.execute(f"""
+        CREATE TABLE IF NOT EXISTS velos (
+            id {db.AUTO_ID},
+            nom TEXT NOT NULL,
+            type TEXT NOT NULL DEFAULT 'electrique',
+            marque TEXT,
+            modele TEXT,
+            annee INTEGER,
+            taille TEXT,
+            actif INTEGER DEFAULT 1,
+            legacy_velo_id INTEGER UNIQUE
+        )
+    """)
+
+    cursor.execute("""
+        INSERT INTO velos (
+            id, nom, type, marque, modele, annee, legacy_velo_id
+        )
+        VALUES (1, 'Mon CUBE', 'electrique', 'Cube',
+                'Stereo Hybrid ONE44 EXC 800 (Bosch)', 2025, 1)
+        ON CONFLICT (id) DO NOTHING
+    """)
+
+
     cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS composants (
             id {db.AUTO_ID},
+            velo_id INTEGER DEFAULT 1,
             nom TEXT NOT NULL,
             km_depart INTEGER DEFAULT 0,
             seuil_alerte INTEGER NOT NULL,
@@ -377,6 +404,7 @@ def init_db():
     cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS sorties (
             id {db.AUTO_ID},
+            velo_id INTEGER DEFAULT 1,
             nom TEXT,
             debut TEXT NOT NULL UNIQUE,
             sport TEXT,
@@ -422,6 +450,11 @@ def init_db():
             maj_le TEXT
         )
     """)
+
+    ajouter_colonne(cursor, "composants", "velo_id", "INTEGER DEFAULT 1")
+    ajouter_colonne(cursor, "sorties", "velo_id", "INTEGER DEFAULT 1")
+    cursor.execute("UPDATE composants SET velo_id = 1 WHERE velo_id IS NULL")
+    cursor.execute("UPDATE sorties SET velo_id = 1 WHERE velo_id IS NULL")
 
     ajouter_colonne(cursor, "composants", "seuil_jours", "INTEGER DEFAULT 0")
     ajouter_colonne(cursor, "composants", "verification", "INTEGER DEFAULT 0")
