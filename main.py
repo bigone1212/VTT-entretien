@@ -4137,10 +4137,6 @@ def accueil():
                 etatComposants = [];
                 histSelection.clear();
                 await chargerEtat();
-                await chargerHistorique();
-                await chargerSorties(false);
-                await chargerReglagesVelo();
-                await chargerReglages();
                 afficherNomVeloActif();
             }
 
@@ -4176,6 +4172,7 @@ def accueil():
                 document.getElementById('btnAnnulerEditionFiche').style.display = 'block';
                 document.getElementById('nouveauVeloMessage').textContent = '';
                 location.hash = 'reglages';
+                afficherPage();
                 document.getElementById('blocAjouterVelo').scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
 
