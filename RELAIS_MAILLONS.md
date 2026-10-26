@@ -47,18 +47,24 @@ Ce fichier ne doit **pas** être mis à jour seulement à la fin : une session p
 
 ## Tâche en cours
 
-REPRISE PAR CHATGPT — 26/10/2026 : finalisation multi-vélos avant proposition de fusion.
-- Branche dédiée : `reprise/2026-10-26-multivelos-completion`, créée à partir de `reprise/2026-10-26-multivelos-base-main`. Aucun changement sur `main`, aucune fusion et aucun déploiement.
-- Objectif : préparer une version cohérente de la sélection/création des vélos, avec données et réglages personnels séparés, en préservant l'historique du CUBE.
-- Changements enregistrés sur la branche :
-  - `main.py` : champs moteur/batterie dans `velos`, table `mes_reglages_velo` et copie idempotente des anciens réglages personnels vers le CUBE ; endpoints de création et de modification de fiche ; composants de base selon les huit types ; sélecteur de vélo ; propagation de `velo_id` aux appels API ; réglages personnels isolés ; fiche technique générique modifiable pour les nouveaux vélos ; pastilles de nouveauté séparées par vélo ; sauvegarde incluant le registre et les réglages personnels.
-  - `.github/workflows/maillons-check.yml` : déclenchement sur la branche de reprise et sur les demandes de fusion ; contrôles migration SQLite/PostgreSQL, réglages CUBE et test d'intégration de création/isolation sur SQLite.
-- Commits code principaux : `990d3da`, `e66dca7`, `04c30eb`, `875207b`, `a7cc4e5`. Contrôles workflow modifiés ensuite ; consulter la tête de branche avant toute nouvelle modification.
-- Réglages terrain : restent globaux, sans modification des coefficients. Les coefficients par composant restent filtrés par vélo. Pas de changement à `db.py`.
-- Limites/risques : résultat du nouveau workflow à confirmer ; test navigateur/téléphone non effectué ; la photo personnalisée des nouveaux vélos reste à ajouter ; la réaffectation d'une sortie à un autre vélo et l'affectation des futures sorties automatiques « à vérifier » restent à traiter. Ne pas considérer la fonctionnalité complète.
-- État des tests : aucun résultat du nouveau workflow confirmé à ce stade.
-- Prochaine étape : relire le diff, consulter les contrôles, corriger tout échec et préparer une PR de brouillon. Demander à Math l'accord explicite avant fusion.
+REPRISE PAR CHATGPT — 26/10/2026 : préparation de la fonctionnalité multi-vélos avant validation utilisateur.
+- Branche dédiée : `reprise/2026-10-26-multivelos-completion`. Aucune modification de `main`, aucune fusion et aucun déploiement effectués.
+- Objectif : créer et sélectionner plusieurs vélos, isoler les données et réglages personnels, préserver l'historique du CUBE, et permettre de réaffecter une sortie sans fausser les compteurs.
+- Modifications enregistrées dans `main.py` :
+  - Sélecteur « Mon vélo » et création de vélos parmi les huit types.
+  - Composants de départ adaptés au type, avec moteur/batterie seulement pour les vélos électriques.
+  - Champs moteur/batterie ajoutés au registre ; fiche technique des nouveaux vélos affichée et modifiable.
+  - Réglages personnels stockés dans `mes_reglages_velo`; anciens réglages copiés vers le CUBE sans supprimer la table historique.
+  - Appels API liés au vélo sélectionné ; kilomètres, composants, interventions, sorties et coefficients de pièces filtrés par vélo.
+  - Pastilles de nouveauté séparées par vélo, sauvegarde étendue au registre et aux réglages personnels.
+  - Réaffectation d'une sortie vers un autre vélo avec correction des kilomètres comptabilisés sur l'ancien et le nouveau vélo.
+  - Un nouveau vélo commence sans date de synchronisation kilométrique ; ses sorties importées peuvent donc alimenter son compteur. Les coefficients de terrain restent globaux et inchangés.
+- Modifications de `.github/workflows/maillons-check.yml` : déclenchement sur la branche de reprise et sur PR ; tests migration SQLite/PostgreSQL et test d'intégration SQLite pour création, composants selon type, réglages séparés, modification de fiche et transfert d'une sortie.
+- **Tests GitHub Actions vérifiés : run `40373004664`, commit `3c265ee64c93e9eef82627612243fd35bb586ca2`, conclusion `success`.** Étapes réussies : syntaxe Python, migration SQLite avec données historiques, démarrage/migration PostgreSQL 16 temporaire, relance idempotente, test d'intégration multi-vélos et vérification statique du script. Un premier run `40372847935` a échoué car PostgreSQL refuse `WHERE 1`; correction enregistrée en `WHERE TRUE`, puis le run `40373004664` a réussi.
+- Limites restantes : test navigateur/téléphone non réalisé ; photo personnalisée des nouveaux vélos à faire à l'étape prévue ; affectation des futures sorties automatiques « à vérifier » non intégrée, car le mécanisme d'import automatique correspondant n'est pas présent dans les routes actuelles. Ne pas considérer la fonctionnalité entièrement validée.
+- Pull request de brouillon : [PR #7](https://github.com/bigone1212/VTT-entretien/pull/7). Elle n'est pas fusionnée. La comparaison avec `main` est divergente ; le relais a été réconcilié avec la version récente de `main` et la PR est actuellement signalée comme fusionnable. Recontrôler son état avant toute fusion.
 - Local, non enregistré : rien.
+- Prochaine étape : relire la PR et vérifier le statut des contrôles les plus récents ; corriger si nécessaire, puis demander à Math s'il souhaite fusionner. Ne pas fusionner sans son accord explicite.
 
 ### Historique précédent — état de main au démarrage
 
