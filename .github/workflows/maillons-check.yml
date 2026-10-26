@@ -310,6 +310,49 @@ jobs:
 
           print("OK: démarrage réel PostgreSQL temporaire, données historiques conservées, relance sans doublons.")
           PY
+      - name: Vérifier la création et l'isolation des vélos sur SQLite
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-multivelos-test.db
+          CODE_ACCES: test
+        run: |
+          python - <<'PY'
+          import main
+          import db
+
+          route = main.creer_velo(
+              main.NouveauVeloRequest(nom="Gravel test", type="gravel"),
+              x_code_acces="test"
+          )
+          route_id = route["velo_id"]
+          electrique = main.creer_velo(
+              main.NouveauVeloRequest(nom="VTT électrique test", type="vtt_electrique"),
+              x_code_acces="test"
+          )
+          electrique_id = electrique["velo_id"]
+
+          main.enregistrer_mes_reglages(
+              main.MesReglagesRequest(valeurs={"taille_cadre": "M"}),
+              velo_id=route_id,
+              x_code_acces="test"
+          )
+          gravel_reglages = main.lire_mes_reglages(velo_id=route_id, x_code_acces="test")
+          cube_reglages = main.lire_mes_reglages(velo_id=1, x_code_acces="test")
+          assert gravel_reglages["valeurs"]["taille_cadre"] == "M"
+          assert cube_reglages["valeurs"].get("taille_cadre") != "M"
+
+          conn = db.connect()
+          cursor = conn.cursor()
+          cursor.execute("SELECT COUNT(*) FROM composants WHERE velo_id = ?", (route_id,))
+          assert cursor.fetchone()[0] >= 7
+          cursor.execute("SELECT COUNT(*) FROM composants WHERE velo_id = ? AND nom LIKE '%Moteur%'", (route_id,))
+          assert cursor.fetchone()[0] == 0
+          cursor.execute("SELECT COUNT(*) FROM composants WHERE velo_id = ? AND nom LIKE '%Moteur%'", (electrique_id,))
+          assert cursor.fetchone()[0] == 1
+          cursor.execute("SELECT COUNT(*) FROM composants WHERE velo_id = ?", (1,))
+          assert cursor.fetchone()[0] > 0
+          conn.close()
+          print("OK: création de vélos, composants selon le type et réglages personnels séparés.")
+          PY
       - name: Vérifier le script de migration SQLite sur une base temporaire
         run: |
           python - <<'PY'
