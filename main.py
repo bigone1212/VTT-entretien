@@ -11198,9 +11198,10 @@ def accueil():
             async function changerVeloSortie(sortie) {
                 const autres = velosDisponibles.filter(v => Number(v.id) !== veloActifId);
                 if (!autres.length) return;
+                const saut = String.fromCharCode(10);
                 const choix = prompt(
-                    'Choisissez le vélo de destination en saisissant son numéro :\n' +
-                    autres.map((v, i) => (i + 1) + '. ' + v.nom).join('\n')
+                    'Choisissez le vélo de destination en saisissant son numéro :' + saut +
+                    autres.map((v, i) => (i + 1) + '. ' + v.nom).join(saut)
                 );
                 if (choix === null) return;
                 const index = Number.parseInt(choix, 10) - 1;
