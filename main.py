@@ -11501,8 +11501,8 @@ def retirer_intervention(cursor, historique_id, velo_id=1):
             # la pièce ne change pas. On "recolle" la chaîne pour que
             # supprimer la suivante revienne au bon état d'avant.
             cursor.execute(
-                "UPDATE historique SET km_avant = ? WHERE id = ?",
-                (km_avant, suivante[0])
+                "UPDATE historique SET km_avant = ? WHERE id = ? AND velo_id = ?",
+                (km_avant, suivante[0], velo_id)
             )
 
     return composant_id, km_depart
@@ -11656,8 +11656,8 @@ def modifier_intervention(
             else:
                 # Sinon, c'est l'état « d'avant » de l'intervention suivante.
                 cursor.execute(
-                    "UPDATE historique SET km_avant = ? WHERE id = ?",
-                    (data.km_intervention, suivante[0])
+                    "UPDATE historique SET km_avant = ? WHERE id = ? AND velo_id = ?",
+                    (data.km_intervention, suivante[0], velo_id)
                 )
 
         conn.commit()
@@ -11747,8 +11747,8 @@ def remplacer_composant(
         )
 
         cursor.execute(
-            "SELECT km_depart FROM composants WHERE id = ?",
-            (composant_id,)
+            "SELECT km_depart FROM composants WHERE id = ? AND velo_id = ?",
+            (composant_id, velo_id)
         )
         km_avant = cursor.fetchone()[0] or 0
 
