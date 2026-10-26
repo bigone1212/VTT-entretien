@@ -56,7 +56,8 @@ REPRISE PAR CHATGPT — 26/10/2026 : préparation complète de la fonctionnalit�
 - Local, non enregistré : rien. Toute modification doit être enregistrée sur cette branche, et les tests doivent être décrits sans exagération.
 
 
-REPRISE PAR CHATGPT — 26/10/2026 :
+### Historique précédent — reprise multi-vélos initiale
+
 - Objectif général : poursuivre le chantier « Plusieurs vélos » sur une branche de test, sans fusionner dans `main` ni déployer sans accord explicite de Math.
 - Branche de travail vérifiée : `reprise/2026-10-26-multivelos-base-main`. Le comparatif avec `main` indique que la branche est divergente (30 commits en avance, 1 en retard) ; ne pas fusionner automatiquement et relire les différences avant toute demande de fusion.
 - Migration C3(a) : enregistrée sur cette branche. Elle crée la table `velos`, initialise le CUBE et rattache les composants/sorties historiques au CUBE, avec des colonnes `velo_id`. La table historique `velo` est conservée. Le dernier workflow GitHub Actions vérifié est le run `40363637688`, commit `815b759345b45ad9c1800e566f86ed3f85c650bf` : syntaxe Python, démarrage sur SQLite temporaire, démarrage sur PostgreSQL 16 temporaire et script de migration SQLite ont tous réussi. Les avertissements Node.js 20 et Ubuntu sont des avertissements de maintenance des actions, pas des échecs du test.
