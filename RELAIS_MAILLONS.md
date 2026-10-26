@@ -47,6 +47,18 @@ Ce fichier ne doit **pas** être mis à jour seulement à la fin : une session p
 
 ## Tâche en cours
 
+REPRISE PAR CHATGPT — 26/10/2026, après accord explicite de Math :
+- Objectif : reprendre l'étape C2 du chantier « Plusieurs vélos », sans modifier le code avant d'avoir enregistré ce point de reprise.
+- Dernier commit de main vérifié : `3b099613a6ede5aaab95fcc0175b4e5301673a3a` (relais C2 de Claude).
+- Vérification GitHub : la branche `reprise/2026-10-26-plusieurs-velos` mentionnée plus bas n'apparaît PAS dans la liste actuelle des branches. Ne pas supposer qu'un code de cette branche existe ; rechercher à nouveau avant de créer une branche portant ce nom.
+- Code vérifié en lecture seule : `main.py` sur `main`, route `/api/sauvegarde` vers la ligne 12573 ; elle exporte `km_total`, composants, historique, sorties et réglages généraux, mais pas la ligne complète de `velo` ni `mes_reglages`.
+- Étapes : [~] 1. Enregistrer ce point de reprise dans le seul fichier relais sur `main` (ce commit peut déclencher le redéploiement automatique identique de Render). [ ] 2. Recontrôler les branches et créer une branche de code dédiée depuis le dernier `main`. [ ] 3. Examiner précisément le schéma et les fonctions de sauvegarde puis modifier uniquement `main.py` sur la branche. [ ] 4. Vérifier le diff et les tests réalisables ; aucun code non testé dans `main`. [ ] 5. Fournir à Math les étapes pour télécharger et contrôler la sauvegarde avant toute migration.
+- Enregistré sur GitHub : avant ce point de reprise, relais `3b099613a6ede5aaab95fcc0175b4e5301673a3a`. Commit du présent point à compléter après écriture.
+- Local, non enregistré : rien.
+- Fichiers prévus pour le code : `main.py` uniquement. Aucun changement à `db.py`, aucun changement de base de données, aucune fusion de code ni déploiement de code sans nouvel accord explicite de Math.
+- Tests : aucune modification de code ni aucun test d'application effectué à ce stade.
+- Prochaine action : enregistrer le point de reprise, puis commencer l'étape C2 sur une branche séparée.
+
 NOUVELLE DEMANDE de Math — 26/10/2026, par Claude (3 demandes, traitées une par une ; les quatre premières demandes du 25/10 sont terminées et fusionnées) :
   [x] A. Survol 3D : le message « Appuie sur Lecture pour lancer le survol… » était au centre et cachait le circuit. Branche `reprise/2026-10-26-message-3d` (CSS de `.v3d-message` seulement, 2 règles ; fonctionnement inchangé) : le message est en haut, à droite de la légende des pentes, plus compact ; en paysage, même principe. Test sur page HTML générée avec fausse carte (la vraie carte 3D n'est pas testable chez Claude) : 3 tailles d'écran (390x800, 360x640, 844x390 paysage) x légende pentes et terrain : le message ne chevauche plus ni la légende ni la zone du circuit (avant : il chevauchait dans les 6 cas) ; 0 erreur JS. Non testé : vraie carte 3D, téléphone, Render. Fusionné dans `main` le 26/10/2026 avec l'accord explicite de Math (commit `0f8d0a8`, fusion sans conflit). À vérifier par Math après redéploiement Render : message en haut dans le vrai survol 3D. Déploiement Render non vérifié par Claude.
   [x] B. Réglages : « Apparence » et « Unités » sont repliables (fermées au départ), comme « Mes réglages vélo » et « Réglages de l'usure ». Branche `reprise/2026-10-26-cartes-repliables`, `main.py` seulement (même mécanisme `mr-repliable` que les cartes existantes, contenu inchangé). Tests sur page HTML générée : 4 cartes fermées au départ ; ouverture/fermeture OK ; choix de thème, de couleur et d'unité fonctionnent toujours et sont mémorisés ; 0 erreur JS ; aucun backslash ajouté. Non testé : téléphone, Render. Fusionné dans `main` le 26/10/2026 avec l'accord explicite de Math (commit `65efb80`, fusion sans conflit). À vérifier par Math après redéploiement Render : cartes Apparence et Unités repliables.
@@ -256,7 +268,7 @@ Dernier commit de main connu : …    Branche de reprise éventuelle : …
 
 ## 8. État GitHub / Render
 
-- **Dernier commit de `main` vérifié avant mise à jour du relais : `1d29868089a6b39675f4014e704402fe94e65467`** (25/10/2026).
+- **Dernier commit de `main` vérifié avant ce point de reprise : `3b099613a6ede5aaab95fcc0175b4e5301673a3a`** (26/10/2026).
 - Commits de relais : `6ac4728` (création du fichier) et `b8ef78e` (protocole de reprise), tous deux vérifiés sur GitHub le 25/10/2026. Le commit de l'intervention 3 (règle de publication) vient **après** : son numéro n'est pas connu au moment de l'écriture, consulter l'historique de `main` sur GitHub.
 - Dernier commit de **l'appli** (code) : `67e6a92`. Les commits de relais ne modifient que ce fichier.
 - Branches vérifiées lors de la reprise : `main`, `feature/fiche-technique-velo` (non examinée), `reprise/2026-10-25-couleurs` et `reprise/2026-10-25-unites`. La branche unités n'est pas fusionnée dans `main`.
