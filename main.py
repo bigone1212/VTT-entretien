@@ -3336,7 +3336,7 @@ def accueil():
 
         <div class="page" id="page-reglages" style="display:none;">
         <section class="mes-reglages" id="blocAjouterVelo">
-            <div class="mr-titre"><strong>Ajouter un vélo</strong></div>
+            <div class="mr-titre"><strong id="titreFormVelo">Ajouter un vélo</strong></div>
             <p class="form-help">Chaque vélo aura ses sorties, ses kilomètres et son carnet d'entretien séparés. La photo personnalisée sera ajoutée lors d'une étape ultérieure.</p>
             <form id="formAjouterVelo">
                 <label for="nouveauVeloNom">Nom du vélo</label>
@@ -3368,7 +3368,8 @@ def accueil():
                     <label for="nouveauVeloBatterie">Batterie (vélo électrique uniquement)</label>
                     <input id="nouveauVeloBatterie" name="batterie" type="text" maxlength="120">
                 </div>
-                <button class="btn-primary" type="submit" style="width:100%; margin-top:8px;">Créer le vélo</button>
+                <button class="btn-primary" id="boutonCreerVelo" type="submit" style="width:100%; margin-top:8px;">Créer le vélo</button>
+                <button type="button" id="btnAnnulerEditionFiche" style="display:none; width:100%; margin-top:8px;" onclick="annulerEditionFiche()">Annuler la modification</button>
                 <p class="form-help" id="nouveauVeloMessage"></p>
             </form>
         </section>
@@ -3567,6 +3568,7 @@ def accueil():
             <div class="mr-ligne"><span>Taille du cadre</span><b id="ficheAutreTaille">—</b></div>
             <div class="mr-ligne" id="ficheAutreMoteurLigne"><span>Moteur</span><b id="ficheAutreMoteur">—</b></div>
             <div class="mr-ligne" id="ficheAutreBatterieLigne"><span>Batterie</span><b id="ficheAutreBatterie">—</b></div>
+            <button type="button" id="btnModifierFicheVelo" onclick="modifierFicheVelo()" style="width:100%; margin-top:12px;">Modifier cette fiche</button>
         </section>
 
         <section class="mes-reglages mr-repliable" id="mesReglages" aria-label="Mes réglages vélo">
@@ -4097,6 +4099,8 @@ def accueil():
                 const ficheGenerique = document.getElementById('ficheTechniqueAutre');
                 if (ficheCube) ficheCube.style.display = estCube ? '' : 'none';
                 if (ficheGenerique) ficheGenerique.style.display = estCube ? 'none' : 'block';
+                const boutonModifierFiche = document.getElementById('btnModifierFicheVelo');
+                if (boutonModifierFiche) boutonModifierFiche.style.display = estCube ? 'none' : 'block';
                 const ficheNom = document.getElementById('ficheAutreNom');
                 const ficheType = document.getElementById('ficheAutreType');
                 const ficheMarque = document.getElementById('ficheAutreMarque');
@@ -4150,13 +4154,49 @@ def accueil():
 
             document.getElementById('selectVelo').addEventListener('change', changerVeloActif);
             document.getElementById('nouveauVeloType').addEventListener('change', afficherNomVeloActif);
+            let veloEditionId = null;
+
+            function modifierFicheVelo() {
+                const velo = velosDisponibles.find(v => Number(v.id) === veloActifId);
+                if (!velo || Number(velo.id) === 1) return;
+                const formulaire = document.getElementById('formAjouterVelo');
+                formulaire.elements.nom.value = velo.nom || '';
+                formulaire.elements.type.value = velo.type || 'vtt';
+                formulaire.elements.type.disabled = true;
+                formulaire.elements.marque.value = velo.marque || '';
+                formulaire.elements.modele.value = velo.modele || '';
+                formulaire.elements.annee.value = velo.annee || '';
+                formulaire.elements.taille.value = velo.taille || '';
+                formulaire.elements.date_achat.value = velo.date_achat || '';
+                formulaire.elements.moteur.value = velo.moteur || '';
+                formulaire.elements.batterie.value = velo.batterie || '';
+                veloEditionId = Number(velo.id);
+                document.getElementById('titreFormVelo').textContent = 'Modifier la fiche du vélo';
+                document.getElementById('boutonCreerVelo').textContent = 'Enregistrer la fiche';
+                document.getElementById('btnAnnulerEditionFiche').style.display = 'block';
+                document.getElementById('nouveauVeloMessage').textContent = '';
+                location.hash = 'reglages';
+                document.getElementById('blocAjouterVelo').scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+
+            function annulerEditionFiche() {
+                veloEditionId = null;
+                const formulaire = document.getElementById('formAjouterVelo');
+                formulaire.reset();
+                formulaire.elements.type.disabled = false;
+                document.getElementById('titreFormVelo').textContent = 'Ajouter un vélo';
+                document.getElementById('boutonCreerVelo').textContent = 'Créer le vélo';
+                document.getElementById('btnAnnulerEditionFiche').style.display = 'none';
+                document.getElementById('nouveauVeloMessage').textContent = '';
+                afficherNomVeloActif();
+            }
 
             document.getElementById('formAjouterVelo').addEventListener('submit', async event => {
                 event.preventDefault();
                 const formulaire = event.currentTarget;
                 const message = document.getElementById('nouveauVeloMessage');
                 const type = document.getElementById('nouveauVeloType').value;
-                const electrique = ['vtt_electrique', 'gravel_electrique', 'route_electrique'].includes(type);
+                const electrique = ['vtt_electrique', 'gravel_electrique', 'route_electrique', 'electrique'].includes(type);
                 const valeurs = Object.fromEntries(new FormData(formulaire).entries());
                 if (!electrique) {
                     delete valeurs.moteur;
@@ -4168,17 +4208,19 @@ def accueil():
                     if (typeof valeurs[cle] === 'string' && valeurs[cle].trim() === '') delete valeurs[cle];
                 });
                 try {
-                    const res = await fetch('/api/velos', {
-                        method: 'POST',
+                    const edition = veloEditionId !== null;
+                    const adresse = edition ? '/api/velos/' + veloEditionId : '/api/velos';
+                    const res = await fetch(adresse, {
+                        method: edition ? 'PUT' : 'POST',
                         headers: getHeaders(),
                         body: JSON.stringify(valeurs)
                     });
                     const data = await res.json();
-                    if (!res.ok) throw new Error(data.detail || 'Création impossible.');
-                    veloActifId = Number(data.velo_id);
+                    if (!res.ok) throw new Error(data.detail || 'Enregistrement impossible.');
+                    if (data.velo_id) veloActifId = Number(data.velo_id);
                     sessionStorage.setItem('maillons_velo_id', String(veloActifId));
-                    formulaire.reset();
-                    message.textContent = 'Vélo créé. Chargement de ses données…';
+                    annulerEditionFiche();
+                    message.textContent = edition ? 'Fiche mise à jour.' : 'Vélo créé. Chargement de ses données…';
                     await chargerVelos();
                     await rechargerDonneesVelo();
                 } catch (e) {
@@ -11398,6 +11440,67 @@ class NouveauVeloRequest(BaseModel):
     date_achat: Optional[str] = Field(default=None, max_length=10)
     moteur: Optional[str] = Field(default=None, max_length=120)
     batterie: Optional[str] = Field(default=None, max_length=120)
+
+
+class ModifierFicheVeloRequest(BaseModel):
+    nom: str = Field(min_length=1, max_length=80)
+    marque: Optional[str] = Field(default=None, max_length=80)
+    modele: Optional[str] = Field(default=None, max_length=120)
+    annee: Optional[int] = Field(default=None, ge=1950, le=2100)
+    taille: Optional[str] = Field(default=None, max_length=30)
+    date_achat: Optional[str] = Field(default=None, max_length=10)
+    moteur: Optional[str] = Field(default=None, max_length=120)
+    batterie: Optional[str] = Field(default=None, max_length=120)
+
+
+@app.put("/api/velos/{velo_id}")
+def modifier_fiche_velo(
+    velo_id: int,
+    data: ModifierFicheVeloRequest,
+    x_code_acces: Optional[str] = Header(default=None)
+):
+    verifier_auth(x_code_acces)
+    nom = " ".join(data.nom.split())
+    if not nom:
+        raise HTTPException(status_code=400, detail="Donnez un nom au vélo.")
+    date_achat = data.date_achat.strip() if data.date_achat else None
+    if date_achat:
+        try:
+            date.fromisoformat(date_achat)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Date d'achat non valide.")
+
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "SELECT type FROM velos WHERE id = ? AND actif = 1",
+            (velo_id,)
+        )
+        velo = cursor.fetchone()
+        if velo is None:
+            raise HTTPException(status_code=404, detail="Vélo introuvable.")
+        electrique = velo[0] in {"vtt_electrique", "gravel_electrique", "route_electrique", "electrique"}
+        cursor.execute("""
+            UPDATE velos
+            SET nom = ?, marque = ?, modele = ?, annee = ?, taille = ?,
+                date_achat = ?, moteur = ?, batterie = ?
+            WHERE id = ? AND actif = 1
+        """, (
+            nom, (data.marque or "").strip() or None,
+            (data.modele or "").strip() or None, data.annee,
+            (data.taille or "").strip() or None, date_achat,
+            ((data.moteur or "").strip() or None) if electrique else None,
+            ((data.batterie or "").strip() or None) if electrique else None,
+            velo_id
+        ))
+        conn.commit()
+        return {"statut": "success", "velo_id": velo_id, "nom": nom}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 @app.post("/api/velos")
