@@ -11673,24 +11673,40 @@ def modifier_intervention(
 
 
 @app.post("/api/sync")
-def synchroniser_kilometrage(data: SynchroRequest, x_code_acces: Optional[str] = Header(default=None)):
+def synchroniser_kilometrage(
+    data: SynchroRequest,
+    velo_id: int = 1,
+    x_code_acces: Optional[str] = Header(default=None)
+):
     verifier_auth(x_code_acces)
     conn = db.connect()
     cursor = conn.cursor()
 
     try:
+        cursor.execute(
+            "SELECT id FROM velos WHERE id = ? AND actif = 1",
+            (velo_id,)
+        )
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Vélo introuvable.")
+
         cursor.execute("""
-            UPDATE velo
+            UPDATE velos
             SET km_total = ?, km_frac = 0, km_maj_le = ?
-            WHERE id = 1
-        """, (data.km_total, maintenant_utc()))
+            WHERE id = ?
+        """, (data.km_total, maintenant_utc(), velo_id))
 
         conn.commit()
 
         return {
             "statut": "success",
-            "km_total": data.km_total
+            "km_total": data.km_total,
+            "velo_id": velo_id
         }
+
+    except Exception:
+        conn.rollback()
+        raise
 
     finally:
         conn.close()
