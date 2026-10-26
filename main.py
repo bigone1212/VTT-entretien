@@ -11345,31 +11345,36 @@ def obtenir_historique(
 
 
 @app.post("/api/historique")
-def ajouter_historique(data: HistoriqueRequest, x_code_acces: Optional[str] = Header(default=None)):
+def ajouter_historique(
+    data: HistoriqueRequest,
+    velo_id: int = 1,
+    x_code_acces: Optional[str] = Header(default=None)
+):
     verifier_auth(x_code_acces)
     conn = db.connect()
     cursor = conn.cursor()
 
     try:
         cursor.execute(
-            "SELECT id FROM composants WHERE id = ?",
-            (data.composant_id,)
+            "SELECT id FROM velos WHERE id = ? AND actif = 1",
+            (velo_id,)
         )
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Vélo introuvable.")
 
+        cursor.execute(
+            "SELECT id FROM composants WHERE id = ? AND velo_id = ?",
+            (data.composant_id, velo_id)
+        )
         if cursor.fetchone() is None:
             raise HTTPException(
                 status_code=404,
-                detail="Composant introuvable."
+                detail="Composant introuvable pour ce vélo."
             )
 
-        cursor.execute("SELECT km_total FROM velo WHERE id = 1")
+        cursor.execute("SELECT km_total FROM velos WHERE id = ?", (velo_id,))
         velo = cursor.fetchone()
-
-        km_total = (
-            velo[0]
-            if velo and velo[0] is not None
-            else 2700
-        )
+        km_total = velo[0] if velo and velo[0] is not None else 2700
 
         if data.km_intervention > km_total:
             raise HTTPException(
@@ -11381,13 +11386,15 @@ def ajouter_historique(data: HistoriqueRequest, x_code_acces: Optional[str] = He
             )
 
         cursor.execute(
-            "SELECT km_depart FROM composants WHERE id = ?",
-            (data.composant_id,)
+            "SELECT km_depart FROM composants WHERE id = ? AND velo_id = ?",
+            (data.composant_id, velo_id)
         )
-        km_avant = cursor.fetchone()[0] or 0
+        ligne_composant = cursor.fetchone()
+        km_avant = (ligne_composant[0] or 0) if ligne_composant else 0
 
         cursor.execute("""
             INSERT INTO historique (
+                velo_id,
                 composant_id,
                 date_remplacement,
                 cout,
@@ -11395,8 +11402,9 @@ def ajouter_historique(data: HistoriqueRequest, x_code_acces: Optional[str] = He
                 km_intervention,
                 km_avant
             )
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (
+            velo_id,
             data.composant_id,
             data.date_remplacement,
             data.cout or 0.0,
@@ -11408,10 +11416,11 @@ def ajouter_historique(data: HistoriqueRequest, x_code_acces: Optional[str] = He
         cursor.execute("""
             UPDATE composants
             SET km_depart = ?
-            WHERE id = ?
+            WHERE id = ? AND velo_id = ?
         """, (
             data.km_intervention,
-            data.composant_id
+            data.composant_id,
+            velo_id
         ))
 
         conn.commit()
@@ -11428,7 +11437,6 @@ def ajouter_historique(data: HistoriqueRequest, x_code_acces: Optional[str] = He
 
     finally:
         conn.close()
-
 
 def retirer_intervention(cursor, historique_id):
     """Supprime une intervention et remet la pièce dans l'état d'avant.
