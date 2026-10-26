@@ -325,3 +325,12 @@ Dernier commit de main connu : …    Branche de reprise éventuelle : …
 - Le run GitHub Actions `40375622265` sur le commit `aa47a3edc9468c1d6812e0899ef433ede614b24e` a **réussi** : les lectures de l'état d'entretien, du carnet et des sorties sont maintenant vérifiées pour s'assurer qu'elles restent propres au vélo sélectionné : https://github.com/bigone1212/VTT-entretien/actions/runs/40375622265
 - Les tests d'import simulent la sortie déjà analysée par `gpx_import`; ils ne valident pas le parseur GPX lui-même. Aucun test visuel navigateur/téléphone ni test Render/Neon n'a été effectué.
 - Suite proposée : une vérification visuelle sur navigateur/téléphone reste nécessaire avant fusion. Les photos personnalisées sont réservées à une étape ultérieure. L'affectation automatique des sorties « à vérifier » ne peut pas être intégrée sans définir/ajouter le mécanisme d'import automatique; ne pas modifier les zones 3D ni les filtres.
+
+
+## Mise à jour de reprise — 26/10/2026, tests de lecture complétés
+
+- Commit de tests : `aa47a3edc9468c1d6812e0899ef433ede614b24e`, fichier `.github/workflows/maillons-check.yml`. Le test vérifie aussi que `GET /api/etat` ne renvoie pas les composants d'un autre vélo, en plus des vérifications du carnet et des sorties.
+- GitHub Actions `40375622265` : **succès**. Syntaxe Python, migrations SQLite et PostgreSQL temporaires, création/fiche/réglages/composants par vélo, transfert de sortie, import simulé, calcul et suppression de kilomètres, refus d'accès croisé entre vélos et lectures filtrées : https://github.com/bigone1212/VTT-entretien/actions/runs/40375622265
+- Le test d'import simule le résultat du parseur `gpx_import`; il ne remplace pas un test du parseur sur un véritable fichier GPX. Aucun test visuel navigateur/téléphone ni test sur Neon/Render.
+- État de publication vérifié : `main` reste au SHA `69142d7f095b350c4393965e093d7c9c7a37140e`; PR #7 toujours ouverte, brouillon et non fusionnée. GitHub signale actuellement `mergeable_state: dirty`; la branche de test et `main` ont divergé, avec un commit supplémentaire sur `main` qui ne modifie que `RELAIS_MAILLONS.md`. Réconcilier le relais avant toute fusion future. Ne pas résoudre cela en modifiant `main` maintenant.
+- Prochain travail utile : vérification visuelle de la sélection et du changement de vélo sur navigateur et téléphone. Photos personnalisées et import automatique restent des étapes séparées ; l'import automatique nécessite de définir l'intégration/source avant de pouvoir attribuer les futures sorties avec le statut « à vérifier ».
