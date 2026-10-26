@@ -332,7 +332,28 @@ jobs:
               assert conn.execute("SELECT COUNT(*) FROM velos").fetchone()[0] == count_bikes
               assert conn.execute("SELECT COUNT(*) FROM composants").fetchone()[0] == count_components
 
-          print("OK: démarrage réel PostgreSQL temporaire, données historiques conservées, relance sans doublons.")
+          # Les kilomètres ajoutés pendant que l'appli tourne doivent survivre à un
+          # redémarrage (ancien défaut : retour à l'ancienne valeur à chaque démarrage).
+          with psycopg.connect(url) as conn:
+              conn.execute(
+                  "UPDATE velos SET km_total = 2800, km_maj_le = '2026-10-27T10:00:00Z' WHERE id = 1"
+              )
+          subprocess.run([sys.executable, "-c", "import main"], env=env, check=True)
+          with psycopg.connect(url) as conn:
+              ligne = conn.execute(
+                  "SELECT km_total, km_maj_le FROM velos WHERE id = 1"
+              ).fetchone()
+              assert ligne == (2800, "2026-10-27T10:00:00Z"), ligne
+              assert conn.execute(
+                  "SELECT legacy_velo_id FROM velos WHERE id = 1"
+              ).fetchone()[0] == 1
+              # Le prochain vélo ajouté (sans id imposé) ne doit pas reprendre l'id 1.
+              nouvel_id = conn.execute(
+                  "INSERT INTO velos (nom, type) VALUES ('Vélo test séquence', 'gravel') RETURNING id"
+              ).fetchone()[0]
+              assert nouvel_id == 2, nouvel_id
+
+          print("OK: démarrage réel PostgreSQL temporaire, données historiques conservées, relance sans doublons, kilomètres conservés après redémarrage, CUBE id 1 et séquence suivante id 2.")
           PY
       - name: Vérifier la création et l'isolation des vélos sur SQLite
         env:
@@ -602,6 +623,39 @@ jobs:
           conn.close()
 
           print("OK: création, fiche modifiable, composants par type, réglages isolés, transfert de sortie, et isolation des interventions.")
+          PY
+      - name: Vérifier que les kilomètres survivent à un redémarrage (SQLite)
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-redemarrage-test.db
+          CODE_ACCES: test
+        run: |
+          rm -f "$SQLITE_PATH"
+          python -c "import main"
+          python - <<'PY'
+          import os
+          import sqlite3
+          import subprocess
+          import sys
+
+          path = os.environ["SQLITE_PATH"]
+          db = sqlite3.connect(path)
+          assert db.execute("SELECT id FROM velos WHERE legacy_velo_id = 1").fetchone()[0] == 1
+          db.execute("UPDATE velos SET km_total = 2800, km_frac = 0.4, km_maj_le = '2026-10-27T10:00:00Z' WHERE id = 1")
+          db.commit()
+          db.close()
+
+          # Deux redémarrages réels : le compteur vivant ne doit pas revenir en arrière.
+          for _ in range(2):
+              subprocess.run([sys.executable, "-c", "import main"], check=True)
+
+          db = sqlite3.connect(path)
+          ligne = db.execute("SELECT km_total, km_frac, km_maj_le FROM velos WHERE id = 1").fetchone()
+          assert ligne == (2800, 0.4, "2026-10-27T10:00:00Z"), ligne
+          assert db.execute("SELECT COUNT(*) FROM velos").fetchone()[0] == 1
+          db.execute("INSERT INTO velos (nom, type) VALUES ('Vélo test séquence', 'gravel')")
+          assert db.execute("SELECT MAX(id) FROM velos").fetchone()[0] == 2
+          db.close()
+          print("OK: kilomètres conservés après redémarrage, CUBE id 1, vélo suivant id 2.")
           PY
       - name: Vérifier le script de migration SQLite sur une base temporaire
         run: |

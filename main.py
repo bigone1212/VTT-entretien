@@ -365,16 +365,29 @@ def init_db():
     ajouter_colonne(cursor, "velos", "moteur", "TEXT")
     ajouter_colonne(cursor, "velos", "batterie", "TEXT")
 
+    # Le CUBE reçoit TOUJOURS l'identifiant 1 : les pièces et les sorties
+    # existantes sont rattachées au vélo n° 1 (velo_id par défaut).
     cursor.execute("""
         INSERT INTO velos (
-            nom, type, marque, modele, annee, km_total,
+            id, nom, type, marque, modele, annee, km_total,
             km_frac, km_maj_le, date_achat, legacy_velo_id
         )
-        VALUES ('Mon CUBE', 'electrique', 'Cube',
+        VALUES (1, 'Mon CUBE', 'electrique', 'Cube',
                 'Stereo Hybrid ONE44 EXC 800 (Bosch)', 2025,
                 2700, 0, NULL, NULL, 1)
-        ON CONFLICT (legacy_velo_id) DO NOTHING
+        ON CONFLICT DO NOTHING
     """)
+
+    # PostgreSQL : le numéro automatique ne sait pas qu'on a imposé l'id 1.
+    # On avance la séquence pour que le prochain vélo ajouté ne reçoive pas
+    # un numéro déjà pris. (SQLite le fait tout seul.)
+    if db.USE_PG:
+        cursor.execute("""
+            SELECT setval(
+                pg_get_serial_sequence('velos', 'id'),
+                GREATEST((SELECT MAX(id) FROM velos), 1)
+            )
+        """)
 
 
     cursor.execute(f"""
@@ -515,15 +528,29 @@ def init_db():
         (maintenant_utc(),)
     )
 
-    # Copie du kilométrage et des dates vers le registre, après migration des colonnes.
-    cursor.execute("""
-        UPDATE velos
-        SET km_total = (SELECT km_total FROM velo WHERE id = 1),
-            km_frac = (SELECT km_frac FROM velo WHERE id = 1),
-            km_maj_le = (SELECT km_maj_le FROM velo WHERE id = 1),
-            date_achat = (SELECT date_achat FROM velo WHERE id = 1)
-        WHERE legacy_velo_id = 1
-    """)
+    # Copie du kilométrage et des dates vers le registre, après migration des
+    # colonnes. UNE SEULE FOIS : ensuite les kilomètres vivants sont écrits dans
+    # `velos` (ancienne table `velo` figée, gardée en secours). Sans ce marqueur,
+    # chaque redémarrage remettait le compteur du CUBE à l'ancienne valeur.
+    cursor.execute(
+        "SELECT valeur FROM reglages WHERE cle = ?",
+        ("migration_velos_copie_v1",)
+    )
+
+    if cursor.fetchone() is None:
+        cursor.execute("""
+            UPDATE velos
+            SET km_total = (SELECT km_total FROM velo WHERE id = 1),
+                km_frac = (SELECT km_frac FROM velo WHERE id = 1),
+                km_maj_le = (SELECT km_maj_le FROM velo WHERE id = 1),
+                date_achat = (SELECT date_achat FROM velo WHERE id = 1)
+            WHERE legacy_velo_id = 1
+        """)
+        cursor.execute("""
+            INSERT INTO reglages (cle, valeur)
+            VALUES (?, 1)
+            ON CONFLICT (cle) DO NOTHING
+        """, ("migration_velos_copie_v1",))
 
     cursor.execute("SELECT COUNT(*) FROM composants")
 
