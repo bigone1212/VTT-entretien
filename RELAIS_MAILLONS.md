@@ -284,3 +284,15 @@ REPRISE CHATGPT — 26/10/2026, base de test actualisée :
 - Tests : workflow GitHub Actions `40355625451` lancé et encore en cours au dernier contrôle. Ne pas considérer la migration comme validée avant son résultat.
 - Local, non enregistré : rien.
 - Prochaine étape : attendre le résultat des tests SQLite/PostgreSQL, corriger toute erreur puis seulement démarrer C3(b), isolation des lectures/écritures par vélo.
+
+
+MISE À JOUR CHATGPT — 26/10/2026, validation C3(a) sur base à jour :
+- Branche : `reprise/2026-10-26-multivelos-base-main`, basée sur `main` au commit `a3926efcd33e44090faba18c174b1f2deef46e4a`.
+- `main.py` : registre multi-vélos ajouté sans supprimer la table historique `velo`; le CUBE est créé de façon idempotente; les colonnes `velo_id` sont ajoutées aux tables `composants` et `sorties`; les anciennes lignes sont rattachées au CUBE; le kilométrage et les dates sont copiés après la migration des colonnes historiques.
+- Correction suite à revue : la copie de `km_maj_le` avait été placée avant le remplissage de cette valeur lorsqu'elle était absente. Elle a été déplacée après l'initialisation de la date, puis les tests ont été relancés.
+- Tests réellement réussis sur le commit `3ee114c30c5be8521d0520824b9120d653c09b23`, GitHub Actions run `40355808056` : syntaxe Python, démarrage/migration réelle sur SQLite temporaire, démarrage/migration réelle sur PostgreSQL 16 temporaire, conservation des données historiques et seconde exécution sans doublons.
+- Un run précédent sur le commit `8c02289cc32c7fcf66a0b7498e57062c3ef23b58` a aussi réussi avant la correction de l'ordre de copie; le résultat de référence est le run après correction ci-dessus.
+- Aucun test sur Render ni aucune connexion à Neon/production. Aucune modification de `main`, aucun déploiement.
+- Enregistré sur GitHub : commits `1f30e3eac536ee17cd6cb1477e0750c2c9b224b1`, `8c02289cc32c7fcf66a0b7498e57062c3ef23b58`, `3ee114c30c5be8521d0520824b9120d653c09b23`, puis ce relais (commit à vérifier après enregistrement).
+- Local, non enregistré : rien.
+- C3(a) migration validée sur cette branche de test. C3(b) — isolation des routes, sélecteur du vélo actif, historique/sorties/fiche technique par vélo — reste à faire. Ne pas présenter l'application comme multi-vélos fonctionnelle avant que C3(b) soit implémentée et testée.
