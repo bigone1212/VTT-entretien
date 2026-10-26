@@ -417,7 +417,7 @@ def init_db():
     cursor.execute("""
         UPDATE historique
         SET velo_id = COALESCE(
-            (SELECT velo_id FROM composants WHERE componentes.id = historique.componente_id),
+            (SELECT velo_id FROM composants WHERE composants.id = historique.composant_id),
             1
         )
         WHERE velo_id IS NULL
