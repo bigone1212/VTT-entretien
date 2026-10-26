@@ -63,7 +63,10 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - Fichiers applicatifs modifiés : aucun.
 - Tests : migration SQLite et PostgreSQL réussies ; inventaire statique terminé. Aucun test d'interface, téléphone ou Render.
 - Limites : la branche reste divergente de `main`; ne pas fusionner. Aucune base de production utilisée, aucun code de l'application modifié ou déployé.
-- Prochaine action : présenter à Math les conclusions et le périmètre proposé ; attendre son accord avant de modifier `main.py` pour C3(b).
+- Accord explicite de Math reçu le 26/10/2026 pour commencer C3(b), sur cette branche de test uniquement. Aucun changement de `main` ni déploiement autorisé.
+- Plan C3(b) : relire les routes exactes et l'état actuel de la branche ; mettre en place le choix du vélo actif et isoler progressivement les lectures/écritures d'entretien, le calcul d'usure, les sorties et la fiche technique. Conserver la table historique `velo` comme compatibilité tant que les changements ne sont pas entièrement testés ; ne pas toucher à `db.py` sauf nécessité expliquée.
+- Avant le code : tests automatisés SQLite et PostgreSQL 16 sur le commit `42a16b17f86d36ce67367bb022939e003715c959` réussis selon le workflow GitHub Actions ; le compte rendu antérieur qui disait ces tests non exécutés est périmé et doit être corrigé dans la prochaine mise à jour du relais.
+- Prochaine action : analyser les routes de l'état courant et définir une première tranche de modification minimale, puis tester avant d'enregistrer le code.
 
 
 NOUVELLE DEMANDE de Math — 26/10/2026, par Claude (3 demandes, traitées une par une ; les quatre premières demandes du 25/10 sont terminées et fusionnées) :
