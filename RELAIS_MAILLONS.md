@@ -58,14 +58,14 @@ REPRISE PAR CHATGPT — 26/10/2026 :
   [x] C1. Lire le code initial et établir les dépendances.
   [x] C2. Compléter l'export de sauvegarde sur la branche de reprise.
   [x] C3(a). Ajouter la table `velos`, rattacher les composants et sorties existants au CUBE, et vérifier les migrations sur SQLite/PostgreSQL temporaires.
-  [~] C3(b/c — préparation serveur). Auditer toutes les routes d'écriture et de suppression, vérifier l'isolation par `velo_id`, puis appliquer les corrections minimales et les tester.
+  [~] C3(b/c — préparation serveur). Première sous-étape enregistrée : sécurisation des routes de seuils, coefficients d'usure des pièces, position des repères et suppression des composants par `velo_id`. Commit `efded84528549ad5cd2803fe2e3c833d5a06eff8` sur la branche de reprise. Diff GitHub relu : `main.py` uniquement, 41 ajouts et 15 suppressions. Tests de syntaxe et d'exécution de cette sous-étape encore à vérifier ; ne pas la considérer validée tant que le contrôle n'a pas été fait. Routes des sorties encore à auditer.
   [ ] C3(d). Vérifier que toutes les lectures et calculs d'usure restent filtrés par vélo.
   [ ] C3(e). Ajouter ensuite le sélecteur « Mon vélo », puis la fiche technique, l'ajout de vélos et l'affectation des sorties, dans des étapes séparées.
   [ ] C4. Relire le diff par rapport à `main` et ne fusionner qu'après validation et accord explicite de Math.
-- Enregistré sur GitHub : branche `reprise/2026-10-26-multivelos-base-main`, dernier commit de code connu `815b759345b45ad9c1800e566f86ed3f85c650bf`; workflow réussi `40363637688`. Mise à jour de ce relais en cours sur la même branche.
+- Enregistré sur GitHub : branche `reprise/2026-10-26-multivelos-base-main`, migration C3(a) au commit `815b759345b45ad9c1800e566f86ed3f85c650bf` (workflow `40363637688` réussi) ; protections des composants au commit `efded84528549ad5cd2803fe2e3c833d5a06eff8`. Le workflow associé à ce dernier commit n'a pas pu être consulté via les outils disponibles. Mise à jour du relais en cours sur la même branche.
 - Local, non enregistré : rien.
-- Fichiers de l'étape suivante : prévoir `main.py` uniquement pour les protections côté serveur ; ce relais est mis à jour séparément. Ne pas toucher à `db.py` sauf nécessité démontrée.
-- Prochaine action immédiate : audit précis des routes d'écriture/suppression de `main.py` avant toute modification.
+- Fichiers modifiés pour la sous-étape actuelle : `main.py` uniquement. Le relais est mis à jour séparément. Ne pas toucher à `db.py` sauf nécessité démontrée.
+- Prochaine action immédiate : obtenir et vérifier le résultat du workflow pour le commit `efded845`, puis continuer avec les routes de modification/suppression des sorties. Le clone local a échoué car l'environnement ne résout pas `github.com` ; aucune vérification locale n'a été possible.
 
 SUITE du temps 4 — 26/10/2026, par Claude : Math a vérifié sur l'appli en ligne. Verdict : profil correct dans les fenêtres qui s'ouvrent, mais encore trop écrasé dans la liste de l'onglet Sorties. Cause mesurée sur une fausse sortie de 80 km : dans la liste, le profil est dessiné en 600 x 235 puis réduit à environ 134 px de haut sur téléphone (la fenêtre agrandie fait 250 px), et l'échelle verticale minimale `total / 40` laisse les sommets à environ 30 % de la hauteur. Correction prévue sur la branche `reprise/2026-10-26-profil-liste` : échelle `total / 50` et hauteur de dessin 235 -> 270 en portrait (paysage inchangé), dans `dessinerProfil` / `construireProfil` seulement. Fusion dans `main` seulement avec l'accord de Math.
 
