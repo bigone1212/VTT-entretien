@@ -3283,7 +3283,7 @@ def accueil():
                 alt="Mon Cube Stereo Hybrid"
                 class="bike-img"
             >
-
+            <div id="photoVeloACompleter" style="display:none; position:absolute; inset:0; align-items:center; justify-content:center; text-align:center; padding:24px; color:#64748b; font-weight:700;">La photo de ce vélo sera ajoutée lors de l'étape dédiée.</div>
             <div id="hotspotsContainer"></div>
         </div>
 
@@ -3333,6 +3333,18 @@ def accueil():
         </div>
 
         </div>
+
+        <section class="mes-reglages" id="ficheTechniqueAutre" style="display:none;">
+            <div class="mr-titre"><strong>Fiche technique du vélo</strong></div>
+            <div class="mr-ligne"><span>Nom</span><b id="ficheAutreNom">—</b></div>
+            <div class="mr-ligne"><span>Type</span><b id="ficheAutreType">—</b></div>
+            <div class="mr-ligne"><span>Marque</span><b id="ficheAutreMarque">—</b></div>
+            <div class="mr-ligne"><span>Modèle</span><b id="ficheAutreModele">—</b></div>
+            <div class="mr-ligne"><span>Année</span><b id="ficheAutreAnnee">—</b></div>
+            <div class="mr-ligne"><span>Taille du cadre</span><b id="ficheAutreTaille">—</b></div>
+            <div class="mr-ligne"><span>Moteur</span><b id="ficheAutreMoteur">—</b></div>
+            <div class="mr-ligne"><span>Batterie</span><b id="ficheAutreBatterie">—</b></div>
+        </section>
 
         <div class="page" id="page-reglages" style="display:none;">
         <section class="mes-reglages" id="blocAjouterVelo">
@@ -3444,7 +3456,7 @@ def accueil():
             </div>
         </section>
 
-        <details class="fiche-technique-velo">
+        <details class="fiche-technique-velo" id="ficheTechniqueCube">
             <summary class="ftv-resume">
                 <span class="ftv-entete">
                     <strong class="titre-pastille ftv-titre-pastille">
@@ -4076,6 +4088,33 @@ def accueil():
                 const velo = velosDisponibles.find(v => Number(v.id) === veloActifId);
                 const titre = document.getElementById('headerVeloNom');
                 if (titre) titre.textContent = velo ? velo.nom : 'Mon vélo';
+                const photo = document.querySelector('.bike-img');
+                const placeholderPhoto = document.getElementById('photoVeloACompleter');
+                const estCube = !velo || Number(velo.id) === 1;
+                if (photo) photo.style.visibility = estCube ? 'visible' : 'hidden';
+                if (placeholderPhoto) placeholderPhoto.style.display = estCube ? 'none' : 'flex';
+                const ficheCube = document.getElementById('ficheTechniqueCube');
+                const ficheGenerique = document.getElementById('ficheTechniqueAutre');
+                if (ficheCube) ficheCube.style.display = estCube ? '' : 'none';
+                if (ficheGenerique) ficheGenerique.style.display = estCube ? 'none' : 'block';
+                const ficheNom = document.getElementById('ficheAutreNom');
+                const ficheType = document.getElementById('ficheAutreType');
+                const ficheMarque = document.getElementById('ficheAutreMarque');
+                const ficheModele = document.getElementById('ficheAutreModele');
+                const ficheAnnee = document.getElementById('ficheAutreAnnee');
+                const ficheTaille = document.getElementById('ficheAutreTaille');
+                const ficheMoteur = document.getElementById('ficheAutreMoteur');
+                const ficheBatterie = document.getElementById('ficheAutreBatterie');
+                if (velo) {
+                    if (ficheNom) ficheNom.textContent = velo.nom || 'Mon vélo';
+                    if (ficheType) ficheType.textContent = TYPES_VELO[velo.type] || velo.type || 'Non renseigné';
+                    if (ficheMarque) ficheMarque.textContent = velo.marque || 'Non renseignée';
+                    if (ficheModele) ficheModele.textContent = velo.modele || 'Non renseigné';
+                    if (ficheAnnee) ficheAnnee.textContent = velo.annee || 'Non renseignée';
+                    if (ficheTaille) ficheTaille.textContent = velo.taille || 'Non renseignée';
+                    if (ficheMoteur) ficheMoteur.textContent = velo.moteur || 'Non concerné ou non renseigné';
+                    if (ficheBatterie) ficheBatterie.textContent = velo.batterie || 'Non concernée ou non renseignée';
+                }
                 const electriques = document.getElementById('champsElectriques');
                 const type = document.getElementById('nouveauVeloType');
                 if (electriques && type) {
