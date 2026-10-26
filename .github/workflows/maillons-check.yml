@@ -45,6 +45,21 @@ jobs:
           python-version: "3.12"
       - name: Vérifier la syntaxe Python complète
         run: python -m py_compile main.py
+      - name: Vérifier le chargement initial du sélecteur multi-vélos
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          source = Path("main.py").read_text(encoding="utf-8")
+          marqueur = "// Vérifie si un code est déjà en mémoire"
+          debut = source.index(marqueur)
+          fin = source.index("const MR_GROUPES", debut)
+          initialisation = source[debut:fin]
+          assert "await chargerVelos();" in initialisation, "Le sélecteur n'est pas chargé à la reconnexion"
+          assert "await chargerEtat();" in initialisation, "L'état du vélo n'est pas chargé au démarrage"
+          assert initialisation.index("await chargerVelos();") < initialisation.index("await chargerEtat();"), "L'état est chargé avant la liste des vélos"
+          print("OK: reconnexion automatique, sélecteur multi-vélos chargé avant l'état du vélo.")
+          PY
       - name: Installer les dépendances de l'application
         run: pip install -r requirements.txt
       - name: Démarrer l'application sur une copie SQLite isolée et vérifier la migration réelle
