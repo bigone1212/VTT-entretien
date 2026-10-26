@@ -132,6 +132,7 @@ jobs:
           assert bike["km_maj_le"] == "2026-10-26T14:33:17Z", dict(bike)
           assert db.execute("SELECT nom FROM composants WHERE id=1").fetchone()[0] == "Composant historique test"
           assert db.execute("SELECT km_intervention FROM historique WHERE id=1").fetchone()[0] == 1236
+          assert db.execute("SELECT velo_id FROM historique WHERE id=1").fetchone()[0] == 1
           assert db.execute("SELECT distance_km FROM sorties WHERE id=1").fetchone()[0] == 25.5
           assert db.execute("SELECT valeur FROM mes_reglages WHERE cle='taille_cadre'").fetchone()[0] == "L"
           assert db.execute("SELECT velo_id FROM composants WHERE id=1").fetchone()[0] == 1
@@ -265,6 +266,9 @@ jobs:
               assert conn.execute(
                   "SELECT km_intervention FROM historique WHERE id = 1"
               ).fetchone()[0] == 1236
+              assert conn.execute(
+                  "SELECT velo_id FROM historique WHERE id = 1"
+              ).fetchone()[0] == 1
               assert conn.execute(
                   "SELECT distance_km FROM sorties WHERE id = 1"
               ).fetchone()[0] == 25.5
