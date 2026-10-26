@@ -301,6 +301,8 @@ jobs:
           source = Path("main.py").read_text(encoding="utf-8")
           required = [
               "CREATE TABLE IF NOT EXISTS velos",
+              '@app.get("/api/velos")',
+              'SELECT id, nom, type, marque, modele, annee, taille, actif',
               "INSERT INTO velos",
               "legacy_velo_id",
               "UPDATE velos",
