@@ -482,6 +482,11 @@ def init_db():
     ajouter_colonne(cursor, "velo", "km_maj_le", "TEXT")
     ajouter_colonne(cursor, "velo", "km_frac", "DOUBLE PRECISION DEFAULT 0")
 
+    cursor.execute(
+        "UPDATE velo SET km_maj_le = ? WHERE id = 1 AND km_maj_le IS NULL",
+        (maintenant_utc(),)
+    )
+
     # Copie du kilométrage et des dates vers le registre, après migration des colonnes.
     cursor.execute("""
         UPDATE velos
@@ -491,11 +496,6 @@ def init_db():
             date_achat = (SELECT date_achat FROM velo WHERE id = 1)
         WHERE legacy_velo_id = 1
     """)
-
-    cursor.execute(
-        "UPDATE velo SET km_maj_le = ? WHERE id = 1 AND km_maj_le IS NULL",
-        (maintenant_utc(),)
-    )
 
     cursor.execute("SELECT COUNT(*) FROM composants")
 
