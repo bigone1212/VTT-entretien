@@ -274,3 +274,16 @@ Dernier commit de main connu : …    Branche de reprise éventuelle : …
 - Branches vérifiées lors de la reprise : `main`, `feature/fiche-technique-velo` (non examinée), `reprise/2026-10-25-couleurs` et `reprise/2026-10-25-unites`. La branche unités n'est pas fusionnée dans `main`.
 - Chaque envoi sur `main` peut déclencher une mise à jour de Render si la mise à jour automatique est active (non vérifié) : un commit qui ne modifie que ce fichier ne change pas l'appli, mais peut provoquer un redéploiement identique.
 - **Render : vérifié via la connexion Render le 25/10/2026**. Service `VTT-entretien`, branche `main`, auto-déploiement activé à chaque commit. URL : `https://vtt-entretien.onrender.com`. La fusion déclenchera donc un déploiement automatique ; le résultat du déploiement après fusion reste à vérifier.
+
+## Point de reprise ChatGPT — 26/10/2026, mise à jour après l'étape de lecture multi-vélos
+
+- Branche de code de test active : `reprise/2026-10-26-multivelos-base-main`, basée sur le commit `a3926efcd33e44090faba18c174b1f2deef46e4a`. Ne pas fusionner dans `main` ni déployer sans accord explicite de Math.
+- Contrôle antérieur confirmé : workflow `40363163830`, commit `8943ba1ca670e3e91c8fa42db47963bc2bcc4b60`, terminé avec succès. Il vérifie les filtres de lecture de `/api/historique` et `/api/sorties`.
+- [~] Nouvelle étape : `POST /api/historique` accepte maintenant `velo_id` (défaut 1 pour préserver le fonctionnement actuel), vérifie que le vélo est actif et que le composant appartient à ce vélo, utilise le kilométrage du registre `velos`, et enregistre `velo_id` dans `historique`. La mise à jour de `km_depart` est également limitée au composant de ce vélo.
+- Enregistré sur GitHub, branche de test : `main.py`, commit `815b759345b45ad9c1800e566f86ed3f85c650bf`.
+- Contrôle GitHub Actions déclenché pour ce commit : run `40363637688`, état `in_progress` au dernier contrôle. Lien : https://github.com/bigone1212/VTT-entretien/actions/runs/40363637688
+- Tests réellement effectués : inspection du diff et vérification de la cohérence des requêtes SQL par lecture. Syntaxe complète et workflow en attente au moment de cette note ; aucun test d'API réel, navigateur, téléphone, Neon ou Render effectué.
+- Local, non enregistré : rien.
+- Fichiers de l'application modifiés : `main.py` uniquement. Le présent fichier de relais est mis à jour sur `main` pour conserver le point de reprise ; aucun changement de code n'est fait sur `main`.
+- Risque restant : les opérations de suppression et de modification de l'historique, ainsi que les écritures de sorties et les réglages/kilométrages, ne sont pas encore toutes isolées par vélo. Ne pas afficher le sélecteur multi-vélos avant d'avoir sécurisé l'ensemble des opérations concernées.
+- Prochaine action : vérifier le résultat du run `40363637688`. S'il réussit, étendre les contrôles automatiques pour couvrir cette route d'écriture avant de poursuivre avec une seule route à la fois.
