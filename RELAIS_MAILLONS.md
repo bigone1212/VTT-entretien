@@ -310,3 +310,14 @@ Dernier commit de main connu : …    Branche de reprise éventuelle : …
 - Fichiers de l'application modifiés : `main.py` uniquement. Le présent fichier de relais est mis à jour sur `main` pour conserver le point de reprise ; aucun changement de code n'est fait sur `main`.
 - Risque restant : les opérations de suppression et de modification de l'historique, ainsi que les écritures de sorties et les réglages/kilométrages, ne sont pas encore toutes isolées par vélo. Ne pas afficher le sélecteur multi-vélos avant d'avoir sécurisé l'ensemble des opérations concernées.
 - Prochaine action : vérifier le résultat du run `40363637688`. S'il réussit, étendre les contrôles automatiques pour couvrir cette route d'écriture avant de poursuivre avec une seule route à la fois.
+
+
+## Reprise ChatGPT — 26/10/2026, suite après accord de poursuivre sans fusion
+
+- Consigne confirmée par Math : **ne pas fusionner la PR #7**, continuer uniquement sur `reprise/2026-10-26-multivelos-completion`, ne pas modifier `main`, ne pas déployer.
+- État vérifié avant cette étape : PR #7 ouverte, brouillon, non fusionnée ; `main.py` de la branche contient déjà les routes de lecture/écriture par vélo, dont ajout/modification/suppression des interventions, réglages personnels, composants, import et gestion des sorties.
+- Modification enregistrée sur la branche de test : `.github/workflows/maillons-check.yml`, commit `69b8d72499e9ad0ba8bdfc4b100479eb0edc091c`. Ajout de contrôles d'intégration qui vérifient qu'un vélo ne peut pas modifier les seuils d'un composant d'un autre vélo, ni modifier/supprimer une intervention qui lui appartient pas ; le test vérifie aussi que l'intervention reste intacte et peut ensuite être supprimée par le bon vélo.
+- Workflow GitHub Actions `40374860008` lancé sur ce commit ; **encore en cours au moment de cette note**. Ne pas annoncer le test réussi avant de relire son résultat : https://github.com/bigone1212/VTT-entretien/actions/runs/40374860008
+- Aucun fichier de l'application (`main.py`) modifié dans cette étape ; aucune opération sur `main`, aucune fusion, aucun déploiement, aucune connexion à la base de production.
+- Limites toujours ouvertes : test visuel sur navigateur/téléphone non réalisé ; photos personnalisées des vélos non encore ajoutées ; affectation automatique des futures sorties importées avec statut « à vérifier » non intégrée car aucun mécanisme d'import automatique n'a été trouvé dans les routes actuelles. Les coefficients de terrain restent globaux conformément à la décision de Math.
+- Prochaine action : vérifier le run `40374860008`. S'il réussit, poursuivre l'audit par des tests de bout en bout de l'import d'une sortie et du recalcul des kilomètres par vélo, sans toucher aux zones 3D ni aux filtres.
