@@ -3334,18 +3334,6 @@ def accueil():
 
         </div>
 
-        <section class="mes-reglages" id="ficheTechniqueAutre" style="display:none;">
-            <div class="mr-titre"><strong>Fiche technique du vélo</strong></div>
-            <div class="mr-ligne"><span>Nom</span><b id="ficheAutreNom">—</b></div>
-            <div class="mr-ligne"><span>Type</span><b id="ficheAutreType">—</b></div>
-            <div class="mr-ligne"><span>Marque</span><b id="ficheAutreMarque">—</b></div>
-            <div class="mr-ligne"><span>Modèle</span><b id="ficheAutreModele">—</b></div>
-            <div class="mr-ligne"><span>Année</span><b id="ficheAutreAnnee">—</b></div>
-            <div class="mr-ligne"><span>Taille du cadre</span><b id="ficheAutreTaille">—</b></div>
-            <div class="mr-ligne"><span>Moteur</span><b id="ficheAutreMoteur">—</b></div>
-            <div class="mr-ligne"><span>Batterie</span><b id="ficheAutreBatterie">—</b></div>
-        </section>
-
         <div class="page" id="page-reglages" style="display:none;">
         <section class="mes-reglages" id="blocAjouterVelo">
             <div class="mr-titre"><strong>Ajouter un vélo</strong></div>
@@ -3569,6 +3557,18 @@ def accueil():
             </div>
             <p class="ftv-note">Caractéristiques du modèle 2025. Les équipements peuvent varier selon la version et la taille du vélo.</p>
         </details>
+        <section class="mes-reglages" id="ficheTechniqueAutre" style="display:none;">
+            <div class="mr-titre"><strong>Fiche technique du vélo</strong></div>
+            <div class="mr-ligne"><span>Nom</span><b id="ficheAutreNom">—</b></div>
+            <div class="mr-ligne"><span>Type</span><b id="ficheAutreType">—</b></div>
+            <div class="mr-ligne"><span>Marque</span><b id="ficheAutreMarque">—</b></div>
+            <div class="mr-ligne"><span>Modèle</span><b id="ficheAutreModele">—</b></div>
+            <div class="mr-ligne"><span>Année</span><b id="ficheAutreAnnee">—</b></div>
+            <div class="mr-ligne"><span>Taille du cadre</span><b id="ficheAutreTaille">—</b></div>
+            <div class="mr-ligne"><span>Moteur</span><b id="ficheAutreMoteur">—</b></div>
+            <div class="mr-ligne"><span>Batterie</span><b id="ficheAutreBatterie">—</b></div>
+        </section>
+
         <section class="mes-reglages mr-repliable" id="mesReglages" aria-label="Mes réglages vélo">
             <div class="mr-titre">
                 <button type="button" class="mr-entete" aria-expanded="false" aria-controls="mesReglagesCorps">
