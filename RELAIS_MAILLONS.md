@@ -47,17 +47,16 @@ Ce fichier ne doit **pas** être mis à jour seulement à la fin : une session p
 
 ## Tâche en cours
 
-REPRISE PAR CHATGPT — 26/10/2026, après accord explicite de Math :
-- Objectif : reprendre l'étape C2 du chantier « Plusieurs vélos », sans modifier le code avant d'avoir enregistré ce point de reprise.
-- Dernier commit de main vérifié : `3b099613a6ede5aaab95fcc0175b4e5301673a3a` (relais C2 de Claude).
-- Vérification GitHub : la branche `reprise/2026-10-26-plusieurs-velos` était absente au départ ; elle a été créée depuis le dernier `main` après l'enregistrement du point de reprise.
-- Code vérifié en lecture seule sur `main` : la route `/api/sauvegarde` exportait le kilométrage, les composants, l'historique, les sorties et les réglages généraux, mais pas la ligne complète de `velo` ni `mes_reglages`.
-- Étapes : [x] 1. Point de reprise enregistré sur `main`. [x] 2. Branche dédiée créée depuis `main`. [x] 3. Modification ciblée de `main.py` enregistrée sur la branche : export de la ligne complète `velo` et de la liste `mes_reglages`, conservation des clés de sauvegarde existantes. [~] 4. Diff relu : un seul fichier modifié, `main.py`, 7 ajouts et 2 suppressions ; syntaxe Python, exécution, navigateur et tests sur base réelle non exécutés. [ ] 5. Préparer les instructions pour que Math télécharge et contrôle la sauvegarde avant toute migration.
-- Enregistré sur GitHub : point de reprise sur `main`, commit `00c7371dd72ae910882552750b5a18f0089c1c41). Code sur `reprise/2026-10-26-plusieurs-velos`, commit `7dd6a695446e675b5a3bbfaafa7d85651c925066`.
+REPRISE PAR CHATGPT — 26/10/2026 :
+- Objectif : poursuivre les vérifications de l'étape C3(a) « Plusieurs vélos », en renforçant le test de migration SQLite pour qu'il exécute le véritable démarrage de l'application sur une base temporaire, sans connexion à la base de production.
+- État GitHub vérifié : `main` est au commit `ec4f607bbec9596cbf7af3e94b4962798a1a94a2). La branche `reprise/2026-10-26-plusieurs-velos` est divergente : 15 commits en avance et 2 commits de `main` absents. Ne pas fusionner automatiquement.
+- Test déjà réalisé : workflow `40350258206` réussi sur la branche de test ; `py_compile main.py` et simulation SQLite indépendante réussis. La simulation ne lançait pas la migration réelle de l'application et ne teste pas PostgreSQL.
+- Étapes prévues : [x] 1. Lire le relais et vérifier les versions GitHub. [x] 2. Vérifier le workflow et les instructions de migration. [~] 3. Préparer un test plus représentatif sur une base SQLite temporaire isolée, en conservant la production hors de portée. [ ] 4. Exécuter le test et examiner les données migrées, y compris la relance idempotente. [ ] 5. Mettre à jour le relais avec les résultats réels.
+- Enregistré sur GitHub : test précédent sur la branche de reprise, commit `09ce01d0ff3144bc30a34afe6e228414b826141f`; workflow `.github/workflows/maillons-check.yml`.
 - Local, non enregistré : rien.
-- Fichiers modifiés pour le code : `main.py` uniquement. Aucun changement à `db.py`, aucune modification de base de données, aucune fusion de code dans `main`.
-- Tests : diff GitHub et extrait final de la route relus ; pas de test d'exécution effectué. Le code reste non testé et n'est pas dans `main`.
-- Prochaine action : mettre à jour le relais sur la branche de reprise, puis déterminer comment effectuer une vérification syntaxique avant de te demander de télécharger la sauvegarde. Aucun déploiement de code sans nouvel accord explicite de Math.
+- Fichiers prévus pour la suite : `.github/workflows/maillons-check.yml` et ce relais. Aucun changement prévu à `main.py` ou `db.py` pour cette étape de test.
+- Tests à faire : démarrage de l'application contre une base SQLite temporaire et vérification des données. PostgreSQL Neon, navigateur, téléphone et Render restent hors de portée de ce test.
+- Prochaine action : renforcer le workflow uniquement sur la branche de test. Aucun changement de code de l'application dans `main`, aucune connexion à la base réelle, aucune fusion ni déploiement de code sans accord explicite.
 
 NOUVELLE DEMANDE de Math — 26/10/2026, par Claude (3 demandes, traitées une par une ; les quatre premières demandes du 25/10 sont terminées et fusionnées) :
   [x] A. Survol 3D : le message « Appuie sur Lecture pour lancer le survol… » était au centre et cachait le circuit. Branche `reprise/2026-10-26-message-3d` (CSS de `.v3d-message` seulement, 2 règles ; fonctionnement inchangé) : le message est en haut, à droite de la légende des pentes, plus compact ; en paysage, même principe. Test sur page HTML générée avec fausse carte (la vraie carte 3D n'est pas testable chez Claude) : 3 tailles d'écran (390x800, 360x640, 844x390 paysage) x légende pentes et terrain : le message ne chevauche plus ni la légende ni la zone du circuit (avant : il chevauchait dans les 6 cas) ; 0 erreur JS. Non testé : vraie carte 3D, téléphone, Render. Fusionné dans `main` le 26/10/2026 avec l'accord explicite de Math (commit `0f8d0a8`, fusion sans conflit). À vérifier par Math après redéploiement Render : message en haut dans le vrai survol 3D. Déploiement Render non vérifié par Claude.
