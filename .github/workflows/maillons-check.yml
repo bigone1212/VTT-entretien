@@ -59,6 +59,15 @@ jobs:
           assert "await chargerEtat();" in initialisation, "L'état du vélo n'est pas chargé au démarrage"
           assert initialisation.index("await chargerVelos();") < initialisation.index("await chargerEtat();"), "L'état est chargé avant la liste des vélos"
           print("OK: reconnexion automatique, sélecteur multi-vélos chargé avant l'état du vélo.")
+
+          import re
+          import subprocess
+
+          scripts = re.findall(r"<script[^>]*>([\\s\\S]*?)</script>", source)
+          assert scripts, "Aucun script JavaScript intégré trouvé"
+          for numero, script in enumerate(scripts, start=1):
+              subprocess.run(["node", "--check"], input=script, text=True, check=True)
+              print(f"OK: syntaxe JavaScript du script intégré {numero}/{len(scripts)}.")
           PY
       - name: Installer les dépendances de l'application
         run: pip install -r requirements.txt
