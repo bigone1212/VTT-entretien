@@ -48,7 +48,7 @@ Ce fichier ne doit **pas** être mis à jour seulement à la fin : une session p
 ## Tâche en cours
 
 NOUVELLE DEMANDE de Math — 26/10/2026, par Claude (3 demandes, traitées une par une ; les quatre premières demandes du 25/10 sont terminées et fusionnées) :
-  [~] A. Survol 3D : le message « Appuie sur Lecture pour lancer le survol… » est au centre de l'écran et cache le circuit ; le remonter. Branche prévue : `reprise/2026-10-26-message-3d` (apparence seulement : CSS de `.v3d-message`).
+  [x] A. Survol 3D : le message « Appuie sur Lecture pour lancer le survol… » était au centre et cachait le circuit. Branche `reprise/2026-10-26-message-3d` (CSS de `.v3d-message` seulement, 2 règles ; fonctionnement inchangé) : le message est en haut, à droite de la légende des pentes, plus compact ; en paysage, même principe. Test sur page HTML générée avec fausse carte (la vraie carte 3D n'est pas testable chez Claude) : 3 tailles d'écran (390x800, 360x640, 844x390 paysage) x légende pentes et terrain : le message ne chevauche plus ni la légende ni la zone du circuit (avant : il chevauchait dans les 6 cas) ; 0 erreur JS. Non testé : vraie carte 3D, téléphone, Render. Fusion dans `main` en attente de l'accord de Math.
   [ ] B. Réglages : cartes « Apparence » et « Unités » repliables, comme « Fiche technique du vélo », « Mes réglages vélo », « Réglage de l'usure ».
   [ ] C. Question de Math : créer un onglet « Mes vélos » (fiche technique + mes réglages vélo) ; Math a PLUSIEURS vélos de marques et de techniques différentes. C'est un changement de fonctionnement et de base de données (plusieurs vélos) : à discuter avec Math AVANT tout code ; ne pas migrer ni supprimer de données sans son accord.
 

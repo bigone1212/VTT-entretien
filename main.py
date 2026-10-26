@@ -2207,15 +2207,14 @@ def accueil():
             .v3d-message {
                 position: absolute;
                 z-index: 4;
-                left: 50%;
-                top: 45%;
-                transform: translate(-50%, -50%);
-                width: min(86%, 380px);
+                left: calc(150px + env(safe-area-inset-left));
+                right: calc(12px + env(safe-area-inset-right));
+                top: calc(58px + env(safe-area-inset-top));
                 text-align: center;
-                font-size: 0.92rem;
-                line-height: 1.4;
-                padding: 16px;
-                border-radius: 14px;
+                font-size: 0.84rem;
+                line-height: 1.35;
+                padding: 10px 12px;
+                border-radius: 12px;
                 background: rgba(10,25,31,0.92);
                 border: 1px solid rgba(255,255,255,0.2);
             }
@@ -2581,7 +2580,7 @@ def accueil():
             :root.paysage .v3d-legende { top: calc(46px + env(safe-area-inset-top)); left: calc(12px + env(safe-area-inset-left)); padding: 5px 8px; font-size: 0.68rem; }
             :root.paysage .v3d-photo { top: calc(46px + env(safe-area-inset-top)); left: auto; right: calc(12px + env(safe-area-inset-right)); transform: none; }
             :root.paysage .v3d-photo img { max-width: 40vw; max-height: 52vh; }
-            :root.paysage .v3d-message { top: 40%; }
+            :root.paysage .v3d-message { top: calc(46px + env(safe-area-inset-top)); left: calc(170px + env(safe-area-inset-left)); max-width: 420px; }
 
             :root.paysage #lightbox img { max-height: 92%; }
 
