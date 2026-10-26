@@ -488,7 +488,7 @@ def init_db():
         INSERT INTO mes_reglages_velo (velo_id, cle, valeur, maj_le)
         SELECT 1, cle, valeur, maj_le
         FROM mes_reglages
-        WHERE 1
+        WHERE TRUE
         ON CONFLICT (velo_id, cle) DO NOTHING
     """)
 
