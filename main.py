@@ -12577,8 +12577,11 @@ def sauvegarde(x_code_acces: Optional[str] = Header(default=None)):
     cursor = conn.cursor()
 
     try:
-        cursor.execute("SELECT km_total FROM velo WHERE id = 1")
+        cursor.execute("SELECT * FROM velo WHERE id = 1")
         velo = cursor.fetchone()
+
+        cursor.execute("SELECT * FROM mes_reglages ORDER BY cle")
+        mes_reglages = [dict(r) for r in cursor.fetchall()]
 
         cursor.execute("SELECT * FROM composants ORDER BY id")
         composants = [dict(r) for r in cursor.fetchall()]
@@ -12591,7 +12594,9 @@ def sauvegarde(x_code_acces: Optional[str] = Header(default=None)):
 
         return {
             "date_sauvegarde": str(date.today()),
-            "km_total": velo[0] if velo else None,
+            "km_total": velo["km_total"] if velo else None,
+            "velo": dict(velo) if velo else None,
+            "mes_reglages": mes_reglages,
             "composants": composants,
             "historique": historique,
             "sorties": sorties,
