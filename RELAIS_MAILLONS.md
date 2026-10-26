@@ -48,16 +48,15 @@ Ce fichier ne doit **pas** être mis à jour seulement à la fin : une session p
 ## Tâche en cours
 
 REPRISE PAR CHATGPT — 26/10/2026 :
-- Objectif : valider la migration C3(a) « Plusieurs vélos » sur des moteurs SQLite et PostgreSQL de test avant toute fusion.
-- État GitHub : branche `reprise/2026-10-26-plusieurs-velos`, commit workflow testé `42a16b17f86d36ce67367bb022939e003715c959`. La branche reste divergente de `main` ; ne pas fusionner automatiquement.
-- Étapes : [x] 1. Relire le relais, le code et le workflow. [x] 2. Test réel SQLite sur base temporaire, workflow `40350937620`. [x] 3. Ajouter PostgreSQL 16 éphémère à GitHub Actions, commit `76731f29051217bd101299a8b1868048014db5ff`. [x] 4. Corriger les indices de colonnes dans le test PostgreSQL, commit `42a16b17f86d36ce67367bb022939e003715c959`. [x] 5. Vérifier le workflow final `40352096393`, job `121674601397` : succès.
-- Tests réellement réussis : compilation de `main.py), installation des dépendances, démarrage réel de l'application et migrations sur SQLite temporaire ET PostgreSQL 16 temporaire ; conservation des 2700 km, dates d'achat et de mise à jour, composant, intervention, sortie, réglage de fiche technique ; association des composants/sorties existants au vélo 1 ; relance de l'application sans doublons. Logs consultés, les deux étapes affichent leur message OK.
-- Incident : le premier workflow PostgreSQL `40351998345` a échoué uniquement parce que le test lisait les mauvais indices dans la ligne renvoyée ; les données affichées par l'erreur correspondaient bien aux valeurs attendues. Assertions corrigées, workflow suivant réussi.
-- Enregistré sur GitHub : `.github/workflows/maillons-check.yml`, commit `42a16b17f86d36ce67367bb022939e003715c959`. Mise à jour de ce relais enregistrée après les tests.
+- Objectif : préparer la prochaine étape du chantier multi-vélos après validation de C3(a) : dresser un inventaire précis des lectures/écritures qui devront suivre le vélo sélectionné, sans encore modifier le code.
+- État vérifié : la migration C3(a) a réussi sur SQLite temporaire et PostgreSQL 16 éphémère dans GitHub Actions, workflow `40352096393`, commit testé `42a16b17f86d36ce67367bb022939e003715c959`. Le relais a été mis à jour sur `main` et sur cette branche.
+- Étapes prévues : [x] 1. Valider la migration sur SQLite et PostgreSQL isolés. [~] 2. Examiner dans `main.py` les routes/API et fonctions qui lisent ou modifient le vélo, les composants, l'historique, les sorties et les réglages de fiche technique. [ ] 3. Établir un plan ciblé avec tests pour éviter de casser le fonctionnement actuel. [ ] 4. Demander confirmation avant de modifier les routes et l'interface multi-vélos.
+- Enregistré sur GitHub : workflow de test `.github/workflows/maillons-check.yml`, commit `42a16b17f86d36ce67367bb022939e003715c959`; relais de suivi principal commit `a3926efcd33e44090faba18c174b1f2deef46e4a`.
 - Local, non enregistré : rien.
-- Fichiers modifiés pour cette étape : `.github/workflows/maillons-check.yml` et `RELAIS_MAILLONS.md`. Aucun changement à `main.py`, `db.py` ou `requirements.txt`.
-- Limites : PostgreSQL est un conteneur jetable GitHub Actions, pas Neon ; interface navigateur, téléphone et Render non testés. Aucun accès ni changement à la production, aucune fusion de code ni déploiement de code.
-- Prochaine action : examiner l'étape suivante du plan multi-vélos avant de toucher au code, probablement les changements d'accès aux données par vélo. Garder toute modification de code sur cette branche et fusionner uniquement avec l'accord explicite de Math.
+- Fichiers modifiés pour cette étape d'inventaire : aucun fichier de l'application ; ce relais uniquement.
+- Tests : migration SQLite et PostgreSQL réussies. L'inventaire de code est en cours ; aucun test d'interface ou Render.
+- Limites : ne pas fusionner cette branche divergente ; aucun accès à Neon/production, aucune fusion de code ni déploiement.
+- Prochaine action : inventorier les points d'entrée de `main.py` sur la branche de reprise, puis présenter les changements nécessaires avant d'écrire du code.
 
 
 NOUVELLE DEMANDE de Math — 26/10/2026, par Claude (3 demandes, traitées une par une ; les quatre premières demandes du 25/10 sont terminées et fusionnées) :
