@@ -1,0 +1,116 @@
+name: Vérifications Maillons (branche de test)
+
+on:
+  push:
+    branches:
+      - reprise/2026-10-26-plusieurs-velos
+    paths:
+      - "main.py"
+      - ".github/workflows/maillons-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  syntaxe-et-migration-sqlite:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+      - name: Installer Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Vérifier la syntaxe Python complète
+        run: python -m py_compile main.py
+      - name: Vérifier le script de migration SQLite sur une base temporaire
+        run: |
+          python - <<'PY'
+          import sqlite3
+          from pathlib import Path
+
+          source = Path("main.py").read_text(encoding="utf-8")
+          required = [
+              "CREATE TABLE IF NOT EXISTS velos",
+              "INSERT INTO velos",
+              "legacy_velo_id",
+              "UPDATE velos SET km_total=",
+              "ALTER TABLE composants ADD COLUMN velo_id INTEGER DEFAULT 1",
+              "ALTER TABLE sorties ADD COLUMN velo_id INTEGER DEFAULT 1",
+          ]
+          missing = [item for item in required if item not in source]
+          assert not missing, f"Instructions de migration introuvables dans main.py: {missing}"
+
+          db = sqlite3.connect(":memory:")
+          db.row_factory = sqlite3.Row
+          db.executescript("""
+              CREATE TABLE velo (
+                  id INTEGER PRIMARY KEY,
+                  km_total INTEGER NOT NULL DEFAULT 0,
+                  date_achat TEXT
+              );
+              INSERT INTO velo (id, km_total, date_achat)
+              VALUES (1, 2700, '2025-11-18');
+              CREATE TABLE composants (id INTEGER PRIMARY KEY, nom TEXT);
+              INSERT INTO composants (id, nom) VALUES (1, 'Freins');
+              CREATE TABLE sorties (id INTEGER PRIMARY KEY, nom TEXT);
+              INSERT INTO sorties (id, nom) VALUES (1, 'Sortie test');
+          """)
+          db.execute("ALTER TABLE velo ADD COLUMN km_maj_le TEXT")
+          db.execute("ALTER TABLE velo ADD COLUMN km_frac REAL DEFAULT 0")
+          db.execute("UPDATE velo SET km_maj_le = '2026-10-26T14:33:17Z' WHERE km_maj_le IS NULL")
+          db.execute("""
+              CREATE TABLE IF NOT EXISTS velos (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  nom TEXT,
+                  type TEXT,
+                  marque TEXT,
+                  modele TEXT,
+                  annee INTEGER,
+                  km_total INTEGER DEFAULT 0,
+                  km_frac REAL DEFAULT 0,
+                  km_maj_le TEXT,
+                  date_achat TEXT,
+                  legacy_velo_id INTEGER UNIQUE
+              )
+          """)
+          db.execute("""
+              INSERT INTO velos
+                (nom, type, marque, modele, annee, km_total, km_frac,
+                 km_maj_le, date_achat, legacy_velo_id)
+              VALUES ('Mon CUBE', 'electrique', 'Cube',
+                      'Stereo Hybrid ONE44 EXC 800 (Bosch)', 2025,
+                      2700, 0, NULL, NULL, 1)
+              ON CONFLICT (legacy_velo_id) DO NOTHING
+          """)
+          db.execute("""
+              UPDATE velos
+              SET km_total=(SELECT km_total FROM velo WHERE id=1),
+                  km_frac=(SELECT km_frac FROM velo WHERE id=1),
+                  km_maj_le=(SELECT km_maj_le FROM velo WHERE id=1),
+                  date_achat=(SELECT date_achat FROM velo WHERE id=1)
+              WHERE legacy_velo_id=1
+          """)
+          db.execute("ALTER TABLE composants ADD COLUMN velo_id INTEGER DEFAULT 1")
+          db.execute("ALTER TABLE sorties ADD COLUMN velo_id INTEGER DEFAULT 1")
+          db.execute("UPDATE composants SET velo_id=1 WHERE velo_id IS NULL")
+          db.execute("UPDATE sorties SET velo_id=1 WHERE velo_id IS NULL")
+          # Rejouer l'insertion vérifie que la contrainte évite les doublons.
+          db.execute("""
+              INSERT INTO velos
+                (nom, type, marque, modele, annee, km_total, km_frac,
+                 km_maj_le, date_achat, legacy_velo_id)
+              VALUES ('Mon CUBE', 'electrique', 'Cube',
+                      'Stereo Hybrid ONE44 EXC 800 (Bosch)', 2025,
+                      2700, 0, NULL, NULL, 1)
+              ON CONFLICT (legacy_velo_id) DO NOTHING
+          """)
+          bike = db.execute("SELECT * FROM velos WHERE legacy_velo_id=1").fetchone()
+          assert bike["km_total"] == 2700, dict(bike)
+          assert bike["date_achat"] == "2025-11-18", dict(bike)
+          assert db.execute("SELECT COUNT(*) FROM velos").fetchone()[0] == 1
+          assert db.execute("SELECT velo_id FROM composants WHERE id=1").fetchone()[0] == 1
+          assert db.execute("SELECT velo_id FROM sorties WHERE id=1").fetchone()[0] == 1
+          print("OK: syntaxe de main.py, copie du CUBE, conservation des kilomètres, attribution composants/sorties et absence de doublon.")
+          PY
