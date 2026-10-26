@@ -525,6 +525,15 @@ jobs:
           assert any(h["id"] == historique_id for h in historique_route)
           assert all(h["id"] != historique_id for h in historique_electrique)
 
+          etat_route = main.obtenir_etat(velo_id=route_id, x_code_acces="test")
+          etat_electrique = main.obtenir_etat(velo_id=electrique_id, x_code_acces="test")
+          ids_composants_route = {c["id"] for c in etat_route["composants"]}
+          ids_composants_electrique = {c["id"] for c in etat_electrique["composants"]}
+          assert composant_route in ids_composants_route
+          assert composant_route not in ids_composants_electrique
+          assert ids_composants_electrique
+          assert ids_composants_route.isdisjoint(ids_composants_electrique)
+
           try:
               main.modifier_intervention(
                   historique_id,
