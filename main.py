@@ -413,6 +413,15 @@ def init_db():
     # Kilométrage de la pièce juste AVANT l'intervention : permet de
     # remettre la pièce exactement comme avant si on supprime la ligne.
     ajouter_colonne(cursor, "historique", "km_avant", "INTEGER")
+    ajouter_colonne(cursor, "historique", "velo_id", "INTEGER DEFAULT 1")
+    cursor.execute("""
+        UPDATE historique
+        SET velo_id = COALESCE(
+            (SELECT velo_id FROM composants WHERE componentes.id = historique.componente_id),
+            1
+        )
+        WHERE velo_id IS NULL
+    """)
 
     cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS sorties (
