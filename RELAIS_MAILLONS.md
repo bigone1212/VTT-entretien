@@ -47,14 +47,18 @@ Ce fichier ne doit **pas** être mis à jour seulement à la fin : une session p
 
 ## Tâche en cours
 
-REPRISE PAR CHATGPT — 26/10/2026 : préparation complète de la fonctionnalité multi-vélos.
-- Branche dédiée créée à partir de `reprise/2026-10-26-multivelos-base-main` : `reprise/2026-10-26-multivelos-completion`. Ne pas modifier `main`, ne pas fusionner ni déployer sans accord explicite de Math.
-- Objectif : finir l'isolation des données et préparer une version multi-vélos cohérente à présenter dans une demande de fusion. Préserver le CUBE et son historique.
-- Étapes prévues : (1) auditer les routes d'écriture/suppression restantes ; (2) relier l'interface au vélo sélectionné sans oublier les appels API ; (3) décider une stratégie prudente pour les réglages personnels/techniques encore globaux, sans changer les coefficients de terrain ; (4) ajouter la création de vélos et les composants de base si l'audit confirme que le schéma actuel le permet sans migration risquée ; (5) mettre à jour ce relais, vérifier le diff, lancer et consulter les tests GitHub Actions ; (6) préparer une PR vers `main`, sans la fusionner.
-- État avant modification : branche de départ divergente de `main` (comparaison précédente : 32 commits en avance, 1 en retard). Relire le diff complet avant toute fusion. Les tests précédents ne couvrent pas Render/Neon ni le navigateur/téléphone.
-- Décisions à respecter : huit types de vélo ; sorties manuelles affectées au vélo choisi ; sorties automatiques affectées provisoirement au dernier vélo utilisé avec pastille rouge « à vérifier » ; coefficients terrain à réexaminer séparément et inchangés pour l'instant ; photos des nouveaux vélos en dernière étape.
-- Local, non enregistré : rien. Toute modification doit être enregistrée sur cette branche, et les tests doivent être décrits sans exagération.
-
+REPRISE PAR CHATGPT — 26/10/2026 : finalisation multi-vélos avant proposition de fusion.
+- Branche dédiée : `reprise/2026-10-26-multivelos-completion`, créée à partir de `reprise/2026-10-26-multivelos-base-main`. Aucun changement sur `main`, aucune fusion et aucun déploiement.
+- Objectif : préparer une version cohérente de la sélection/création des vélos, avec données et réglages personnels séparés, en préservant l'historique du CUBE.
+- Changements enregistrés sur la branche :
+  - `main.py` : champs moteur/batterie dans `velos`, table `mes_reglages_velo` et copie idempotente des anciens réglages personnels vers le CUBE ; endpoint `POST /api/velos` ; composants de base selon les huit types ; sélecteur de vélo ; propagation de `velo_id` aux appels API via une fonction d'aiguillage ; réglages personnels isolés ; fiche technique générique pour les nouveaux vélos ; pastilles de nouveauté séparées par vélo ; sauvegarde incluant le registre et les réglages personnels.
+  - `.github/workflows/maillons-check.yml` : déclenchement des contrôles sur cette branche et sur les demandes de fusion ; tests de migration des champs moteur/batterie, copie des réglages du CUBE et test d'intégration de création de vélos/composants/réglages isolés.
+- Commits de code principaux : `990d3da` (sélecteur/création et migration des réglages), `e66dca7` (placement de la fiche générique), `04c30eb` (sauvegarde, réglages et pastilles par vélo). Les contrôles de workflow ont été ajoutés ensuite ; consulter la tête de branche avant tout nouveau changement.
+- Réglages terrain : restent globaux, sans modification des coefficients. Les coefficients par composant restent filtrés par vélo. Pas de changement à `db.py`.
+- Limites/risques encore à vérifier : résultat réel du workflow GitHub Actions ; exécution navigateur/téléphone ; comportement de la photo de vélo (les nouveaux vélos affichent un emplacement temporaire) ; relecture de toutes les opérations API et de la sauvegarde. La fiche technique des nouveaux vélos est affichée, mais l'édition ultérieure des champs de base n'est pas encore implémentée. Ne pas considérer la fonctionnalité terminée.
+- État des tests : aucun résultat du nouveau workflow confirmé à ce stade ; ne pas annoncer de succès tant que le run n'a pas été lu.
+- Prochaine étape : corriger les derniers points, lancer/consulter les tests sur une demande de fusion en brouillon, relire le diff complet et vérifier la fusion possible. Créer une PR de brouillon seulement ; demander à Math l'accord explicite avant fusion.
+- Local, non enregistré : rien.
 
 ### Historique précédent — reprise multi-vélos initiale
 
