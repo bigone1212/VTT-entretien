@@ -11629,7 +11629,7 @@ def obtenir_etat(
 
     try:
         cursor.execute("""
-            SELECT id, km_total, date_achat
+            SELECT id, km_total, date_achat, legacy_velo_id
             FROM velos
             WHERE id = ? AND actif = 1
         """, (velo_id,))
@@ -11639,7 +11639,11 @@ def obtenir_etat(
             raise HTTPException(status_code=404, detail="Vélo introuvable.")
 
         km_global = velo["km_total"] if velo["km_total"] is not None else 0
-        date_achat = velo["date_achat"] or DATE_ACHAT_PAR_DEFAUT
+        date_achat = velo["date_achat"] or (
+            DATE_ACHAT_PAR_DEFAUT
+            if velo["legacy_velo_id"] == 1
+            else date.today().isoformat()
+        )
 
         cursor.execute(
             "SELECT * FROM composants WHERE velo_id = ? ORDER BY id",
