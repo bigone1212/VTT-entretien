@@ -256,9 +256,9 @@ jobs:
                   "SELECT * FROM velos WHERE legacy_velo_id = 1"
               ).fetchone()
               assert bike is not None, "Le CUBE historique n'a pas été créé"
-              assert bike[6] == 2700, bike
-              assert bike[8] == "2026-10-26T14:33:17Z", bike
-              assert bike[9] == "2025-11-18", bike
+              assert bike[8] == 2700, bike
+              assert bike[10] == "2026-10-26T14:33:17Z", bike
+              assert bike[11] == "2025-11-18", bike
               assert conn.execute(
                   "SELECT nom FROM composants WHERE id = 1"
               ).fetchone()[0] == "Composant historique test"
