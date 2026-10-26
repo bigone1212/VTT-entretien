@@ -36,8 +36,8 @@ jobs:
               "INSERT INTO velos",
               "legacy_velo_id",
               "UPDATE velos SET km_total=",
-              "ALTER TABLE composants ADD COLUMN velo_id INTEGER DEFAULT 1",
-              "ALTER TABLE sorties ADD COLUMN velo_id INTEGER DEFAULT 1",
+              'ajouter_colonne(cursor, "composants", "velo_id", "INTEGER DEFAULT 1")',
+              'ajouter_colonne(cursor, "sorties", "velo_id", "INTEGER DEFAULT 1")',
           ]
           missing = [item for item in required if item not in source]
           assert not missing, f"Instructions de migration introuvables dans main.py: {missing}"
