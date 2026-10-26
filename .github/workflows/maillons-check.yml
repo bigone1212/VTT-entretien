@@ -351,7 +351,45 @@ jobs:
           cursor.execute("SELECT COUNT(*) FROM composants WHERE velo_id = ?", (1,))
           assert cursor.fetchone()[0] > 0
           conn.close()
-          print("OK: création de vélos, composants selon le type et réglages personnels séparés.")
+
+          fiche = main.modifier_fiche_velo(
+              route_id,
+              main.ModifierFicheVeloRequest(nom="Gravel test modifié", marque="Test"),
+              x_code_acces="test"
+          )
+          assert fiche["nom"] == "Gravel test modifié"
+
+          conn = db.connect()
+          cursor = conn.cursor()
+          cursor.execute("""
+              INSERT INTO sorties (velo_id, nom, debut, distance_km, km_compte)
+              VALUES (?, ?, ?, ?, 1)
+          """, (route_id, "Sortie de transfert", "2026-10-25T10:00:00Z", 20))
+          cursor.execute("SELECT id FROM sorties WHERE debut = ?", ("2026-10-25T10:00:00Z",))
+          sortie_id = cursor.fetchone()[0]
+          main.ajuster_km_total(cursor, 20, route_id)
+          conn.commit()
+          conn.close()
+
+          transfert = main.affecter_sortie_a_un_autre_velo(
+              sortie_id,
+              main.AffecterSortieVeloRequest(nouveau_velo_id=electrique_id),
+              velo_id=route_id,
+              x_code_acces="test"
+          )
+          assert transfert["km_nouveau"] if "km_nouveau" in transfert else transfert["velo_nouveau"] == electrique_id
+          conn = db.connect()
+          cursor = conn.cursor()
+          cursor.execute("SELECT velo_id, km_compte FROM sorties WHERE id = ?", (sortie_id,))
+          sortie_transferee = cursor.fetchone()
+          assert sortie_transferee[0] == electrique_id
+          assert sortie_transferee[1] == 1
+          cursor.execute("SELECT km_total FROM velos WHERE id = ?", (route_id,))
+          assert cursor.fetchone()[0] == 0
+          cursor.execute("SELECT km_total FROM velos WHERE id = ?", (electrique_id,))
+          assert cursor.fetchone()[0] == 20
+          conn.close()
+          print("OK: création, fiche modifiable, composants par type, réglages isolés et transfert de sortie avec recalcul des kilomètres.")
           PY
       - name: Vérifier le script de migration SQLite sur une base temporaire
         run: |
