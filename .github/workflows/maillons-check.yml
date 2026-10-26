@@ -377,7 +377,7 @@ jobs:
               velo_id=route_id,
               x_code_acces="test"
           )
-          assert transfert["km_nouveau"] if "km_nouveau" in transfert else transfert["velo_nouveau"] == electrique_id
+          assert transfert["velo_nouveau"] == electrique_id
           conn = db.connect()
           cursor = conn.cursor()
           cursor.execute("SELECT velo_id, km_compte FROM sorties WHERE id = ?", (sortie_id,))
