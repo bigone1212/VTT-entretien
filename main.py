@@ -1350,6 +1350,8 @@ def accueil():
             /* ---- Blocs repliables de l'onglet Réglages ---- */
             .mes-reglages.mr-repliable { margin-bottom: 10px; padding: 6px 14px; }
             .apparence { margin-bottom: 10px; }
+            .apparence.mr-repliable { padding: 6px 14px; }
+            .apparence.mr-repliable .mr-entete strong { margin-bottom: 0; }
 
             .mr-repliable > .mr-titre { margin-bottom: 0; }
 
@@ -3247,8 +3249,14 @@ def accueil():
         </div>
 
         <div class="page" id="page-reglages" style="display:none;">
-        <section class="apparence" aria-label="Apparence">
-            <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3v18"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg><span>Apparence</span></strong>
+        <section class="apparence mr-repliable" id="blocApparence" aria-label="Apparence">
+            <div class="mr-titre">
+                <button type="button" class="mr-entete" aria-expanded="false" aria-controls="blocApparenceCorps">
+                    <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3v18"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg><span>Apparence</span></strong>
+                    <span class="mr-chevron"></span>
+                </button>
+            </div>
+            <div class="mr-corps" id="blocApparenceCorps">
             <div class="segments" id="segmentsTheme">
                 <button type="button" data-theme-choix="auto"></button>
                 <button type="button" data-theme-choix="light"></button>
@@ -3263,10 +3271,17 @@ def accueil():
                 <button type="button" data-palette-choix="rose" title="Rose" aria-label="Rose" style="background-image: linear-gradient(135deg, #ff7ab8, #d6337f)"></button>
                 <button type="button" data-palette-choix="violet" title="Violet" aria-label="Violet" style="background-image: linear-gradient(135deg, #b49bff, #7a5ae0)"></button>
             </div>
+            </div>
         </section>
 
-        <section class="apparence" aria-label="Unités">
-            <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="8" cy="7" r="2"/><circle cx="15" cy="17" r="2"/></svg><span>Unités</span></strong>
+        <section class="apparence mr-repliable" id="blocUnites" aria-label="Unités">
+            <div class="mr-titre">
+                <button type="button" class="mr-entete" aria-expanded="false" aria-controls="blocUnitesCorps">
+                    <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="8" cy="7" r="2"/><circle cx="15" cy="17" r="2"/></svg><span>Unités</span></strong>
+                    <span class="mr-chevron"></span>
+                </button>
+            </div>
+            <div class="mr-corps" id="blocUnitesCorps">
             <p class="form-help" style="margin:0 0 12px;">Choisis les unités utilisées pour afficher les sorties. Les données enregistrées restent inchangées.</p>
             <div class="mr-ligne">
                 <label for="unitesDistance">Distance</label>
@@ -3302,6 +3317,7 @@ def accueil():
                     <option value="24">24 heures</option>
                     <option value="12">12 heures (AM/PM)</option>
                 </select>
+            </div>
             </div>
         </section>
 
