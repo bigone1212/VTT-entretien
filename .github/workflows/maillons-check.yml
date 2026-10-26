@@ -24,6 +24,116 @@ jobs:
           python-version: "3.12"
       - name: Vérifier la syntaxe Python complète
         run: python -m py_compile main.py
+      - name: Installer les dépendances de l'application
+        run: pip install -r requirements.txt
+      - name: Démarrer l'application sur une copie SQLite isolée et vérifier la migration réelle
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-migration-test.db
+        run: |
+          python - <<'PY'
+          import os
+          import sqlite3
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          path = Path(os.environ["SQLITE_PATH"])
+          if path.exists():
+              path.unlink()
+
+          # Ancien schéma représentatif, avec données à préserver.
+          db = sqlite3.connect(path)
+          db.executescript("""
+              CREATE TABLE velo (
+                  id INTEGER PRIMARY KEY CHECK (id = 1),
+                  km_total INTEGER DEFAULT 2700,
+                  date_achat TEXT,
+                  km_maj_le TEXT,
+                  km_frac REAL DEFAULT 0
+              );
+              INSERT INTO velo VALUES (1, 2700, '2025-11-18', '2026-10-26T14:33:17Z', 0);
+              CREATE TABLE composants (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  nom TEXT NOT NULL,
+                  km_depart INTEGER DEFAULT 0,
+                  seuil_alerte INTEGER NOT NULL,
+                  categorie TEXT DEFAULT 'piece',
+                  pos_x INTEGER DEFAULT 50,
+                  pos_y INTEGER DEFAULT 50
+              );
+              INSERT INTO composants (id, nom, km_depart, seuil_alerte, categorie)
+              VALUES (1, 'Composant historique test', 1200, 2000, 'piece');
+              CREATE TABLE historique (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  composant_id INTEGER,
+                  date_remplacement TEXT,
+                  cout DOUBLE PRECISION DEFAULT 0,
+                  notes TEXT,
+                  km_intervention INTEGER
+              );
+              INSERT INTO historique VALUES (1, 1, '2026-03-05', 0, 'Historique à conserver', 1236);
+              CREATE TABLE sorties (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  nom TEXT,
+                  debut TEXT NOT NULL UNIQUE,
+                  sport TEXT,
+                  distance_km DOUBLE PRECISION,
+                  denivele_pos INTEGER,
+                  denivele_neg INTEGER,
+                  duree_s INTEGER,
+                  vitesse_moy DOUBLE PRECISION,
+                  alt_max INTEGER,
+                  pente_moy_montee DOUBLE PRECISION,
+                  terrain TEXT DEFAULT 'mixte',
+                  notes TEXT,
+                  km_compte INTEGER DEFAULT 0,
+                  trace TEXT
+              );
+              INSERT INTO sorties (id, nom, debut, distance_km)
+              VALUES (1, 'Sortie historique test', '2026-10-20T08:00:00Z', 25.5);
+              CREATE TABLE reglages (cle TEXT PRIMARY KEY, valeur DOUBLE PRECISION NOT NULL);
+              INSERT INTO reglages VALUES ('terrain_route', 1.0);
+              CREATE TABLE mes_reglages (
+                  cle TEXT PRIMARY KEY,
+                  valeur TEXT NOT NULL,
+                  maj_le TEXT
+              );
+              INSERT INTO mes_reglages VALUES ('taille_cadre', 'L', '2026-10-01');
+          """)
+          db.commit()
+          db.close()
+
+          # L'import de main appelle init_db : on teste donc le vrai démarrage
+          # et les migrations, dans un processus séparé et une base temporaire.
+          env = os.environ.copy()
+          env.pop("DATABASE_URL", None)
+          subprocess.run([sys.executable, "-c", "import main"], env=env, check=True)
+
+          db = sqlite3.connect(path)
+          db.row_factory = sqlite3.Row
+          bike = db.execute("SELECT * FROM velos WHERE legacy_velo_id=1").fetchone()
+          assert bike is not None, "Le CUBE historique n'a pas été créé"
+          assert bike["km_total"] == 2700, dict(bike)
+          assert bike["date_achat"] == "2025-11-18", dict(bike)
+          assert bike["km_maj_le"] == "2026-10-26T14:33:17Z", dict(bike)
+          assert db.execute("SELECT nom FROM composants WHERE id=1").fetchone()[0] == "Composant historique test"
+          assert db.execute("SELECT km_intervention FROM historique WHERE id=1").fetchone()[0] == 1236
+          assert db.execute("SELECT distance_km FROM sorties WHERE id=1").fetchone()[0] == 25.5
+          assert db.execute("SELECT valeur FROM mes_reglages WHERE cle='taille_cadre'").fetchone()[0] == "L"
+          assert db.execute("SELECT velo_id FROM composants WHERE id=1").fetchone()[0] == 1
+          assert db.execute("SELECT velo_id FROM sorties WHERE id=1").fetchone()[0] == 1
+          count_bikes = db.execute("SELECT COUNT(*) FROM velos").fetchone()[0]
+          count_components = db.execute("SELECT COUNT(*) FROM composants").fetchone()[0]
+          db.close()
+
+          # Deuxième démarrage : la migration doit être relançable sans doublons.
+          subprocess.run([sys.executable, "-c", "import main"], env=env, check=True)
+          db = sqlite3.connect(path)
+          assert db.execute("SELECT COUNT(*) FROM velos").fetchone()[0] == count_bikes
+          assert db.execute("SELECT COUNT(*) FROM composants").fetchone()[0] == count_components
+          db.close()
+          print("OK: démarrage réel sur SQLite temporaire, conservation des données et seconde migration sans doublon.")
+          PY
       - name: Vérifier le script de migration SQLite sur une base temporaire
         run: |
           python - <<'PY'
