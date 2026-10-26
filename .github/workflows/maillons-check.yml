@@ -389,6 +389,80 @@ jobs:
           cursor.execute("SELECT km_total FROM velos WHERE id = ?", (electrique_id,))
           assert cursor.fetchone()[0] == 20
           conn.close()
+          # L'import d'une sortie doit incrémenter uniquement le vélo sélectionné.
+          analyser_original = main.gpx_import.analyser_activite
+          main.gpx_import.analyser_activite = lambda **kwargs: {
+              "nom": "Sortie test vélo A",
+              "debut": "2026-10-26T08:00:00Z",
+              "sport": "cycling",
+              "distance_km": 12.5,
+              "denivele_pos": 300,
+              "denivele_neg": 280,
+              "duree_s": 3600,
+              "vitesse_moy": 12.5,
+              "alt_max": 800,
+              "pente_moy_montee": 7.0,
+              "trace": "[]",
+          }
+          try:
+              import_result = main.importer_sortie(
+                  main.ImportGpxRequest(gpx="<gpx>" + (" " * 50) + "</gpx>", nom="Sortie test vélo A"),
+                  velo_id=route_id,
+                  x_code_acces="test"
+              )
+          finally:
+              main.gpx_import.analyser_activite = analyser_original
+          assert import_result["statut"] == "success", import_result
+          assert import_result["ajoute_au_total"] is True, import_result
+
+          conn = db.connect()
+          cursor = conn.cursor()
+          cursor.execute("SELECT id, velo_id, distance_km, km_compte FROM sorties WHERE debut = ?", ("2026-10-26T08:00:00Z",))
+          sortie_importee = cursor.fetchone()
+          assert sortie_importee is not None
+          sortie_importee_id = sortie_importee[0]
+          assert sortie_importee[1] == route_id
+          assert sortie_importee[2] == 12.5
+          assert sortie_importee[3] == 1
+          cursor.execute("SELECT km_total, km_frac FROM velos WHERE id = ?", (route_id,))
+          km_route = cursor.fetchone()
+          assert km_route[0] + km_route[1] == 12.5, tuple(km_route)
+          cursor.execute("SELECT km_total, km_frac FROM velos WHERE id = ?", (electrique_id,))
+          km_electrique = cursor.fetchone()
+          assert km_electrique[0] + km_electrique[1] == 20, tuple(km_electrique)
+          conn.close()
+
+          try:
+              main.supprimer_sortie(
+                  sortie_importee_id,
+                  velo_id=electrique_id,
+                  x_code_acces="test"
+              )
+              raise AssertionError("Un vélo a pu supprimer la sortie d'un autre vélo")
+          except main.HTTPException as exc:
+              assert exc.status_code == 404, exc.status_code
+
+          conn = db.connect()
+          cursor = conn.cursor()
+          cursor.execute("SELECT COUNT(*) FROM sorties WHERE id = ? AND velo_id = ?", (sortie_importee_id, route_id))
+          assert cursor.fetchone()[0] == 1
+          conn.close()
+
+          main.supprimer_sortie(
+              sortie_importee_id,
+              velo_id=route_id,
+              x_code_acces="test"
+          )
+          conn = db.connect()
+          cursor = conn.cursor()
+          cursor.execute("SELECT km_total, km_frac FROM velos WHERE id = ?", (route_id,))
+          km_route_apres_suppression = cursor.fetchone()
+          assert km_route_apres_suppression[0] + km_route_apres_suppression[1] == 0, tuple(km_route_apres_suppression)
+          cursor.execute("SELECT km_total, km_frac FROM velos WHERE id = ?", (electrique_id,))
+          km_electrique_apres_suppression = cursor.fetchone()
+          assert km_electrique_apres_suppression[0] + km_electrique_apres_suppression[1] == 20, tuple(km_electrique_apres_suppression)
+          conn.close()
+
           # Les interventions d'entretien doivent rester propres à chaque vélo.
           conn = db.connect()
           cursor = conn.cursor()
