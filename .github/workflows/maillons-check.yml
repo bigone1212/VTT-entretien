@@ -8,6 +8,12 @@ on:
     paths:
       - "main.py"
       - ".github/workflows/maillons-check.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "main.py"
+      - ".github/workflows/maillons-check.yml"
   workflow_dispatch:
 
 permissions:
