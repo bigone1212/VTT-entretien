@@ -11818,8 +11818,8 @@ def remplacer_composant(
 TERRAINS = {"mixte", "route", "chemin", "sentier"}
 
 
-def ajuster_km_total(cursor, delta_km):
-    cursor.execute("SELECT km_total, km_frac FROM velo WHERE id = 1")
+def ajuster_km_total(cursor, delta_km, velo_id=1):
+    cursor.execute("SELECT km_total, km_frac FROM velos WHERE id = ?", (velo_id,))
     ligne = cursor.fetchone()
 
     base = ligne[0] if ligne and ligne[0] is not None else 2700
@@ -11829,8 +11829,8 @@ def ajuster_km_total(cursor, delta_km):
     entier = int(math.floor(total + 1e-9))
 
     cursor.execute(
-        "UPDATE velo SET km_total = ?, km_frac = ? WHERE id = 1",
-        (entier, total - entier)
+        "UPDATE velos SET km_total = ?, km_frac = ? WHERE id = ?",
+        (entier, total - entier, velo_id)
     )
 
     return entier
@@ -12055,7 +12055,11 @@ def retirer_composant(
 
 
 @app.post("/api/sorties/import")
-def importer_sortie(data: ImportGpxRequest, x_code_acces: Optional[str] = Header(default=None)):
+def importer_sortie(
+    data: ImportGpxRequest,
+    velo_id: int = 1,
+    x_code_acces: Optional[str] = Header(default=None)
+):
     verifier_auth(x_code_acces)
 
     if not data.gpx and not data.fit:
@@ -12102,7 +12106,14 @@ def importer_sortie(data: ImportGpxRequest, x_code_acces: Optional[str] = Header
     cursor = conn.cursor()
 
     try:
-        cursor.execute("SELECT id FROM sorties WHERE debut = ?", (s["debut"],))
+        cursor.execute("SELECT id FROM velos WHERE id = ? AND actif = 1", (velo_id,))
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Vélo introuvable.")
+
+        cursor.execute(
+            "SELECT id FROM sorties WHERE debut = ? AND velo_id = ?",
+            (s["debut"], velo_id)
+        )
 
         if cursor.fetchone() is not None:
             raise HTTPException(
@@ -12115,8 +12126,9 @@ def importer_sortie(data: ImportGpxRequest, x_code_acces: Optional[str] = Header
         depart = datetime.strptime(s["debut"], "%Y-%m-%dT%H:%M:%SZ")
         format_heure = "%Y-%m-%dT%H:%M:%SZ"
         cursor.execute(
-            "SELECT distance_km FROM sorties WHERE debut >= ? AND debut <= ?",
+            "SELECT distance_km FROM sorties WHERE velo_id = ? AND debut >= ? AND debut <= ?",
             (
+                velo_id,
                 (depart - timedelta(minutes=10)).strftime(format_heure),
                 (depart + timedelta(minutes=10)).strftime(format_heure),
             )
@@ -12131,7 +12143,7 @@ def importer_sortie(data: ImportGpxRequest, x_code_acces: Optional[str] = Header
                     detail="Cette sortie est déjà importée."
                 )
 
-        cursor.execute("SELECT km_maj_le FROM velo WHERE id = 1")
+        cursor.execute("SELECT km_maj_le FROM velos WHERE id = ?", (velo_id,))
         velo = cursor.fetchone()
         derniere_maj = velo[0] if velo else None
 
@@ -12139,22 +12151,22 @@ def importer_sortie(data: ImportGpxRequest, x_code_acces: Optional[str] = Header
 
         cursor.execute("""
             INSERT INTO sorties (
-                nom, debut, sport, distance_km, denivele_pos, denivele_neg,
+                velo_id, nom, debut, sport, distance_km, denivele_pos, denivele_neg,
                 duree_s, vitesse_moy, alt_max, pente_moy_montee,
                 terrain, notes, km_compte, trace, photos
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            nom, s["debut"], s["sport"], s["distance_km"],
+            velo_id, nom, s["debut"], s["sport"], s["distance_km"],
             s["denivele_pos"], s["denivele_neg"], s["duree_s"],
             s["vitesse_moy"], s["alt_max"], s["pente_moy_montee"],
             terrain, notes, compte, s["trace"], photos_json
         ))
 
         if compte:
-            km_total = ajuster_km_total(cursor, s["distance_km"])
+            km_total = ajuster_km_total(cursor, s["distance_km"], velo_id)
         else:
-            cursor.execute("SELECT km_total FROM velo WHERE id = 1")
+            cursor.execute("SELECT km_total FROM velos WHERE id = ?", (velo_id,))
             km_total = cursor.fetchone()[0]
 
         conn.commit()
@@ -12235,15 +12247,19 @@ def lister_sorties(
 
 
 @app.post("/api/sorties/{sortie_id}/supprimer")
-def supprimer_sortie(sortie_id: int, x_code_acces: Optional[str] = Header(default=None)):
+def supprimer_sortie(
+    sortie_id: int,
+    velo_id: int = 1,
+    x_code_acces: Optional[str] = Header(default=None)
+):
     verifier_auth(x_code_acces)
     conn = db.connect()
     cursor = conn.cursor()
 
     try:
         cursor.execute(
-            "SELECT distance_km, km_compte FROM sorties WHERE id = ?",
-            (sortie_id,)
+            "SELECT distance_km, km_compte FROM sorties WHERE id = ? AND velo_id = ?",
+            (sortie_id, velo_id)
         )
         ligne = cursor.fetchone()
 
@@ -12254,9 +12270,9 @@ def supprimer_sortie(sortie_id: int, x_code_acces: Optional[str] = Header(defaul
             )
 
         if ligne[1]:
-            ajuster_km_total(cursor, -float(ligne[0] or 0))
+            ajuster_km_total(cursor, -float(ligne[0] or 0), velo_id)
 
-        cursor.execute("DELETE FROM sorties WHERE id = ?", (sortie_id,))
+        cursor.execute("DELETE FROM sorties WHERE id = ? AND velo_id = ?", (sortie_id, velo_id))
         conn.commit()
 
         return {"statut": "success"}
