@@ -11313,7 +11313,10 @@ def obtenir_etat(
 # ============================================================
 
 @app.get("/api/historique")
-def obtenir_historique(x_code_acces: Optional[str] = Header(default=None)):
+def obtenir_historique(
+    velo_id: int = 1,
+    x_code_acces: Optional[str] = Header(default=None)
+):
     verifier_auth(x_code_acces)
     conn = db.connect()
     cursor = conn.cursor()
@@ -11330,8 +11333,9 @@ def obtenir_historique(x_code_acces: Optional[str] = Header(default=None)):
                 h.km_intervention
             FROM historique h
             JOIN composants c ON h.composant_id = c.id
+            WHERE h.velo_id = ? AND c.velo_id = ?
             ORDER BY h.id DESC
-        """)
+        """, (velo_id, velo_id))
 
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
@@ -12143,13 +12147,19 @@ def importer_sortie(data: ImportGpxRequest, x_code_acces: Optional[str] = Header
 
 
 @app.get("/api/sorties")
-def lister_sorties(x_code_acces: Optional[str] = Header(default=None)):
+def lister_sorties(
+    velo_id: int = 1,
+    x_code_acces: Optional[str] = Header(default=None)
+):
     verifier_auth(x_code_acces)
     conn = db.connect()
     cursor = conn.cursor()
 
     try:
-        cursor.execute("SELECT * FROM sorties ORDER BY debut DESC")
+        cursor.execute(
+            "SELECT * FROM sorties WHERE velo_id = ? ORDER BY debut DESC",
+            (velo_id,)
+        )
         lignes_sorties = cursor.fetchall()
         reglages_usure = lire_reglages(cursor)
 
