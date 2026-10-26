@@ -48,15 +48,22 @@ Ce fichier ne doit **pas** être mis à jour seulement à la fin : une session p
 ## Tâche en cours
 
 REPRISE PAR CHATGPT — 26/10/2026 :
-- Objectif : préparer la prochaine étape du chantier multi-vélos après validation de C3(a) : dresser un inventaire précis des lectures/écritures qui devront suivre le vélo sélectionné, sans encore modifier le code.
-- État vérifié : la migration C3(a) a réussi sur SQLite temporaire et PostgreSQL 16 éphémère dans GitHub Actions, workflow `40352096393`, commit testé `42a16b17f86d36ce67367bb022939e003715c959`. Le relais a été mis à jour sur `main` et sur cette branche.
-- Étapes prévues : [x] 1. Valider la migration sur SQLite et PostgreSQL isolés. [~] 2. Examiner dans `main.py` les routes/API et fonctions qui lisent ou modifient le vélo, les composants, l'historique, les sorties et les réglages de fiche technique. [ ] 3. Établir un plan ciblé avec tests pour éviter de casser le fonctionnement actuel. [ ] 4. Demander confirmation avant de modifier les routes et l'interface multi-vélos.
-- Enregistré sur GitHub : workflow de test `.github/workflows/maillons-check.yml`, commit `42a16b17f86d36ce67367bb022939e003715c959`; relais de suivi principal commit `a3926efcd33e44090faba18c174b1f2deef46e4a`.
+- Objectif : préparer la prochaine étape C3(b) du chantier multi-vélos en identifiant les accès de données à isoler par vélo, sans encore modifier le code applicatif.
+- État vérifié : la migration C3(a) a réussi sur SQLite temporaire et PostgreSQL 16 éphémère dans GitHub Actions, workflow `40352096393`, commit de branche `42a16b17f86d36ce67367bb022939e003715c959`. Le relais de suivi a été mis à jour sur `main`.
+- Inventaire effectué sur `main.py` SHA `0c5f2c21d42d2a817406968fafbda57f8eb0ca87` :
+  - `/api/etat` lit le kilométrage dans `velo id=1`, tous les composants et toutes les sorties ; le calcul d'usure mélange donc actuellement les vélos.
+  - Historique (`/api/historique` et ajout/modification/suppression) dépend des composants mais vérifie le kilométrage sur `velo id=1`.
+  - Synchronisation kilométrique `/api/sync`, remplacement de pièce et `ajuster_km_total` écrivent dans `velo id=1`.
+  - Import et liste des sorties, suppressions/modifications de sorties utilisent actuellement les sorties sans filtre par vélo ; l'import détermine aussi `km_compte` à partir de `velo.km_maj_le`.
+  - `/api/mes-reglages` lit et écrit une table globale ; pour la fiche technique, il faudra un stockage par vélo sans perdre les réglages existants du CUBE.
+  - `/api/sauvegarde` exporte actuellement la table historique `velo` et toutes les données, mais le format devra rester compatible et inclure le registre multi-vélos.
+- Étapes : [x] 1. Valider la migration sur SQLite et PostgreSQL isolés. [x] 2. Inventorier les routes et requêtes principales. [~] 3. Proposer un plan ciblé qui couvre l'identifiant du vélo actif, les lectures/écritures d'entretien, le calcul d'usure, les sorties et la fiche technique. [ ] 4. Obtenir l'accord de Math avant toute modification du code applicatif.
+- Enregistré sur GitHub : workflow testé `42a16b17f86d36ce67367bb022939e003715c959`; relais de l'inventaire en cours sur cette branche.
 - Local, non enregistré : rien.
-- Fichiers modifiés pour cette étape d'inventaire : aucun fichier de l'application ; ce relais uniquement.
-- Tests : migration SQLite et PostgreSQL réussies. L'inventaire de code est en cours ; aucun test d'interface ou Render.
-- Limites : ne pas fusionner cette branche divergente ; aucun accès à Neon/production, aucune fusion de code ni déploiement.
-- Prochaine action : inventorier les points d'entrée de `main.py` sur la branche de reprise, puis présenter les changements nécessaires avant d'écrire du code.
+- Fichiers applicatifs modifiés : aucun.
+- Tests : migration SQLite et PostgreSQL réussies ; inventaire statique terminé. Aucun test d'interface, téléphone ou Render.
+- Limites : la branche reste divergente de `main`; ne pas fusionner. Aucune base de production utilisée, aucun code de l'application modifié ou déployé.
+- Prochaine action : présenter à Math les conclusions et le périmètre proposé ; attendre son accord avant de modifier `main.py` pour C3(b).
 
 
 NOUVELLE DEMANDE de Math — 26/10/2026, par Claude (3 demandes, traitées une par une ; les quatre premières demandes du 25/10 sont terminées et fusionnées) :
