@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - reprise/2026-10-26-multivelos-base-main
+      - reprise/2026-10-26-multivelos-completion
     paths:
       - "main.py"
       - ".github/workflows/maillons-check.yml"
