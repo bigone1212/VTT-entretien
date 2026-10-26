@@ -136,6 +136,8 @@ jobs:
           assert db.execute("SELECT velo_id FROM historique WHERE id=1").fetchone()[0] == 1
           assert db.execute("SELECT distance_km FROM sorties WHERE id=1").fetchone()[0] == 25.5
           assert db.execute("SELECT valeur FROM mes_reglages WHERE cle='taille_cadre'").fetchone()[0] == "L"
+          assert db.execute("SELECT valeur FROM mes_reglages_velo WHERE velo_id=1 AND cle='taille_cadre'").fetchone()[0] == "L"
+          assert {"moteur", "batterie"}.issubset({row[1] for row in db.execute("PRAGMA table_info(velos)")})
           assert db.execute("SELECT velo_id FROM composants WHERE id=1").fetchone()[0] == 1
           assert db.execute("SELECT velo_id FROM sorties WHERE id=1").fetchone()[0] == 1
           count_bikes = db.execute("SELECT COUNT(*) FROM velos").fetchone()[0]
@@ -277,6 +279,15 @@ jobs:
                   "SELECT valeur FROM mes_reglages WHERE cle = 'taille_cadre'"
               ).fetchone()[0] == "L"
               assert conn.execute(
+                  "SELECT valeur FROM mes_reglages_velo WHERE velo_id = 1 AND cle = 'taille_cadre'"
+              ).fetchone()[0] == "L"
+              assert {"moteur", "batterie"}.issubset({
+                  row[0] for row in conn.execute("""
+                      SELECT column_name FROM information_schema.columns
+                      WHERE table_name = 'velos'
+                  """).fetchall()
+              })
+              assert conn.execute(
                   "SELECT velo_id FROM composants WHERE id = 1"
               ).fetchone()[0] == 1
               assert conn.execute(
@@ -303,6 +314,9 @@ jobs:
           required = [
               "CREATE TABLE IF NOT EXISTS velos",
               '@app.get("/api/velos")',
+              '@app.post("/api/velos")',
+              'CREATE TABLE IF NOT EXISTS mes_reglages_velo',
+              'INSERT INTO mes_reglages_velo',
               'SELECT id, nom, type, marque, modele, annee, taille, actif',
               '@app.get("/api/etat")',
               'WHERE id = ? AND actif = 1',
