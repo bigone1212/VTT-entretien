@@ -274,3 +274,13 @@ Dernier commit de main connu : …    Branche de reprise éventuelle : …
 - Branches vérifiées lors de la reprise : `main`, `feature/fiche-technique-velo` (non examinée), `reprise/2026-10-25-couleurs` et `reprise/2026-10-25-unites`. La branche unités n'est pas fusionnée dans `main`.
 - Chaque envoi sur `main` peut déclencher une mise à jour de Render si la mise à jour automatique est active (non vérifié) : un commit qui ne modifie que ce fichier ne change pas l'appli, mais peut provoquer un redéploiement identique.
 - **Render : vérifié via la connexion Render le 25/10/2026**. Service `VTT-entretien`, branche `main`, auto-déploiement activé à chaque commit. URL : `https://vtt-entretien.onrender.com`. La fusion déclenchera donc un déploiement automatique ; le résultat du déploiement après fusion reste à vérifier.
+
+
+REPRISE CHATGPT — 26/10/2026, base de test actualisée :
+- La branche `reprise/2026-10-26-multivelos-base-main` a été créée depuis le `main` vérifié (commit de base `a3926efcd33e44090faba18c174b1f2deef46e4a`). Elle conserve donc les améliorations récentes présentes dans `main`, dont le profil d'altitude ajusté.
+- Sur cette branche uniquement, `main.py` reçoit la première étape de migration C3(a) : registre `velos`, création idempotente du CUBE historique, colonnes `velo_id` sur composants/sorties, attribution des anciennes lignes au CUBE et copie du kilométrage/dates. La table historique `velo` reste intacte et continue d'être utilisée par l'application à ce stade.
+- Fichiers modifiés sur la branche : `main.py` et `.github/workflows/maillons-check.yml`. Aucun changement sur `main`, aucune opération Render, aucune connexion à la base de production.
+- Commits enregistrés : `1f30e3eac536ee17cd6cb1477e0750c2c9b224b1` (migration dans `main.py`) et `8c02289cc32c7fcf66a0b7498e57062c3ef23b58` (workflow de test adapté à la nouvelle branche).
+- Tests : workflow GitHub Actions `40355625451` lancé et encore en cours au dernier contrôle. Ne pas considérer la migration comme validée avant son résultat.
+- Local, non enregistré : rien.
+- Prochaine étape : attendre le résultat des tests SQLite/PostgreSQL, corriger toute erreur puis seulement démarrer C3(b), isolation des lectures/écritures par vélo.
