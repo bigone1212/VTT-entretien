@@ -47,6 +47,17 @@ Ce fichier ne doit **pas** être mis à jour seulement à la fin : une session p
 
 ## Tâche en cours
 
+REPRISE PAR CHATGPT — 27/10/2026 : correction ciblée de la sauvegarde multi-vélos.
+- Objectif : corriger le kilométrage exporté par `/api/sauvegarde`, qui lisait encore l'ancienne table `velo` alors que les kilomètres courants sont dans `velos`.
+- Branche de test actuelle : `reprise/2026-10-27-correction-sauvegarde`, créée depuis `reprise/2026-10-26-multivelos-completion`. Ne pas fusionner ni déployer sans accord explicite de Math.
+- Enregistré sur GitHub : `main.py`, commit `b90143b8c8308f713a5bbf533c183d47b417ae86`. Le bloc `/api/sauvegarde` lit désormais `velos.km_total` pour le CUBE (id 1), avec repli vers `velo.km_total` si la nouvelle valeur est absente. Le champ JSON `km_total`, les listes de vélos, réglages personnels, composants, historique, sorties et réglages globaux sont conservés.
+- Comparaison GitHub vérifiée : cette branche a 1 commit de plus que sa base `reprise/2026-10-26-multivelos-completion`, sans retard ; seul `main.py` change dans ce commit (7 ajouts, 1 suppression).
+- Contrôle automatique : GitHub Actions run `40578350491`, lien https://github.com/bigone1212/VTT-entretien/actions/runs/40578350491. État au dernier contrôle : `in_progress`; résultat à vérifier. Aucun test Neon, Render, navigateur ou téléphone effectué à cette étape.
+- Local, non enregistré : rien.
+- Prochaine action : attendre et vérifier le résultat du workflow, puis inspecter les étapes/logs. Ne pas fusionner cette branche dans la PR n° 7 ni dans `main` avant validation et nouvel accord explicite.
+- Note : le reste de ce fichier conserve l'historique des étapes multi-vélos antérieures ; ne pas le considérer comme un état plus récent que les commits réellement vérifiés ci-dessus.
+
+
 REPRISE PAR CHATGPT — 26/10/2026 :
 - Objectif : valider la migration C3(a) « Plusieurs vélos » sur des moteurs SQLite et PostgreSQL de test avant toute fusion.
 - État GitHub : branche de code `reprise/2026-10-26-plusieurs-velos`. Elle reste divergente de `main` ; le dernier comparatif avait 18 commits en avance et 4 en retard. Ne pas fusionner automatiquement.
