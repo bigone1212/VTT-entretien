@@ -462,6 +462,8 @@ def init_db():
     ajouter_colonne(cursor, "sorties", "photos", "TEXT")
     ajouter_colonne(cursor, "sorties", "videos", "TEXT")
     ajouter_colonne(cursor, "sorties", "surfaces", "TEXT")
+    # 1 = sortie reçue automatiquement, vélo à confirmer par Math.
+    ajouter_colonne(cursor, "sorties", "a_verifier", "INTEGER DEFAULT 0")
 
     # Les liens de partage secrets ont été abandonnés : on nettoie leur table.
     cursor.execute("DROP TABLE IF EXISTS partages")
@@ -2835,7 +2837,8 @@ def accueil():
                 pointer-events: none;
             }
 
-            .pastille-nouvelle {
+            .pastille-nouvelle,
+            .pastille-verifier {
                 display: inline-block;
                 margin-right: 8px;
                 padding: 2px 8px;
@@ -4106,7 +4109,9 @@ def accueil():
                     velosDisponibles.forEach(v => {
                         const option = document.createElement('option');
                         option.value = String(v.id);
-                        option.textContent = v.nom + ' · ' + (TYPES_VELO[v.type] || v.type);
+                        const nbAVerifier = Number(v.sorties_a_verifier) || 0;
+                        option.textContent = v.nom + ' · ' + (TYPES_VELO[v.type] || v.type)
+                            + (nbAVerifier > 0 ? ' · ' + nbAVerifier + ' à vérifier' : '');
                         select.appendChild(option);
                     });
                     select.value = String(veloActifId);
@@ -4166,6 +4171,7 @@ def accueil():
                 historiqueDonnees = [];
                 etatComposants = [];
                 histSelection.clear();
+                await chargerVelos();
                 await chargerEtat();
                 afficherNomVeloActif();
             }
@@ -7934,6 +7940,15 @@ def accueil():
                             });
                         }
 
+                        // Pastille rouge « À vérifier » : sortie reçue automatiquement,
+                        // rangée sur le dernier vélo utilisé, à confirmer ou à changer.
+                        if (Number(s.a_verifier) === 1) {
+                            const aVerifier = document.createElement('span');
+                            aVerifier.className = 'pastille-verifier';
+                            aVerifier.textContent = 'À vérifier';
+                            titre.prepend(aVerifier);
+                        }
+
                         const ligne1 = document.createElement('div');
                         ligne1.style.color = 'var(--text-muted)';
                         ligne1.style.marginTop = '4px';
@@ -8108,6 +8123,7 @@ def accueil():
                         ajouterAction('crayon', 'Modifier les notes', () => modifierNotesSortie(s), false, false);
                         ajouterAction('telecharger', 'Exporter en GPX', () => exporterSortieGpx(s), false, !Array.isArray(s.trace) || s.trace.length < 2);
                         ajouterAction('crayon', 'Renommer', () => renommerSortie(s), false, false);
+                        ajouterAction('valider', 'Confirmer le vélo', () => confirmerVeloSortie(s), false, Number(s.a_verifier) !== 1);
                         ajouterAction('repere', 'Changer de vélo', () => changerVeloSortie(s), false, velosDisponibles.length < 2);
                         ajouterAction('poubelle', 'Supprimer', () => supprimerSortie(s.id), true, false);
 
@@ -11226,6 +11242,20 @@ def accueil():
                 .addEventListener('change', majCompteStrava);
 
 
+            async function confirmerVeloSortie(sortie) {
+                try {
+                    const res = await fetch('/api/sorties/' + sortie.id + '/verifier', {
+                        method: 'POST',
+                        headers: getHeaders()
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Confirmation impossible.');
+                    await rechargerDonneesVelo();
+                } catch (e) {
+                    alert(e.message || 'Confirmation impossible.');
+                }
+            }
+
             async function changerVeloSortie(sortie) {
                 const autres = velosDisponibles.filter(v => Number(v.id) !== veloActifId);
                 if (!autres.length) return;
@@ -11461,6 +11491,11 @@ def obtenir_velos(x_code_acces: Optional[str] = Header(default=None)):
 
     try:
         cursor.execute("""
+            SELECT velo_id, COUNT(*) FROM sorties
+            WHERE a_verifier = 1 GROUP BY velo_id
+        """)
+        a_verifier = {r[0]: r[1] for r in cursor.fetchall()}
+        cursor.execute("""
             SELECT id, nom, type, marque, modele, annee, taille, actif,
                    km_total, km_frac, km_maj_le, date_achat, moteur, batterie
             FROM velos
@@ -11469,6 +11504,7 @@ def obtenir_velos(x_code_acces: Optional[str] = Header(default=None)):
         """)
         return [
             {
+                "sorties_a_verifier": a_verifier.get(row["id"], 0),
                 "id": row["id"],
                 "nom": row["nom"],
                 "type": row["type"],
@@ -12592,7 +12628,7 @@ def retirer_composant(
 @app.post("/api/sorties/import")
 def importer_sortie(
     data: ImportGpxRequest,
-    velo_id: int = 1,
+    velo_id: Optional[int] = None,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     verifier_auth(x_code_acces)
@@ -12641,13 +12677,30 @@ def importer_sortie(
     cursor = conn.cursor()
 
     try:
+        # Sans vélo précisé (envoi automatique depuis le PC de Math), la sortie
+        # est rangée sur le vélo de la sortie la plus récente, avec « à vérifier ».
+        # Depuis l'appli, le vélo choisi en haut est toujours envoyé : rien à vérifier.
+        automatique = velo_id is None
+
+        if automatique:
+            cursor.execute("""
+                SELECT s.velo_id
+                FROM sorties s
+                JOIN velos v ON v.id = s.velo_id AND v.actif = 1
+                ORDER BY s.debut DESC
+                LIMIT 1
+            """)
+            derniere = cursor.fetchone()
+            velo_id = derniere[0] if derniere and derniere[0] else 1
+
         cursor.execute("SELECT id FROM velos WHERE id = ? AND actif = 1", (velo_id,))
         if cursor.fetchone() is None:
             raise HTTPException(status_code=404, detail="Vélo introuvable.")
 
+        # L'heure de départ est unique dans toute la base, tous vélos confondus.
         cursor.execute(
-            "SELECT id FROM sorties WHERE debut = ? AND velo_id = ?",
-            (s["debut"], velo_id)
+            "SELECT id FROM sorties WHERE debut = ?",
+            (s["debut"],)
         )
 
         if cursor.fetchone() is not None:
@@ -12660,13 +12713,17 @@ def importer_sortie(
         # l'heure de départ peut différer de quelques secondes ou minutes.
         depart = datetime.strptime(s["debut"], "%Y-%m-%dT%H:%M:%SZ")
         format_heure = "%Y-%m-%dT%H:%M:%SZ"
+        filtre_velo = "" if automatique else "velo_id = ? AND "
+        parametres_proches = (
+            (depart - timedelta(minutes=10)).strftime(format_heure),
+            (depart + timedelta(minutes=10)).strftime(format_heure),
+        )
+        if not automatique:
+            parametres_proches = (velo_id,) + parametres_proches
         cursor.execute(
-            "SELECT distance_km FROM sorties WHERE velo_id = ? AND debut >= ? AND debut <= ?",
-            (
-                velo_id,
-                (depart - timedelta(minutes=10)).strftime(format_heure),
-                (depart + timedelta(minutes=10)).strftime(format_heure),
-            )
+            "SELECT distance_km FROM sorties WHERE " + filtre_velo
+            + "debut >= ? AND debut <= ?",
+            parametres_proches
         )
 
         for proche in cursor.fetchall():
@@ -12688,14 +12745,15 @@ def importer_sortie(
             INSERT INTO sorties (
                 velo_id, nom, debut, sport, distance_km, denivele_pos, denivele_neg,
                 duree_s, vitesse_moy, alt_max, pente_moy_montee,
-                terrain, notes, km_compte, trace, photos
+                terrain, notes, km_compte, trace, photos, a_verifier
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             velo_id, nom, s["debut"], s["sport"], s["distance_km"],
             s["denivele_pos"], s["denivele_neg"], s["duree_s"],
             s["vitesse_moy"], s["alt_max"], s["pente_moy_montee"],
-            terrain, notes, compte, s["trace"], photos_json
+            terrain, notes, compte, s["trace"], photos_json,
+            1 if automatique else 0
         ))
 
         if compte:
@@ -12714,13 +12772,45 @@ def importer_sortie(
             "denivele_pos": s["denivele_pos"],
             "duree_s": s["duree_s"],
             "ajoute_au_total": bool(compte),
-            "km_total": km_total
+            "km_total": km_total,
+            "velo_id": velo_id,
+            "a_verifier": bool(automatique)
         }
 
     except Exception:
         conn.rollback()
         raise
 
+    finally:
+        conn.close()
+
+
+@app.post("/api/sorties/{sortie_id}/verifier")
+def confirmer_velo_sortie(
+    sortie_id: int,
+    velo_id: int = 1,
+    x_code_acces: Optional[str] = Header(default=None)
+):
+    """Math confirme que le vélo de cette sortie est le bon."""
+    verifier_auth(x_code_acces)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "SELECT id FROM sorties WHERE id = ? AND velo_id = ?",
+            (sortie_id, velo_id)
+        )
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Sortie introuvable pour ce vélo.")
+        cursor.execute(
+            "UPDATE sorties SET a_verifier = 0 WHERE id = ? AND velo_id = ?",
+            (sortie_id, velo_id)
+        )
+        conn.commit()
+        return {"statut": "success", "sortie_id": sortie_id}
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -12771,7 +12861,7 @@ def affecter_sortie_a_un_autre_velo(
             ajuster_km_total(cursor, distance_km, nouveau_velo_id)
 
         cursor.execute(
-            "UPDATE sorties SET velo_id = ?, km_compte = ? WHERE id = ? AND velo_id = ?",
+            "UPDATE sorties SET velo_id = ?, km_compte = ?, a_verifier = 0 WHERE id = ? AND velo_id = ?",
             (nouveau_velo_id, nouveau_compte, sortie_id, velo_id)
         )
         conn.commit()

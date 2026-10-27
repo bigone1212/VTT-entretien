@@ -661,7 +661,149 @@ jobs:
         run: |
           pip install playwright
           python -m playwright install --with-deps chromium
-      - name: Tester la page dans un vrai navigateur (chargement et sélecteur de vélo)
+      - name: Vérifier le dernier vélo utilisé et la pastille à vérifier (SQLite puis PostgreSQL)
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-dernier-velo-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_dernier_velo.py" <<'PY'
+          import sys
+          from datetime import datetime, timedelta
+
+          import db
+          import main
+          from fastapi import HTTPException
+
+          CODE = "test"
+
+
+          def gpx(debut, km=10.0, nom="Sortie test"):
+              t0 = datetime.strptime(debut, "%Y-%m-%dT%H:%M:%SZ")
+              n = 120
+              pas_m = km * 1000 / (n - 1)
+              pts = []
+              for i in range(n):
+                  lat = 44.0 + (i * pas_m) / 111320.0
+                  t = (t0 + timedelta(seconds=20 * i)).strftime("%Y-%m-%dT%H:%M:%SZ")
+                  pts.append('<trkpt lat="%.6f" lon="2.500000"><ele>%d</ele><time>%s</time></trkpt>' % (lat, 500 + i % 10, t))
+              return ('<?xml version="1.0"?><gpx version="1.1" creator="test" xmlns="http://www.topografix.com/GPX/1/1">'
+                      '<trk><name>' + nom + '</name><trkseg>' + "".join(pts) + '</trkseg></trk></gpx>')
+
+
+          def importer(debut, km, velo_id=None, nom="Sortie test"):
+              return main.importer_sortie(main.ImportGpxRequest(gpx=gpx(debut, km, nom)), velo_id=velo_id, x_code_acces=CODE)
+
+
+          def refuse(code, fonction, *a, **k):
+              try:
+                  fonction(*a, **k)
+              except HTTPException as e:
+                  assert e.status_code == code, (code, e.status_code, e.detail)
+                  return
+              raise AssertionError("Une erreur %s était attendue" % code)
+
+
+          def ligne(sortie_id):
+              conn = db.connect()
+              c = conn.cursor()
+              c.execute("SELECT velo_id, a_verifier, km_compte, distance_km FROM sorties WHERE id = ?", (sortie_id,))
+              r = c.fetchone()
+              conn.close()
+              return tuple(r)
+
+
+          def km(velo_id):
+              conn = db.connect()
+              c = conn.cursor()
+              c.execute("SELECT km_total, km_frac FROM velos WHERE id = ?", (velo_id,))
+              r = c.fetchone()
+              conn.close()
+              return r[0] + r[1]
+
+
+          def sorties_a_verifier():
+              return {v["id"]: v["sorties_a_verifier"] for v in main.obtenir_velos(x_code_acces=CODE)}
+
+
+          # --- Préparation : le CUBE (id 1) et un gravel (id 2) ; km_maj_le du CUBE ancien
+          gravel = main.creer_velo(main.NouveauVeloRequest(nom="Gravel test", type="gravel"), x_code_acces=CODE)["velo_id"]
+          assert gravel == 2, gravel
+          conn = db.connect()
+          conn.cursor().execute("UPDATE velos SET km_maj_le = '2000-01-01T00:00:00Z' WHERE id = 1")
+          conn.commit()
+          conn.close()
+          base_cube, base_gravel = km(1), km(2)
+
+          # L. Premier import automatique alors qu'aucune sortie n'existe : vélo 1, à vérifier
+          r1 = importer("2030-05-01T08:00:00Z", 10.0, velo_id=None, nom="Auto 1")
+          assert r1["velo_id"] == 1 and r1["a_verifier"] is True, r1
+          id1 = main.lister_sorties(velo_id=1, x_code_acces=CODE)[0]["id"]
+          assert ligne(id1)[:2] == (1, 1), ligne(id1)
+
+          # C. Import fait DANS l'appli (vélo 2 choisi) : rien à vérifier
+          r2 = importer("2030-05-02T08:00:00Z", 12.0, velo_id=2, nom="Appli gravel")
+          assert r2["velo_id"] == 2 and r2["a_verifier"] is False, r2
+          id2 = main.lister_sorties(velo_id=2, x_code_acces=CODE)[0]["id"]
+          assert ligne(id2)[:2] == (2, 0), ligne(id2)
+
+          # D. Import automatique ensuite : dernier vélo utilisé = vélo 2 (sortie la plus récente)
+          r3 = importer("2030-05-03T08:00:00Z", 8.0, velo_id=None, nom="Auto 3")
+          assert r3["velo_id"] == 2 and r3["a_verifier"] is True, r3
+          id3 = [s["id"] for s in main.lister_sorties(velo_id=2, x_code_acces=CODE) if s["nom"] == "Auto 3"][0]
+
+          # E. Import dans l'appli sur le CUBE, puis automatique : suit le CUBE
+          r4 = importer("2030-05-04T08:00:00Z", 15.0, velo_id=1, nom="Appli cube")
+          assert r4["velo_id"] == 1 and r4["a_verifier"] is False
+          r5 = importer("2030-05-05T08:00:00Z", 9.0, velo_id=None, nom="Auto 5")
+          assert r5["velo_id"] == 1 and r5["a_verifier"] is True, r5
+          id5 = [s["id"] for s in main.lister_sorties(velo_id=1, x_code_acces=CODE) if s["nom"] == "Auto 5"][0]
+
+          # F. Compteur par vélo dans la liste des vélos
+          assert sorties_a_verifier() == {1: 2, 2: 1}, sorties_a_verifier()
+
+          # G. La liste des sorties expose le drapeau
+          l2 = {s["nom"]: s["a_verifier"] for s in main.lister_sorties(velo_id=2, x_code_acces=CODE)}
+          assert l2 == {"Appli gravel": 0, "Auto 3": 1}, l2
+
+          # K. Kilomètres : chaque vélo ne compte que ses sorties
+          assert abs((km(1) - base_cube) - (r1["distance_km"] + r4["distance_km"] + r5["distance_km"])) < 0.02
+          assert abs((km(2) - base_gravel) - (r2["distance_km"] + r3["distance_km"])) < 0.02
+
+          # I. Doublons, tous vélos confondus (même heure exacte, ou même sortie à quelques minutes)
+          refuse(409, importer, "2030-05-02T08:00:00Z", 12.0, None)
+          refuse(409, importer, "2030-05-02T08:00:00Z", 12.0, 1)
+          refuse(409, importer, "2030-05-03T08:04:00Z", 8.0, None)
+
+          # H. Confirmer : bon vélo = ok, mauvais vélo = 404, puis plus « à vérifier »
+          refuse(404, main.confirmer_velo_sortie, id3, velo_id=1, x_code_acces=CODE)
+          assert ligne(id3)[1] == 1
+          main.confirmer_velo_sortie(id3, velo_id=2, x_code_acces=CODE)
+          assert ligne(id3)[1] == 0
+          assert sorties_a_verifier() == {1: 2, 2: 0}, sorties_a_verifier()
+
+          # J. Changer le vélo d'une sortie à vérifier : elle est confirmée, les km suivent
+          avant1, avant2 = km(1), km(2)
+          main.affecter_sortie_a_un_autre_velo(id5, main.AffecterSortieVeloRequest(nouveau_velo_id=2), velo_id=1, x_code_acces=CODE)
+          assert ligne(id5)[:2] == (2, 0), ligne(id5)
+          assert abs((avant1 - km(1)) - r5["distance_km"]) < 0.02 and abs((km(2) - avant2) - r5["distance_km"]) < 0.02
+          # « Auto 1 » (vélo 1) reste à vérifier ; « Auto 5 » est maintenant confirmée sur le vélo 2
+          assert sorties_a_verifier() == {1: 1, 2: 0}, sorties_a_verifier()
+
+          # Mauvais code d'accès : refus sur les deux nouvelles routes
+          refuse(401, main.confirmer_velo_sortie, id3, velo_id=2, x_code_acces="faux")
+
+          print("OK: import automatique sur le dernier vélo utilisé + à vérifier ; import de l'appli sans pastille ; compteurs, doublons, confirmation et changement de vélo.")
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_dernier_velo.py"
+          python - <<'PY2'
+          import psycopg
+          with psycopg.connect("postgresql://postgres:postgres@localhost:5432/maillons_test", autocommit=True) as c:
+              c.execute("DROP DATABASE IF EXISTS maillons_dernier_velo")
+              c.execute("CREATE DATABASE maillons_dernier_velo")
+          PY2
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/maillons_dernier_velo PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_dernier_velo.py"
+      - name: Tester la page dans un vrai navigateur (sélecteur de vélo, sortie à vérifier)
         env:
           SQLITE_PATH: ${{ runner.temp }}/maillons-navigateur-test.db
           CODE_ACCES: test
@@ -701,6 +843,25 @@ jobs:
 
           appels = []
           erreurs_page = []
+          etat_serveur = {"verifie": False}
+
+
+          def velos_vus():
+              copie = [dict(v) for v in VELOS]
+              copie[0]["sorties_a_verifier"] = 0 if etat_serveur["verifie"] else 1
+              copie[1]["sorties_a_verifier"] = 0
+              return copie
+
+
+          def sortie_auto():
+              return {
+                  "id": 7, "nom": "Sortie auto", "debut": "2026-10-26T17:00:00Z", "sport": "Ride",
+                  "distance_km": 24.5, "denivele_pos": 300, "denivele_neg": 300, "duree_s": 5400,
+                  "vitesse_moy": 16.3, "alt_max": 800, "pente_moy_montee": 5.1, "terrain": "mixte",
+                  "notes": None, "km_compte": 1, "trace": [], "photos": [], "photos_pos": [], "videos": [],
+                  "surfaces": None, "coef_usure": 1.0, "coef_analyse": False, "velo_id": 1,
+                  "a_verifier": 0 if etat_serveur["verifie"] else 1,
+              }
 
           with sync_playwright() as p:
               navigateur = p.chromium.launch()
@@ -711,7 +872,7 @@ jobs:
                   appels.append(url.path + ("?" + url.query if url.query else ""))
                   velo_id = (parse_qs(url.query).get("velo_id") or ["1"])[0]
                   if url.path == "/api/velos":
-                      corps = VELOS
+                      corps = velos_vus()
                   elif url.path == "/api/etat":
                       corps = {"km_total": 0 if velo_id == "2" else 2700, "composants": [composant(velo_id)]}
                   elif url.path == "/api/mes-reglages":
@@ -719,6 +880,11 @@ jobs:
                   elif url.path == "/api/reglages":
                       corps = {"terrain_route": 1, "terrain_mixte": 1.2, "terrain_chemin": 1.5,
                                "terrain_sentier": 2, "poids_denivele": 1}
+                  elif url.path == "/api/sorties" and velo_id == "1":
+                      corps = [sortie_auto()]
+                  elif url.path == "/api/sorties/7/verifier":
+                      etat_serveur["verifie"] = True
+                      corps = {"statut": "success", "sortie_id": 7}
                   else:
                       corps = []
                   route.fulfill(status=200, content_type="application/json", body=json.dumps(corps))
@@ -735,12 +901,27 @@ jobs:
               options = page.eval_on_selector_all("#selectVelo option", "os => os.map(o => o.textContent)")
               assert not erreurs_page, "Erreur JavaScript dans la page : " + repr(erreurs_page)
               assert any(a == "/api/etat?velo_id=1" for a in appels), "Aucun appel /api/etat?velo_id=1 : " + repr(appels)
-              assert options == ["Mon CUBE · VTT électrique", "Gravel test · Gravel"], options
+              assert options == ["Mon CUBE · VTT électrique · 1 à vérifier", "Gravel test · Gravel"], options
               assert page.eval_on_selector("#selectVelo", "s => s.value") == "1"
               assert page.eval_on_selector("#authScreen", "e => getComputedStyle(e).display") == "none"
               pastilles1 = page.eval_on_selector_all(".hotspot", "os => os.map(o => o.title)")
               assert pastilles1 == ["Chaîne du CUBE (5%)"], pastilles1
 
+
+              # --- Sortie reçue automatiquement : pastille rouge, confirmation, compteur du sélecteur
+              page.evaluate("location.hash = 'sorties'")
+              page.wait_for_selector(".pastille-verifier", timeout=5000)
+              assert page.eval_on_selector_all(".pastille-verifier", "os => os.map(o => o.textContent)") == ["À vérifier"]
+              page.click("button[aria-label='Actions de la sortie']")
+              page.click("button[role=menuitem]:has-text('Confirmer le vélo')")
+              page.wait_for_timeout(1500)
+              assert any(a == "/api/sorties/7/verifier?velo_id=1" for a in appels), appels
+              assert page.eval_on_selector_all(".pastille-verifier", "os => os.length") == 0
+              options_apres = page.eval_on_selector_all("#selectVelo option", "os => os.map(o => o.textContent)")
+              assert options_apres == ["Mon CUBE · VTT électrique", "Gravel test · Gravel"], options_apres
+              assert not erreurs_page, "Erreur JavaScript pendant la confirmation : " + repr(erreurs_page)
+              page.evaluate("location.hash = 'entretien'")
+              page.wait_for_timeout(500)
               appels.clear()
               page.select_option("#selectVelo", "2")
               page.wait_for_timeout(1200)
@@ -754,7 +935,7 @@ jobs:
               assert not erreurs_page, "Erreur JavaScript après le changement de vélo : " + repr(erreurs_page)
               navigateur.close()
 
-          print("OK: la page se charge, le sélecteur liste les vélos, le changement de vélo recharge ses données.")
+          print("OK: la page se charge, le sélecteur liste les vélos, la sortie à vérifier se confirme, le changement de vélo recharge ses données.")
           PY
       - name: Vérifier le script de migration SQLite sur une base temporaire
         run: |
