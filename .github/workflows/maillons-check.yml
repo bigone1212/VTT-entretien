@@ -975,8 +975,9 @@ jobs:
               'velo_id: int = 1',
               'def ajuster_km_total(cursor, delta_km, velo_id=1):',
               '@app.post("/api/sorties/import")',
-              'SELECT id FROM sorties WHERE debut = ? AND velo_id = ?',
-              'WHERE velo_id = ? AND debut >= ? AND debut <= ?',
+              # Doublons d'import : heure de départ unique tous vélos confondus (voir les tests réels).
+              'SELECT id FROM sorties WHERE debut = ?',
+              'debut >= ? AND debut <= ?',
               'INSERT INTO sorties (',
               'SELECT km_maj_le FROM velos WHERE id = ?',
               'def supprimer_sortie(',
