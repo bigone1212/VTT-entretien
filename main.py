@@ -13464,8 +13464,14 @@ def sauvegarde(x_code_acces: Optional[str] = Header(default=None)):
     cursor = conn.cursor()
 
     try:
-        cursor.execute("SELECT km_total FROM velo WHERE id = 1")
+        # Le registre multi-vélos contient le kilométrage courant.
+        # Garder l'ancienne table comme repli pour les bases non migrées.
+        cursor.execute("SELECT km_total FROM velos WHERE id = 1")
         velo = cursor.fetchone()
+
+        if not velo or velo[0] is None:
+            cursor.execute("SELECT km_total FROM velo WHERE id = 1")
+            velo = cursor.fetchone()
 
         cursor.execute("SELECT * FROM velos ORDER BY id")
         velos = [dict(r) for r in cursor.fetchall()]
