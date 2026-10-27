@@ -1,18 +1,26 @@
-name: Vérifications Maillons (branche de test)
+name: Vérifications Maillons
 
+# Tests automatiques sur GitHub uniquement : ils ne changent rien à l'appli et ne
+# déploient rien. Ils tournent sur toute branche reprise/… et sur toute demande
+# de fusion vers main, dès qu'un fichier de l'appli change.
 on:
   push:
     branches:
-      - reprise/2026-10-26-multivelos-base-main
-      - reprise/2026-10-26-multivelos-completion
+      - "reprise/**"
     paths:
       - "main.py"
+      - "db.py"
+      - "gpx_import.py"
+      - "requirements.txt"
       - ".github/workflows/maillons-check.yml"
   pull_request:
     branches:
       - main
     paths:
       - "main.py"
+      - "db.py"
+      - "gpx_import.py"
+      - "requirements.txt"
       - ".github/workflows/maillons-check.yml"
   workflow_dispatch:
 
