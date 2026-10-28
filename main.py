@@ -3598,18 +3598,49 @@ def accueil():
             </div>
             <p class="ftv-note">Caractéristiques du modèle 2025. Les équipements peuvent varier selon la version et la taille du vélo.</p>
         </details>
-        <section class="mes-reglages" id="ficheTechniqueAutre" style="display:none;">
-            <div class="mr-titre"><strong>Fiche technique du vélo</strong></div>
-            <div class="mr-ligne"><span>Nom</span><b id="ficheAutreNom">—</b></div>
-            <div class="mr-ligne"><span>Type</span><b id="ficheAutreType">—</b></div>
-            <div class="mr-ligne"><span>Marque</span><b id="ficheAutreMarque">—</b></div>
-            <div class="mr-ligne"><span>Modèle</span><b id="ficheAutreModele">—</b></div>
-            <div class="mr-ligne"><span>Année</span><b id="ficheAutreAnnee">—</b></div>
-            <div class="mr-ligne"><span>Taille du cadre</span><b id="ficheAutreTaille">—</b></div>
-            <div class="mr-ligne" id="ficheAutreMoteurLigne"><span>Moteur</span><b id="ficheAutreMoteur">—</b></div>
-            <div class="mr-ligne" id="ficheAutreBatterieLigne"><span>Batterie</span><b id="ficheAutreBatterie">—</b></div>
-            <button type="button" id="btnModifierFicheVelo" onclick="modifierFicheVelo()" style="width:100%; margin-top:12px;">Modifier cette fiche</button>
-        </section>
+        <details class="fiche-technique-velo" id="ficheTechniqueAutre" style="display:none;">
+            <summary class="ftv-resume">
+                <span class="ftv-entete">
+                    <strong class="titre-pastille ftv-titre-pastille">
+                        
+                        <span>Fiche technique du vélo</span>
+                    </strong>
+                    <span class="ftv-sous-titre" id="ficheAutreNom">—</span>
+                </span>
+                <span class="ftv-chevron" aria-hidden="true"></span>
+            </summary>
+            <div class="ftv-grille">
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="12" cy="32" r="8"/><circle cx="36" cy="32" r="8"/><path d="M12 32l7-14h12l5 14M19 18l7 14M26 32h10M17 13h6M29 18l-2-5h-4"/></svg></span>
+                    <span><span class="ftv-libelle">Type</span><span class="ftv-valeur" id="ficheAutreType">—</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M8 8h16l16 16-16 16L8 24z"/><circle cx="17" cy="17" r="3"/></svg></span>
+                    <span><span class="ftv-libelle">Marque</span><span class="ftv-valeur" id="ficheAutreMarque">—</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="9" y="8" width="30" height="32" rx="4"/><path d="M15 17h18M15 24h18M15 31h10"/></svg></span>
+                    <span><span class="ftv-libelle">Modèle</span><span class="ftv-valeur" id="ficheAutreModele">—</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="7" y="10" width="34" height="30" rx="4"/><path d="M7 19h34M16 6v8m16-8v8"/></svg></span>
+                    <span><span class="ftv-libelle">Année</span><span class="ftv-valeur" id="ficheAutreAnnee">—</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M8 34L34 8l6 6L14 40z"/><path d="M16 26l4 4m2-10l4 4m2-10l4 4"/></svg></span>
+                    <span><span class="ftv-libelle">Taille du cadre</span><span class="ftv-valeur" id="ficheAutreTaille">—</span></span>
+                </div>
+                <div class="ftv-item" id="ficheAutreMoteurLigne">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M13 10h15l7 7v14l-7 7H13l-5-7V17z"/><path d="M17 16h9v16h-9z"/><path d="M20 12v4m4-4v4M20 32v4m4-4v4M8 21H4m4 8H4m31-8h5m-5 8h5"/></svg></span>
+                    <span><span class="ftv-libelle">Moteur</span><span class="ftv-valeur" id="ficheAutreMoteur">—</span></span>
+                </div>
+                <div class="ftv-item" id="ficheAutreBatterieLigne">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="10" y="10" width="27" height="29" rx="4"/><path d="M18 6h11v4M37 19h4v11h-4"/><path d="M24 15l-6 11h6l-2 8 9-13h-6l2-6"/></svg></span>
+                    <span><span class="ftv-libelle">Batterie</span><span class="ftv-valeur" id="ficheAutreBatterie">—</span></span>
+                </div>
+            </div>
+            <button type="button" id="btnModifierFicheVelo" onclick="modifierFicheVelo()" style="width:100%; margin: 4px 0 8px;">Modifier cette fiche</button>
+        </details>
 
         <section class="mes-reglages mr-repliable" id="mesReglages" aria-label="Mes réglages vélo">
             <div class="mr-titre">

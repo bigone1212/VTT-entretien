@@ -1268,6 +1268,68 @@ jobs:
           PY
           rm -f "$SQLITE_PATH"
           PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_photo_nav.py"
+      - name: Tester la fiche technique de tous les vélos dans un vrai navigateur
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-fiche-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_fiche_design.py" <<'PY'
+          import json, sys
+          from urllib.parse import urlparse
+          from playwright.sync_api import sync_playwright
+          import main
+          html = main.accueil()
+          CAPTURE = False
+          V = [{"id": 1, "nom": "Mon CUBE", "type": "vtt_electrique", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0},
+               {"id": 2, "nom": "Gravel élec", "type": "gravel_electrique", "marque": "Canyon", "modele": "Grail:ON", "annee": 2024, "taille": "M",
+                "moteur": "Bosch SX", "batterie": "400 Wh", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0},
+               {"id": 3, "nom": "Route simple", "type": "route", "marque": None, "modele": None, "annee": None, "taille": None,
+                "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0}]
+          erreurs = []
+          with sync_playwright() as p:
+              nav = p.chromium.launch(); ctx = nav.new_context(viewport={"width": 390, "height": 900})
+              def api(r):
+                  u = urlparse(r.request.url)
+                  corps = V if u.path == "/api/velos" else ({"km_total": 0, "composants": []} if u.path == "/api/etat" else ({"valeurs": {}, "maj_le": None} if u.path == "/api/mes-reglages" else ({"terrain_route": 1, "terrain_mixte": 1.2, "terrain_chemin": 1.5, "terrain_sentier": 2, "poids_denivele": 1} if u.path == "/api/reglages" else [])))
+                  r.fulfill(status=200, content_type="application/json", body=json.dumps(corps))
+              ctx.route("**/localhost/api/**", api); ctx.route(lambda u: not u.startswith("http://localhost/"), lambda r: r.abort())
+              ctx.add_init_script("sessionStorage.setItem('vtt_code','t'); sessionStorage.setItem('maillons_velo_id','2')")
+              page = ctx.new_page(); page.on("pageerror", lambda e: erreurs.append(str(e)[:200]))
+              page.route("http://localhost/", lambda r: r.fulfill(status=200, content_type="text/html", body=html))
+              page.goto("http://localhost/"); page.wait_for_timeout(1200)
+              page.evaluate("location.hash = 'reglages'"); page.wait_for_timeout(500)
+              txt = lambda sel: page.eval_on_selector(sel, "e => e.textContent.trim()")
+              shown = lambda sel: page.eval_on_selector(sel, "e => getComputedStyle(e).display != 'none'")
+              # Vélo électrique : mêmes classes que la fiche du CUBE, valeurs remplies
+              assert page.eval_on_selector("#ficheTechniqueAutre", "e => e.tagName + '.' + e.className") == "DETAILS.fiche-technique-velo"
+              assert shown("#ficheTechniqueAutre") and not shown("#ficheTechniqueCube")
+              assert txt("#ficheAutreNom") == "Gravel élec"
+              assert [txt("#ficheAutreType"), txt("#ficheAutreMarque"), txt("#ficheAutreModele"), txt("#ficheAutreAnnee"), txt("#ficheAutreTaille"), txt("#ficheAutreMoteur"), txt("#ficheAutreBatterie")] == ["Gravel électrique", "Canyon", "Grail:ON", "2024", "M", "Bosch SX", "400 Wh"]
+              assert shown("#ficheAutreMoteurLigne") and shown("#ficheAutreBatterieLigne")
+              page.click("#ficheTechniqueAutre summary"); page.wait_for_timeout(300)
+              assert page.eval_on_selector("#ficheTechniqueAutre", "e => e.open") is True
+              if CAPTURE:
+                  page.locator("#ficheTechniqueAutre").scroll_into_view_if_needed()
+                  page.locator("#ficheTechniqueAutre").screenshot(path=sys.argv[1] + "_gravel.png")
+              # Vélo non électrique : moteur et batterie cachés, valeurs par défaut
+              page.select_option("#selectVelo", "3"); page.wait_for_timeout(800)
+              assert not shown("#ficheAutreMoteurLigne") and not shown("#ficheAutreBatterieLigne")
+              assert txt("#ficheAutreMarque") == "Non renseignée" and txt("#ficheAutreNom") == "Route simple"
+              # Le bouton ouvre toujours le formulaire de modification (comportement inchangé)
+              page.click("#btnModifierFicheVelo"); page.wait_for_timeout(500)
+              assert txt("#titreFormVelo") == "Modifier la fiche du vélo"
+              # CUBE : sa fiche d'origine revient, celle des autres disparaît
+              page.select_option("#selectVelo", "1"); page.wait_for_timeout(800)
+              assert shown("#ficheTechniqueCube") and not shown("#ficheTechniqueAutre")
+              if CAPTURE:
+                  page.click("#ficheTechniqueCube summary"); page.wait_for_timeout(300)
+                  page.locator("#ficheTechniqueCube").screenshot(path=sys.argv[1] + "_cube.png")
+              assert not erreurs, erreurs
+              nav.close()
+          print("OK fiche technique : même présentation, comportement inchangé")
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_fiche_design.py"
       - name: Vérifier le script de migration SQLite sur une base temporaire
         run: |
           python - <<'PY'
