@@ -364,6 +364,7 @@ def init_db():
     ajouter_colonne(cursor, "velos", "date_achat", "TEXT")
     ajouter_colonne(cursor, "velos", "moteur", "TEXT")
     ajouter_colonne(cursor, "velos", "batterie", "TEXT")
+    ajouter_colonne(cursor, "velos", "photo", "TEXT")
 
     # Le CUBE reçoit TOUJOURS l'identifiant 1 : les pièces et les sorties
     # existantes sont rattachées au vélo n° 1 (velo_id par défaut).
@@ -1602,6 +1603,7 @@ def accueil():
 
             .hist-entete { position: relative; display: flex; align-items: center; min-height: 44px; padding-right: 84px; }
             .hist-entete h2 { margin: 0; }
+            .photo-velo-bouton { border: 1px solid var(--accent); background: var(--card-bg); color: var(--accent); font-weight: 700; padding: 8px 16px; border-radius: 999px; cursor: pointer; font-size: 14px; }
             #blocAjouterVelo { position: relative; }
             #blocAjouterVelo .mr-titre { padding-right: 44px; min-height: 36px; }
             #blocAjouterVelo .menu-sortie-btn { top: 8px; right: 8px; }
@@ -3317,7 +3319,11 @@ def accueil():
                 alt="Mon Cube Stereo Hybrid"
                 class="bike-img"
             >
-            <div id="photoVeloACompleter" style="display:none; position:absolute; inset:0; align-items:center; justify-content:center; text-align:center; padding:24px; color:#64748b; font-weight:700;">La photo de ce vélo sera ajoutée lors de l'étape dédiée.</div>
+            <div id="photoVeloACompleter" style="display:none; position:absolute; inset:0; flex-direction:column; gap:12px; align-items:center; justify-content:center; text-align:center; padding:24px; color:#64748b; font-weight:700;">
+                <span>Pas encore de photo pour ce vélo.</span>
+                <button type="button" class="photo-velo-bouton" id="btnAjouterPhotoVelo" onclick="choisirPhotoVelo()">Ajouter une photo</button>
+            </div>
+            <input type="file" id="veloPhotoInput" accept="image/*" style="display:none">
             <div id="hotspotsContainer"></div>
         </div>
 
@@ -4126,6 +4132,126 @@ def accueil():
                 }
             }
 
+            // Photo du vélo affiché : sa photo enregistrée, sinon (CUBE) la photo d'origine, sinon un espace vide.
+            const photoCubeOrigine = (document.querySelector('.bike-img') || {}).src || '';
+            const photosVelos = {};
+
+            async function afficherPhotoVelo() {
+                const photo = document.querySelector('.bike-img');
+                const vide = document.getElementById('photoVeloACompleter');
+                const velo = velosDisponibles.find(v => Number(v.id) === veloActifId);
+                const id = veloActifId;
+                const estCube = !velo || Number(velo.id) === 1;
+                let source = '';
+                if (velo && Number(velo.a_photo) === 1) {
+                    if (photosVelos[id] === undefined) {
+                        try {
+                            const res = await fetch('/api/velos/' + id + '/photo', { headers: getHeaders() });
+                            const data = await res.json();
+                            photosVelos[id] = res.ok ? (data.photo || '') : '';
+                        } catch (e) {
+                            photosVelos[id] = '';
+                        }
+                        if (id !== veloActifId) return;
+                    }
+                    source = photosVelos[id];
+                }
+                if (!source && estCube) source = photoCubeOrigine;
+                if (photo) {
+                    if (source) photo.src = source;
+                    photo.style.visibility = source ? 'visible' : 'hidden';
+                }
+                if (vide) vide.style.display = source ? 'none' : 'flex';
+            }
+
+            function choisirPhotoVelo() {
+                const champ = document.getElementById('veloPhotoInput');
+                if (champ) champ.click();
+            }
+
+            // Réduit la photo sur le téléphone (1200 px maxi, JPEG) avant de l'envoyer.
+            function reduirePhoto(fichier) {
+                return new Promise((resolve, reject) => {
+                    const url = URL.createObjectURL(fichier);
+                    const img = new Image();
+                    img.onload = () => {
+                        const maxi = 1200;
+                        const echelle = Math.min(1, maxi / Math.max(img.naturalWidth, img.naturalHeight));
+                        const canvas = document.createElement('canvas');
+                        canvas.width = Math.max(1, Math.round(img.naturalWidth * echelle));
+                        canvas.height = Math.max(1, Math.round(img.naturalHeight * echelle));
+                        const ctx = canvas.getContext('2d');
+                        ctx.fillStyle = '#ffffff';
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        URL.revokeObjectURL(url);
+                        resolve(canvas.toDataURL('image/jpeg', 0.82));
+                    };
+                    img.onerror = () => {
+                        URL.revokeObjectURL(url);
+                        reject(new Error('Cette image ne peut pas être lue.'));
+                    };
+                    img.src = url;
+                });
+            }
+
+            async function enregistrerPhotoVelo(fichier) {
+                const message = document.getElementById('nouveauVeloMessage');
+                const id = veloActifId;
+                try {
+                    message.textContent = 'Enregistrement de la photo…';
+                    const photo = await reduirePhoto(fichier);
+                    const res = await fetch('/api/velos/' + id + '/photo', {
+                        method: 'PUT',
+                        headers: getHeaders(),
+                        body: JSON.stringify({ photo: photo })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Enregistrement impossible.');
+                    photosVelos[id] = photo;
+                    const velo = velosDisponibles.find(v => Number(v.id) === id);
+                    if (velo) velo.a_photo = 1;
+                    message.textContent = 'Photo enregistrée.';
+                    afficherPhotoVelo();
+                    monterMenuVelo();
+                } catch (e) {
+                    message.textContent = e.message || 'Enregistrement impossible.';
+                }
+            }
+
+            async function supprimerPhotoVelo() {
+                const message = document.getElementById('nouveauVeloMessage');
+                const id = veloActifId;
+                const velo = velosDisponibles.find(v => Number(v.id) === id);
+                if (!velo || Number(velo.a_photo) !== 1) return;
+                if (!confirm('Supprimer la photo de « ' + velo.nom + ' » ?')) return;
+                try {
+                    const res = await fetch('/api/velos/' + id + '/photo', {
+                        method: 'DELETE',
+                        headers: getHeaders()
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Suppression impossible.');
+                    delete photosVelos[id];
+                    velo.a_photo = 0;
+                    message.textContent = 'Photo supprimée.';
+                    afficherPhotoVelo();
+                    monterMenuVelo();
+                } catch (e) {
+                    message.textContent = e.message || 'Suppression impossible.';
+                }
+            }
+
+            document.addEventListener('DOMContentLoaded', () => {
+                const champ = document.getElementById('veloPhotoInput');
+                if (!champ) return;
+                champ.addEventListener('change', () => {
+                    const fichier = champ.files && champ.files[0];
+                    champ.value = '';
+                    if (fichier) enregistrerPhotoVelo(fichier);
+                });
+            });
+
             // Menu « trois points » de la carte « Ajouter un vélo » : actions du vélo affiché.
             // Le CUBE (vélo n° 1) est protégé : il ne peut ni être supprimé ni passer par cette fiche.
             function monterMenuVelo() {
@@ -4138,6 +4264,8 @@ def accueil():
                 const court = nom.length > 22 ? nom.slice(0, 21) + '…' : nom;
                 ajouterMenuPoints(zone, 'Actions du vélo', [
                     { icone: 'crayon', texte: 'Modifier la fiche de « ' + court + ' »', desactive: estCube, action: modifierFicheVelo },
+                    { icone: 'appareil', texte: velo && Number(velo.a_photo) === 1 ? 'Changer la photo' : 'Ajouter une photo', action: choisirPhotoVelo },
+                    { icone: 'poubelle', texte: 'Supprimer la photo', danger: true, desactive: !velo || Number(velo.a_photo) !== 1, action: supprimerPhotoVelo },
                     { icone: 'poubelle', texte: 'Supprimer « ' + court + ' »', danger: true, desactive: estCube, action: supprimerVelo }
                 ]);
             }
@@ -4180,11 +4308,8 @@ def accueil():
                 const velo = velosDisponibles.find(v => Number(v.id) === veloActifId);
                 const titre = document.getElementById('headerVeloNom');
                 if (titre) titre.textContent = velo ? velo.nom : 'Mon vélo';
-                const photo = document.querySelector('.bike-img');
-                const placeholderPhoto = document.getElementById('photoVeloACompleter');
                 const estCube = !velo || Number(velo.id) === 1;
-                if (photo) photo.style.visibility = estCube ? 'visible' : 'hidden';
-                if (placeholderPhoto) placeholderPhoto.style.display = estCube ? 'none' : 'flex';
+                afficherPhotoVelo();
                 const ficheCube = document.getElementById('ficheTechniqueCube');
                 const ficheGenerique = document.getElementById('ficheTechniqueAutre');
                 if (ficheCube) ficheCube.style.display = estCube ? '' : 'none';
@@ -11552,7 +11677,8 @@ def obtenir_velos(x_code_acces: Optional[str] = Header(default=None)):
         a_verifier = {r[0]: r[1] for r in cursor.fetchall()}
         cursor.execute("""
             SELECT id, nom, type, marque, modele, annee, taille, actif,
-                   km_total, km_frac, km_maj_le, date_achat, moteur, batterie
+                   km_total, km_frac, km_maj_le, date_achat, moteur, batterie,
+                   CASE WHEN photo IS NULL OR photo = '' THEN 0 ELSE 1 END AS a_photo
             FROM velos
             WHERE actif = 1
             ORDER BY id
@@ -11560,6 +11686,7 @@ def obtenir_velos(x_code_acces: Optional[str] = Header(default=None)):
         return [
             {
                 "sorties_a_verifier": a_verifier.get(row["id"], 0),
+                "a_photo": row["a_photo"],
                 "id": row["id"],
                 "nom": row["nom"],
                 "type": row["type"],
@@ -11796,6 +11923,77 @@ def supprimer_velo(velo_id: int, x_code_acces: Optional[str] = Header(default=No
         cursor.execute("DELETE FROM velos WHERE id = ?", (velo_id,))
         conn.commit()
         return {"statut": "success", "velo_id": velo_id, "efface": efface}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+class PhotoVeloRequest(BaseModel):
+    photo: str = Field(min_length=30, max_length=2500000)
+
+
+PHOTO_DEBUTS = ("data:image/jpeg;base64,", "data:image/png;base64,", "data:image/webp;base64,")
+
+
+@app.get("/api/velos/{velo_id}/photo")
+def lire_photo_velo(velo_id: int, x_code_acces: Optional[str] = Header(default=None)):
+    """Photo enregistrée du vélo (null s'il n'y en a pas)."""
+    verifier_auth(x_code_acces)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT photo FROM velos WHERE id = ?", (velo_id,))
+        ligne = cursor.fetchone()
+        if ligne is None:
+            raise HTTPException(status_code=404, detail="Vélo introuvable.")
+        return {"photo": ligne[0] or None}
+    finally:
+        conn.close()
+
+
+@app.put("/api/velos/{velo_id}/photo")
+def enregistrer_photo_velo(velo_id: int, data: PhotoVeloRequest, x_code_acces: Optional[str] = Header(default=None)):
+    """Enregistre (ou remplace) la photo du vélo, déjà réduite par le téléphone."""
+    verifier_auth(x_code_acces)
+    photo = data.photo.strip()
+    debut = next((d for d in PHOTO_DEBUTS if photo.startswith(d)), None)
+    if debut is None:
+        raise HTTPException(status_code=400, detail="Format de photo non reconnu (JPEG, PNG ou WebP).")
+    try:
+        base64.b64decode(photo[len(debut):], validate=True)
+    except Exception:
+        raise HTTPException(status_code=400, detail="La photo est illisible.")
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT id FROM velos WHERE id = ?", (velo_id,))
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Vélo introuvable.")
+        cursor.execute("UPDATE velos SET photo = ? WHERE id = ?", (photo, velo_id))
+        conn.commit()
+        return {"statut": "success", "velo_id": velo_id}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+@app.delete("/api/velos/{velo_id}/photo")
+def supprimer_photo_velo(velo_id: int, x_code_acces: Optional[str] = Header(default=None)):
+    """Retire la photo enregistrée (le CUBE retrouve alors sa photo d'origine)."""
+    verifier_auth(x_code_acces)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT id FROM velos WHERE id = ?", (velo_id,))
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Vélo introuvable.")
+        cursor.execute("UPDATE velos SET photo = NULL WHERE id = ?", (velo_id,))
+        conn.commit()
+        return {"statut": "success", "velo_id": velo_id}
     except Exception:
         conn.rollback()
         raise

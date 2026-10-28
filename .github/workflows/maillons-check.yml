@@ -930,6 +930,52 @@ jobs:
               c.execute("CREATE DATABASE maillons_suppression")
           PY2
           DATABASE_URL=postgresql://postgres:postgres@localhost:5432/maillons_suppression PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_suppression.py"
+      - name: Vérifier la photo d'un vélo (SQLite puis PostgreSQL)
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-photo-test.db
+          CODE_ACCES: test
+        run: |
+          pip install httpx
+          cat > "$RUNNER_TEMP/test_photo.py" <<'PY'
+          import base64
+          import db
+          import main
+          from fastapi.testclient import TestClient
+
+          main.verifier_auth = lambda _code: None
+          img = "data:image/jpeg;base64," + base64.b64encode(b"\xff\xd8\xff" + b"A" * 300).decode()
+
+          with TestClient(main.app) as client:
+              g = client.post("/api/velos", json={"nom": "Gravel photo", "type": "gravel"}).json()["velo_id"]
+              liste = {v["id"]: v for v in client.get("/api/velos").json()}
+              assert liste[g]["a_photo"] == 0 and "photo" not in liste[g]
+              assert client.get("/api/velos/%d/photo" % g).json() == {"photo": None}
+              assert client.put("/api/velos/%d/photo" % g, json={"photo": img}).status_code == 200
+              assert client.get("/api/velos/%d/photo" % g).json()["photo"] == img
+              assert {v["id"]: v["a_photo"] for v in client.get("/api/velos").json()}[g] == 1
+              assert client.put("/api/velos/%d/photo" % g, json={"photo": "data:text/html;base64," + "QQ" * 30}).status_code == 400
+              assert client.put("/api/velos/%d/photo" % g, json={"photo": "data:image/png;base64," + "!!pas du base64!!" * 5}).status_code == 400
+              assert client.put("/api/velos/9999/photo", json={"photo": img}).status_code == 404
+              assert client.get("/api/velos/9999/photo").status_code == 404
+              assert client.delete("/api/velos/9999/photo").status_code == 404
+              assert client.get("/api/velos/%d/photo" % g).json()["photo"] == img
+              assert client.delete("/api/velos/%d/photo" % g).status_code == 200
+              assert client.get("/api/velos/%d/photo" % g).json() == {"photo": None}
+              assert client.put("/api/velos/%d/photo" % g, json={"photo": img}).status_code == 200
+              assert client.post("/api/velos/%d/supprimer" % g).status_code == 200
+              assert client.get("/api/velos/%d/photo" % g).status_code == 404
+
+          print("OK: photo du vélo (SQLite/PostgreSQL) : enregistrer, lire, refuser les fichiers invalides, supprimer ; la photo part avec le vélo.")
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_photo.py"
+          python - <<'PY2'
+          import psycopg
+          with psycopg.connect("postgresql://postgres:postgres@localhost:5432/maillons_test", autocommit=True) as c:
+              c.execute("DROP DATABASE IF EXISTS maillons_photo")
+              c.execute("CREATE DATABASE maillons_photo")
+          PY2
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/maillons_photo PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_photo.py"
       - name: Tester la page dans un vrai navigateur (sélecteur de vélo, sortie à vérifier)
         env:
           SQLITE_PATH: ${{ runner.temp }}/maillons-navigateur-test.db
@@ -1122,8 +1168,9 @@ jobs:
               page.click(bouton)
               items = page.eval_on_selector_all("#veloMenuZone [role=menuitem]", "os => os.map(o => [o.textContent.trim(), o.disabled])")
               print("menu:", items)
-              assert len(items) == 2 and not items[1][1] and "Supprimer" in items[1][0], items
-              page.click("#veloMenuZone [role=menuitem]:has-text('Supprimer')")
+              noms = [i[0] for i in items]
+              assert len(items) == 4 and noms[3] == "Supprimer « Gravel test »" and not items[3][1], items
+              page.click("#veloMenuZone [role=menuitem]:has-text('Supprimer «')")
               page.wait_for_timeout(1500)
               assert len(dialogues) == 1 and "7 pièce" in dialogues[0] and "3 sortie" in dialogues[0] and "Gravel test" in dialogues[0], dialogues
               assert any(m == "POST" and a.startswith("/api/velos/2/supprimer") for m, a in appels), appels
@@ -1133,13 +1180,94 @@ jobs:
               # CUBE affiché : suppression désactivée
               page.click(bouton)
               items = page.eval_on_selector_all("#veloMenuZone [role=menuitem]", "os => os.map(o => o.disabled)")
-              assert items == [True, True], items
+              assert items == [True, False, True, True], items
               assert not erreurs, erreurs
               nav.close()
           print("OK menu vélo : suppression confirmée, retour au CUBE, CUBE protégé")
           PY
           rm -f "$SQLITE_PATH"
           PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_menu_velo.py"
+      - name: Tester la page dans un vrai navigateur (photo du vélo, ajout et suppression)
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-photo-nav-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_photo_nav.py" <<'PY'
+          import json, struct, zlib, tempfile, os
+          from urllib.parse import urlparse
+          from playwright.sync_api import sync_playwright
+          import main
+          html = main.accueil()
+
+          def png(w, h):
+              raw = b"".join(b"\x00" + bytes([200, 60, 60]) * w for _ in range(h))
+              def ch(t, d): return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xffffffff)
+              return b"\x89PNG\r\n\x1a\n" + ch(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)) + ch(b"IDAT", zlib.compress(raw)) + ch(b"IEND", b"")
+          fichier = os.path.join(tempfile.mkdtemp(), "velo.png")
+          open(fichier, "wb").write(png(2400, 1600))
+
+          VELOS = [{"id": 1, "nom": "Mon CUBE", "type": "vtt_electrique", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0},
+                   {"id": 2, "nom": "Gravel test", "type": "gravel", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0}]
+          base = {"photo": None}; envoyees = []; erreurs = []; dialogues = []
+          with sync_playwright() as p:
+              nav = p.chromium.launch(); ctx = nav.new_context(viewport={"width": 390, "height": 844})
+              def api(route):
+                  r = route.request; u = urlparse(r.url)
+                  if u.path == "/api/velos":
+                      corps = [dict(v) for v in VELOS]
+                  elif u.path == "/api/velos/2/photo":
+                      if r.method == "PUT":
+                          base["photo"] = json.loads(r.post_data)["photo"]; envoyees.append(base["photo"]); VELOS[1]["a_photo"] = 1; corps = {"statut": "success"}
+                      elif r.method == "DELETE":
+                          base["photo"] = None; VELOS[1]["a_photo"] = 0; corps = {"statut": "success"}
+                      else:
+                          corps = {"photo": base["photo"]}
+                  elif u.path == "/api/etat": corps = {"km_total": 0, "composants": []}
+                  elif u.path == "/api/mes-reglages": corps = {"valeurs": {}, "maj_le": None}
+                  elif u.path == "/api/reglages": corps = {"terrain_route": 1, "terrain_mixte": 1.2, "terrain_chemin": 1.5, "terrain_sentier": 2, "poids_denivele": 1}
+                  else: corps = []
+                  route.fulfill(status=200, content_type="application/json", body=json.dumps(corps))
+              ctx.route("**/localhost/api/**", api)
+              ctx.route(lambda u: not u.startswith("http://localhost/"), lambda r: r.abort())
+              ctx.add_init_script("sessionStorage.setItem('vtt_code','test'); sessionStorage.setItem('maillons_velo_id','2')")
+              page = ctx.new_page()
+              page.on("pageerror", lambda e: erreurs.append(str(e)[:200]))
+              page.on("dialog", lambda d: (dialogues.append(d.message), d.accept()))
+              page.route("http://localhost/", lambda r: r.fulfill(status=200, content_type="text/html", body=html))
+              page.goto("http://localhost/", wait_until="load"); page.wait_for_timeout(1200)
+              vis = lambda sel: page.eval_on_selector(sel, "e => getComputedStyle(e).display != 'none' && getComputedStyle(e).visibility != 'hidden'")
+              assert vis("#photoVeloACompleter") and not vis(".bike-img"), "gravel sans photo : espace vide attendu"
+              # Ajout par le bouton de l'espace vide
+              with page.expect_file_chooser() as fc:
+                  page.click("#btnAjouterPhotoVelo")
+              fc.value.set_files(fichier); page.wait_for_timeout(1500)
+              assert len(envoyees) == 1 and envoyees[0].startswith("data:image/jpeg;base64,"), envoyees[:1]
+              assert len(envoyees[0]) < 200000, len(envoyees[0])
+              dim = page.evaluate("() => { const i = document.querySelector('.bike-img'); return [i.naturalWidth, i.naturalHeight]; }")
+              assert dim == [1200, 800], dim   # 2400x1600 réduit à 1200 px
+              assert vis(".bike-img") and not vis("#photoVeloACompleter")
+              # Menu : Changer / Supprimer la photo
+              page.evaluate("location.hash = 'reglages'"); page.wait_for_timeout(500)
+              page.click("#veloMenuZone button[aria-label='Actions du vélo']")
+              items = page.eval_on_selector_all("#veloMenuZone [role=menuitem]", "os => os.map(o => [o.textContent.trim(), o.disabled])")
+              print(items)
+              assert ["Changer la photo", False] in items and ["Supprimer la photo", False] in items, items
+              page.click("#veloMenuZone [role=menuitem]:has-text('Supprimer la photo')"); page.wait_for_timeout(1000)
+              assert dialogues and "Gravel test" in dialogues[0] and base["photo"] is None
+              assert vis("#photoVeloACompleter") and not vis(".bike-img")
+              page.click("#veloMenuZone button[aria-label='Actions du vélo']")
+              items = page.eval_on_selector_all("#veloMenuZone [role=menuitem]", "os => os.map(o => [o.textContent.trim(), o.disabled])")
+              assert ["Ajouter une photo", False] in items and ["Supprimer la photo", True] in items, items
+              # Le CUBE garde sa photo d'origine
+              page.keyboard.press("Escape")
+              page.select_option("#selectVelo", "1"); page.wait_for_timeout(800)
+              assert vis(".bike-img") and "roulezjeunesse" in page.eval_on_selector(".bike-img", "i => i.src")
+              assert not erreurs, erreurs
+              nav.close()
+          print("OK photo navigateur")
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_photo_nav.py"
       - name: Vérifier le script de migration SQLite sur une base temporaire
         run: |
           python - <<'PY'
