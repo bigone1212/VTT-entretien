@@ -1602,6 +1602,10 @@ def accueil():
 
             .hist-entete { position: relative; display: flex; align-items: center; min-height: 44px; padding-right: 84px; }
             .hist-entete h2 { margin: 0; }
+            #blocAjouterVelo { position: relative; }
+            #blocAjouterVelo .mr-titre { padding-right: 44px; min-height: 36px; }
+            #blocAjouterVelo .menu-sortie-btn { top: 8px; right: 8px; }
+            #blocAjouterVelo .menu-sortie { top: 48px; right: 8px; }
             .hist-total { margin: 2px 0 8px; font-size: 0.82rem; color: var(--text-muted); }
             .hist-filtre-btn { right: 40px; }
             .hist-filtre-btn.actif { color: var(--accent); background: rgba(var(--ac-rgb),0.16); }
@@ -3366,7 +3370,7 @@ def accueil():
 
         <div class="page" id="page-reglages" style="display:none;">
         <section class="mes-reglages" id="blocAjouterVelo">
-            <div class="mr-titre"><strong id="titreFormVelo">Ajouter un vélo</strong></div>
+            <div class="mr-titre"><strong id="titreFormVelo">Ajouter un vélo</strong><div id="veloMenuZone"></div></div>
             <p class="form-help">Chaque vélo aura ses sorties, ses kilomètres et son carnet d'entretien séparés. La photo personnalisée sera ajoutée lors d'une étape ultérieure.</p>
             <form id="formAjouterVelo">
                 <label for="nouveauVeloNom">Nom du vélo</label>
@@ -4116,8 +4120,59 @@ def accueil():
                     });
                     select.value = String(veloActifId);
                     afficherNomVeloActif();
+                    monterMenuVelo();
                 } catch (e) {
                     console.error('Impossible de charger les vélos', e);
+                }
+            }
+
+            // Menu « trois points » de la carte « Ajouter un vélo » : actions du vélo affiché.
+            // Le CUBE (vélo n° 1) est protégé : il ne peut ni être supprimé ni passer par cette fiche.
+            function monterMenuVelo() {
+                const zone = document.getElementById('veloMenuZone');
+                if (!zone) return;
+                zone.replaceChildren();
+                const velo = velosDisponibles.find(v => Number(v.id) === veloActifId);
+                const estCube = !velo || Number(velo.id) === 1;
+                const nom = velo ? String(velo.nom) : 'ce vélo';
+                const court = nom.length > 22 ? nom.slice(0, 21) + '…' : nom;
+                ajouterMenuPoints(zone, 'Actions du vélo', [
+                    { icone: 'crayon', texte: 'Modifier la fiche de « ' + court + ' »', desactive: estCube, action: modifierFicheVelo },
+                    { icone: 'poubelle', texte: 'Supprimer « ' + court + ' »', danger: true, desactive: estCube, action: supprimerVelo }
+                ]);
+            }
+
+            async function supprimerVelo() {
+                const velo = velosDisponibles.find(v => Number(v.id) === veloActifId);
+                if (!velo || Number(velo.id) === 1) return;
+                const message = document.getElementById('nouveauVeloMessage');
+                try {
+                    const res = await fetch('/api/velos/' + velo.id + '/contenu', { headers: getHeaders() });
+                    const contenu = await res.json();
+                    if (!res.ok) throw new Error(contenu.detail || 'Lecture impossible.');
+                    const saut = String.fromCharCode(10);
+                    const texte = 'Supprimer pour de bon « ' + velo.nom + ' » ?' + saut + saut
+                        + 'Seront effacés définitivement :' + saut
+                        + '- ' + contenu.composants + ' pièce(s) et entretien(s)' + saut
+                        + '- ' + contenu.historique + ' intervention(s) de l’historique' + saut
+                        + '- ' + contenu.sorties + ' sortie(s)' + saut + saut
+                        + 'Impossible de revenir en arrière.';
+                    if (!confirm(texte)) return;
+                    const sup = await fetch('/api/velos/' + velo.id + '/supprimer', {
+                        method: 'POST',
+                        headers: getHeaders()
+                    });
+                    const data = await sup.json();
+                    if (!sup.ok) throw new Error(data.detail || 'Suppression impossible.');
+                    try { localStorage.removeItem('maillons_vus_' + velo.id); } catch (e) {}
+                    annulerEditionFiche();
+                    veloActifId = 1;
+                    sessionStorage.setItem('maillons_velo_id', '1');
+                    await chargerVelos();
+                    await rechargerDonneesVelo();
+                    message.textContent = '« ' + velo.nom + ' » a été supprimé.';
+                } catch (e) {
+                    message.textContent = e.message || 'Suppression impossible.';
                 }
             }
 
@@ -11674,6 +11729,73 @@ def creer_velo(
         ])
         conn.commit()
         return {"statut": "success", "velo_id": velo_id, "nom": nom, "type": type_velo}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+@app.get("/api/velos/{velo_id}/contenu")
+def contenu_velo(velo_id: int, x_code_acces: Optional[str] = Header(default=None)):
+    """Ce qui serait effacé avec ce vélo (affiché avant la confirmation)."""
+    verifier_auth(x_code_acces)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT id FROM velos WHERE id = ?", (velo_id,))
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Vélo introuvable.")
+        return compter_contenu_velo(cursor, velo_id)
+    finally:
+        conn.close()
+
+
+def compter_contenu_velo(cursor, velo_id):
+    cursor.execute("SELECT COUNT(*) FROM composants WHERE velo_id = ?", (velo_id,))
+    composants = cursor.fetchone()[0]
+    cursor.execute(
+        "SELECT COUNT(*) FROM historique WHERE velo_id = ? "
+        "OR composant_id IN (SELECT id FROM composants WHERE velo_id = ?)",
+        (velo_id, velo_id)
+    )
+    historique = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM sorties WHERE velo_id = ?", (velo_id,))
+    sorties = cursor.fetchone()[0]
+    return {"composants": composants, "historique": historique, "sorties": sorties}
+
+
+@app.post("/api/velos/{velo_id}/supprimer")
+def supprimer_velo(velo_id: int, x_code_acces: Optional[str] = Header(default=None)):
+    """Supprime pour de bon un vélo, ses pièces, son historique et ses sorties.
+    Le vélo principal (CUBE, n° 1) ne peut jamais être supprimé."""
+    verifier_auth(x_code_acces)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT id, legacy_velo_id FROM velos WHERE id = ?", (velo_id,))
+        velo = cursor.fetchone()
+        if velo is None:
+            raise HTTPException(status_code=404, detail="Vélo introuvable.")
+        if velo[0] == 1 or velo[1] is not None:
+            raise HTTPException(
+                status_code=400,
+                detail="Le vélo principal (CUBE) ne peut pas être supprimé."
+            )
+
+        efface = compter_contenu_velo(cursor, velo_id)
+        # Dans cet ordre : l'historique dépend des pièces, les pièces dépendent du vélo.
+        cursor.execute(
+            "DELETE FROM historique WHERE velo_id = ? "
+            "OR composant_id IN (SELECT id FROM composants WHERE velo_id = ?)",
+            (velo_id, velo_id)
+        )
+        cursor.execute("DELETE FROM composants WHERE velo_id = ?", (velo_id,))
+        cursor.execute("DELETE FROM sorties WHERE velo_id = ?", (velo_id,))
+        cursor.execute("DELETE FROM mes_reglages_velo WHERE velo_id = ?", (velo_id,))
+        cursor.execute("DELETE FROM velos WHERE id = ?", (velo_id,))
+        conn.commit()
+        return {"statut": "success", "velo_id": velo_id, "efface": efface}
     except Exception:
         conn.rollback()
         raise

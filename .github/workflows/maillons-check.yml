@@ -873,6 +873,63 @@ jobs:
               c.execute("CREATE DATABASE maillons_dernier_velo")
           PY2
           DATABASE_URL=postgresql://postgres:postgres@localhost:5432/maillons_dernier_velo PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_dernier_velo.py"
+      - name: Vérifier la suppression d'un vélo (SQLite puis PostgreSQL)
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-suppression-test.db
+          CODE_ACCES: test
+        run: |
+          pip install httpx
+          cat > "$RUNNER_TEMP/test_suppression.py" <<'PY'
+          import os
+          import main
+          from fastapi.testclient import TestClient
+
+          main.verifier_auth = lambda _code: None
+          import db
+
+
+          def n(sql, p=()):
+              c = db.connect(); cur = c.cursor(); cur.execute(sql, p); r = cur.fetchone()[0]; c.close(); return r
+
+
+          with TestClient(main.app) as client:
+              g = client.post("/api/velos", json={"nom": "Gravel a supprimer", "type": "gravel"}).json()["velo_id"]
+              h = client.post("/api/velos", json={"nom": "VTT a garder", "type": "vtt"}).json()["velo_id"]
+              avant = {v: tuple(n("SELECT COUNT(*) FROM " + t + " WHERE velo_id = ?", (v,)) for t in ("composants", "historique", "sorties")) for v in (1, h)}
+              c = db.connect(); cur = c.cursor()
+              cur.execute("INSERT INTO sorties (velo_id, debut, distance_km) VALUES (?, ?, ?)", (g, "2030-01-01T08:00:00Z", 10.0))
+              cur.execute("SELECT id FROM composants WHERE velo_id = ? LIMIT 1", (g,)); comp = cur.fetchone()
+              cur.execute("INSERT INTO historique (composant_id, velo_id) VALUES (?, ?)", (comp[0], g))
+              cur.execute("INSERT INTO mes_reglages_velo (velo_id, cle, valeur, maj_le) VALUES (?, 'x', 'y', 'z')", (g,))
+              c.commit(); c.close()
+
+              ct = client.get("/api/velos/%d/contenu" % g).json()
+              assert ct["sorties"] == 1 and ct["historique"] == 1 and ct["composants"] > 0, ct
+              assert client.post("/api/velos/1/supprimer").status_code == 400
+              assert client.post("/api/velos/9999/supprimer").status_code == 404
+              assert client.get("/api/velos/9999/contenu").status_code == 404
+              assert n("SELECT COUNT(*) FROM velos WHERE id = 1") == 1
+
+              r = client.post("/api/velos/%d/supprimer" % g)
+              assert r.status_code == 200 and r.json()["efface"] == ct, r.text
+              for t in ("composants", "historique", "sorties", "mes_reglages_velo"):
+                  assert n("SELECT COUNT(*) FROM " + t + " WHERE velo_id = ?", (g,)) == 0, t
+              assert n("SELECT COUNT(*) FROM velos WHERE id = ?", (g,)) == 0
+              apres = {v: tuple(n("SELECT COUNT(*) FROM " + t + " WHERE velo_id = ?", (v,)) for t in ("composants", "historique", "sorties")) for v in (1, h)}
+              assert apres == avant, (apres, avant)
+              assert client.post("/api/velos/%d/supprimer" % g).status_code == 404
+
+          print("OK: suppression d'un vélo (SQLite/PostgreSQL) : tout part avec lui, les autres vélos et le CUBE restent intacts.")
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_suppression.py"
+          python - <<'PY2'
+          import psycopg
+          with psycopg.connect("postgresql://postgres:postgres@localhost:5432/maillons_test", autocommit=True) as c:
+              c.execute("DROP DATABASE IF EXISTS maillons_suppression")
+              c.execute("CREATE DATABASE maillons_suppression")
+          PY2
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/maillons_suppression PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_suppression.py"
       - name: Tester la page dans un vrai navigateur (sélecteur de vélo, sortie à vérifier)
         env:
           SQLITE_PATH: ${{ runner.temp }}/maillons-navigateur-test.db
@@ -1007,6 +1064,82 @@ jobs:
 
           print("OK: la page se charge, le sélecteur liste les vélos, la sortie à vérifier se confirme, le changement de vélo recharge ses données.")
           PY
+      - name: Tester le menu trois points et la suppression d'un vélo dans un vrai navigateur
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-menu-velo-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_menu_velo.py" <<'PY'
+          import json, sys
+          from urllib.parse import urlparse, parse_qs
+          from playwright.sync_api import sync_playwright
+          import main
+          html = main.accueil()
+
+          VELOS = [
+           {"id": 1, "nom": "Mon CUBE", "type": "vtt_electrique", "actif": 1, "km_total": 2700, "km_frac": 0},
+           {"id": 2, "nom": "Gravel test", "type": "gravel", "actif": 1, "km_total": 0, "km_frac": 0},
+          ]
+          appels, erreurs, dialogues = [], [], []
+          supprime = {"ok": False}
+
+          with sync_playwright() as p:
+              nav = p.chromium.launch()
+              ctx = nav.new_context(viewport={"width": 390, "height": 844})
+              def api(route):
+                  u = urlparse(route.request.url); q = parse_qs(u.query)
+                  appels.append((route.request.method, u.path + ("?" + u.query if u.query else "")))
+                  if u.path == "/api/velos":
+                      corps = [dict(v, sorties_a_verifier=0) for v in VELOS if not (supprime["ok"] and v["id"] == 2)]
+                  elif u.path == "/api/velos/2/contenu":
+                      corps = {"composants": 7, "historique": 1, "sorties": 3}
+                  elif u.path == "/api/velos/2/supprimer":
+                      supprime["ok"] = True; corps = {"statut": "success", "velo_id": 2}
+                  elif u.path == "/api/etat":
+                      corps = {"km_total": 0, "composants": []}
+                  elif u.path == "/api/mes-reglages":
+                      corps = {"valeurs": {}, "maj_le": None}
+                  elif u.path == "/api/reglages":
+                      corps = {"terrain_route": 1, "terrain_mixte": 1.2, "terrain_chemin": 1.5, "terrain_sentier": 2, "poids_denivele": 1}
+                  else:
+                      corps = []
+                  route.fulfill(status=200, content_type="application/json", body=json.dumps(corps))
+              ctx.route("**/localhost/api/**", api)
+              ctx.route(lambda u: not u.startswith("http://localhost/"), lambda r: r.abort())
+              ctx.add_init_script("sessionStorage.setItem('vtt_code','test'); sessionStorage.setItem('maillons_velo_id','2')")
+              page = ctx.new_page()
+              page.on("pageerror", lambda e: erreurs.append(str(e)[:200]))
+              def dlg(d):
+                  dialogues.append(d.message); d.accept()
+              page.on("dialog", dlg)
+              page.route("http://localhost/", lambda r: r.fulfill(status=200, content_type="text/html", body=html))
+              page.goto("http://localhost/", wait_until="load")
+              page.wait_for_timeout(1200)
+              page.evaluate("location.hash = 'reglages'")
+              page.wait_for_timeout(600)
+              assert page.eval_on_selector("#selectVelo", "s => s.value") == "2"
+              bouton = "#veloMenuZone button[aria-label='Actions du vélo']"
+              page.click(bouton)
+              items = page.eval_on_selector_all("#veloMenuZone [role=menuitem]", "os => os.map(o => [o.textContent.trim(), o.disabled])")
+              print("menu:", items)
+              assert len(items) == 2 and not items[1][1] and "Supprimer" in items[1][0], items
+              page.click("#veloMenuZone [role=menuitem]:has-text('Supprimer')")
+              page.wait_for_timeout(1500)
+              assert len(dialogues) == 1 and "7 pièce" in dialogues[0] and "3 sortie" in dialogues[0] and "Gravel test" in dialogues[0], dialogues
+              assert any(m == "POST" and a.startswith("/api/velos/2/supprimer") for m, a in appels), appels
+              assert page.eval_on_selector("#selectVelo", "s => s.value") == "1"
+              assert page.evaluate("sessionStorage.getItem('maillons_velo_id')") == "1"
+              assert page.eval_on_selector_all("#selectVelo option", "os => os.length") == 1
+              # CUBE affiché : suppression désactivée
+              page.click(bouton)
+              items = page.eval_on_selector_all("#veloMenuZone [role=menuitem]", "os => os.map(o => o.disabled)")
+              assert items == [True, True], items
+              assert not erreurs, erreurs
+              nav.close()
+          print("OK menu vélo : suppression confirmée, retour au CUBE, CUBE protégé")
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_menu_velo.py"
       - name: Vérifier le script de migration SQLite sur une base temporaire
         run: |
           python - <<'PY'
