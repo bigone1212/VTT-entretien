@@ -5,10 +5,16 @@ import base64
 import db
 import gpx_import
 import hmac
+import ipaddress
 import json
 import math
 import os
+import re
+import socket
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from typing import Optional, List, Dict
 from datetime import date, datetime, timedelta, timezone
 
@@ -3375,6 +3381,7 @@ def accueil():
             <div id="photoVeloACompleter" style="display:none; position:absolute; inset:0; flex-direction:column; gap:12px; align-items:center; justify-content:center; text-align:center; padding:24px; color:#64748b; font-weight:700;">
                 <span>Pas encore de photo pour ce vélo.</span>
                 <button type="button" class="photo-velo-bouton" id="btnAjouterPhotoVelo" onclick="choisirPhotoVelo()">Ajouter une photo</button>
+                <button type="button" class="photo-velo-bouton" id="btnPhotoVeloLien" onclick="photoDepuisLien()">Photo depuis un lien</button>
             </div>
             <input type="file" id="veloPhotoInput" accept="image/*" style="display:none">
             <div id="hotspotsContainer"></div>
@@ -4279,6 +4286,37 @@ def accueil():
                 });
             }
 
+            function dataUrlEnFichier(dataUrl) {
+                const morceaux = dataUrl.split(',');
+                const type = morceaux[0].slice(5, morceaux[0].indexOf(';'));
+                const binaire = atob(morceaux[1]);
+                const octets = new Uint8Array(binaire.length);
+                for (let i = 0; i < binaire.length; i++) octets[i] = binaire.charCodeAt(i);
+                return new Blob([octets], { type: type });
+            }
+
+            // Photo récupérée sur Internet : le serveur va la chercher, puis la page la réduit et l'enregistre.
+            async function photoDepuisLien() {
+                const message = document.getElementById('nouveauVeloMessage');
+                const lien = prompt("Colle ici le lien de la page du vélo (Décathlon, Opticycles...) ou d'une image :");
+                if (!lien || !lien.trim()) return;
+                try {
+                    if (message) message.textContent = 'Recherche de la photo…';
+                    const res = await fetch('/api/photo-depuis-lien', {
+                        method: 'POST',
+                        headers: getHeaders(),
+                        body: JSON.stringify({ url: lien.trim() })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Photo introuvable.');
+                    await enregistrerPhotoVelo(dataUrlEnFichier(data.photo));
+                } catch (e) {
+                    const texte = e.message || 'Photo introuvable.';
+                    if (message) message.textContent = texte;
+                    alert(texte);
+                }
+            }
+
             async function enregistrerPhotoVelo(fichier) {
                 const message = document.getElementById('nouveauVeloMessage');
                 const id = veloActifId;
@@ -4300,6 +4338,7 @@ def accueil():
                     monterMenuVelo();
                 } catch (e) {
                     message.textContent = e.message || 'Enregistrement impossible.';
+                    alert(message.textContent);
                 }
             }
 
@@ -4349,6 +4388,7 @@ def accueil():
                 ajouterMenuPoints(zone, 'Actions du vélo', [
                     { icone: 'crayon', texte: 'Modifier la fiche de « ' + court + ' »', desactive: estCube, action: modifierFicheVelo },
                     { icone: 'appareil', texte: velo && Number(velo.a_photo) === 1 ? 'Changer la photo' : 'Ajouter une photo', action: choisirPhotoVelo },
+                    { icone: 'lien', texte: 'Photo depuis un lien…', action: photoDepuisLien },
                     { icone: 'poubelle', texte: 'Supprimer la photo', danger: true, desactive: !velo || Number(velo.a_photo) !== 1, action: supprimerPhotoVelo },
                     { icone: 'poubelle', texte: 'Supprimer « ' + court + ' »', danger: true, desactive: estCube, action: supprimerVelo }
                 ]);
@@ -4596,6 +4636,7 @@ def accueil():
             }
 
             ICONES.points = '<circle cx="12" cy="5" r="1.9" fill="currentColor"/><circle cx="12" cy="12" r="1.9" fill="currentColor"/><circle cx="12" cy="19" r="1.9" fill="currentColor"/>';
+            ICONES.lien = '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>';
             ICONES.appareil = '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>';
             ICONES.video = '<rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/>';
             ICONES.montagne = '<path d="M2 20l6.5-11 4 6.5L15 12l7 8z"/><path d="M8.5 9l1.8 3"/><circle cx="18" cy="5.5" r="1.6" fill="currentColor"/>';
@@ -12083,6 +12124,165 @@ def supprimer_photo_velo(velo_id: int, x_code_acces: Optional[str] = Header(defa
         raise
     finally:
         conn.close()
+
+
+class LienPhotoRequest(BaseModel):
+    url: str = Field(min_length=4, max_length=2000)
+
+
+LIEN_TAILLE_MAX = 6000000
+LIEN_DELAI = 10
+LIEN_PORTS = (None, 80, 443)
+LIEN_TYPES_IMAGE = ("image/jpeg", "image/png", "image/webp")
+LIEN_NAVIGATEUR = (
+    "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/120.0 Mobile Safari/537.36"
+)
+
+
+def adresse_publique(hote):
+    """Vrai seulement si le nom de domaine mène uniquement à des adresses publiques d'Internet
+    (jamais le réseau interne du serveur)."""
+    try:
+        infos = socket.getaddrinfo(hote, None)
+    except OSError:
+        return False
+    if not infos:
+        return False
+    for info in infos:
+        try:
+            ip = ipaddress.ip_address(info[4][0].split("%")[0])
+        except ValueError:
+            return False
+        if not ip.is_global:
+            return False
+    return True
+
+
+class _SansRedirection(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def telecharger_lien(url, accepter):
+    """Télécharge un lien (4 redirections au plus, adresse revérifiée à chaque fois).
+    Retourne (type, octets, adresse finale)."""
+    ouvreur = urllib.request.build_opener(_SansRedirection)
+    for _ in range(5):
+        p = urllib.parse.urlparse(url)
+        if p.scheme not in ("http", "https") or not p.hostname or p.username or p.password:
+            raise ValueError("Ce lien n'est pas valide.")
+        if p.port not in LIEN_PORTS:
+            raise ValueError("Ce lien n'est pas autorisé.")
+        if not adresse_publique(p.hostname):
+            raise ValueError("Ce lien n'est pas autorisé.")
+        demande = urllib.request.Request(url, headers={
+            "User-Agent": LIEN_NAVIGATEUR,
+            "Accept": accepter,
+            "Accept-Language": "fr-FR,fr;q=0.9",
+        })
+        try:
+            reponse = ouvreur.open(demande, timeout=LIEN_DELAI)
+        except urllib.error.HTTPError as e:
+            suite = e.headers.get("Location") if e.headers else None
+            if e.code in (301, 302, 303, 307, 308) and suite:
+                url = urllib.parse.urljoin(url, suite)
+                continue
+            raise ValueError("Le site a refusé la demande (code %d)." % e.code)
+        except (urllib.error.URLError, OSError, ValueError):
+            raise ValueError("Le site ne répond pas.")
+        with reponse:
+            type_contenu = (reponse.headers.get_content_type() or "").lower()
+            octets = reponse.read(LIEN_TAILLE_MAX + 1)
+        if len(octets) > LIEN_TAILLE_MAX:
+            raise ValueError("Le fichier est trop gros.")
+        return type_contenu, octets, url
+    raise ValueError("Le lien fait trop de détours.")
+
+
+def images_de_la_page(html, base):
+    """Adresses des images « principales » d'une page (comme l'aperçu d'un lien) :
+    og:image, twitter:image, image_src, puis données structurées (JSON-LD)."""
+    trouvees = []
+
+    def ajouter(valeur):
+        valeur = (valeur or "").strip().replace("&amp;", "&")
+        if valeur and not valeur.startswith("data:"):
+            adresse = urllib.parse.urljoin(base, valeur)
+            if adresse not in trouvees:
+                trouvees.append(adresse)
+
+    noms_meta = ("og:image", "og:image:secure_url", "og:image:url", "twitter:image", "twitter:image:src")
+    for balise in re.findall(r"<meta\b[^>]*>", html, re.I):
+        nom = re.search(r"""(?:property|name)\s*=\s*["']([^"']+)["']""", balise, re.I)
+        valeur = re.search(r"""content\s*=\s*["']([^"']+)["']""", balise, re.I)
+        if nom and valeur and nom.group(1).strip().lower() in noms_meta:
+            ajouter(valeur.group(1))
+    for balise in re.findall(r"<link\b[^>]*>", html, re.I):
+        rel = re.search(r"""rel\s*=\s*["']image_src["']""", balise, re.I)
+        lien = re.search(r"""href\s*=\s*["']([^"']+)["']""", balise, re.I)
+        if rel and lien:
+            ajouter(lien.group(1))
+
+    def parcourir(noeud):
+        if isinstance(noeud, dict):
+            for cle, valeur in noeud.items():
+                if cle == "image":
+                    elements = valeur if isinstance(valeur, list) else [valeur]
+                    for element in elements:
+                        if isinstance(element, str):
+                            ajouter(element)
+                        elif isinstance(element, dict):
+                            ajouter(element.get("url") or element.get("contentUrl"))
+                else:
+                    parcourir(valeur)
+        elif isinstance(noeud, list):
+            for element in noeud:
+                parcourir(element)
+
+    for bloc in re.findall(r"""<script[^>]+application/ld\+json[^>]*>(.*?)</script>""", html, re.I | re.S):
+        try:
+            parcourir(json.loads(bloc))
+        except ValueError:
+            pass
+    return trouvees[:6]
+
+
+@app.post("/api/photo-depuis-lien")
+def photo_depuis_lien(data: LienPhotoRequest, x_code_acces: Optional[str] = Header(default=None)):
+    """Va chercher la photo d'un vélo à partir du lien d'une fiche (Décathlon, Opticycles…)
+    ou d'une image. Ne modifie rien : renvoie la photo, que la page réduit puis enregistre."""
+    verifier_auth(x_code_acces)
+    lien = data.url.strip()
+    if "://" not in lien:
+        lien = "https://" + lien
+    accepte = "text/html,application/xhtml+xml,image/webp,image/jpeg,image/png;q=0.9,*/*;q=0.5"
+    try:
+        type_contenu, octets, finale = telecharger_lien(lien, accepte)
+        image = None
+        if type_contenu in LIEN_TYPES_IMAGE:
+            image = (type_contenu, octets, finale)
+        elif type_contenu in ("text/html", "application/xhtml+xml"):
+            html = octets[:2000000].decode("utf-8", errors="replace")
+            for candidate in images_de_la_page(html, finale):
+                try:
+                    t, o, f = telecharger_lien(candidate, "image/webp,image/jpeg,image/png,*/*;q=0.5")
+                except ValueError:
+                    continue
+                if t in LIEN_TYPES_IMAGE and len(o) > 5000:
+                    image = (t, o, f)
+                    break
+        else:
+            raise ValueError("Ce lien ne mène ni à une page ni à une image.")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if image is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Aucune photo trouvée sur cette page. Choisis plutôt une photo de ton téléphone."
+        )
+    t, o, f = image
+    return {"photo": "data:" + t + ";base64," + base64.b64encode(o).decode("ascii"), "source": f}
 
 
 # ============================================================

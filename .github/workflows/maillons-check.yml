@@ -1169,7 +1169,7 @@ jobs:
               items = page.eval_on_selector_all("#veloMenuZone [role=menuitem]", "os => os.map(o => [o.textContent.trim(), o.disabled])")
               print("menu:", items)
               noms = [i[0] for i in items]
-              assert len(items) == 4 and noms[3] == "Supprimer « Gravel test »" and not items[3][1], items
+              assert len(items) == 5 and noms[4] == "Supprimer « Gravel test »" and not items[4][1], items
               page.click("#veloMenuZone [role=menuitem]:has-text('Supprimer «')")
               page.wait_for_timeout(1500)
               assert len(dialogues) == 1 and "7 pièce" in dialogues[0] and "3 sortie" in dialogues[0] and "Gravel test" in dialogues[0], dialogues
@@ -1180,7 +1180,7 @@ jobs:
               # CUBE affiché : suppression désactivée
               page.click(bouton)
               items = page.eval_on_selector_all("#veloMenuZone [role=menuitem]", "os => os.map(o => o.disabled)")
-              assert items == [True, False, True, True], items
+              assert items == [True, False, False, True, True], items
               assert not erreurs, erreurs
               nav.close()
           print("OK menu vélo : suppression confirmée, retour au CUBE, CUBE protégé")
@@ -1268,6 +1268,156 @@ jobs:
           PY
           rm -f "$SQLITE_PATH"
           PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_photo_nav.py"
+      - name: Vérifier la récupération d'une photo depuis un lien (faux site local, garde anti-réseau interne)
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-photo-lien-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_photo_lien_srv.py" <<'PY'
+          import base64, json, threading
+          from http.server import BaseHTTPRequestHandler, HTTPServer
+          import main
+          from fastapi import HTTPException
+          main.verifier_auth = lambda _c: None
+          JPEG = b"\xff\xd8\xff\xe0" + b"J" * 8000
+          PNG = b"\x89PNG\r\n\x1a\n" + b"P" * 8000
+
+          class H(BaseHTTPRequestHandler):
+              def log_message(self, *a): pass
+              def rep(self, code, type_, corps, extra=None):
+                  self.send_response(code); self.send_header("Content-Type", type_); self.send_header("Content-Length", str(len(corps)))
+                  for k, v in (extra or {}).items(): self.send_header(k, v)
+                  self.end_headers(); self.wfile.write(corps)
+              def do_GET(self):
+                  ua = self.headers.get("User-Agent", "")
+                  if "Mozilla" not in ua: return self.rep(403, "text/plain", b"bot")
+                  c = self.path
+                  if c == "/page": self.rep(200, "text/html; charset=utf-8", b'<html><head><meta property="og:image" content="/img/velo.jpg?a=1&amp;b=2"></head></html>')
+                  elif c.startswith("/img/velo.jpg"): self.rep(200, "image/jpeg", JPEG)
+                  elif c == "/direct.png": self.rep(200, "image/png", PNG)
+                  elif c == "/redir": self.rep(302, "text/plain", b"", {"Location": "/page"})
+                  elif c == "/boucle": self.rep(302, "text/plain", b"", {"Location": "/boucle"})
+                  elif c == "/jsonld": self.rep(200, "text/html", b'<script type="application/ld+json">{"@type":"Product","image":["/img/velo.jpg"]}</script>')
+                  elif c == "/vide": self.rep(200, "text/html", b"<html><body>rien</body></html>")
+                  elif c == "/pixel": self.rep(200, "text/html", b'<meta property="og:image" content="/mini.png">')
+                  elif c == "/mini.png": self.rep(200, "image/png", PNG[:100])
+                  elif c == "/texte": self.rep(200, "text/plain", b"salut")
+                  elif c == "/svg": self.rep(200, "text/html", b'<meta property="og:image" content="/logo.svg">')
+                  elif c == "/logo.svg": self.rep(200, "image/svg+xml", b"<svg/>")
+                  elif c == "/interdit": self.rep(403, "text/plain", b"non")
+                  else: self.rep(404, "text/plain", b"?")
+
+          srv = HTTPServer(("127.0.0.1", 0), H); port = srv.server_address[1]
+          threading.Thread(target=srv.serve_forever, daemon=True).start()
+          B = "http://127.0.0.1:%d" % port
+          REEL = main.adresse_publique
+          main.adresse_publique = lambda h: True
+          main.LIEN_PORTS = (None, 80, 443, port)
+
+          def go(chemin):
+              return main.photo_depuis_lien(main.LienPhotoRequest(url=B + chemin), x_code_acces="x")
+          def refuse(code, chemin):
+              try: go(chemin)
+              except HTTPException as e:
+                  assert e.status_code == code, (chemin, e.status_code, e.detail); return e.detail
+              raise AssertionError("erreur attendue " + chemin)
+
+          r = go("/page")
+          assert r["photo"] == "data:image/jpeg;base64," + base64.b64encode(JPEG).decode() and r["source"] == B + "/img/velo.jpg?a=1&b=2", r["source"]
+          assert go("/direct.png")["photo"].startswith("data:image/png;base64,")
+          assert go("/redir")["photo"].startswith("data:image/jpeg")
+          assert go("/jsonld")["photo"].startswith("data:image/jpeg")
+          assert "Aucune photo" in refuse(404, "/vide")
+          refuse(404, "/pixel"); refuse(404, "/svg")
+          print(refuse(400, "/texte")); print(refuse(400, "/interdit")); print(refuse(400, "/boucle"))
+          # lien sans http:// : "https://" ajouté automatiquement -> hôte inconnu ici, refusé proprement
+          main.adresse_publique = lambda h: False
+          print(refuse(400, "/page"))
+          # Garde réelle contre le réseau interne
+          main.adresse_publique = REEL; main.LIEN_PORTS = (None, 80, 443); real = REEL
+          for hote in ("127.0.0.1", "localhost", "10.0.0.5", "192.168.1.1", "169.254.169.254", "::1", "0.0.0.0", "nom-qui-n-existe-pas.invalid"):
+              assert real(hote) is False, hote
+          assert real("8.8.8.8") is True
+          for url in ("file:///etc/passwd", "ftp://exemple.fr/x", "http://user:mdp@8.8.8.8/", "http://8.8.8.8:8080/x", "http://127.0.0.1/"):
+              try: main.telecharger_lien(url, "*/*"); raise AssertionError(url)
+              except ValueError as e: pass
+          # images_de_la_page : plusieurs formes
+          html = '<meta name="twitter:image" content="https://a.fr/x.jpg"><link rel="image_src" href="y.jpg"><meta content="z.jpg" property="og:image">'
+          assert main.images_de_la_page(html, "https://b.fr/dir/p") == ["https://a.fr/x.jpg", "https://b.fr/dir/z.jpg", "https://b.fr/dir/y.jpg"]
+          print("OK photo depuis un lien (serveur)")
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_photo_lien_srv.py"
+      - name: Tester la photo depuis un lien dans un vrai navigateur
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-photo-lien-nav-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_photo_lien_nav.py" <<'PY'
+          import json, struct, zlib
+          from urllib.parse import urlparse
+          from playwright.sync_api import sync_playwright
+          import main
+          html = main.accueil()
+          def png(w, h):
+              raw = b"".join(b"\x00" + bytes([40, 120, 200]) * w for _ in range(h))
+              def ch(t, d): return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xffffffff)
+              return b"\x89PNG\r\n\x1a\n" + ch(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)) + ch(b"IDAT", zlib.compress(raw)) + ch(b"IEND", b"")
+          import base64
+          URL_PNG = "data:image/png;base64," + base64.b64encode(png(1600, 900)).decode()
+          VELOS = [{"id": 1, "nom": "Mon CUBE", "type": "vtt_electrique", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0},
+                   {"id": 2, "nom": "Gravel test", "type": "gravel", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0}]
+          etat = {"photo": None, "lien": None, "echec": False}; dialogues = []; erreurs = []
+          with sync_playwright() as p:
+              nav = p.chromium.launch(); ctx = nav.new_context(viewport={"width": 390, "height": 844})
+              def api(route):
+                  r = route.request; u = urlparse(r.url)
+                  if u.path == "/api/velos": corps = [dict(v) for v in VELOS]
+                  elif u.path == "/api/photo-depuis-lien":
+                      etat["lien"] = json.loads(r.post_data)["url"]
+                      if etat["echec"]:
+                          return route.fulfill(status=404, content_type="application/json", body=json.dumps({"detail": "Aucune photo trouvée sur cette page. Choisis plutôt une photo de ton téléphone."}))
+                      corps = {"photo": URL_PNG, "source": "https://exemple.fr/velo.png"}
+                  elif u.path == "/api/velos/2/photo":
+                      if r.method == "PUT": etat["photo"] = json.loads(r.post_data)["photo"]; VELOS[1]["a_photo"] = 1; corps = {"statut": "success"}
+                      else: corps = {"photo": etat["photo"]}
+                  elif u.path == "/api/etat": corps = {"km_total": 0, "composants": []}
+                  elif u.path == "/api/mes-reglages": corps = {"valeurs": {}, "maj_le": None}
+                  elif u.path == "/api/reglages": corps = {"terrain_route": 1, "terrain_mixte": 1.2, "terrain_chemin": 1.5, "terrain_sentier": 2, "poids_denivele": 1}
+                  else: corps = []
+                  route.fulfill(status=200, content_type="application/json", body=json.dumps(corps))
+              ctx.route("**/localhost/api/**", api); ctx.route(lambda u: not u.startswith("http://localhost/"), lambda r: r.abort())
+              ctx.add_init_script("sessionStorage.setItem('vtt_code','t'); sessionStorage.setItem('maillons_velo_id','2')")
+              page = ctx.new_page(); page.on("pageerror", lambda e: erreurs.append(str(e)[:200]))
+              reponses = ["  https://www.exemple.fr/velo  ", "https://www.exemple.fr/introuvable"]
+              def dlg(d):
+                  dialogues.append((d.type, d.message))
+                  d.accept(reponses.pop(0)) if d.type == "prompt" else d.accept()
+              page.on("dialog", dlg)
+              page.route("http://localhost/", lambda r: r.fulfill(status=200, content_type="text/html", body=html))
+              page.goto("http://localhost/"); page.wait_for_timeout(1200)
+              vis = lambda sel: page.eval_on_selector(sel, "e => getComputedStyle(e).display != 'none' && getComputedStyle(e).visibility != 'hidden'")
+              assert vis("#btnPhotoVeloLien")
+              page.click("#btnPhotoVeloLien"); page.wait_for_timeout(1500)
+              assert etat["lien"] == "https://www.exemple.fr/velo", etat["lien"]      # espaces retirés
+              assert etat["photo"] and etat["photo"].startswith("data:image/jpeg;base64,")   # réduite et enregistrée
+              dim = page.evaluate("() => { const i = document.querySelector('.bike-img'); return [i.naturalWidth, i.naturalHeight]; }")
+              assert dim == [1200, 675], dim
+              assert vis(".bike-img") and not vis("#photoVeloACompleter")
+              # Échec : message visible (alerte), rien d'enregistré en plus
+              avant = etat["photo"]; etat["echec"] = True
+              page.evaluate("location.hash = 'reglages'"); page.wait_for_timeout(400)
+              page.click("#veloMenuZone button[aria-label='Actions du vélo']")
+              page.click("#veloMenuZone [role=menuitem]:has-text('Photo depuis un lien')"); page.wait_for_timeout(1000)
+              alertes = [m for t, m in dialogues if t == "alert"]
+              assert alertes and "Aucune photo trouvée" in alertes[-1], dialogues
+              assert etat["photo"] == avant
+              assert not erreurs, erreurs
+              nav.close()
+          print("OK photo depuis un lien (navigateur)")
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_photo_lien_nav.py"
       - name: Tester la fiche technique de tous les vélos dans un vrai navigateur
         env:
           SQLITE_PATH: ${{ runner.temp }}/maillons-fiche-test.db
