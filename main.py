@@ -336,9 +336,64 @@ def init_db():
         ON CONFLICT (id) DO NOTHING
     """)
 
+    # Registre multi-vélos : ajout uniquement, sans remplacer la table historique
+    # velo ni supprimer les données déjà présentes.
+    cursor.execute(f"""
+        CREATE TABLE IF NOT EXISTS velos (
+            id {db.AUTO_ID},
+            nom TEXT NOT NULL,
+            type TEXT NOT NULL DEFAULT 'electrique',
+            marque TEXT,
+            modele TEXT,
+            annee INTEGER,
+            taille TEXT,
+            actif INTEGER DEFAULT 1,
+            km_total INTEGER DEFAULT 0,
+            km_frac DOUBLE PRECISION DEFAULT 0,
+            km_maj_le TEXT,
+            date_achat TEXT,
+            legacy_velo_id INTEGER UNIQUE
+        )
+    """)
+
+    # Colonnes également ajoutées si le registre velos existait déjà
+    # sur la branche de test avant cette correction.
+    ajouter_colonne(cursor, "velos", "km_total", "INTEGER DEFAULT 0")
+    ajouter_colonne(cursor, "velos", "km_frac", "DOUBLE PRECISION DEFAULT 0")
+    ajouter_colonne(cursor, "velos", "km_maj_le", "TEXT")
+    ajouter_colonne(cursor, "velos", "date_achat", "TEXT")
+    ajouter_colonne(cursor, "velos", "moteur", "TEXT")
+    ajouter_colonne(cursor, "velos", "batterie", "TEXT")
+
+    # Le CUBE reçoit TOUJOURS l'identifiant 1 : les pièces et les sorties
+    # existantes sont rattachées au vélo n° 1 (velo_id par défaut).
+    cursor.execute("""
+        INSERT INTO velos (
+            id, nom, type, marque, modele, annee, km_total,
+            km_frac, km_maj_le, date_achat, legacy_velo_id
+        )
+        VALUES (1, 'Mon CUBE', 'electrique', 'Cube',
+                'Stereo Hybrid ONE44 EXC 800 (Bosch)', 2025,
+                2700, 0, NULL, NULL, 1)
+        ON CONFLICT DO NOTHING
+    """)
+
+    # PostgreSQL : le numéro automatique ne sait pas qu'on a imposé l'id 1.
+    # On avance la séquence pour que le prochain vélo ajouté ne reçoive pas
+    # un numéro déjà pris. (SQLite le fait tout seul.)
+    if db.USE_PG:
+        cursor.execute("""
+            SELECT setval(
+                pg_get_serial_sequence('velos', 'id'),
+                GREATEST((SELECT MAX(id) FROM velos), 1)
+            )
+        """)
+
+
     cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS composants (
             id {db.AUTO_ID},
+            velo_id INTEGER DEFAULT 1,
             nom TEXT NOT NULL,
             km_depart INTEGER DEFAULT 0,
             seuil_alerte INTEGER NOT NULL,
@@ -373,10 +428,20 @@ def init_db():
     # Kilométrage de la pièce juste AVANT l'intervention : permet de
     # remettre la pièce exactement comme avant si on supprime la ligne.
     ajouter_colonne(cursor, "historique", "km_avant", "INTEGER")
+    ajouter_colonne(cursor, "historique", "velo_id", "INTEGER DEFAULT 1")
+    cursor.execute("""
+        UPDATE historique
+        SET velo_id = COALESCE(
+            (SELECT velo_id FROM composants WHERE composants.id = historique.composant_id),
+            1
+        )
+        WHERE velo_id IS NULL
+    """)
 
     cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS sorties (
             id {db.AUTO_ID},
+            velo_id INTEGER DEFAULT 1,
             nom TEXT,
             debut TEXT NOT NULL UNIQUE,
             sport TEXT,
@@ -397,6 +462,8 @@ def init_db():
     ajouter_colonne(cursor, "sorties", "photos", "TEXT")
     ajouter_colonne(cursor, "sorties", "videos", "TEXT")
     ajouter_colonne(cursor, "sorties", "surfaces", "TEXT")
+    # 1 = sortie reçue automatiquement, vélo à confirmer par Math.
+    ajouter_colonne(cursor, "sorties", "a_verifier", "INTEGER DEFAULT 0")
 
     # Les liens de partage secrets ont été abandonnés : on nettoie leur table.
     cursor.execute("DROP TABLE IF EXISTS partages")
@@ -422,6 +489,29 @@ def init_db():
             maj_le TEXT
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS mes_reglages_velo (
+            velo_id INTEGER NOT NULL,
+            cle TEXT NOT NULL,
+            valeur TEXT NOT NULL,
+            maj_le TEXT,
+            PRIMARY KEY (velo_id, cle)
+        )
+    """)
+    # Copie idempotente des anciens réglages personnels vers le CUBE.
+    cursor.execute("""
+        INSERT INTO mes_reglages_velo (velo_id, cle, valeur, maj_le)
+        SELECT 1, cle, valeur, maj_le
+        FROM mes_reglages
+        WHERE TRUE
+        ON CONFLICT (velo_id, cle) DO NOTHING
+    """)
+
+    # Colonnes ajoutées aussi aux bases existantes, sans perdre les données.
+    ajouter_colonne(cursor, "composants", "velo_id", "INTEGER DEFAULT 1")
+    ajouter_colonne(cursor, "sorties", "velo_id", "INTEGER DEFAULT 1")
+    cursor.execute("UPDATE composants SET velo_id = 1 WHERE velo_id IS NULL")
+    cursor.execute("UPDATE sorties SET velo_id = 1 WHERE velo_id IS NULL")
 
     ajouter_colonne(cursor, "composants", "seuil_jours", "INTEGER DEFAULT 0")
     ajouter_colonne(cursor, "composants", "verification", "INTEGER DEFAULT 0")
@@ -439,6 +529,30 @@ def init_db():
         "UPDATE velo SET km_maj_le = ? WHERE id = 1 AND km_maj_le IS NULL",
         (maintenant_utc(),)
     )
+
+    # Copie du kilométrage et des dates vers le registre, après migration des
+    # colonnes. UNE SEULE FOIS : ensuite les kilomètres vivants sont écrits dans
+    # `velos` (ancienne table `velo` figée, gardée en secours). Sans ce marqueur,
+    # chaque redémarrage remettait le compteur du CUBE à l'ancienne valeur.
+    cursor.execute(
+        "SELECT valeur FROM reglages WHERE cle = ?",
+        ("migration_velos_copie_v1",)
+    )
+
+    if cursor.fetchone() is None:
+        cursor.execute("""
+            UPDATE velos
+            SET km_total = (SELECT km_total FROM velo WHERE id = 1),
+                km_frac = (SELECT km_frac FROM velo WHERE id = 1),
+                km_maj_le = (SELECT km_maj_le FROM velo WHERE id = 1),
+                date_achat = (SELECT date_achat FROM velo WHERE id = 1)
+            WHERE legacy_velo_id = 1
+        """)
+        cursor.execute("""
+            INSERT INTO reglages (cle, valeur)
+            VALUES (?, 1)
+            ON CONFLICT (cle) DO NOTHING
+        """, ("migration_velos_copie_v1",))
 
     cursor.execute("SELECT COUNT(*) FROM composants")
 
@@ -2723,7 +2837,8 @@ def accueil():
                 pointer-events: none;
             }
 
-            .pastille-nouvelle {
+            .pastille-nouvelle,
+            .pastille-verifier {
                 display: inline-block;
                 margin-right: 8px;
                 padding: 2px 8px;
@@ -3173,7 +3288,8 @@ def accueil():
             <svg class="logo" role="img" aria-label="Maillons"><use href="#logo-maillon"/></svg>
             <div class="header-titres">
                 <h1>Maillons</h1>
-                <p class="header-velo">Cube Stereo Hybrid ONE44</p>
+                <p class="header-velo" id="headerVeloNom">Mon CUBE</p>
+                <select id="selectVelo" aria-label="Choisir mon vélo" style="margin:4px 0 0; padding:6px 9px; font-size:0.82rem; max-width:100%;"></select>
             </div>
             <span class="km-pill" id="veloInfo">… km</span>
         </header>
@@ -3197,7 +3313,7 @@ def accueil():
                 alt="Mon Cube Stereo Hybrid"
                 class="bike-img"
             >
-
+            <div id="photoVeloACompleter" style="display:none; position:absolute; inset:0; align-items:center; justify-content:center; text-align:center; padding:24px; color:#64748b; font-weight:700;">La photo de ce vélo sera ajoutée lors de l'étape dédiée.</div>
             <div id="hotspotsContainer"></div>
         </div>
 
@@ -3249,6 +3365,44 @@ def accueil():
         </div>
 
         <div class="page" id="page-reglages" style="display:none;">
+        <section class="mes-reglages" id="blocAjouterVelo">
+            <div class="mr-titre"><strong id="titreFormVelo">Ajouter un vélo</strong></div>
+            <p class="form-help">Chaque vélo aura ses sorties, ses kilomètres et son carnet d'entretien séparés. La photo personnalisée sera ajoutée lors d'une étape ultérieure.</p>
+            <form id="formAjouterVelo">
+                <label for="nouveauVeloNom">Nom du vélo</label>
+                <input id="nouveauVeloNom" name="nom" type="text" maxlength="80" placeholder="Ex. : Mon gravel" required>
+                <label for="nouveauVeloType">Type de vélo</label>
+                <select id="nouveauVeloType" name="type" required>
+                    <option value="vtt_electrique">VTT électrique</option>
+                    <option value="vtt">VTT sans moteur</option>
+                    <option value="enduro">Enduro</option>
+                    <option value="descente">Descente</option>
+                    <option value="gravel">Gravel</option>
+                    <option value="gravel_electrique">Gravel électrique</option>
+                    <option value="route">Route</option>
+                    <option value="route_electrique">Route électrique</option>
+                </select>
+                <label for="nouveauVeloMarque">Marque (facultatif)</label>
+                <input id="nouveauVeloMarque" name="marque" type="text" maxlength="80">
+                <label for="nouveauVeloModele">Modèle (facultatif)</label>
+                <input id="nouveauVeloModele" name="modele" type="text" maxlength="120">
+                <label for="nouveauVeloAnnee">Année (facultatif)</label>
+                <input id="nouveauVeloAnnee" name="annee" type="number" min="1950" max="2100">
+                <label for="nouveauVeloTaille">Taille du cadre (facultatif)</label>
+                <input id="nouveauVeloTaille" name="taille" type="text" maxlength="30">
+                <label for="nouveauVeloDate">Date d'achat (facultatif)</label>
+                <input id="nouveauVeloDate" name="date_achat" type="date">
+                <div id="champsElectriques">
+                    <label for="nouveauVeloMoteur">Moteur (vélo électrique uniquement)</label>
+                    <input id="nouveauVeloMoteur" name="moteur" type="text" maxlength="120">
+                    <label for="nouveauVeloBatterie">Batterie (vélo électrique uniquement)</label>
+                    <input id="nouveauVeloBatterie" name="batterie" type="text" maxlength="120">
+                </div>
+                <button class="btn-primary" id="boutonCreerVelo" type="submit" style="width:100%; margin-top:8px;">Créer le vélo</button>
+                <button type="button" id="btnAnnulerEditionFiche" style="display:none; width:100%; margin-top:8px;" onclick="annulerEditionFiche()">Annuler la modification</button>
+                <p class="form-help" id="nouveauVeloMessage"></p>
+            </form>
+        </section>
         <section class="apparence mr-repliable" id="blocApparence" aria-label="Apparence">
             <div class="mr-titre">
                 <button type="button" class="mr-entete" aria-expanded="false" aria-controls="blocApparenceCorps">
@@ -3321,7 +3475,7 @@ def accueil():
             </div>
         </section>
 
-        <details class="fiche-technique-velo">
+        <details class="fiche-technique-velo" id="ficheTechniqueCube">
             <summary class="ftv-resume">
                 <span class="ftv-entete">
                     <strong class="titre-pastille ftv-titre-pastille">
@@ -3434,6 +3588,19 @@ def accueil():
             </div>
             <p class="ftv-note">Caractéristiques du modèle 2025. Les équipements peuvent varier selon la version et la taille du vélo.</p>
         </details>
+        <section class="mes-reglages" id="ficheTechniqueAutre" style="display:none;">
+            <div class="mr-titre"><strong>Fiche technique du vélo</strong></div>
+            <div class="mr-ligne"><span>Nom</span><b id="ficheAutreNom">—</b></div>
+            <div class="mr-ligne"><span>Type</span><b id="ficheAutreType">—</b></div>
+            <div class="mr-ligne"><span>Marque</span><b id="ficheAutreMarque">—</b></div>
+            <div class="mr-ligne"><span>Modèle</span><b id="ficheAutreModele">—</b></div>
+            <div class="mr-ligne"><span>Année</span><b id="ficheAutreAnnee">—</b></div>
+            <div class="mr-ligne"><span>Taille du cadre</span><b id="ficheAutreTaille">—</b></div>
+            <div class="mr-ligne" id="ficheAutreMoteurLigne"><span>Moteur</span><b id="ficheAutreMoteur">—</b></div>
+            <div class="mr-ligne" id="ficheAutreBatterieLigne"><span>Batterie</span><b id="ficheAutreBatterie">—</b></div>
+            <button type="button" id="btnModifierFicheVelo" onclick="modifierFicheVelo()" style="width:100%; margin-top:12px;">Modifier cette fiche</button>
+        </section>
+
         <section class="mes-reglages mr-repliable" id="mesReglages" aria-label="Mes réglages vélo">
             <div class="mr-titre">
                 <button type="button" class="mr-entete" aria-expanded="false" aria-controls="mesReglagesCorps">
@@ -3789,7 +3956,7 @@ def accueil():
 
             function lireVus() {
                 try {
-                    const texte = localStorage.getItem('maillons_vus');
+                    const texte = localStorage.getItem('maillons_vus_' + veloActifId);
                     return texte ? JSON.parse(texte) : null;
                 } catch (e) {
                     return null;
@@ -3798,7 +3965,7 @@ def accueil():
 
             function ecrireVus(v) {
                 try {
-                    localStorage.setItem('maillons_vus', JSON.stringify(v));
+                    localStorage.setItem('maillons_vus_' + veloActifId, JSON.stringify(v));
                 } catch (e) {}
             }
 
@@ -3885,6 +4052,25 @@ def accueil():
                 if (nouvellesSorties.length) chargerSorties(true);
             }
 
+            let veloActifId = Number(sessionStorage.getItem('maillons_velo_id')) || 1;
+            let velosDisponibles = [];
+            const fetchOriginal = window.fetch.bind(window);
+
+            // Affectation (et non « function fetch ») : une déclaration de fonction
+            // serait remontée avant la ligne fetchOriginal ci-dessus et se rappellerait
+            // elle-même sans fin (page bloquée, "Maximum call stack size exceeded").
+            window.fetch = function (url, options) {
+                let cible = url;
+                if (typeof url === 'string' && url.startsWith('/api/')) {
+                    const globales = ['/api/velos', '/api/sauvegarde', '/api/reglages'];
+                    if (!globales.some(p => url === p || url.startsWith(p + '?'))) {
+                        const separateur = url.includes('?') ? '&' : '?';
+                        cible = url + separateur + 'velo_id=' + encodeURIComponent(veloActifId);
+                    }
+                }
+                return fetchOriginal(cible, options);
+            };
+
             window.addEventListener('hashchange', afficherPage);
             afficherPage();
 
@@ -3896,6 +4082,185 @@ def accueil():
                 };
             }
 
+            const TYPES_VELO = {
+                vtt_electrique: 'VTT électrique',
+                vtt: 'VTT sans moteur',
+                enduro: 'Enduro',
+                descente: 'Descente',
+                gravel: 'Gravel',
+                gravel_electrique: 'Gravel électrique',
+                route: 'Route',
+                route_electrique: 'Route électrique',
+                electrique: 'VTT électrique'
+            };
+
+            async function chargerVelos() {
+                try {
+                    const res = await fetch('/api/velos', { headers: getHeaders() });
+                    if (!res.ok) throw new Error();
+                    velosDisponibles = await res.json();
+                    if (!velosDisponibles.length) throw new Error();
+                    if (!velosDisponibles.some(v => Number(v.id) === veloActifId)) {
+                        veloActifId = Number(velosDisponibles[0].id);
+                    }
+                    sessionStorage.setItem('maillons_velo_id', String(veloActifId));
+                    const select = document.getElementById('selectVelo');
+                    select.replaceChildren();
+                    velosDisponibles.forEach(v => {
+                        const option = document.createElement('option');
+                        option.value = String(v.id);
+                        const nbAVerifier = Number(v.sorties_a_verifier) || 0;
+                        option.textContent = v.nom + ' · ' + (TYPES_VELO[v.type] || v.type)
+                            + (nbAVerifier > 0 ? ' · ' + nbAVerifier + ' à vérifier' : '');
+                        select.appendChild(option);
+                    });
+                    select.value = String(veloActifId);
+                    afficherNomVeloActif();
+                } catch (e) {
+                    console.error('Impossible de charger les vélos', e);
+                }
+            }
+
+            function afficherNomVeloActif() {
+                const velo = velosDisponibles.find(v => Number(v.id) === veloActifId);
+                const titre = document.getElementById('headerVeloNom');
+                if (titre) titre.textContent = velo ? velo.nom : 'Mon vélo';
+                const photo = document.querySelector('.bike-img');
+                const placeholderPhoto = document.getElementById('photoVeloACompleter');
+                const estCube = !velo || Number(velo.id) === 1;
+                if (photo) photo.style.visibility = estCube ? 'visible' : 'hidden';
+                if (placeholderPhoto) placeholderPhoto.style.display = estCube ? 'none' : 'flex';
+                const ficheCube = document.getElementById('ficheTechniqueCube');
+                const ficheGenerique = document.getElementById('ficheTechniqueAutre');
+                if (ficheCube) ficheCube.style.display = estCube ? '' : 'none';
+                if (ficheGenerique) ficheGenerique.style.display = estCube ? 'none' : 'block';
+                const boutonModifierFiche = document.getElementById('btnModifierFicheVelo');
+                if (boutonModifierFiche) boutonModifierFiche.style.display = estCube ? 'none' : 'block';
+                const ficheNom = document.getElementById('ficheAutreNom');
+                const ficheType = document.getElementById('ficheAutreType');
+                const ficheMarque = document.getElementById('ficheAutreMarque');
+                const ficheModele = document.getElementById('ficheAutreModele');
+                const ficheAnnee = document.getElementById('ficheAutreAnnee');
+                const ficheTaille = document.getElementById('ficheAutreTaille');
+                const ficheMoteur = document.getElementById('ficheAutreMoteur');
+                const ficheBatterie = document.getElementById('ficheAutreBatterie');
+                if (velo) {
+                    if (ficheNom) ficheNom.textContent = velo.nom || 'Mon vélo';
+                    if (ficheType) ficheType.textContent = TYPES_VELO[velo.type] || velo.type || 'Non renseigné';
+                    if (ficheMarque) ficheMarque.textContent = velo.marque || 'Non renseignée';
+                    if (ficheModele) ficheModele.textContent = velo.modele || 'Non renseigné';
+                    if (ficheAnnee) ficheAnnee.textContent = velo.annee || 'Non renseignée';
+                    if (ficheTaille) ficheTaille.textContent = velo.taille || 'Non renseignée';
+                    if (ficheMoteur) ficheMoteur.textContent = velo.moteur || 'Non concerné ou non renseigné';
+                    if (ficheBatterie) ficheBatterie.textContent = velo.batterie || 'Non renseignée';
+                    const estElectriqueVelo = ['vtt_electrique', 'gravel_electrique', 'route_electrique', 'electrique'].includes(velo.type);
+                    const ligneMoteur = document.getElementById('ficheAutreMoteurLigne');
+                    const ligneBatterie = document.getElementById('ficheAutreBatterieLigne');
+                    if (ligneMoteur) ligneMoteur.style.display = estElectriqueVelo ? '' : 'none';
+                    if (ligneBatterie) ligneBatterie.style.display = estElectriqueVelo ? '' : 'none';
+                }
+                const electriques = document.getElementById('champsElectriques');
+                const type = document.getElementById('nouveauVeloType');
+                if (electriques && type) {
+                    electriques.style.display = ['vtt_electrique', 'gravel_electrique', 'route_electrique'].includes(type.value) ? 'block' : 'none';
+                }
+            }
+
+            async function rechargerDonneesVelo() {
+                sortiesConnues = [];
+                historiqueDonnees = [];
+                etatComposants = [];
+                histSelection.clear();
+                await chargerVelos();
+                await chargerEtat();
+                afficherNomVeloActif();
+            }
+
+            async function changerVeloActif() {
+                const prochain = Number(document.getElementById('selectVelo').value);
+                if (!prochain || prochain === veloActifId) return;
+                veloActifId = prochain;
+                sessionStorage.setItem('maillons_velo_id', String(veloActifId));
+                await rechargerDonneesVelo();
+            }
+
+            document.getElementById('selectVelo').addEventListener('change', changerVeloActif);
+            document.getElementById('nouveauVeloType').addEventListener('change', afficherNomVeloActif);
+            let veloEditionId = null;
+
+            function modifierFicheVelo() {
+                const velo = velosDisponibles.find(v => Number(v.id) === veloActifId);
+                if (!velo || Number(velo.id) === 1) return;
+                const formulaire = document.getElementById('formAjouterVelo');
+                formulaire.elements.nom.value = velo.nom || '';
+                formulaire.elements.type.value = velo.type || 'vtt';
+                formulaire.elements.type.disabled = true;
+                formulaire.elements.marque.value = velo.marque || '';
+                formulaire.elements.modele.value = velo.modele || '';
+                formulaire.elements.annee.value = velo.annee || '';
+                formulaire.elements.taille.value = velo.taille || '';
+                formulaire.elements.date_achat.value = velo.date_achat || '';
+                formulaire.elements.moteur.value = velo.moteur || '';
+                formulaire.elements.batterie.value = velo.batterie || '';
+                veloEditionId = Number(velo.id);
+                document.getElementById('titreFormVelo').textContent = 'Modifier la fiche du vélo';
+                document.getElementById('boutonCreerVelo').textContent = 'Enregistrer la fiche';
+                document.getElementById('btnAnnulerEditionFiche').style.display = 'block';
+                document.getElementById('nouveauVeloMessage').textContent = '';
+                location.hash = 'reglages';
+                afficherPage();
+                document.getElementById('blocAjouterVelo').scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+
+            function annulerEditionFiche() {
+                veloEditionId = null;
+                const formulaire = document.getElementById('formAjouterVelo');
+                formulaire.reset();
+                formulaire.elements.type.disabled = false;
+                document.getElementById('titreFormVelo').textContent = 'Ajouter un vélo';
+                document.getElementById('boutonCreerVelo').textContent = 'Créer le vélo';
+                document.getElementById('btnAnnulerEditionFiche').style.display = 'none';
+                document.getElementById('nouveauVeloMessage').textContent = '';
+                afficherNomVeloActif();
+            }
+
+            document.getElementById('formAjouterVelo').addEventListener('submit', async event => {
+                event.preventDefault();
+                const formulaire = event.currentTarget;
+                const message = document.getElementById('nouveauVeloMessage');
+                const type = document.getElementById('nouveauVeloType').value;
+                const electrique = ['vtt_electrique', 'gravel_electrique', 'route_electrique', 'electrique'].includes(type);
+                const valeurs = Object.fromEntries(new FormData(formulaire).entries());
+                if (!electrique) {
+                    delete valeurs.moteur;
+                    delete valeurs.batterie;
+                }
+                if (valeurs.annee === '') delete valeurs.annee;
+                else if (valeurs.annee) valeurs.annee = Number(valeurs.annee);
+                Object.keys(valeurs).forEach(cle => {
+                    if (typeof valeurs[cle] === 'string' && valeurs[cle].trim() === '') delete valeurs[cle];
+                });
+                try {
+                    const edition = veloEditionId !== null;
+                    const adresse = edition ? '/api/velos/' + veloEditionId : '/api/velos';
+                    const res = await fetch(adresse, {
+                        method: edition ? 'PUT' : 'POST',
+                        headers: getHeaders(),
+                        body: JSON.stringify(valeurs)
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Enregistrement impossible.');
+                    if (data.velo_id) veloActifId = Number(data.velo_id);
+                    sessionStorage.setItem('maillons_velo_id', String(veloActifId));
+                    annulerEditionFiche();
+                    message.textContent = edition ? 'Fiche mise à jour.' : 'Vélo créé. Chargement de ses données…';
+                    await chargerVelos();
+                    await rechargerDonneesVelo();
+                } catch (e) {
+                    message.textContent = e.message || 'Création impossible.';
+                }
+            });
+
             async function tenterConnexion() {
                 const code = document.getElementById('authInput').value;
                 sessionStorage.setItem('vtt_code', code);
@@ -3904,6 +4269,7 @@ def accueil():
                     const res = await fetch('/api/etat', { headers: getHeaders() });
                     if (res.ok) {
                         document.getElementById('authScreen').style.display = 'none';
+                        await chargerVelos();
                         chargerEtat();
                     } else {
                         document.getElementById('authError').textContent =
@@ -3924,10 +4290,11 @@ def accueil():
 
             // Vérifie si un code est déjà en mémoire
             if (sessionStorage.getItem('vtt_code')) {
-                fetch('/api/etat', { headers: getHeaders() }).then(res => {
+                fetch('/api/etat', { headers: getHeaders() }).then(async res => {
                     if (res.ok) {
                         document.getElementById('authScreen').style.display = 'none';
-                        chargerEtat();
+                        await chargerVelos();
+                        await chargerEtat();
                     }
                 });
             }
@@ -7573,6 +7940,15 @@ def accueil():
                             });
                         }
 
+                        // Pastille rouge « À vérifier » : sortie reçue automatiquement,
+                        // rangée sur le dernier vélo utilisé, à confirmer ou à changer.
+                        if (Number(s.a_verifier) === 1) {
+                            const aVerifier = document.createElement('span');
+                            aVerifier.className = 'pastille-verifier';
+                            aVerifier.textContent = 'À vérifier';
+                            titre.prepend(aVerifier);
+                        }
+
                         const ligne1 = document.createElement('div');
                         ligne1.style.color = 'var(--text-muted)';
                         ligne1.style.marginTop = '4px';
@@ -7747,6 +8123,8 @@ def accueil():
                         ajouterAction('crayon', 'Modifier les notes', () => modifierNotesSortie(s), false, false);
                         ajouterAction('telecharger', 'Exporter en GPX', () => exporterSortieGpx(s), false, !Array.isArray(s.trace) || s.trace.length < 2);
                         ajouterAction('crayon', 'Renommer', () => renommerSortie(s), false, false);
+                        ajouterAction('valider', 'Confirmer le vélo', () => confirmerVeloSortie(s), false, Number(s.a_verifier) !== 1);
+                        ajouterAction('repere', 'Changer de vélo', () => changerVeloSortie(s), false, velosDisponibles.length < 2);
                         ajouterAction('poubelle', 'Supprimer', () => supprimerSortie(s.id), true, false);
 
                         kebab.addEventListener('click', (e) => {
@@ -10864,6 +11242,51 @@ def accueil():
                 .addEventListener('change', majCompteStrava);
 
 
+            async function confirmerVeloSortie(sortie) {
+                try {
+                    const res = await fetch('/api/sorties/' + sortie.id + '/verifier', {
+                        method: 'POST',
+                        headers: getHeaders()
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Confirmation impossible.');
+                    await rechargerDonneesVelo();
+                } catch (e) {
+                    alert(e.message || 'Confirmation impossible.');
+                }
+            }
+
+            async function changerVeloSortie(sortie) {
+                const autres = velosDisponibles.filter(v => Number(v.id) !== veloActifId);
+                if (!autres.length) return;
+                const saut = String.fromCharCode(10);
+                const choix = prompt(
+                    'Choisissez le vélo de destination en saisissant son numéro :' + saut +
+                    autres.map((v, i) => (i + 1) + '. ' + v.nom).join(saut)
+                );
+                if (choix === null) return;
+                const index = Number.parseInt(choix, 10) - 1;
+                if (!Number.isInteger(index) || index < 0 || index >= autres.length) {
+                    alert('Numéro de vélo non valide.');
+                    return;
+                }
+                const cible = autres[index];
+                if (!confirm('Affecter « ' + sortie.nom + ' » à « ' + cible.nom + ' » ? Le kilométrage et l’usure seront recalculés.')) return;
+                try {
+                    const res = await fetch('/api/sorties/' + sortie.id + '/velo', {
+                        method: 'POST',
+                        headers: getHeaders(),
+                        body: JSON.stringify({ nouveau_velo_id: Number(cible.id) })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Changement de vélo impossible.');
+                    await rechargerDonneesVelo();
+                } catch (e) {
+                    alert(e.message || 'Changement de vélo impossible.');
+                }
+            }
+
+
             async function supprimerSortie(id) {
                 if (!confirm("Supprimer cette sortie ?")) {
                     return;
@@ -11057,30 +11480,242 @@ def accueil():
 
 
 # ============================================================
-# API : ÉTAT DU VÉLO ET POURCENTAGES D'USURE
+# API : REGISTRE DES VÉLOS
 # ============================================================
 
-@app.get("/api/etat")
-def obtenir_etat(x_code_acces: Optional[str] = Header(default=None)):
+@app.get("/api/velos")
+def obtenir_velos(x_code_acces: Optional[str] = Header(default=None)):
     verifier_auth(x_code_acces)
     conn = db.connect()
     cursor = conn.cursor()
 
     try:
-        cursor.execute("SELECT km_total FROM velo WHERE id = 1")
+        cursor.execute("""
+            SELECT velo_id, COUNT(*) FROM sorties
+            WHERE a_verifier = 1 GROUP BY velo_id
+        """)
+        a_verifier = {r[0]: r[1] for r in cursor.fetchall()}
+        cursor.execute("""
+            SELECT id, nom, type, marque, modele, annee, taille, actif,
+                   km_total, km_frac, km_maj_le, date_achat, moteur, batterie
+            FROM velos
+            WHERE actif = 1
+            ORDER BY id
+        """)
+        return [
+            {
+                "sorties_a_verifier": a_verifier.get(row["id"], 0),
+                "id": row["id"],
+                "nom": row["nom"],
+                "type": row["type"],
+                "marque": row["marque"],
+                "modele": row["modele"],
+                "annee": row["annee"],
+                "taille": row["taille"],
+                "actif": row["actif"],
+                "km_total": row["km_total"],
+                "km_frac": row["km_frac"],
+                "km_maj_le": row["km_maj_le"],
+                "date_achat": row["date_achat"],
+                "moteur": row["moteur"],
+                "batterie": row["batterie"]
+            }
+            for row in cursor.fetchall()
+        ]
+    finally:
+        conn.close()
+
+
+class NouveauVeloRequest(BaseModel):
+    nom: str = Field(min_length=1, max_length=80)
+    type: str = Field(min_length=1, max_length=40)
+    marque: Optional[str] = Field(default=None, max_length=80)
+    modele: Optional[str] = Field(default=None, max_length=120)
+    annee: Optional[int] = Field(default=None, ge=1950, le=2100)
+    taille: Optional[str] = Field(default=None, max_length=30)
+    date_achat: Optional[str] = Field(default=None, max_length=10)
+    moteur: Optional[str] = Field(default=None, max_length=120)
+    batterie: Optional[str] = Field(default=None, max_length=120)
+
+
+class ModifierFicheVeloRequest(BaseModel):
+    nom: str = Field(min_length=1, max_length=80)
+    marque: Optional[str] = Field(default=None, max_length=80)
+    modele: Optional[str] = Field(default=None, max_length=120)
+    annee: Optional[int] = Field(default=None, ge=1950, le=2100)
+    taille: Optional[str] = Field(default=None, max_length=30)
+    date_achat: Optional[str] = Field(default=None, max_length=10)
+    moteur: Optional[str] = Field(default=None, max_length=120)
+    batterie: Optional[str] = Field(default=None, max_length=120)
+
+
+@app.put("/api/velos/{velo_id}")
+def modifier_fiche_velo(
+    velo_id: int,
+    data: ModifierFicheVeloRequest,
+    x_code_acces: Optional[str] = Header(default=None)
+):
+    verifier_auth(x_code_acces)
+    nom = " ".join(data.nom.split())
+    if not nom:
+        raise HTTPException(status_code=400, detail="Donnez un nom au vélo.")
+    date_achat = data.date_achat.strip() if data.date_achat else None
+    if date_achat:
+        try:
+            date.fromisoformat(date_achat)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Date d'achat non valide.")
+
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "SELECT type FROM velos WHERE id = ? AND actif = 1",
+            (velo_id,)
+        )
+        velo = cursor.fetchone()
+        if velo is None:
+            raise HTTPException(status_code=404, detail="Vélo introuvable.")
+        electrique = velo[0] in {"vtt_electrique", "gravel_electrique", "route_electrique", "electrique"}
+        cursor.execute("""
+            UPDATE velos
+            SET nom = ?, marque = ?, modele = ?, annee = ?, taille = ?,
+                date_achat = ?, moteur = ?, batterie = ?
+            WHERE id = ? AND actif = 1
+        """, (
+            nom, (data.marque or "").strip() or None,
+            (data.modele or "").strip() or None, data.annee,
+            (data.taille or "").strip() or None, date_achat,
+            ((data.moteur or "").strip() or None) if electrique else None,
+            ((data.batterie or "").strip() or None) if electrique else None,
+            velo_id
+        ))
+        conn.commit()
+        return {"statut": "success", "velo_id": velo_id, "nom": nom}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+@app.post("/api/velos")
+def creer_velo(
+    data: NouveauVeloRequest,
+    x_code_acces: Optional[str] = Header(default=None)
+):
+    verifier_auth(x_code_acces)
+    types_autorises = {
+        "vtt_electrique", "vtt", "enduro", "descente",
+        "gravel", "gravel_electrique", "route", "route_electrique"
+    }
+    type_velo = data.type.strip().lower()
+    nom = " ".join(data.nom.split())
+    if type_velo not in types_autorises:
+        raise HTTPException(status_code=400, detail="Type de vélo inconnu.")
+    if not nom:
+        raise HTTPException(status_code=400, detail="Donnez un nom au vélo.")
+    date_achat = data.date_achat.strip() if data.date_achat else None
+    if date_achat:
+        try:
+            date.fromisoformat(date_achat)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Date d'achat non valide.")
+
+    electrique = type_velo in {"vtt_electrique", "gravel_electrique", "route_electrique"}
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO velos (
+                nom, type, marque, modele, annee, taille, actif, km_total,
+                km_frac, km_maj_le, date_achat, moteur, batterie
+            )
+            VALUES (?, ?, ?, ?, ?, ?, 1, 0, 0, NULL, ?, ?, ?)
+        """, (
+            nom, type_velo, (data.marque or "").strip() or None,
+            (data.modele or "").strip() or None, data.annee,
+            (data.taille or "").strip() or None,
+            date_achat or date.today().isoformat(),
+            ((data.moteur or "").strip() or None) if electrique else None,
+            ((data.batterie or "").strip() or None) if electrique else None
+        ))
+        cursor.execute("SELECT id FROM velos WHERE nom = ? ORDER BY id DESC LIMIT 1", (nom,))
+        velo_id = cursor.fetchone()[0]
+
+        composants_base = [
+            ("Chaîne ou transmission", 1500, 180, "piece", 30, 65),
+            ("Frein avant", 1500, 180, "piece", 72, 60),
+            ("Frein arrière", 1500, 180, "piece", 24, 60),
+            ("Pneus", 2500, 180, "piece", 50, 80),
+            ("Roues et rayons (contrôle)", 0, 180, "maintenance", 80, 48),
+            ("Direction et roulements (contrôle)", 0, 365, "maintenance", 50, 20),
+            ("Contrôle général et serrages", 0, 180, "maintenance", 60, 35)
+        ]
+        if electrique:
+            composants_base.extend([
+                ("Moteur électrique (contrôle)", 0, 365, "maintenance", 42, 42),
+                ("Batterie (contrôle)", 0, 180, "maintenance", 55, 50)
+            ])
+        if type_velo in {"vtt_electrique", "vtt", "enduro", "descente"}:
+            composants_base.extend([
+                ("Fourche (entretien)", 800, 365, "maintenance", 76, 38),
+                ("Suspension arrière (entretien)", 800, 365, "maintenance", 44, 48)
+            ])
+        cursor.executemany("""
+            INSERT INTO composants (
+                velo_id, nom, km_depart, seuil_alerte, seuil_jours,
+                categorie, pos_x, pos_y, verification, coef_usure
+            )
+            VALUES (?, ?, 0, ?, ?, ?, ?, ?, 0, 1)
+        """, [
+            (velo_id, nom_comp, km, jours, categorie, x, y)
+            for nom_comp, km, jours, categorie, x, y in composants_base
+        ])
+        conn.commit()
+        return {"statut": "success", "velo_id": velo_id, "nom": nom, "type": type_velo}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+# ============================================================
+# API : ÉTAT DU VÉLO ET POURCENTAGES D'USURE
+# ============================================================
+
+@app.get("/api/etat")
+def obtenir_etat(
+    velo_id: int = 1,
+    x_code_acces: Optional[str] = Header(default=None)
+):
+    verifier_auth(x_code_acces)
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("""
+            SELECT id, km_total, date_achat, legacy_velo_id
+            FROM velos
+            WHERE id = ? AND actif = 1
+        """, (velo_id,))
         velo = cursor.fetchone()
 
-        km_global = (
-            velo["km_total"]
-            if velo and velo["km_total"] is not None
-            else 2700
+        if velo is None:
+            raise HTTPException(status_code=404, detail="Vélo introuvable.")
+
+        km_global = velo["km_total"] if velo["km_total"] is not None else 0
+        date_achat = velo["date_achat"] or (
+            DATE_ACHAT_PAR_DEFAUT
+            if velo["legacy_velo_id"] == 1
+            else date.today().isoformat()
         )
 
-        cursor.execute("SELECT date_achat FROM velo WHERE id = 1")
-        ligne_achat = cursor.fetchone()
-        date_achat = ligne_achat[0] if ligne_achat and ligne_achat[0] else DATE_ACHAT_PAR_DEFAUT
-
-        cursor.execute("SELECT * FROM composants ORDER BY id")
+        cursor.execute(
+            "SELECT * FROM composants WHERE velo_id = ? ORDER BY id",
+            (velo_id,)
+        )
         rows = cursor.fetchall()
 
         reglages = lire_reglages(cursor)
@@ -11090,7 +11725,8 @@ def obtenir_etat(x_code_acces: Optional[str] = Header(default=None)):
             SELECT debut, distance_km, denivele_pos, denivele_neg, terrain,
                    trace, surfaces
             FROM sorties
-        """)
+            WHERE velo_id = ?
+        """, (velo_id,))
         sorties = cursor.fetchall()
         coefs_sorties = [
             coef_terrain_sortie(s[5], s[6], s[4] or "mixte", reglages)[0]
@@ -11098,10 +11734,12 @@ def obtenir_etat(x_code_acces: Optional[str] = Header(default=None)):
         ]
 
         cursor.execute("""
-            SELECT composant_id, MAX(date_remplacement)
-            FROM historique
-            GROUP BY composant_id
-        """)
+            SELECT h.composant_id, MAX(h.date_remplacement)
+            FROM historique h
+            JOIN composants c ON c.id = h.composant_id
+            WHERE h.velo_id = ? AND c.velo_id = ?
+            GROUP BY h.composant_id
+        """, (velo_id, velo_id))
         dernier_entretien = {r[0]: r[1] for r in cursor.fetchall()}
 
         resultat = []
@@ -11199,7 +11837,10 @@ def obtenir_etat(x_code_acces: Optional[str] = Header(default=None)):
 # ============================================================
 
 @app.get("/api/historique")
-def obtenir_historique(x_code_acces: Optional[str] = Header(default=None)):
+def obtenir_historique(
+    velo_id: int = 1,
+    x_code_acces: Optional[str] = Header(default=None)
+):
     verifier_auth(x_code_acces)
     conn = db.connect()
     cursor = conn.cursor()
@@ -11216,8 +11857,9 @@ def obtenir_historique(x_code_acces: Optional[str] = Header(default=None)):
                 h.km_intervention
             FROM historique h
             JOIN composants c ON h.composant_id = c.id
+            WHERE h.velo_id = ? AND c.velo_id = ?
             ORDER BY h.id DESC
-        """)
+        """, (velo_id, velo_id))
 
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
@@ -11227,31 +11869,36 @@ def obtenir_historique(x_code_acces: Optional[str] = Header(default=None)):
 
 
 @app.post("/api/historique")
-def ajouter_historique(data: HistoriqueRequest, x_code_acces: Optional[str] = Header(default=None)):
+def ajouter_historique(
+    data: HistoriqueRequest,
+    velo_id: int = 1,
+    x_code_acces: Optional[str] = Header(default=None)
+):
     verifier_auth(x_code_acces)
     conn = db.connect()
     cursor = conn.cursor()
 
     try:
         cursor.execute(
-            "SELECT id FROM composants WHERE id = ?",
-            (data.composant_id,)
+            "SELECT id FROM velos WHERE id = ? AND actif = 1",
+            (velo_id,)
         )
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Vélo introuvable.")
 
+        cursor.execute(
+            "SELECT id FROM composants WHERE id = ? AND velo_id = ?",
+            (data.composant_id, velo_id)
+        )
         if cursor.fetchone() is None:
             raise HTTPException(
                 status_code=404,
-                detail="Composant introuvable."
+                detail="Composant introuvable pour ce vélo."
             )
 
-        cursor.execute("SELECT km_total FROM velo WHERE id = 1")
+        cursor.execute("SELECT km_total FROM velos WHERE id = ?", (velo_id,))
         velo = cursor.fetchone()
-
-        km_total = (
-            velo[0]
-            if velo and velo[0] is not None
-            else 2700
-        )
+        km_total = velo[0] if velo and velo[0] is not None else 2700
 
         if data.km_intervention > km_total:
             raise HTTPException(
@@ -11263,13 +11910,15 @@ def ajouter_historique(data: HistoriqueRequest, x_code_acces: Optional[str] = He
             )
 
         cursor.execute(
-            "SELECT km_depart FROM composants WHERE id = ?",
-            (data.composant_id,)
+            "SELECT km_depart FROM composants WHERE id = ? AND velo_id = ?",
+            (data.composant_id, velo_id)
         )
-        km_avant = cursor.fetchone()[0] or 0
+        ligne_composant = cursor.fetchone()
+        km_avant = (ligne_composant[0] or 0) if ligne_composant else 0
 
         cursor.execute("""
             INSERT INTO historique (
+                velo_id,
                 composant_id,
                 date_remplacement,
                 cout,
@@ -11277,8 +11926,9 @@ def ajouter_historique(data: HistoriqueRequest, x_code_acces: Optional[str] = He
                 km_intervention,
                 km_avant
             )
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (
+            velo_id,
             data.composant_id,
             data.date_remplacement,
             data.cout or 0.0,
@@ -11290,10 +11940,11 @@ def ajouter_historique(data: HistoriqueRequest, x_code_acces: Optional[str] = He
         cursor.execute("""
             UPDATE composants
             SET km_depart = ?
-            WHERE id = ?
+            WHERE id = ? AND velo_id = ?
         """, (
             data.km_intervention,
-            data.composant_id
+            data.composant_id,
+            velo_id
         ))
 
         conn.commit()
@@ -11311,15 +11962,14 @@ def ajouter_historique(data: HistoriqueRequest, x_code_acces: Optional[str] = He
     finally:
         conn.close()
 
-
-def retirer_intervention(cursor, historique_id):
+def retirer_intervention(cursor, historique_id, velo_id=1):
     """Supprime une intervention et remet la pièce dans l'état d'avant.
 
     Retourne (composant_id, km_depart), ou None si elle n'existe pas.
     """
     cursor.execute(
-        "SELECT composant_id, km_avant FROM historique WHERE id = ?",
-        (historique_id,)
+        "SELECT composant_id, km_avant FROM historique WHERE id = ? AND velo_id = ?",
+        (historique_id, velo_id)
     )
     ligne = cursor.fetchone()
 
@@ -11330,11 +11980,11 @@ def retirer_intervention(cursor, historique_id):
     km_avant = ligne[1]
 
     cursor.execute(
-        "DELETE FROM historique WHERE id = ?",
-        (historique_id,)
+        "DELETE FROM historique WHERE id = ? AND velo_id = ?",
+        (historique_id, velo_id)
     )
 
-    cursor.execute("SELECT km_depart FROM composants WHERE id = ?", (composant_id,))
+    cursor.execute("SELECT km_depart FROM composants WHERE id = ? AND velo_id = ?", (composant_id, velo_id))
     actuel = cursor.fetchone()
     km_depart = (actuel[0] or 0) if actuel else 0
 
@@ -11342,10 +11992,10 @@ def retirer_intervention(cursor, historique_id):
         cursor.execute("""
             SELECT id
             FROM historique
-            WHERE composant_id = ? AND id > ?
+            WHERE composant_id = ? AND velo_id = ? AND id > ?
             ORDER BY id
             LIMIT 1
-        """, (composant_id, historique_id))
+        """, (composant_id, velo_id, historique_id))
         suivante = cursor.fetchone()
 
         if suivante is None:
@@ -11359,24 +12009,24 @@ def retirer_intervention(cursor, historique_id):
                 cursor.execute("""
                     SELECT km_intervention
                     FROM historique
-                    WHERE composant_id = ? AND km_intervention IS NOT NULL
+                    WHERE composant_id = ? AND velo_id = ? AND km_intervention IS NOT NULL
                     ORDER BY id DESC
                     LIMIT 1
-                """, (composant_id,))
+                """, (composant_id, velo_id))
                 derniere = cursor.fetchone()
                 km_depart = derniere[0] if derniere else 0
 
             cursor.execute(
-                "UPDATE composants SET km_depart = ? WHERE id = ?",
-                (km_depart, composant_id)
+                "UPDATE composants SET km_depart = ? WHERE id = ? AND velo_id = ?",
+                (km_depart, composant_id, velo_id)
             )
         else:
             # Une intervention plus récente existe : l'état actuel de
             # la pièce ne change pas. On "recolle" la chaîne pour que
             # supprimer la suivante revienne au bon état d'avant.
             cursor.execute(
-                "UPDATE historique SET km_avant = ? WHERE id = ?",
-                (km_avant, suivante[0])
+                "UPDATE historique SET km_avant = ? WHERE id = ? AND velo_id = ?",
+                (km_avant, suivante[0], velo_id)
             )
 
     return composant_id, km_depart
@@ -11385,6 +12035,7 @@ def retirer_intervention(cursor, historique_id):
 @app.post("/api/historique/{historique_id}/supprimer")
 def supprimer_intervention(
     historique_id: int,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     verifier_auth(x_code_acces)
@@ -11392,7 +12043,7 @@ def supprimer_intervention(
     cursor = conn.cursor()
 
     try:
-        resultat = retirer_intervention(cursor, historique_id)
+        resultat = retirer_intervention(cursor, historique_id, velo_id)
 
         if resultat is None:
             raise HTTPException(
@@ -11419,6 +12070,7 @@ def supprimer_intervention(
 @app.post("/api/historique/supprimer-plusieurs")
 def supprimer_plusieurs_interventions(
     data: SupprimerPlusieursRequest,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     """Supprime plusieurs interventions d'un coup (tout ou rien)."""
@@ -11432,7 +12084,7 @@ def supprimer_plusieurs_interventions(
         # Les plus récentes d'abord : chaque pièce repasse ainsi par
         # ses états successifs, dans le bon ordre.
         for historique_id in sorted(set(data.ids), reverse=True):
-            if retirer_intervention(cursor, historique_id) is not None:
+            if retirer_intervention(cursor, historique_id, velo_id) is not None:
                 supprimees += 1
 
         conn.commit()
@@ -11451,6 +12103,7 @@ def supprimer_plusieurs_interventions(
 def modifier_intervention(
     historique_id: int,
     data: HistoriqueModifRequest,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     """Modifie la date, le kilométrage, le coût et les notes d'une intervention."""
@@ -11466,8 +12119,8 @@ def modifier_intervention(
 
     try:
         cursor.execute(
-            "SELECT composant_id FROM historique WHERE id = ?",
-            (historique_id,)
+            "SELECT composant_id FROM historique WHERE id = ? AND velo_id = ?",
+            (historique_id, velo_id)
         )
         ligne = cursor.fetchone()
 
@@ -11479,7 +12132,7 @@ def modifier_intervention(
 
         composant_id = ligne[0]
 
-        cursor.execute("SELECT km_total FROM velo WHERE id = 1")
+        cursor.execute("SELECT km_total FROM velos WHERE id = ?", (velo_id,))
         velo = cursor.fetchone()
         km_total = velo[0] if velo and velo[0] is not None else 2700
 
@@ -11497,37 +12150,38 @@ def modifier_intervention(
         cursor.execute("""
             UPDATE historique
             SET date_remplacement = ?, cout = ?, notes = ?, km_intervention = ?
-            WHERE id = ?
+            WHERE id = ? AND velo_id = ?
         """, (
             data.date_remplacement[:10],
             data.cout or 0.0,
             notes,
             data.km_intervention,
-            historique_id
+            historique_id,
+            velo_id
         ))
 
         if composant_id is not None:
             cursor.execute("""
                 SELECT id
                 FROM historique
-                WHERE composant_id = ? AND id > ?
+                WHERE composant_id = ? AND velo_id = ? AND id > ?
                 ORDER BY id
                 LIMIT 1
-            """, (composant_id, historique_id))
+            """, (composant_id, velo_id, historique_id))
             suivante = cursor.fetchone()
 
             if suivante is None:
                 # C'est la dernière intervention : elle fixe le point de
                 # départ actuel de la pièce.
                 cursor.execute(
-                    "UPDATE composants SET km_depart = ? WHERE id = ?",
-                    (data.km_intervention, composant_id)
+                    "UPDATE composants SET km_depart = ? WHERE id = ? AND velo_id = ?",
+                    (data.km_intervention, composant_id, velo_id)
                 )
             else:
                 # Sinon, c'est l'état « d'avant » de l'intervention suivante.
                 cursor.execute(
-                    "UPDATE historique SET km_avant = ? WHERE id = ?",
-                    (data.km_intervention, suivante[0])
+                    "UPDATE historique SET km_avant = ? WHERE id = ? AND velo_id = ?",
+                    (data.km_intervention, suivante[0], velo_id)
                 )
 
         conn.commit()
@@ -11543,24 +12197,40 @@ def modifier_intervention(
 
 
 @app.post("/api/sync")
-def synchroniser_kilometrage(data: SynchroRequest, x_code_acces: Optional[str] = Header(default=None)):
+def synchroniser_kilometrage(
+    data: SynchroRequest,
+    velo_id: int = 1,
+    x_code_acces: Optional[str] = Header(default=None)
+):
     verifier_auth(x_code_acces)
     conn = db.connect()
     cursor = conn.cursor()
 
     try:
+        cursor.execute(
+            "SELECT id FROM velos WHERE id = ? AND actif = 1",
+            (velo_id,)
+        )
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Vélo introuvable.")
+
         cursor.execute("""
-            UPDATE velo
+            UPDATE velos
             SET km_total = ?, km_frac = 0, km_maj_le = ?
-            WHERE id = 1
-        """, (data.km_total, maintenant_utc()))
+            WHERE id = ?
+        """, (data.km_total, maintenant_utc(), velo_id))
 
         conn.commit()
 
         return {
             "statut": "success",
-            "km_total": data.km_total
+            "km_total": data.km_total,
+            "velo_id": velo_id
         }
+
+    except Exception:
+        conn.rollback()
+        raise
 
     finally:
         conn.close()
@@ -11570,6 +12240,7 @@ def synchroniser_kilometrage(data: SynchroRequest, x_code_acces: Optional[str] =
 def remplacer_composant(
     composant_id: int,
     data: RemplacementRequest,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     verifier_auth(x_code_acces)
@@ -11578,8 +12249,8 @@ def remplacer_composant(
 
     try:
         cursor.execute(
-            "SELECT id FROM composants WHERE id = ?",
-            (composant_id,)
+            "SELECT id FROM composants WHERE id = ? AND velo_id = ?",
+            (composant_id, velo_id)
         )
 
         if cursor.fetchone() is None:
@@ -11588,7 +12259,7 @@ def remplacer_composant(
                 detail="Composant introuvable."
             )
 
-        cursor.execute("SELECT km_total FROM velo WHERE id = 1")
+        cursor.execute("SELECT km_total FROM velos WHERE id = ?", (velo_id,))
         velo = cursor.fetchone()
 
         km_global = (
@@ -11616,22 +12287,24 @@ def remplacer_composant(
         )
 
         cursor.execute(
-            "SELECT km_depart FROM composants WHERE id = ?",
-            (composant_id,)
+            "SELECT km_depart FROM composants WHERE id = ? AND velo_id = ?",
+            (composant_id, velo_id)
         )
         km_avant = cursor.fetchone()[0] or 0
 
         cursor.execute("""
             UPDATE composants
             SET km_depart = ?
-            WHERE id = ?
+            WHERE id = ? AND velo_id = ?
         """, (
             km_global,
-            composant_id
+            composant_id,
+            velo_id
         ))
 
         cursor.execute("""
             INSERT INTO historique (
+                velo_id,
                 composant_id,
                 date_remplacement,
                 cout,
@@ -11639,8 +12312,9 @@ def remplacer_composant(
                 km_intervention,
                 km_avant
             )
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (
+            velo_id,
             composant_id,
             date_resp,
             cout_resp,
@@ -11668,8 +12342,8 @@ def remplacer_composant(
 TERRAINS = {"mixte", "route", "chemin", "sentier"}
 
 
-def ajuster_km_total(cursor, delta_km):
-    cursor.execute("SELECT km_total, km_frac FROM velo WHERE id = 1")
+def ajuster_km_total(cursor, delta_km, velo_id=1):
+    cursor.execute("SELECT km_total, km_frac FROM velos WHERE id = ?", (velo_id,))
     ligne = cursor.fetchone()
 
     base = ligne[0] if ligne and ligne[0] is not None else 2700
@@ -11679,21 +12353,33 @@ def ajuster_km_total(cursor, delta_km):
     entier = int(math.floor(total + 1e-9))
 
     cursor.execute(
-        "UPDATE velo SET km_total = ?, km_frac = ? WHERE id = 1",
-        (entier, total - entier)
+        "UPDATE velos SET km_total = ?, km_frac = ? WHERE id = ?",
+        (entier, total - entier, velo_id)
     )
 
     return entier
 
 
 @app.get("/api/mes-reglages")
-def lire_mes_reglages(x_code_acces: Optional[str] = Header(default=None)):
+def lire_mes_reglages(
+    velo_id: int = 1,
+    x_code_acces: Optional[str] = Header(default=None)
+):
     verifier_auth(x_code_acces)
     conn = db.connect()
     cursor = conn.cursor()
 
     try:
-        cursor.execute("SELECT cle, valeur, maj_le FROM mes_reglages")
+        cursor.execute(
+            "SELECT id FROM velos WHERE id = ? AND actif = 1",
+            (velo_id,)
+        )
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Vélo introuvable.")
+        cursor.execute(
+            "SELECT cle, valeur, maj_le FROM mes_reglages_velo WHERE velo_id = ?",
+            (velo_id,)
+        )
         valeurs = {}
         maj = None
 
@@ -11712,6 +12398,7 @@ def lire_mes_reglages(x_code_acces: Optional[str] = Header(default=None)):
 @app.post("/api/mes-reglages")
 def enregistrer_mes_reglages(
     data: MesReglagesRequest,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     verifier_auth(x_code_acces)
@@ -11728,19 +12415,27 @@ def enregistrer_mes_reglages(
     cursor = conn.cursor()
 
     try:
+        cursor.execute(
+            "SELECT id FROM velos WHERE id = ? AND actif = 1",
+            (velo_id,)
+        )
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Vélo introuvable.")
+
         for cle, valeur in data.valeurs.items():
             valeur = valeur.strip()
-
             if valeur == "":
-                cursor.execute("DELETE FROM mes_reglages WHERE cle = ?", (cle,))
+                cursor.execute(
+                    "DELETE FROM mes_reglages_velo WHERE velo_id = ? AND cle = ?",
+                    (velo_id, cle)
+                )
                 continue
-
             cursor.execute("""
-                INSERT INTO mes_reglages (cle, valeur, maj_le)
-                VALUES (?, ?, ?)
-                ON CONFLICT (cle) DO UPDATE
+                INSERT INTO mes_reglages_velo (velo_id, cle, valeur, maj_le)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT (velo_id, cle) DO UPDATE
                 SET valeur = excluded.valeur, maj_le = excluded.maj_le
-            """, (cle, valeur, aujourdhui))
+            """, (velo_id, cle, valeur, aujourdhui))
 
         conn.commit()
 
@@ -11758,6 +12453,7 @@ def enregistrer_mes_reglages(
 def modifier_seuils(
     composant_id: int,
     data: SeuilsRequest,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     verifier_auth(x_code_acces)
@@ -11772,14 +12468,17 @@ def modifier_seuils(
     cursor = conn.cursor()
 
     try:
-        cursor.execute("SELECT id FROM composants WHERE id = ?", (composant_id,))
+        cursor.execute(
+            "SELECT id FROM composants WHERE id = ? AND velo_id = ?",
+            (composant_id, velo_id)
+        )
 
         if cursor.fetchone() is None:
-            raise HTTPException(status_code=404, detail="Composant introuvable.")
+            raise HTTPException(status_code=404, detail="Composant introuvable pour ce vélo.")
 
         cursor.execute(
-            "UPDATE composants SET seuil_alerte = ?, seuil_jours = ? WHERE id = ?",
-            (data.seuil_alerte, data.seuil_jours, composant_id)
+            "UPDATE composants SET seuil_alerte = ?, seuil_jours = ? WHERE id = ? AND velo_id = ?",
+            (data.seuil_alerte, data.seuil_jours, composant_id, velo_id)
         )
         conn.commit()
 
@@ -11796,6 +12495,7 @@ def modifier_seuils(
 @app.post("/api/composants/coefficients")
 def enregistrer_coefs_pieces(
     data: CoefsPiecesRequest,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     """Enregistre le coefficient d'usure de chaque élément d'entretien."""
@@ -11823,8 +12523,18 @@ def enregistrer_coefs_pieces(
     try:
         for valeur, composant_id in a_enregistrer:
             cursor.execute(
-                "UPDATE composants SET coef_usure = ? WHERE id = ?",
-                (valeur, composant_id)
+                "SELECT id FROM composants WHERE id = ? AND velo_id = ?",
+                (composant_id, velo_id)
+            )
+            if cursor.fetchone() is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Pièce introuvable pour ce vélo."
+                )
+
+            cursor.execute(
+                "UPDATE composants SET coef_usure = ? WHERE id = ? AND velo_id = ?",
+                (valeur, composant_id, velo_id)
             )
 
         conn.commit()
@@ -11843,6 +12553,7 @@ def enregistrer_coefs_pieces(
 def deplacer_repere(
     composant_id: int,
     data: PositionRequest,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     verifier_auth(x_code_acces)
@@ -11850,14 +12561,17 @@ def deplacer_repere(
     cursor = conn.cursor()
 
     try:
-        cursor.execute("SELECT id FROM composants WHERE id = ?", (composant_id,))
+        cursor.execute(
+            "SELECT id FROM composants WHERE id = ? AND velo_id = ?",
+            (composant_id, velo_id)
+        )
 
         if cursor.fetchone() is None:
-            raise HTTPException(status_code=404, detail="Composant introuvable.")
+            raise HTTPException(status_code=404, detail="Composant introuvable pour ce vélo.")
 
         cursor.execute(
-            "UPDATE composants SET pos_x = ?, pos_y = ? WHERE id = ?",
-            (data.pos_x, data.pos_y, composant_id)
+            "UPDATE composants SET pos_x = ?, pos_y = ? WHERE id = ? AND velo_id = ?",
+            (data.pos_x, data.pos_y, composant_id, velo_id)
         )
         conn.commit()
 
@@ -11874,6 +12588,7 @@ def deplacer_repere(
 @app.post("/api/composants/{composant_id}/supprimer")
 def retirer_composant(
     composant_id: int,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     """Retire une pièce de la liste, avec son historique."""
@@ -11882,16 +12597,22 @@ def retirer_composant(
     cursor = conn.cursor()
 
     try:
-        cursor.execute("SELECT id FROM composants WHERE id = ?", (composant_id,))
+        cursor.execute(
+            "SELECT id FROM composants WHERE id = ? AND velo_id = ?",
+            (composant_id, velo_id)
+        )
 
         if cursor.fetchone() is None:
-            raise HTTPException(status_code=404, detail="Composant introuvable.")
+            raise HTTPException(status_code=404, detail="Composant introuvable pour ce vélo.")
 
         cursor.execute(
-            "DELETE FROM historique WHERE composant_id = ?",
-            (composant_id,)
+            "DELETE FROM historique WHERE composant_id = ? AND velo_id = ?",
+            (composant_id, velo_id)
         )
-        cursor.execute("DELETE FROM composants WHERE id = ?", (composant_id,))
+        cursor.execute(
+            "DELETE FROM composants WHERE id = ? AND velo_id = ?",
+            (composant_id, velo_id)
+        )
         conn.commit()
 
         return {"statut": "success"}
@@ -11905,7 +12626,11 @@ def retirer_composant(
 
 
 @app.post("/api/sorties/import")
-def importer_sortie(data: ImportGpxRequest, x_code_acces: Optional[str] = Header(default=None)):
+def importer_sortie(
+    data: ImportGpxRequest,
+    velo_id: Optional[int] = None,
+    x_code_acces: Optional[str] = Header(default=None)
+):
     verifier_auth(x_code_acces)
 
     if not data.gpx and not data.fit:
@@ -11952,7 +12677,31 @@ def importer_sortie(data: ImportGpxRequest, x_code_acces: Optional[str] = Header
     cursor = conn.cursor()
 
     try:
-        cursor.execute("SELECT id FROM sorties WHERE debut = ?", (s["debut"],))
+        # Sans vélo précisé (envoi automatique depuis le PC de Math), la sortie
+        # est rangée sur le vélo de la sortie la plus récente, avec « à vérifier ».
+        # Depuis l'appli, le vélo choisi en haut est toujours envoyé : rien à vérifier.
+        automatique = velo_id is None
+
+        if automatique:
+            cursor.execute("""
+                SELECT s.velo_id
+                FROM sorties s
+                JOIN velos v ON v.id = s.velo_id AND v.actif = 1
+                ORDER BY s.debut DESC
+                LIMIT 1
+            """)
+            derniere = cursor.fetchone()
+            velo_id = derniere[0] if derniere and derniere[0] else 1
+
+        cursor.execute("SELECT id FROM velos WHERE id = ? AND actif = 1", (velo_id,))
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Vélo introuvable.")
+
+        # L'heure de départ est unique dans toute la base, tous vélos confondus.
+        cursor.execute(
+            "SELECT id FROM sorties WHERE debut = ?",
+            (s["debut"],)
+        )
 
         if cursor.fetchone() is not None:
             raise HTTPException(
@@ -11964,12 +12713,17 @@ def importer_sortie(data: ImportGpxRequest, x_code_acces: Optional[str] = Header
         # l'heure de départ peut différer de quelques secondes ou minutes.
         depart = datetime.strptime(s["debut"], "%Y-%m-%dT%H:%M:%SZ")
         format_heure = "%Y-%m-%dT%H:%M:%SZ"
+        filtre_velo = "" if automatique else "velo_id = ? AND "
+        parametres_proches = (
+            (depart - timedelta(minutes=10)).strftime(format_heure),
+            (depart + timedelta(minutes=10)).strftime(format_heure),
+        )
+        if not automatique:
+            parametres_proches = (velo_id,) + parametres_proches
         cursor.execute(
-            "SELECT distance_km FROM sorties WHERE debut >= ? AND debut <= ?",
-            (
-                (depart - timedelta(minutes=10)).strftime(format_heure),
-                (depart + timedelta(minutes=10)).strftime(format_heure),
-            )
+            "SELECT distance_km FROM sorties WHERE " + filtre_velo
+            + "debut >= ? AND debut <= ?",
+            parametres_proches
         )
 
         for proche in cursor.fetchall():
@@ -11981,30 +12735,31 @@ def importer_sortie(data: ImportGpxRequest, x_code_acces: Optional[str] = Header
                     detail="Cette sortie est déjà importée."
                 )
 
-        cursor.execute("SELECT km_maj_le FROM velo WHERE id = 1")
+        cursor.execute("SELECT km_maj_le FROM velos WHERE id = ?", (velo_id,))
         velo = cursor.fetchone()
         derniere_maj = velo[0] if velo else None
 
-        compte = 1 if (derniere_maj and s["debut"] > derniere_maj) else 0
+        compte = 1 if (not derniere_maj or s["debut"] > derniere_maj) else 0
 
         cursor.execute("""
             INSERT INTO sorties (
-                nom, debut, sport, distance_km, denivele_pos, denivele_neg,
+                velo_id, nom, debut, sport, distance_km, denivele_pos, denivele_neg,
                 duree_s, vitesse_moy, alt_max, pente_moy_montee,
-                terrain, notes, km_compte, trace, photos
+                terrain, notes, km_compte, trace, photos, a_verifier
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            nom, s["debut"], s["sport"], s["distance_km"],
+            velo_id, nom, s["debut"], s["sport"], s["distance_km"],
             s["denivele_pos"], s["denivele_neg"], s["duree_s"],
             s["vitesse_moy"], s["alt_max"], s["pente_moy_montee"],
-            terrain, notes, compte, s["trace"], photos_json
+            terrain, notes, compte, s["trace"], photos_json,
+            1 if automatique else 0
         ))
 
         if compte:
-            km_total = ajuster_km_total(cursor, s["distance_km"])
+            km_total = ajuster_km_total(cursor, s["distance_km"], velo_id)
         else:
-            cursor.execute("SELECT km_total FROM velo WHERE id = 1")
+            cursor.execute("SELECT km_total FROM velos WHERE id = ?", (velo_id,))
             km_total = cursor.fetchone()[0]
 
         conn.commit()
@@ -12017,7 +12772,9 @@ def importer_sortie(data: ImportGpxRequest, x_code_acces: Optional[str] = Header
             "denivele_pos": s["denivele_pos"],
             "duree_s": s["duree_s"],
             "ajoute_au_total": bool(compte),
-            "km_total": km_total
+            "km_total": km_total,
+            "velo_id": velo_id,
+            "a_verifier": bool(automatique)
         }
 
     except Exception:
@@ -12028,14 +12785,113 @@ def importer_sortie(data: ImportGpxRequest, x_code_acces: Optional[str] = Header
         conn.close()
 
 
+@app.post("/api/sorties/{sortie_id}/verifier")
+def confirmer_velo_sortie(
+    sortie_id: int,
+    velo_id: int = 1,
+    x_code_acces: Optional[str] = Header(default=None)
+):
+    """Math confirme que le vélo de cette sortie est le bon."""
+    verifier_auth(x_code_acces)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "SELECT id FROM sorties WHERE id = ? AND velo_id = ?",
+            (sortie_id, velo_id)
+        )
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Sortie introuvable pour ce vélo.")
+        cursor.execute(
+            "UPDATE sorties SET a_verifier = 0 WHERE id = ? AND velo_id = ?",
+            (sortie_id, velo_id)
+        )
+        conn.commit()
+        return {"statut": "success", "sortie_id": sortie_id}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+class AffecterSortieVeloRequest(BaseModel):
+    nouveau_velo_id: int = Field(ge=1)
+
+
+@app.post("/api/sorties/{sortie_id}/velo")
+def affecter_sortie_a_un_autre_velo(
+    sortie_id: int,
+    data: AffecterSortieVeloRequest,
+    velo_id: int = 1,
+    x_code_acces: Optional[str] = Header(default=None)
+):
+    verifier_auth(x_code_acces)
+    nouveau_velo_id = data.nouveau_velo_id
+    if nouveau_velo_id == velo_id:
+        raise HTTPException(status_code=400, detail="Cette sortie est déjà affectée à ce vélo.")
+
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "SELECT debut, distance_km, km_compte FROM sorties WHERE id = ? AND velo_id = ?",
+            (sortie_id, velo_id)
+        )
+        sortie = cursor.fetchone()
+        if sortie is None:
+            raise HTTPException(status_code=404, detail="Sortie introuvable pour ce vélo.")
+
+        cursor.execute(
+            "SELECT id FROM velos WHERE id = ? AND actif = 1",
+            (nouveau_velo_id,)
+        )
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Le vélo de destination est introuvable.")
+
+        debut, distance_km, km_compte_actuel = sortie[0], float(sortie[1] or 0), bool(sortie[2])
+        if km_compte_actuel:
+            ajuster_km_total(cursor, -distance_km, velo_id)
+
+        cursor.execute("SELECT km_maj_le FROM velos WHERE id = ?", (nouveau_velo_id,))
+        ligne_maj = cursor.fetchone()
+        derniere_maj = ligne_maj[0] if ligne_maj else None
+        nouveau_compte = 1 if (not derniere_maj or debut > derniere_maj) else 0
+        if nouveau_compte:
+            ajuster_km_total(cursor, distance_km, nouveau_velo_id)
+
+        cursor.execute(
+            "UPDATE sorties SET velo_id = ?, km_compte = ?, a_verifier = 0 WHERE id = ? AND velo_id = ?",
+            (nouveau_velo_id, nouveau_compte, sortie_id, velo_id)
+        )
+        conn.commit()
+        return {
+            "statut": "success",
+            "velo_precedent": velo_id,
+            "velo_nouveau": nouveau_velo_id,
+            "km_compte": bool(nouveau_compte)
+        }
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 @app.get("/api/sorties")
-def lister_sorties(x_code_acces: Optional[str] = Header(default=None)):
+def lister_sorties(
+    velo_id: int = 1,
+    x_code_acces: Optional[str] = Header(default=None)
+):
     verifier_auth(x_code_acces)
     conn = db.connect()
     cursor = conn.cursor()
 
     try:
-        cursor.execute("SELECT * FROM sorties ORDER BY debut DESC")
+        cursor.execute(
+            "SELECT * FROM sorties WHERE velo_id = ? ORDER BY debut DESC",
+            (velo_id,)
+        )
         lignes_sorties = cursor.fetchall()
         reglages_usure = lire_reglages(cursor)
 
@@ -12079,15 +12935,19 @@ def lister_sorties(x_code_acces: Optional[str] = Header(default=None)):
 
 
 @app.post("/api/sorties/{sortie_id}/supprimer")
-def supprimer_sortie(sortie_id: int, x_code_acces: Optional[str] = Header(default=None)):
+def supprimer_sortie(
+    sortie_id: int,
+    velo_id: int = 1,
+    x_code_acces: Optional[str] = Header(default=None)
+):
     verifier_auth(x_code_acces)
     conn = db.connect()
     cursor = conn.cursor()
 
     try:
         cursor.execute(
-            "SELECT distance_km, km_compte FROM sorties WHERE id = ?",
-            (sortie_id,)
+            "SELECT distance_km, km_compte FROM sorties WHERE id = ? AND velo_id = ?",
+            (sortie_id, velo_id)
         )
         ligne = cursor.fetchone()
 
@@ -12098,9 +12958,9 @@ def supprimer_sortie(sortie_id: int, x_code_acces: Optional[str] = Header(defaul
             )
 
         if ligne[1]:
-            ajuster_km_total(cursor, -float(ligne[0] or 0))
+            ajuster_km_total(cursor, -float(ligne[0] or 0), velo_id)
 
-        cursor.execute("DELETE FROM sorties WHERE id = ?", (sortie_id,))
+        cursor.execute("DELETE FROM sorties WHERE id = ? AND velo_id = ?", (sortie_id, velo_id))
         conn.commit()
 
         return {"statut": "success"}
@@ -12117,6 +12977,7 @@ def supprimer_sortie(sortie_id: int, x_code_acces: Optional[str] = Header(defaul
 def changer_terrain(
     sortie_id: int,
     data: TerrainRequest,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     verifier_auth(x_code_acces)
@@ -12129,14 +12990,17 @@ def changer_terrain(
     cursor = conn.cursor()
 
     try:
-        cursor.execute("SELECT id FROM sorties WHERE id = ?", (sortie_id,))
+        cursor.execute(
+            "SELECT id FROM sorties WHERE id = ? AND velo_id = ?",
+            (sortie_id, velo_id)
+        )
 
         if cursor.fetchone() is None:
-            raise HTTPException(status_code=404, detail="Sortie introuvable.")
+            raise HTTPException(status_code=404, detail="Sortie introuvable pour ce vélo.")
 
         cursor.execute(
-            "UPDATE sorties SET terrain = ? WHERE id = ?",
-            (terrain, sortie_id)
+            "UPDATE sorties SET terrain = ? WHERE id = ? AND velo_id = ?",
+            (terrain, sortie_id, velo_id)
         )
         conn.commit()
 
@@ -12219,6 +13083,7 @@ class SortieModifRequest(BaseModel):
 def modifier_sortie(
     sortie_id: int,
     data: SortieModifRequest,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     # Modifie les notes sans toucher au parcours ni au kilométrage.
@@ -12228,11 +13093,17 @@ def modifier_sortie(
     cursor = conn.cursor()
 
     try:
-        cursor.execute("SELECT id FROM sorties WHERE id = ?", (sortie_id,))
+        cursor.execute(
+            "SELECT id FROM sorties WHERE id = ? AND velo_id = ?",
+            (sortie_id, velo_id)
+        )
         if cursor.fetchone() is None:
-            raise HTTPException(status_code=404, detail="Sortie introuvable.")
+            raise HTTPException(status_code=404, detail="Sortie introuvable pour ce vélo.")
 
-        cursor.execute("UPDATE sorties SET notes = ? WHERE id = ?", (notes, sortie_id))
+        cursor.execute(
+            "UPDATE sorties SET notes = ? WHERE id = ? AND velo_id = ?",
+            (notes, sortie_id, velo_id)
+        )
         conn.commit()
         return {"statut": "success", "notes": notes}
 
@@ -12248,6 +13119,7 @@ def modifier_sortie(
 def renommer_sortie(
     sortie_id: int,
     data: RenommerRequest,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     """Change le nom d'une sortie."""
@@ -12261,12 +13133,18 @@ def renommer_sortie(
     cursor = conn.cursor()
 
     try:
-        cursor.execute("SELECT id FROM sorties WHERE id = ?", (sortie_id,))
+        cursor.execute(
+            "SELECT id FROM sorties WHERE id = ? AND velo_id = ?",
+            (sortie_id, velo_id)
+        )
 
         if cursor.fetchone() is None:
-            raise HTTPException(status_code=404, detail="Sortie introuvable.")
+            raise HTTPException(status_code=404, detail="Sortie introuvable pour ce vélo.")
 
-        cursor.execute("UPDATE sorties SET nom = ? WHERE id = ?", (nom, sortie_id))
+        cursor.execute(
+            "UPDATE sorties SET nom = ? WHERE id = ? AND velo_id = ?",
+            (nom, sortie_id, velo_id)
+        )
         conn.commit()
 
         return {"statut": "success", "nom": nom}
@@ -12289,6 +13167,7 @@ class SurfacesRequest(BaseModel):
 def enregistrer_surfaces(
     sortie_id: int,
     data: SurfacesRequest,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     """Enregistre le type de chemin (route, sentier...) le long du tracé."""
@@ -12301,14 +13180,17 @@ def enregistrer_surfaces(
     cursor = conn.cursor()
 
     try:
-        cursor.execute("SELECT id FROM sorties WHERE id = ?", (sortie_id,))
+        cursor.execute(
+            "SELECT id FROM sorties WHERE id = ? AND velo_id = ?",
+            (sortie_id, velo_id)
+        )
 
         if cursor.fetchone() is None:
-            raise HTTPException(status_code=404, detail="Sortie introuvable.")
+            raise HTTPException(status_code=404, detail="Sortie introuvable pour ce vélo.")
 
         cursor.execute(
-            "UPDATE sorties SET surfaces = ? WHERE id = ?",
-            (data.codes, sortie_id)
+            "UPDATE sorties SET surfaces = ? WHERE id = ? AND velo_id = ?",
+            (data.codes, sortie_id, velo_id)
         )
         conn.commit()
 
@@ -12326,6 +13208,7 @@ def enregistrer_surfaces(
 def ajouter_video(
     sortie_id: int,
     data: VideoRequest,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     """Ajoute le lien d'une vidéo (YouTube, Google Photos...) à une sortie."""
@@ -12348,8 +13231,8 @@ def ajouter_video(
 
     try:
         cursor.execute(
-            "SELECT videos FROM sorties WHERE id = ?",
-            (sortie_id,)
+            "SELECT videos FROM sorties WHERE id = ? AND velo_id = ?",
+            (sortie_id, velo_id)
         )
         ligne = cursor.fetchone()
 
@@ -12367,8 +13250,8 @@ def ajouter_video(
         videos.append({"url": url, "titre": titre})
 
         cursor.execute(
-            "UPDATE sorties SET videos = ? WHERE id = ?",
-            (json.dumps(videos), sortie_id)
+            "UPDATE sorties SET videos = ? WHERE id = ? AND velo_id = ?",
+            (json.dumps(videos), sortie_id, velo_id)
         )
         conn.commit()
 
@@ -12386,6 +13269,7 @@ def ajouter_video(
 def retirer_video(
     sortie_id: int,
     numero: int,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     verifier_auth(x_code_acces)
@@ -12394,8 +13278,8 @@ def retirer_video(
 
     try:
         cursor.execute(
-            "SELECT videos FROM sorties WHERE id = ?",
-            (sortie_id,)
+            "SELECT videos FROM sorties WHERE id = ? AND velo_id = ?",
+            (sortie_id, velo_id)
         )
         ligne = cursor.fetchone()
 
@@ -12410,8 +13294,8 @@ def retirer_video(
         del videos[numero]
 
         cursor.execute(
-            "UPDATE sorties SET videos = ? WHERE id = ?",
-            (json.dumps(videos), sortie_id)
+            "UPDATE sorties SET videos = ? WHERE id = ? AND velo_id = ?",
+            (json.dumps(videos), sortie_id, velo_id)
         )
         conn.commit()
 
@@ -12429,6 +13313,7 @@ def retirer_video(
 def ajouter_photos(
     sortie_id: int,
     data: AjoutPhotosRequest,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     """Joint des photos à une sortie déjà importée (8 au total maximum)."""
@@ -12449,8 +13334,8 @@ def ajouter_photos(
 
     try:
         cursor.execute(
-            "SELECT photos FROM sorties WHERE id = ?",
-            (sortie_id,)
+            "SELECT photos FROM sorties WHERE id = ? AND velo_id = ?",
+            (sortie_id, velo_id)
         )
         ligne = cursor.fetchone()
 
@@ -12474,8 +13359,8 @@ def ajouter_photos(
         total = existantes + nouvelles
 
         cursor.execute(
-            "UPDATE sorties SET photos = ? WHERE id = ?",
-            (json.dumps(total), sortie_id)
+            "UPDATE sorties SET photos = ? WHERE id = ? AND velo_id = ?",
+            (json.dumps(total), sortie_id, velo_id)
         )
         conn.commit()
 
@@ -12493,6 +13378,7 @@ def ajouter_photos(
 def retirer_photo(
     sortie_id: int,
     numero: int,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     """Retire une seule photo d'une sortie (les autres restent)."""
@@ -12502,8 +13388,8 @@ def retirer_photo(
 
     try:
         cursor.execute(
-            "SELECT photos FROM sorties WHERE id = ?",
-            (sortie_id,)
+            "SELECT photos FROM sorties WHERE id = ? AND velo_id = ?",
+            (sortie_id, velo_id)
         )
         ligne = cursor.fetchone()
 
@@ -12521,8 +13407,8 @@ def retirer_photo(
         del photos[numero]
 
         cursor.execute(
-            "UPDATE sorties SET photos = ? WHERE id = ?",
-            (json.dumps(photos) if photos else None, sortie_id)
+            "UPDATE sorties SET photos = ? WHERE id = ? AND velo_id = ?",
+            (json.dumps(photos) if photos else None, sortie_id, velo_id)
         )
         conn.commit()
 
@@ -12540,6 +13426,7 @@ def retirer_photo(
 def obtenir_photo(
     sortie_id: int,
     numero: int,
+    velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
     verifier_auth(x_code_acces)
@@ -12548,8 +13435,8 @@ def obtenir_photo(
 
     try:
         cursor.execute(
-            "SELECT photos FROM sorties WHERE id = ?",
-            (sortie_id,)
+            "SELECT photos FROM sorties WHERE id = ? AND velo_id = ?",
+            (sortie_id, velo_id)
         )
         ligne = cursor.fetchone()
 
@@ -12577,8 +13464,20 @@ def sauvegarde(x_code_acces: Optional[str] = Header(default=None)):
     cursor = conn.cursor()
 
     try:
-        cursor.execute("SELECT km_total FROM velo WHERE id = 1")
+        # Le registre multi-vélos contient le kilométrage courant.
+        # Garder l'ancienne table comme repli pour les bases non migrées.
+        cursor.execute("SELECT km_total FROM velos WHERE id = 1")
         velo = cursor.fetchone()
+
+        if not velo or velo[0] is None:
+            cursor.execute("SELECT km_total FROM velo WHERE id = 1")
+            velo = cursor.fetchone()
+
+        cursor.execute("SELECT * FROM velos ORDER BY id")
+        velos = [dict(r) for r in cursor.fetchall()]
+
+        cursor.execute("SELECT * FROM mes_reglages_velo ORDER BY velo_id, cle")
+        reglages_personnels = [dict(r) for r in cursor.fetchall()]
 
         cursor.execute("SELECT * FROM composants ORDER BY id")
         composants = [dict(r) for r in cursor.fetchall()]
@@ -12592,6 +13491,8 @@ def sauvegarde(x_code_acces: Optional[str] = Header(default=None)):
         return {
             "date_sauvegarde": str(date.today()),
             "km_total": velo[0] if velo else None,
+            "velos": velos,
+            "reglages_personnels_par_velo": reglages_personnels,
             "composants": composants,
             "historique": historique,
             "sorties": sorties,

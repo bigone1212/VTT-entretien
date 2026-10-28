@@ -321,3 +321,79 @@ Dernier commit de main connu : …    Branche de reprise éventuelle : …
 - Fichiers de l'application modifiés : `main.py` uniquement. Le présent fichier de relais est mis à jour sur `main` pour conserver le point de reprise ; aucun changement de code n'est fait sur `main`.
 - Risque restant : les opérations de suppression et de modification de l'historique, ainsi que les écritures de sorties et les réglages/kilométrages, ne sont pas encore toutes isolées par vélo. Ne pas afficher le sélecteur multi-vélos avant d'avoir sécurisé l'ensemble des opérations concernées.
 - Prochaine action : vérifier le résultat du run `40363637688`. S'il réussit, étendre les contrôles automatiques pour couvrir cette route d'écriture avant de poursuivre avec une seule route à la fois.
+
+---
+
+## Archives conservées de la branche multi-vélos
+
+### Historique ChatGPT du chantier multi-vélos — repris tel quel de la branche `reprise/2026-10-26-multivelos-completion` lors de la préparation de la fusion (27/10/2026, Claude). Ces lignes datent du 26/10/2026 ; elles sont antérieures aux corrections de Claude ci-dessus (kilomètres au redémarrage, plantage du sélecteur, règle « dernier vélo utilisé »), qui font foi quand elles diffèrent.
+
+REPRISE PAR CHATGPT — 26/10/2026 : préparation de la fonctionnalité multi-vélos avant validation utilisateur.
+- Branche dédiée : `reprise/2026-10-26-multivelos-completion`. Aucune modification de `main`, aucune fusion et aucun déploiement effectués.
+- Objectif : créer et sélectionner plusieurs vélos, isoler les données et réglages personnels, préserver l'historique du CUBE, et permettre de réaffecter une sortie sans fausser les compteurs.
+- Modifications enregistrées dans `main.py` :
+  - Sélecteur « Mon vélo » et création de vélos parmi les huit types.
+  - Composants de départ adaptés au type, avec moteur/batterie seulement pour les vélos électriques.
+  - Champs moteur/batterie ajoutés au registre ; fiche technique des nouveaux vélos affichée et modifiable.
+  - Réglages personnels stockés dans `mes_reglages_velo`; anciens réglages copiés vers le CUBE sans supprimer la table historique.
+  - Appels API liés au vélo sélectionné ; kilomètres, composants, interventions, sorties et coefficients de pièces filtrés par vélo.
+  - Pastilles de nouveauté séparées par vélo, sauvegarde étendue au registre et aux réglages personnels.
+  - Réaffectation d'une sortie vers un autre vélo avec correction des kilomètres comptabilisés sur l'ancien et le nouveau vélo.
+  - Un nouveau vélo commence sans date de synchronisation kilométrique ; ses sorties importées peuvent donc alimenter son compteur. Les coefficients de terrain restent globaux et inchangés.
+- Modifications de `.github/workflows/maillons-check.yml` : déclenchement sur la branche de reprise et sur PR ; tests migration SQLite/PostgreSQL et test d'intégration SQLite pour création, composants selon type, réglages séparés, modification de fiche et transfert d'une sortie.
+- **Tests GitHub Actions vérifiés : run `40373004664`, commit `3c265ee64c93e9eef82627612243fd35bb586ca2`, conclusion `success`.** Étapes réussies : syntaxe Python, migration SQLite avec données historiques, démarrage/migration PostgreSQL 16 temporaire, relance idempotente, test d'intégration multi-vélos et vérification statique du script. Un premier run `40372847935` a échoué car PostgreSQL refuse `WHERE 1`; correction enregistrée en `WHERE TRUE`, puis le run `40373004664` a réussi.
+- Limites restantes : test navigateur/téléphone non réalisé ; photo personnalisée des nouveaux vélos à faire à l'étape prévue ; affectation des futures sorties automatiques « à vérifier » non intégrée, car le mécanisme d'import automatique correspondant n'est pas présent dans les routes actuelles. Ne pas considérer la fonctionnalité entièrement validée.
+- Pull request de brouillon : [PR #7](https://github.com/bigone1212/VTT-entretien/pull/7). Elle n'est pas fusionnée. La comparaison avec `main` est divergente ; le relais a été réconcilié avec la version récente de `main` et la PR est actuellement signalée comme fusionnable. Recontrôler son état avant toute fusion.
+- Local, non enregistré : rien.
+- Prochaine étape : relire la PR et vérifier le statut des contrôles les plus récents ; corriger si nécessaire, puis demander à Math s'il souhaite fusionner. Ne pas fusionner sans son accord explicite.
+
+### Historique précédent — état de main au démarrage
+
+
+
+REPRISE PAR CHATGPT — 26/10/2026 :
+- Objectif : valider la migration C3(a) « Plusieurs vélos » sur des moteurs SQLite et PostgreSQL de test avant toute fusion.
+- État GitHub : branche de code `reprise/2026-10-26-plusieurs-velos`. Elle reste divergente de `main` ; le dernier comparatif avait 18 commits en avance et 4 en retard. Ne pas fusionner automatiquement.
+- Tests réussis : workflow GitHub Actions `40352096393`, commit de branche `42a16b17f86d36ce67367bb022939e003715c959`, job `121674601397`. Vérifiés dans les journaux : syntaxe de `main.py`, installation des dépendances, véritable démarrage de l'application sur SQLite temporaire et PostgreSQL 16 éphémère, conservation des données historiques (2700 km, dates, composant, intervention, sortie, réglage), rattachement des anciens composants/sorties au CUBE id 1, puis deuxième démarrage sans doublons.
+- Incident de test corrigé : le premier essai PostgreSQL `40351998345` a échoué à cause de mauvais indices dans les assertions du test (les valeurs migrées étaient bien présentes). Les indices ont été corrigés dans le workflow ; l'exécution suivante a réussi. Aucun échec applicatif identifié par cet incident.
+- Enregistré sur GitHub : workflow de test `.github/workflows/maillons-check.yml` sur la branche de reprise, commit `42a16b17f86d36ce67367bb022939e003715c959`. Mise à jour du relais de la branche de reprise à enregistrer après ce bilan.
+- Local, non enregistré : rien.
+- Fichiers modifiés pour cette étape : `.github/workflows/maillons-check.yml` sur la branche de test uniquement. Aucun changement à `main.py`, `db.py` ou `requirements.txt`.
+- Limites : PostgreSQL testé dans un conteneur temporaire GitHub Actions, pas sur Neon ; tests navigateur, téléphone et Render non faits. Aucun accès ni changement à la base de production, aucune fusion de code ni déploiement de code.
+- Prochaine action : passer à la prochaine sous-étape C3(b/c) seulement après avoir revu précisément le périmètre et les dépendances de l'interface multi-vélos ; conserver la migration validée séparément. Fusion dans `main` uniquement avec l'accord explicite de Math.
+
+
+
+## Reprise ChatGPT — 26/10/2026, suite après accord de poursuivre sans fusion
+
+- Consigne confirmée par Math : **ne pas fusionner la PR #7**, continuer uniquement sur `reprise/2026-10-26-multivelos-completion`, ne pas modifier `main`, ne pas déployer.
+- État vérifié avant cette étape : PR #7 ouverte, brouillon, non fusionnée ; `main.py` de la branche contient déjà les routes de lecture/écriture par vélo, dont ajout/modification/suppression des interventions, réglages personnels, composants, import et gestion des sorties.
+- Modification enregistrée sur la branche de test : `.github/workflows/maillons-check.yml`, commit `69b8d72499e9ad0ba8bdfc4b100479eb0edc091c`. Ajout de contrôles d'intégration qui vérifient qu'un vélo ne peut pas modifier les seuils d'un composant d'un autre vélo, ni modifier/supprimer une intervention qui lui appartient pas ; le test vérifie aussi que l'intervention reste intacte et peut ensuite être supprimée par le bon vélo.
+- Workflow GitHub Actions `40374860008` sur le commit `69b8d72499e9ad0ba8bdfc4b100479eb0edc091c` : **terminé avec succès**. La syntaxe, les migrations SQLite/PostgreSQL et les tests d'isolation des interventions/seuils sont passés : https://github.com/bigone1212/VTT-entretien/actions/runs/40374860008
+- Étape suivante également enregistrée : commit `1c9dd627bb6c3e16ae3d5861806f2b3c28b24544`, fichier `.github/workflows/maillons-check.yml`, ajoute un test d'import d'activité simulée afin de vérifier que la sortie est affectée au vélo demandé, que ses kilomètres sont incrémentés uniquement sur ce vélo et que la suppression par un autre vélo est refusée.
+- Aucun fichier de l'application (`main.py`) modifié dans cette étape ; aucune opération sur `main`, aucune fusion, aucun déploiement, aucune connexion à la base de production.
+- Limites toujours ouvertes : test visuel sur navigateur/téléphone non réalisé ; photos personnalisées des vélos non encore ajoutées ; affectation automatique des futures sorties importées avec statut « à vérifier » non intégrée car aucun mécanisme d'import automatique n'a été trouvé dans les routes actuelles. Les coefficients de terrain restent globaux conformément à la décision de Math.
+- Le run GitHub Actions `40375125354` sur le commit `1c9dd627bb6c3e16ae3d5861806f2b3c28b24544` a **réussi** : syntaxe, migrations SQLite/PostgreSQL et test d'import (analyse GPX simulée), kilométrage isolé et refus de suppression d'une sortie depuis un autre vélo : https://github.com/bigone1212/VTT-entretien/actions/runs/40375125354
+- Le run GitHub Actions `40375622265` sur le commit `aa47a3edc9468c1d6812e0899ef433ede614b24e` a **réussi** : les lectures de l'état d'entretien, du carnet et des sorties sont maintenant vérifiées pour s'assurer qu'elles restent propres au vélo sélectionné : https://github.com/bigone1212/VTT-entretien/actions/runs/40375622265
+- Les tests d'import simulent la sortie déjà analysée par `gpx_import`; ils ne valident pas le parseur GPX lui-même. Aucun test visuel navigateur/téléphone ni test Render/Neon n'a été effectué.
+- Suite proposée : une vérification visuelle sur navigateur/téléphone reste nécessaire avant fusion. Les photos personnalisées sont réservées à une étape ultérieure. L'affectation automatique des sorties « à vérifier » ne peut pas être intégrée sans définir/ajouter le mécanisme d'import automatique; ne pas modifier les zones 3D ni les filtres.
+
+
+## Mise à jour de reprise — 26/10/2026, tests de lecture complétés
+
+- Commit de tests : `aa47a3edc9468c1d6812e0899ef433ede614b24e`, fichier `.github/workflows/maillons-check.yml`. Le test vérifie aussi que `GET /api/etat` ne renvoie pas les composants d'un autre vélo, en plus des vérifications du carnet et des sorties.
+- GitHub Actions `40375622265` : **succès**. Syntaxe Python, migrations SQLite et PostgreSQL temporaires, création/fiche/réglages/composants par vélo, transfert de sortie, import simulé, calcul et suppression de kilomètres, refus d'accès croisé entre vélos et lectures filtrées : https://github.com/bigone1212/VTT-entretien/actions/runs/40375622265
+- Le test d'import simule le résultat du parseur `gpx_import`; il ne remplace pas un test du parseur sur un véritable fichier GPX. Aucun test visuel navigateur/téléphone ni test sur Neon/Render.
+- État de publication vérifié : `main` reste au SHA `69142d7f095b350c4393965e093d7c9c7a37140e`; PR #7 toujours ouverte, brouillon et non fusionnée. GitHub signale actuellement `mergeable_state: dirty`; la branche de test et `main` ont divergé, avec un commit supplémentaire sur `main` qui ne modifie que `RELAIS_MAILLONS.md`. Réconcilier le relais avant toute fusion future. Ne pas résoudre cela en modifiant `main` maintenant.
+- Prochain travail utile : vérification visuelle de la sélection et du changement de vélo sur navigateur et téléphone. Photos personnalisées et import automatique restent des étapes séparées ; l'import automatique nécessite de définir l'intégration/source avant de pouvoir attribuer les futures sorties avec le statut « à vérifier ».
+
+
+## Vérification de l’interface — 26/10/2026
+
+- Inspection du JavaScript de main.py : un défaut a été repéré dans la reconnexion automatique quand le code d'accès était déjà conservé en session. Le démarrage appelait /api/etat mais n'appelait pas chargerVelos(), donc le sélecteur « Mon vélo » pouvait rester vide jusqu'à une nouvelle connexion manuelle.
+- Correction ciblée enregistrée sur la branche de test dans main.py, commit 86c3ebf043a06008c378a18acda77ea6739c8e86 : au démarrage/reconnexion automatique, charger d'abord la liste des vélos, puis charger l'état et les données associées.
+- Contrôle ajouté dans .github/workflows/maillons-check.yml : vérifier que le sélecteur est chargé avant l'état et vérifier la syntaxe de chaque script JavaScript intégré avec Node.
+- Workflow 40379653916, commit 6330866a9b09120f31f59730367be3d35ef0b440 : **succès**. Syntaxe Python, contrôle du démarrage et syntaxe JavaScript, migrations SQLite/PostgreSQL temporaires et tests d'intégration multi-vélos passés : https://github.com/bigone1212/VTT-entretien/actions/runs/40379653916
+- Le premier essai du nouveau contrôle JavaScript (40379448708) a échoué à cause d'une expression de recherche trop échappée dans le test, avant d'atteindre les tests d'application. Le contrôle a été corrigé et le run final 40379653916 passe entièrement.
+- Vérification visuelle réelle dans un navigateur sur ordinateur/téléphone : **non réalisée** faute d'outil navigateur disponible dans cette session. La validation actuelle reste statique et automatique; elle ne prouve pas le rendu visuel ni les interactions en situation réelle.
+- Aucun déploiement déclenché. Ne pas toucher à main. La PR #7 reste brouillon et non fusionnée; GitHub signalait encore un état de fusion dirty car main a une mise à jour distincte du fichier de relais. Réconcilier ce fichier avant toute fusion future, avec l'accord explicite de Math.

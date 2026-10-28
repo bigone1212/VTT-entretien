@@ -1,0 +1,1138 @@
+name: Vérifications Maillons
+
+# Tests automatiques sur GitHub uniquement : ils ne changent rien à l'appli et ne
+# déploient rien. Ils tournent sur toute branche reprise/… et sur toute demande
+# de fusion vers main, dès qu'un fichier de l'appli change.
+on:
+  push:
+    branches:
+      - "reprise/**"
+    paths:
+      - "main.py"
+      - "db.py"
+      - "gpx_import.py"
+      - "requirements.txt"
+      - ".github/workflows/maillons-check.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "main.py"
+      - "db.py"
+      - "gpx_import.py"
+      - "requirements.txt"
+      - ".github/workflows/maillons-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  syntaxe-et-migration-sqlite:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: maillons_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d maillons_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+      - name: Installer Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Vérifier la syntaxe Python complète
+        run: python -m py_compile main.py
+      - name: Vérifier le chargement initial du sélecteur multi-vélos
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          source = Path("main.py").read_text(encoding="utf-8")
+          marqueur = "// Vérifie si un code est déjà en mémoire"
+          debut = source.index(marqueur)
+          fin = source.index("const MR_GROUPES", debut)
+          initialisation = source[debut:fin]
+          assert "await chargerVelos();" in initialisation, "Le sélecteur n'est pas chargé à la reconnexion"
+          assert "await chargerEtat();" in initialisation, "L'état du vélo n'est pas chargé au démarrage"
+          assert initialisation.index("await chargerVelos();") < initialisation.index("await chargerEtat();"), "L'état est chargé avant la liste des vélos"
+          print("OK: reconnexion automatique, sélecteur multi-vélos chargé avant l'état du vélo.")
+
+          import re
+          import subprocess
+
+          scripts = re.findall(r"<script[^>]*>([\s\S]*?)</script>", source)
+          assert scripts, "Aucun script JavaScript intégré trouvé"
+          for numero, script in enumerate(scripts, start=1):
+              subprocess.run(["node", "--check"], input=script, text=True, check=True)
+              print(f"OK: syntaxe JavaScript du script intégré {numero}/{len(scripts)}.")
+          PY
+      - name: Installer les dépendances de l'application
+        run: pip install -r requirements.txt
+      - name: Tester le téléchargement JSON de la sauvegarde avec des kilométrages divergents
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-sauvegarde-test.db
+          DATABASE_URL: ""
+        run: |
+          pip install httpx
+          python - <<'PY'
+          import os
+          import sqlite3
+          from pathlib import Path
+
+          path = Path(os.environ["SQLITE_PATH"])
+          if path.exists():
+              path.unlink()
+
+          import main
+          from fastapi.testclient import TestClient
+
+          # L'authentification est neutralisée uniquement dans ce test isolé.
+          main.verifier_auth = lambda _code: None
+
+          with TestClient(main.app) as client:
+              with sqlite3.connect(path) as conn:
+                  cube = conn.execute("SELECT id FROM velos WHERE id = 1").fetchone()
+                  ancien = conn.execute("SELECT id FROM velo WHERE id = 1").fetchone()
+                  assert cube is not None, "Le CUBE manque dans velos"
+                  assert ancien is not None, "La ligne historique manque dans velo"
+                  conn.execute("UPDATE velos SET km_total = 2831 WHERE id = 1")
+                  conn.execute("UPDATE velo SET km_total = 2700 WHERE id = 1")
+                  conn.commit()
+
+              reponse = client.get("/api/sauvegarde")
+              assert reponse.status_code == 200, (reponse.status_code, reponse.text)
+              donnees = reponse.json()
+              assert donnees["km_total"] == 2831, donnees.get("km_total")
+              cube_exporte = next(v for v in donnees["velos"] if v["id"] == 1)
+              assert cube_exporte["km_total"] == 2831, cube_exporte
+              assert all(cle in donnees for cle in (
+                  "date_sauvegarde", "km_total", "velos",
+                  "reglages_personnels_par_velo", "composants",
+                  "historique", "sorties", "reglages"
+              )), list(donnees)
+              print("OK : le téléchargement JSON exporte 2831 km depuis velos, pas les 2700 km de velo.")
+
+              # Vérifie aussi le repli historique lorsque le kilométrage courant est absent.
+              with sqlite3.connect(path) as conn:
+                  conn.execute("UPDATE velos SET km_total = NULL WHERE id = 1")
+                  conn.commit()
+              repli = client.get("/api/sauvegarde")
+              assert repli.status_code == 200, (repli.status_code, repli.text)
+              assert repli.json()["km_total"] == 2700, repli.json().get("km_total")
+              print("OK : le repli sur velo fonctionne si le kilométrage de velos est nul.")
+
+              # Vérifie aussi le repli si la ligne du CUBE est absente du registre.
+              with sqlite3.connect(path) as conn:
+                  conn.execute("DELETE FROM velos WHERE id = 1")
+                  conn.commit()
+              absent = client.get("/api/sauvegarde")
+              assert absent.status_code == 200, (absent.status_code, absent.text)
+              assert absent.json()["km_total"] == 2700, absent.json().get("km_total")
+              print("OK : le repli sur velo fonctionne si la ligne CUBE manque dans velos.")
+          PY
+      - name: Démarrer l'application sur une copie SQLite isolée et vérifier la migration réelle
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-migration-test.db
+        run: |
+          python - <<'PY'
+          import os
+          import sqlite3
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          path = Path(os.environ["SQLITE_PATH"])
+          if path.exists():
+              path.unlink()
+
+          # Ancien schéma représentatif, avec données à préserver.
+          db = sqlite3.connect(path)
+          db.executescript("""
+              CREATE TABLE velo (
+                  id INTEGER PRIMARY KEY CHECK (id = 1),
+                  km_total INTEGER DEFAULT 2700,
+                  date_achat TEXT,
+                  km_maj_le TEXT,
+                  km_frac REAL DEFAULT 0
+              );
+              INSERT INTO velo VALUES (1, 2700, '2025-11-18', '2026-10-26T14:33:17Z', 0);
+              CREATE TABLE composants (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  nom TEXT NOT NULL,
+                  km_depart INTEGER DEFAULT 0,
+                  seuil_alerte INTEGER NOT NULL,
+                  categorie TEXT DEFAULT 'piece',
+                  pos_x INTEGER DEFAULT 50,
+                  pos_y INTEGER DEFAULT 50
+              );
+              INSERT INTO composants (id, nom, km_depart, seuil_alerte, categorie)
+              VALUES (1, 'Composant historique test', 1200, 2000, 'piece');
+              CREATE TABLE historique (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  composant_id INTEGER,
+                  date_remplacement TEXT,
+                  cout DOUBLE PRECISION DEFAULT 0,
+                  notes TEXT,
+                  km_intervention INTEGER
+              );
+              INSERT INTO historique VALUES (1, 1, '2026-03-05', 0, 'Historique à conserver', 1236);
+              CREATE TABLE sorties (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  nom TEXT,
+                  debut TEXT NOT NULL UNIQUE,
+                  sport TEXT,
+                  distance_km DOUBLE PRECISION,
+                  denivele_pos INTEGER,
+                  denivele_neg INTEGER,
+                  duree_s INTEGER,
+                  vitesse_moy DOUBLE PRECISION,
+                  alt_max INTEGER,
+                  pente_moy_montee DOUBLE PRECISION,
+                  terrain TEXT DEFAULT 'mixte',
+                  notes TEXT,
+                  km_compte INTEGER DEFAULT 0,
+                  trace TEXT
+              );
+              INSERT INTO sorties (id, nom, debut, distance_km)
+              VALUES (1, 'Sortie historique test', '2026-10-20T08:00:00Z', 25.5);
+              CREATE TABLE reglages (cle TEXT PRIMARY KEY, valeur DOUBLE PRECISION NOT NULL);
+              INSERT INTO reglages VALUES ('terrain_route', 1.0);
+              CREATE TABLE mes_reglages (
+                  cle TEXT PRIMARY KEY,
+                  valeur TEXT NOT NULL,
+                  maj_le TEXT
+              );
+              INSERT INTO mes_reglages VALUES ('taille_cadre', 'L', '2026-10-01');
+          """)
+          db.commit()
+          db.close()
+
+          # L'import de main appelle init_db : on teste donc le vrai démarrage
+          # et les migrations, dans un processus séparé et une base temporaire.
+          env = os.environ.copy()
+          env.pop("DATABASE_URL", None)
+          subprocess.run([sys.executable, "-c", "import main"], env=env, check=True)
+
+          db = sqlite3.connect(path)
+          db.row_factory = sqlite3.Row
+          bike = db.execute("SELECT * FROM velos WHERE legacy_velo_id=1").fetchone()
+          assert bike is not None, "Le CUBE historique n'a pas été créé"
+          assert bike["km_total"] == 2700, dict(bike)
+          assert bike["date_achat"] == "2025-11-18", dict(bike)
+          assert bike["km_maj_le"] == "2026-10-26T14:33:17Z", dict(bike)
+          assert db.execute("SELECT nom FROM composants WHERE id=1").fetchone()[0] == "Composant historique test"
+          assert db.execute("SELECT km_intervention FROM historique WHERE id=1").fetchone()[0] == 1236
+          assert db.execute("SELECT velo_id FROM historique WHERE id=1").fetchone()[0] == 1
+          assert db.execute("SELECT distance_km FROM sorties WHERE id=1").fetchone()[0] == 25.5
+          assert db.execute("SELECT valeur FROM mes_reglages WHERE cle='taille_cadre'").fetchone()[0] == "L"
+          assert db.execute("SELECT valeur FROM mes_reglages_velo WHERE velo_id=1 AND cle='taille_cadre'").fetchone()[0] == "L"
+          assert {"moteur", "batterie"}.issubset({row[1] for row in db.execute("PRAGMA table_info(velos)")})
+          assert db.execute("SELECT velo_id FROM composants WHERE id=1").fetchone()[0] == 1
+          assert db.execute("SELECT velo_id FROM sorties WHERE id=1").fetchone()[0] == 1
+          count_bikes = db.execute("SELECT COUNT(*) FROM velos").fetchone()[0]
+          count_components = db.execute("SELECT COUNT(*) FROM composants").fetchone()[0]
+          db.close()
+
+          # Deuxième démarrage : la migration doit être relançable sans doublons.
+          subprocess.run([sys.executable, "-c", "import main"], env=env, check=True)
+          db = sqlite3.connect(path)
+          assert db.execute("SELECT COUNT(*) FROM velos").fetchone()[0] == count_bikes
+          assert db.execute("SELECT COUNT(*) FROM composants").fetchone()[0] == count_components
+          db.close()
+          print("OK: démarrage réel sur SQLite temporaire, conservation des données et seconde migration sans doublon.")
+          PY
+      - name: Démarrer Maillons sur PostgreSQL temporaire et vérifier la migration réelle
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/maillons_test
+        run: |
+          python - <<'PY'
+          import os
+          import subprocess
+          import sys
+          import time
+          import psycopg
+
+          url = os.environ["DATABASE_URL"]
+
+          # Prépare un schéma historique représentatif dans le conteneur PostgreSQL
+          # jetable de ce job. Aucune adresse de base externe n'est utilisée.
+          with psycopg.connect(url) as conn:
+              conn.execute("""
+                  CREATE TABLE velo (
+                      id INTEGER PRIMARY KEY CHECK (id = 1),
+                      km_total INTEGER DEFAULT 2700,
+                      date_achat TEXT,
+                      km_maj_le TEXT,
+                      km_frac DOUBLE PRECISION DEFAULT 0
+                  )
+              """)
+              conn.execute(
+                  "INSERT INTO velo VALUES (1, 2700, '2025-11-18', '2026-10-26T14:33:17Z', 0)"
+              )
+              conn.execute("""
+                  CREATE TABLE composants (
+                      id SERIAL PRIMARY KEY,
+                      nom TEXT NOT NULL,
+                      km_depart INTEGER DEFAULT 0,
+                      seuil_alerte INTEGER NOT NULL,
+                      categorie TEXT DEFAULT 'piece',
+                      pos_x INTEGER DEFAULT 50,
+                      pos_y INTEGER DEFAULT 50
+                  )
+              """)
+              conn.execute("""
+                  INSERT INTO composants (nom, km_depart, seuil_alerte, categorie)
+                  VALUES ('Composant historique test', 1200, 2000, 'piece')
+              """)
+              conn.execute("""
+                  CREATE TABLE historique (
+                      id SERIAL PRIMARY KEY,
+                      composant_id INTEGER REFERENCES composants(id),
+                      date_remplacement TEXT,
+                      cout DOUBLE PRECISION DEFAULT 0,
+                      notes TEXT,
+                      km_intervention INTEGER
+                  )
+              """)
+              conn.execute("""
+                  INSERT INTO historique
+                      (composant_id, date_remplacement, cout, notes, km_intervention)
+                  VALUES (1, '2026-03-05', 0, 'Historique à conserver', 1236)
+              """)
+              conn.execute("""
+                  CREATE TABLE sorties (
+                      id SERIAL PRIMARY KEY,
+                      nom TEXT,
+                      debut TEXT NOT NULL UNIQUE,
+                      sport TEXT,
+                      distance_km DOUBLE PRECISION,
+                      denivele_pos INTEGER,
+                      denivele_neg INTEGER,
+                      duree_s INTEGER,
+                      vitesse_moy DOUBLE PRECISION,
+                      alt_max INTEGER,
+                      pente_moy_montee DOUBLE PRECISION,
+                      terrain TEXT DEFAULT 'mixte',
+                      notes TEXT,
+                      km_compte INTEGER DEFAULT 0,
+                      trace TEXT
+                  )
+              """)
+              conn.execute("""
+                  INSERT INTO sorties (nom, debut, distance_km)
+                  VALUES ('Sortie historique test', '2026-10-20T08:00:00Z', 25.5)
+              """)
+              conn.execute("""
+                  CREATE TABLE reglages (
+                      cle TEXT PRIMARY KEY,
+                      valeur DOUBLE PRECISION NOT NULL
+                  )
+              """)
+              conn.execute("INSERT INTO reglages VALUES ('terrain_route', 1.0)")
+              conn.execute("""
+                  CREATE TABLE mes_reglages (
+                      cle TEXT PRIMARY KEY,
+                      valeur TEXT NOT NULL,
+                      maj_le TEXT
+                  )
+              """)
+              conn.execute(
+                  "INSERT INTO mes_reglages VALUES ('taille_cadre', 'L', '2026-10-01')"
+              )
+
+          env = os.environ.copy()
+          env.pop("SQLITE_PATH", None)
+          subprocess.run([sys.executable, "-c", "import main"], env=env, check=True)
+
+          with psycopg.connect(url) as conn:
+              bike = conn.execute(
+                  "SELECT * FROM velos WHERE legacy_velo_id = 1"
+              ).fetchone()
+              assert bike is not None, "Le CUBE historique n'a pas été créé"
+              assert bike[8] == 2700, bike
+              assert bike[10] == "2026-10-26T14:33:17Z", bike
+              assert bike[11] == "2025-11-18", bike
+              assert conn.execute(
+                  "SELECT nom FROM composants WHERE id = 1"
+              ).fetchone()[0] == "Composant historique test"
+              assert conn.execute(
+                  "SELECT km_intervention FROM historique WHERE id = 1"
+              ).fetchone()[0] == 1236
+              assert conn.execute(
+                  "SELECT velo_id FROM historique WHERE id = 1"
+              ).fetchone()[0] == 1
+              assert conn.execute(
+                  "SELECT distance_km FROM sorties WHERE id = 1"
+              ).fetchone()[0] == 25.5
+              assert conn.execute(
+                  "SELECT valeur FROM mes_reglages WHERE cle = 'taille_cadre'"
+              ).fetchone()[0] == "L"
+              assert conn.execute(
+                  "SELECT valeur FROM mes_reglages_velo WHERE velo_id = 1 AND cle = 'taille_cadre'"
+              ).fetchone()[0] == "L"
+              assert {"moteur", "batterie"}.issubset({
+                  row[0] for row in conn.execute("""
+                      SELECT column_name FROM information_schema.columns
+                      WHERE table_name = 'velos'
+                  """).fetchall()
+              })
+              assert conn.execute(
+                  "SELECT velo_id FROM composants WHERE id = 1"
+              ).fetchone()[0] == 1
+              assert conn.execute(
+                  "SELECT velo_id FROM sorties WHERE id = 1"
+              ).fetchone()[0] == 1
+              count_bikes = conn.execute("SELECT COUNT(*) FROM velos").fetchone()[0]
+              count_components = conn.execute("SELECT COUNT(*) FROM composants").fetchone()[0]
+
+          # Deuxième démarrage réel : vérifier l'idempotence sur PostgreSQL aussi.
+          subprocess.run([sys.executable, "-c", "import main"], env=env, check=True)
+          with psycopg.connect(url) as conn:
+              assert conn.execute("SELECT COUNT(*) FROM velos").fetchone()[0] == count_bikes
+              assert conn.execute("SELECT COUNT(*) FROM composants").fetchone()[0] == count_components
+
+          # Les kilomètres ajoutés pendant que l'appli tourne doivent survivre à un
+          # redémarrage (ancien défaut : retour à l'ancienne valeur à chaque démarrage).
+          with psycopg.connect(url) as conn:
+              conn.execute(
+                  "UPDATE velos SET km_total = 2800, km_maj_le = '2026-10-27T10:00:00Z' WHERE id = 1"
+              )
+          subprocess.run([sys.executable, "-c", "import main"], env=env, check=True)
+          with psycopg.connect(url) as conn:
+              ligne = conn.execute(
+                  "SELECT km_total, km_maj_le FROM velos WHERE id = 1"
+              ).fetchone()
+              assert ligne == (2800, "2026-10-27T10:00:00Z"), ligne
+              assert conn.execute(
+                  "SELECT legacy_velo_id FROM velos WHERE id = 1"
+              ).fetchone()[0] == 1
+              # Le prochain vélo ajouté (sans id imposé) ne doit pas reprendre l'id 1.
+              nouvel_id = conn.execute(
+                  "INSERT INTO velos (nom, type) VALUES ('Vélo test séquence', 'gravel') RETURNING id"
+              ).fetchone()[0]
+              assert nouvel_id == 2, nouvel_id
+
+          print("OK: démarrage réel PostgreSQL temporaire, données historiques conservées, relance sans doublons, kilomètres conservés après redémarrage, CUBE id 1 et séquence suivante id 2.")
+          PY
+      - name: Vérifier la création et l'isolation des vélos sur SQLite
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-multivelos-test.db
+          CODE_ACCES: test
+        run: |
+          python - <<'PY'
+          import main
+          import db
+
+          route = main.creer_velo(
+              main.NouveauVeloRequest(nom="Gravel test", type="gravel"),
+              x_code_acces="test"
+          )
+          route_id = route["velo_id"]
+          electrique = main.creer_velo(
+              main.NouveauVeloRequest(nom="VTT électrique test", type="vtt_electrique"),
+              x_code_acces="test"
+          )
+          electrique_id = electrique["velo_id"]
+
+          main.enregistrer_mes_reglages(
+              main.MesReglagesRequest(valeurs={"taille_cadre": "M"}),
+              velo_id=route_id,
+              x_code_acces="test"
+          )
+          gravel_reglages = main.lire_mes_reglages(velo_id=route_id, x_code_acces="test")
+          cube_reglages = main.lire_mes_reglages(velo_id=1, x_code_acces="test")
+          assert gravel_reglages["valeurs"]["taille_cadre"] == "M"
+          assert cube_reglages["valeurs"].get("taille_cadre") != "M"
+
+          conn = db.connect()
+          cursor = conn.cursor()
+          cursor.execute("SELECT COUNT(*) FROM composants WHERE velo_id = ?", (route_id,))
+          assert cursor.fetchone()[0] >= 7
+          cursor.execute("SELECT COUNT(*) FROM composants WHERE velo_id = ? AND nom LIKE '%Moteur%'", (route_id,))
+          assert cursor.fetchone()[0] == 0
+          cursor.execute("SELECT COUNT(*) FROM composants WHERE velo_id = ? AND nom LIKE '%Moteur%'", (electrique_id,))
+          assert cursor.fetchone()[0] == 1
+          cursor.execute("SELECT COUNT(*) FROM composants WHERE velo_id = ?", (1,))
+          assert cursor.fetchone()[0] > 0
+          conn.close()
+
+          fiche = main.modifier_fiche_velo(
+              route_id,
+              main.ModifierFicheVeloRequest(nom="Gravel test modifié", marque="Test"),
+              x_code_acces="test"
+          )
+          assert fiche["nom"] == "Gravel test modifié"
+
+          conn = db.connect()
+          cursor = conn.cursor()
+          cursor.execute("""
+              INSERT INTO sorties (velo_id, nom, debut, distance_km, km_compte)
+              VALUES (?, ?, ?, ?, 1)
+          """, (route_id, "Sortie de transfert", "2026-10-25T10:00:00Z", 20))
+          cursor.execute("SELECT id FROM sorties WHERE debut = ?", ("2026-10-25T10:00:00Z",))
+          sortie_id = cursor.fetchone()[0]
+          main.ajuster_km_total(cursor, 20, route_id)
+          conn.commit()
+          conn.close()
+
+          transfert = main.affecter_sortie_a_un_autre_velo(
+              sortie_id,
+              main.AffecterSortieVeloRequest(nouveau_velo_id=electrique_id),
+              velo_id=route_id,
+              x_code_acces="test"
+          )
+          assert transfert["velo_nouveau"] == electrique_id
+          conn = db.connect()
+          cursor = conn.cursor()
+          cursor.execute("SELECT velo_id, km_compte FROM sorties WHERE id = ?", (sortie_id,))
+          sortie_transferee = cursor.fetchone()
+          assert sortie_transferee[0] == electrique_id
+          assert sortie_transferee[1] == 1
+          cursor.execute("SELECT km_total FROM velos WHERE id = ?", (route_id,))
+          assert cursor.fetchone()[0] == 0
+          cursor.execute("SELECT km_total FROM velos WHERE id = ?", (electrique_id,))
+          assert cursor.fetchone()[0] == 20
+          conn.close()
+          # L'import d'une sortie doit incrémenter uniquement le vélo sélectionné.
+          analyser_original = main.gpx_import.analyser_activite
+          main.gpx_import.analyser_activite = lambda **kwargs: {
+              "nom": "Sortie test vélo A",
+              "debut": "2026-10-26T08:00:00Z",
+              "sport": "cycling",
+              "distance_km": 12.5,
+              "denivele_pos": 300,
+              "denivele_neg": 280,
+              "duree_s": 3600,
+              "vitesse_moy": 12.5,
+              "alt_max": 800,
+              "pente_moy_montee": 7.0,
+              "trace": "[]",
+          }
+          try:
+              import_result = main.importer_sortie(
+                  main.ImportGpxRequest(gpx="<gpx>" + (" " * 50) + "</gpx>", nom="Sortie test vélo A"),
+                  velo_id=route_id,
+                  x_code_acces="test"
+              )
+          finally:
+              main.gpx_import.analyser_activite = analyser_original
+          assert import_result["statut"] == "success", import_result
+          assert import_result["ajoute_au_total"] is True, import_result
+
+          sorties_route = main.lister_sorties(velo_id=route_id, x_code_acces="test")
+          sorties_electrique = main.lister_sorties(velo_id=electrique_id, x_code_acces="test")
+          assert any(s["nom"] == "Sortie test vélo A" for s in sorties_route)
+          assert all(s["nom"] != "Sortie test vélo A" for s in sorties_electrique)
+
+          conn = db.connect()
+          cursor = conn.cursor()
+          cursor.execute("SELECT id, velo_id, distance_km, km_compte FROM sorties WHERE debut = ?", ("2026-10-26T08:00:00Z",))
+          sortie_importee = cursor.fetchone()
+          assert sortie_importee is not None
+          sortie_importee_id = sortie_importee[0]
+          assert sortie_importee[1] == route_id
+          assert sortie_importee[2] == 12.5
+          assert sortie_importee[3] == 1
+          cursor.execute("SELECT km_total, km_frac FROM velos WHERE id = ?", (route_id,))
+          km_route = cursor.fetchone()
+          assert km_route[0] + km_route[1] == 12.5, tuple(km_route)
+          cursor.execute("SELECT km_total, km_frac FROM velos WHERE id = ?", (electrique_id,))
+          km_electrique = cursor.fetchone()
+          assert km_electrique[0] + km_electrique[1] == 20, tuple(km_electrique)
+          conn.close()
+
+          try:
+              main.supprimer_sortie(
+                  sortie_importee_id,
+                  velo_id=electrique_id,
+                  x_code_acces="test"
+              )
+              raise AssertionError("Un vélo a pu supprimer la sortie d'un autre vélo")
+          except main.HTTPException as exc:
+              assert exc.status_code == 404, exc.status_code
+
+          conn = db.connect()
+          cursor = conn.cursor()
+          cursor.execute("SELECT COUNT(*) FROM sorties WHERE id = ? AND velo_id = ?", (sortie_importee_id, route_id))
+          assert cursor.fetchone()[0] == 1
+          conn.close()
+
+          main.supprimer_sortie(
+              sortie_importee_id,
+              velo_id=route_id,
+              x_code_acces="test"
+          )
+          conn = db.connect()
+          cursor = conn.cursor()
+          cursor.execute("SELECT km_total, km_frac FROM velos WHERE id = ?", (route_id,))
+          km_route_apres_suppression = cursor.fetchone()
+          assert km_route_apres_suppression[0] + km_route_apres_suppression[1] == 0, tuple(km_route_apres_suppression)
+          cursor.execute("SELECT km_total, km_frac FROM velos WHERE id = ?", (electrique_id,))
+          km_electrique_apres_suppression = cursor.fetchone()
+          assert km_electrique_apres_suppression[0] + km_electrique_apres_suppression[1] == 20, tuple(km_electrique_apres_suppression)
+          conn.close()
+
+          # Les interventions d'entretien doivent rester propres à chaque vélo.
+          conn = db.connect()
+          cursor = conn.cursor()
+          cursor.execute("SELECT id FROM composants WHERE velo_id = ? ORDER BY id LIMIT 1", (route_id,))
+          composant_route = cursor.fetchone()[0]
+          cursor.execute("SELECT seuil_alerte FROM composants WHERE id = ? AND velo_id = ?", (composant_route, route_id))
+          seuil_initial = cursor.fetchone()[0]
+          conn.close()
+
+          main.modifier_seuils(
+              composant_route,
+              main.SeuilsRequest(seuil_alerte=1234, seuil_jours=90),
+              velo_id=route_id,
+              x_code_acces="test"
+          )
+          try:
+              main.modifier_seuils(
+                  composant_route,
+                  main.SeuilsRequest(seuil_alerte=4321, seuil_jours=180),
+                  velo_id=electrique_id,
+                  x_code_acces="test"
+              )
+              raise AssertionError("Un vélo a pu modifier le composant d'un autre vélo")
+          except main.HTTPException as exc:
+              assert exc.status_code == 404, exc.status_code
+
+          conn = db.connect()
+          cursor = conn.cursor()
+          cursor.execute("SELECT seuil_alerte, seuil_jours FROM composants WHERE id = ? AND velo_id = ?", (composant_route, route_id))
+          assert tuple(cursor.fetchone()) == (1234, 90)
+          conn.close()
+
+          main.ajouter_historique(
+              main.HistoriqueRequest(
+                  composant_id=composant_route,
+                  date_remplacement="2026-10-26",
+                  km_intervention=0,
+                  cout=0,
+                  notes="Intervention test isolée"
+              ),
+              velo_id=route_id,
+              x_code_acces="test"
+          )
+          conn = db.connect()
+          cursor = conn.cursor()
+          cursor.execute(
+              "SELECT id FROM historique WHERE velo_id = ? AND composant_id = ? ORDER BY id DESC LIMIT 1",
+              (route_id, composant_route)
+          )
+          historique_id = cursor.fetchone()[0]
+          conn.close()
+
+          historique_route = main.obtenir_historique(velo_id=route_id, x_code_acces="test")
+          historique_electrique = main.obtenir_historique(velo_id=electrique_id, x_code_acces="test")
+          assert any(h["id"] == historique_id for h in historique_route)
+          assert all(h["id"] != historique_id for h in historique_electrique)
+
+          etat_route = main.obtenir_etat(velo_id=route_id, x_code_acces="test")
+          etat_electrique = main.obtenir_etat(velo_id=electrique_id, x_code_acces="test")
+          ids_composants_route = {c["id"] for c in etat_route["composants"]}
+          ids_composants_electrique = {c["id"] for c in etat_electrique["composants"]}
+          assert composant_route in ids_composants_route
+          assert composant_route not in ids_composants_electrique
+          assert ids_composants_electrique
+          assert ids_composants_route.isdisjoint(ids_composants_electrique)
+
+          try:
+              main.modifier_intervention(
+                  historique_id,
+                  main.HistoriqueModifRequest(
+                      date_remplacement="2026-10-26",
+                      km_intervention=0,
+                      cout=0,
+                      notes="Tentative interdite"
+                  ),
+                  velo_id=electrique_id,
+                  x_code_acces="test"
+              )
+              raise AssertionError("Un vélo a pu modifier l'historique d'un autre vélo")
+          except main.HTTPException as exc:
+              assert exc.status_code == 404, exc.status_code
+
+          try:
+              main.supprimer_intervention(
+                  historique_id,
+                  velo_id=electrique_id,
+                  x_code_acces="test"
+              )
+              raise AssertionError("Un vélo a pu supprimer l'historique d'un autre vélo")
+          except main.HTTPException as exc:
+              assert exc.status_code == 404, exc.status_code
+
+          conn = db.connect()
+          cursor = conn.cursor()
+          cursor.execute("SELECT notes FROM historique WHERE id = ? AND velo_id = ?", (historique_id, route_id))
+          assert cursor.fetchone()[0] == "Intervention test isolée"
+          conn.close()
+
+          main.supprimer_intervention(
+              historique_id,
+              velo_id=route_id,
+              x_code_acces="test"
+          )
+          conn = db.connect()
+          cursor = conn.cursor()
+          cursor.execute("SELECT COUNT(*) FROM historique WHERE id = ?", (historique_id,))
+          assert cursor.fetchone()[0] == 0
+          conn.close()
+
+          print("OK: création, fiche modifiable, composants par type, réglages isolés, transfert de sortie, et isolation des interventions.")
+          PY
+      - name: Vérifier que les kilomètres survivent à un redémarrage (SQLite)
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-redemarrage-test.db
+          CODE_ACCES: test
+        run: |
+          rm -f "$SQLITE_PATH"
+          python -c "import main"
+          python - <<'PY'
+          import os
+          import sqlite3
+          import subprocess
+          import sys
+
+          path = os.environ["SQLITE_PATH"]
+          db = sqlite3.connect(path)
+          assert db.execute("SELECT id FROM velos WHERE legacy_velo_id = 1").fetchone()[0] == 1
+          db.execute("UPDATE velos SET km_total = 2800, km_frac = 0.4, km_maj_le = '2026-10-27T10:00:00Z' WHERE id = 1")
+          db.commit()
+          db.close()
+
+          # Deux redémarrages réels : le compteur vivant ne doit pas revenir en arrière.
+          for _ in range(2):
+              subprocess.run([sys.executable, "-c", "import main"], check=True)
+
+          db = sqlite3.connect(path)
+          ligne = db.execute("SELECT km_total, km_frac, km_maj_le FROM velos WHERE id = 1").fetchone()
+          assert ligne == (2800, 0.4, "2026-10-27T10:00:00Z"), ligne
+          assert db.execute("SELECT COUNT(*) FROM velos").fetchone()[0] == 1
+          db.execute("INSERT INTO velos (nom, type) VALUES ('Vélo test séquence', 'gravel')")
+          assert db.execute("SELECT MAX(id) FROM velos").fetchone()[0] == 2
+          db.close()
+          print("OK: kilomètres conservés après redémarrage, CUBE id 1, vélo suivant id 2.")
+          PY
+      - name: Installer un vrai navigateur pour tester la page
+        run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: Vérifier le dernier vélo utilisé et la pastille à vérifier (SQLite puis PostgreSQL)
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-dernier-velo-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_dernier_velo.py" <<'PY'
+          import sys
+          from datetime import datetime, timedelta
+
+          import db
+          import main
+          from fastapi import HTTPException
+
+          CODE = "test"
+
+
+          def gpx(debut, km=10.0, nom="Sortie test"):
+              t0 = datetime.strptime(debut, "%Y-%m-%dT%H:%M:%SZ")
+              n = 120
+              pas_m = km * 1000 / (n - 1)
+              pts = []
+              for i in range(n):
+                  lat = 44.0 + (i * pas_m) / 111320.0
+                  t = (t0 + timedelta(seconds=20 * i)).strftime("%Y-%m-%dT%H:%M:%SZ")
+                  pts.append('<trkpt lat="%.6f" lon="2.500000"><ele>%d</ele><time>%s</time></trkpt>' % (lat, 500 + i % 10, t))
+              return ('<?xml version="1.0"?><gpx version="1.1" creator="test" xmlns="http://www.topografix.com/GPX/1/1">'
+                      '<trk><name>' + nom + '</name><trkseg>' + "".join(pts) + '</trkseg></trk></gpx>')
+
+
+          def importer(debut, km, velo_id=None, nom="Sortie test"):
+              return main.importer_sortie(main.ImportGpxRequest(gpx=gpx(debut, km, nom)), velo_id=velo_id, x_code_acces=CODE)
+
+
+          def refuse(code, fonction, *a, **k):
+              try:
+                  fonction(*a, **k)
+              except HTTPException as e:
+                  assert e.status_code == code, (code, e.status_code, e.detail)
+                  return
+              raise AssertionError("Une erreur %s était attendue" % code)
+
+
+          def ligne(sortie_id):
+              conn = db.connect()
+              c = conn.cursor()
+              c.execute("SELECT velo_id, a_verifier, km_compte, distance_km FROM sorties WHERE id = ?", (sortie_id,))
+              r = c.fetchone()
+              conn.close()
+              return tuple(r)
+
+
+          def km(velo_id):
+              conn = db.connect()
+              c = conn.cursor()
+              c.execute("SELECT km_total, km_frac FROM velos WHERE id = ?", (velo_id,))
+              r = c.fetchone()
+              conn.close()
+              return r[0] + r[1]
+
+
+          def sorties_a_verifier():
+              return {v["id"]: v["sorties_a_verifier"] for v in main.obtenir_velos(x_code_acces=CODE)}
+
+
+          # --- Préparation : le CUBE (id 1) et un gravel (id 2) ; km_maj_le du CUBE ancien
+          gravel = main.creer_velo(main.NouveauVeloRequest(nom="Gravel test", type="gravel"), x_code_acces=CODE)["velo_id"]
+          assert gravel == 2, gravel
+          conn = db.connect()
+          conn.cursor().execute("UPDATE velos SET km_maj_le = '2000-01-01T00:00:00Z' WHERE id = 1")
+          conn.commit()
+          conn.close()
+          base_cube, base_gravel = km(1), km(2)
+
+          # L. Premier import automatique alors qu'aucune sortie n'existe : vélo 1, à vérifier
+          r1 = importer("2030-05-01T08:00:00Z", 10.0, velo_id=None, nom="Auto 1")
+          assert r1["velo_id"] == 1 and r1["a_verifier"] is True, r1
+          id1 = main.lister_sorties(velo_id=1, x_code_acces=CODE)[0]["id"]
+          assert ligne(id1)[:2] == (1, 1), ligne(id1)
+
+          # C. Import fait DANS l'appli (vélo 2 choisi) : rien à vérifier
+          r2 = importer("2030-05-02T08:00:00Z", 12.0, velo_id=2, nom="Appli gravel")
+          assert r2["velo_id"] == 2 and r2["a_verifier"] is False, r2
+          id2 = main.lister_sorties(velo_id=2, x_code_acces=CODE)[0]["id"]
+          assert ligne(id2)[:2] == (2, 0), ligne(id2)
+
+          # D. Import automatique ensuite : dernier vélo utilisé = vélo 2 (sortie la plus récente)
+          r3 = importer("2030-05-03T08:00:00Z", 8.0, velo_id=None, nom="Auto 3")
+          assert r3["velo_id"] == 2 and r3["a_verifier"] is True, r3
+          id3 = [s["id"] for s in main.lister_sorties(velo_id=2, x_code_acces=CODE) if s["nom"] == "Auto 3"][0]
+
+          # E. Import dans l'appli sur le CUBE, puis automatique : suit le CUBE
+          r4 = importer("2030-05-04T08:00:00Z", 15.0, velo_id=1, nom="Appli cube")
+          assert r4["velo_id"] == 1 and r4["a_verifier"] is False
+          r5 = importer("2030-05-05T08:00:00Z", 9.0, velo_id=None, nom="Auto 5")
+          assert r5["velo_id"] == 1 and r5["a_verifier"] is True, r5
+          id5 = [s["id"] for s in main.lister_sorties(velo_id=1, x_code_acces=CODE) if s["nom"] == "Auto 5"][0]
+
+          # F. Compteur par vélo dans la liste des vélos
+          assert sorties_a_verifier() == {1: 2, 2: 1}, sorties_a_verifier()
+
+          # G. La liste des sorties expose le drapeau
+          l2 = {s["nom"]: s["a_verifier"] for s in main.lister_sorties(velo_id=2, x_code_acces=CODE)}
+          assert l2 == {"Appli gravel": 0, "Auto 3": 1}, l2
+
+          # K. Kilomètres : chaque vélo ne compte que ses sorties
+          assert abs((km(1) - base_cube) - (r1["distance_km"] + r4["distance_km"] + r5["distance_km"])) < 0.02
+          assert abs((km(2) - base_gravel) - (r2["distance_km"] + r3["distance_km"])) < 0.02
+
+          # I. Doublons, tous vélos confondus (même heure exacte, ou même sortie à quelques minutes)
+          refuse(409, importer, "2030-05-02T08:00:00Z", 12.0, None)
+          refuse(409, importer, "2030-05-02T08:00:00Z", 12.0, 1)
+          refuse(409, importer, "2030-05-03T08:04:00Z", 8.0, None)
+
+          # H. Confirmer : bon vélo = ok, mauvais vélo = 404, puis plus « à vérifier »
+          refuse(404, main.confirmer_velo_sortie, id3, velo_id=1, x_code_acces=CODE)
+          assert ligne(id3)[1] == 1
+          main.confirmer_velo_sortie(id3, velo_id=2, x_code_acces=CODE)
+          assert ligne(id3)[1] == 0
+          assert sorties_a_verifier() == {1: 2, 2: 0}, sorties_a_verifier()
+
+          # J. Changer le vélo d'une sortie à vérifier : elle est confirmée, les km suivent
+          avant1, avant2 = km(1), km(2)
+          main.affecter_sortie_a_un_autre_velo(id5, main.AffecterSortieVeloRequest(nouveau_velo_id=2), velo_id=1, x_code_acces=CODE)
+          assert ligne(id5)[:2] == (2, 0), ligne(id5)
+          assert abs((avant1 - km(1)) - r5["distance_km"]) < 0.02 and abs((km(2) - avant2) - r5["distance_km"]) < 0.02
+          # « Auto 1 » (vélo 1) reste à vérifier ; « Auto 5 » est maintenant confirmée sur le vélo 2
+          assert sorties_a_verifier() == {1: 1, 2: 0}, sorties_a_verifier()
+
+          # Mauvais code d'accès : refus sur les deux nouvelles routes
+          refuse(401, main.confirmer_velo_sortie, id3, velo_id=2, x_code_acces="faux")
+
+          print("OK: import automatique sur le dernier vélo utilisé + à vérifier ; import de l'appli sans pastille ; compteurs, doublons, confirmation et changement de vélo.")
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_dernier_velo.py"
+          python - <<'PY2'
+          import psycopg
+          with psycopg.connect("postgresql://postgres:postgres@localhost:5432/maillons_test", autocommit=True) as c:
+              c.execute("DROP DATABASE IF EXISTS maillons_dernier_velo")
+              c.execute("CREATE DATABASE maillons_dernier_velo")
+          PY2
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/maillons_dernier_velo PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_dernier_velo.py"
+      - name: Tester la page dans un vrai navigateur (sélecteur de vélo, sortie à vérifier)
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-navigateur-test.db
+          CODE_ACCES: test
+        run: |
+          python - <<'PY'
+          import json
+          import sys
+          from urllib.parse import urlparse, parse_qs
+
+          from playwright.sync_api import sync_playwright
+
+          if len(sys.argv) > 1:
+              html = open(sys.argv[1], encoding="utf-8").read()
+          else:
+              import main
+              html = main.accueil()
+
+          VELOS = [
+              {"id": 1, "nom": "Mon CUBE", "type": "vtt_electrique", "marque": "Cube", "modele": "Stereo",
+               "annee": 2025, "taille": None, "actif": 1, "km_total": 2700, "km_frac": 0, "km_maj_le": None,
+               "date_achat": "2025-11-18", "moteur": None, "batterie": None},
+              {"id": 2, "nom": "Gravel test", "type": "gravel", "marque": None, "modele": None,
+               "annee": None, "taille": None, "actif": 1, "km_total": 0, "km_frac": 0, "km_maj_le": None,
+               "date_achat": "2026-10-26", "moteur": None, "batterie": None},
+          ]
+
+
+          def composant(velo_id):
+              return {
+                  "id": 50 if velo_id == "2" else 1, "numero": 1, "verification": False,
+                  "nom": "Pièce du gravel" if velo_id == "2" else "Chaîne du CUBE",
+                  "km_actuel": 10, "km_usure": 10, "km_depart": 0, "seuil_alerte": 2000,
+                  "pourcentage_usure": 5, "seuil_jours": 0, "jours_ecoules": None, "jours_usure": None,
+                  "coef_usure": 1, "alerte_entretien": False, "categorie": "piece", "pos_x": 30, "pos_y": 60,
+              }
+
+
+          appels = []
+          erreurs_page = []
+          etat_serveur = {"verifie": False}
+
+
+          def velos_vus():
+              copie = [dict(v) for v in VELOS]
+              copie[0]["sorties_a_verifier"] = 0 if etat_serveur["verifie"] else 1
+              copie[1]["sorties_a_verifier"] = 0
+              return copie
+
+
+          def sortie_auto():
+              return {
+                  "id": 7, "nom": "Sortie auto", "debut": "2026-10-26T17:00:00Z", "sport": "Ride",
+                  "distance_km": 24.5, "denivele_pos": 300, "denivele_neg": 300, "duree_s": 5400,
+                  "vitesse_moy": 16.3, "alt_max": 800, "pente_moy_montee": 5.1, "terrain": "mixte",
+                  "notes": None, "km_compte": 1, "trace": [], "photos": [], "photos_pos": [], "videos": [],
+                  "surfaces": None, "coef_usure": 1.0, "coef_analyse": False, "velo_id": 1,
+                  "a_verifier": 0 if etat_serveur["verifie"] else 1,
+              }
+
+          with sync_playwright() as p:
+              navigateur = p.chromium.launch()
+              contexte = navigateur.new_context(viewport={"width": 390, "height": 844})
+
+              def api(route):
+                  url = urlparse(route.request.url)
+                  appels.append(url.path + ("?" + url.query if url.query else ""))
+                  velo_id = (parse_qs(url.query).get("velo_id") or ["1"])[0]
+                  if url.path == "/api/velos":
+                      corps = velos_vus()
+                  elif url.path == "/api/etat":
+                      corps = {"km_total": 0 if velo_id == "2" else 2700, "composants": [composant(velo_id)]}
+                  elif url.path == "/api/mes-reglages":
+                      corps = {"valeurs": {}, "maj_le": None}
+                  elif url.path == "/api/reglages":
+                      corps = {"terrain_route": 1, "terrain_mixte": 1.2, "terrain_chemin": 1.5,
+                               "terrain_sentier": 2, "poids_denivele": 1}
+                  elif url.path == "/api/sorties" and velo_id == "1":
+                      corps = [sortie_auto()]
+                  elif url.path == "/api/sorties/7/verifier":
+                      etat_serveur["verifie"] = True
+                      corps = {"statut": "success", "sortie_id": 7}
+                  else:
+                      corps = []
+                  route.fulfill(status=200, content_type="application/json", body=json.dumps(corps))
+
+              contexte.route("**/localhost/api/**", api)
+              contexte.route(lambda u: not u.startswith("http://localhost/"), lambda r: r.abort())
+              contexte.add_init_script("sessionStorage.setItem('vtt_code', 'test')")
+              page = contexte.new_page()
+              page.on("pageerror", lambda e: erreurs_page.append(str(e)[:200]))
+              page.route("http://localhost/", lambda r: r.fulfill(status=200, content_type="text/html", body=html))
+              page.goto("http://localhost/", wait_until="load")
+              page.wait_for_timeout(1500)
+
+              options = page.eval_on_selector_all("#selectVelo option", "os => os.map(o => o.textContent)")
+              assert not erreurs_page, "Erreur JavaScript dans la page : " + repr(erreurs_page)
+              assert any(a == "/api/etat?velo_id=1" for a in appels), "Aucun appel /api/etat?velo_id=1 : " + repr(appels)
+              assert options == ["Mon CUBE · VTT électrique · 1 à vérifier", "Gravel test · Gravel"], options
+              assert page.eval_on_selector("#selectVelo", "s => s.value") == "1"
+              assert page.eval_on_selector("#authScreen", "e => getComputedStyle(e).display") == "none"
+              pastilles1 = page.eval_on_selector_all(".hotspot", "os => os.map(o => o.title)")
+              assert pastilles1 == ["Chaîne du CUBE (5%)"], pastilles1
+
+
+              # --- Sortie reçue automatiquement : pastille rouge, confirmation, compteur du sélecteur
+              page.evaluate("location.hash = 'sorties'")
+              page.wait_for_selector(".pastille-verifier", timeout=5000)
+              assert page.eval_on_selector_all(".pastille-verifier", "os => os.map(o => o.textContent)") == ["À vérifier"]
+              page.click("button[aria-label='Actions de la sortie']")
+              page.click("button[role=menuitem]:has-text('Confirmer le vélo')")
+              page.wait_for_timeout(1500)
+              assert any(a == "/api/sorties/7/verifier?velo_id=1" for a in appels), appels
+              assert page.eval_on_selector_all(".pastille-verifier", "os => os.length") == 0
+              options_apres = page.eval_on_selector_all("#selectVelo option", "os => os.map(o => o.textContent)")
+              assert options_apres == ["Mon CUBE · VTT électrique", "Gravel test · Gravel"], options_apres
+              assert not erreurs_page, "Erreur JavaScript pendant la confirmation : " + repr(erreurs_page)
+              page.evaluate("location.hash = 'entretien'")
+              page.wait_for_timeout(500)
+              appels.clear()
+              page.select_option("#selectVelo", "2")
+              page.wait_for_timeout(1200)
+              for attendu in ("/api/etat?velo_id=2", "/api/historique?velo_id=2",
+                              "/api/sorties?velo_id=2", "/api/mes-reglages?velo_id=2"):
+                  assert attendu in appels, attendu + " absent : " + repr(appels)
+              pastilles2 = page.eval_on_selector_all(".hotspot", "os => os.map(o => o.title)")
+              assert pastilles2 == ["Pièce du gravel (5%)"], pastilles2
+              assert page.eval_on_selector("#headerVeloNom", "e => e.textContent") == "Gravel test"
+              assert page.evaluate("sessionStorage.getItem('maillons_velo_id')") == "2"
+              assert not erreurs_page, "Erreur JavaScript après le changement de vélo : " + repr(erreurs_page)
+              navigateur.close()
+
+          print("OK: la page se charge, le sélecteur liste les vélos, la sortie à vérifier se confirme, le changement de vélo recharge ses données.")
+          PY
+      - name: Vérifier le script de migration SQLite sur une base temporaire
+        run: |
+          python - <<'PY'
+          import sqlite3
+          from pathlib import Path
+
+          source = Path("main.py").read_text(encoding="utf-8")
+          required = [
+              "CREATE TABLE IF NOT EXISTS velos",
+              '@app.get("/api/velos")',
+              '@app.post("/api/velos")',
+              'CREATE TABLE IF NOT EXISTS mes_reglages_velo',
+              'INSERT INTO mes_reglages_velo',
+              'SELECT id, nom, type, marque, modele, annee, taille, actif',
+              '@app.get("/api/etat")',
+              'WHERE id = ? AND actif = 1',
+              'SELECT * FROM composants WHERE velo_id = ? ORDER BY id',
+              'FROM sorties',
+              'WHERE velo_id = ?',
+              'WHERE h.velo_id = ? AND c.velo_id = ?',
+              'Vélo introuvable.',
+              '@app.get("/api/historique")',
+              '@app.post("/api/historique")',
+              '@app.post("/api/historique/{historique_id}/supprimer")',
+              '@app.post("/api/historique/supprimer-plusieurs")',
+              '@app.post("/api/historique/{historique_id}/modifier")',
+              'def retirer_intervention(cursor, historique_id, velo_id=1):',
+              'WHERE id = ? AND velo_id = ?',
+              'SELECT km_total FROM velos WHERE id = ?',
+              '@app.get("/api/sorties")',
+              'SELECT * FROM sorties WHERE velo_id = ? ORDER BY debut DESC',
+              '@app.post("/api/sync")',
+              'def synchroniser_kilometrage(',
+              'UPDATE velos',
+              'WHERE id = ?',
+              'velo_id: int = 1',
+              'def ajuster_km_total(cursor, delta_km, velo_id=1):',
+              '@app.post("/api/sorties/import")',
+              # Doublons d'import : heure de départ unique tous vélos confondus (voir les tests réels).
+              'SELECT id FROM sorties WHERE debut = ?',
+              'debut >= ? AND debut <= ?',
+              'INSERT INTO sorties (',
+              'SELECT km_maj_le FROM velos WHERE id = ?',
+              'def supprimer_sortie(',
+              'SELECT distance_km, km_compte FROM sorties WHERE id = ? AND velo_id = ?',
+              'DELETE FROM sorties WHERE id = ? AND velo_id = ?',
+              'WHERE h.velo_id = ? AND c.velo_id = ?',
+              "INSERT INTO velos",
+              "legacy_velo_id",
+              "UPDATE velos",
+              "SET km_total =",
+              'ajouter_colonne(cursor, "composants", "velo_id", "INTEGER DEFAULT 1")',
+              'ajouter_colonne(cursor, "sorties", "velo_id", "INTEGER DEFAULT 1")',
+          ]
+          missing = [item for item in required if item not in source]
+          assert not missing, f"Instructions de migration introuvables dans main.py: {missing}"
+
+          db = sqlite3.connect(":memory:")
+          db.row_factory = sqlite3.Row
+          db.executescript("""
+              CREATE TABLE velo (
+                  id INTEGER PRIMARY KEY,
+                  km_total INTEGER NOT NULL DEFAULT 0,
+                  date_achat TEXT
+              );
+              INSERT INTO velo (id, km_total, date_achat)
+              VALUES (1, 2700, '2025-11-18');
+              CREATE TABLE composants (id INTEGER PRIMARY KEY, nom TEXT);
+              INSERT INTO composants (id, nom) VALUES (1, 'Freins');
+              CREATE TABLE sorties (id INTEGER PRIMARY KEY, nom TEXT);
+              INSERT INTO sorties (id, nom) VALUES (1, 'Sortie test');
+          """)
+          db.execute("ALTER TABLE velo ADD COLUMN km_maj_le TEXT")
+          db.execute("ALTER TABLE velo ADD COLUMN km_frac REAL DEFAULT 0")
+          db.execute("UPDATE velo SET km_maj_le = '2026-10-26T14:33:17Z' WHERE km_maj_le IS NULL")
+          db.execute("""
+              CREATE TABLE IF NOT EXISTS velos (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  nom TEXT,
+                  type TEXT,
+                  marque TEXT,
+                  modele TEXT,
+                  annee INTEGER,
+                  km_total INTEGER DEFAULT 0,
+                  km_frac REAL DEFAULT 0,
+                  km_maj_le TEXT,
+                  date_achat TEXT,
+                  legacy_velo_id INTEGER UNIQUE
+              )
+          """)
+          db.execute("""
+              INSERT INTO velos
+                (nom, type, marque, modele, annee, km_total, km_frac,
+                 km_maj_le, date_achat, legacy_velo_id)
+              VALUES ('Mon CUBE', 'electrique', 'Cube',
+                      'Stereo Hybrid ONE44 EXC 800 (Bosch)', 2025,
+                      2700, 0, NULL, NULL, 1)
+              ON CONFLICT (legacy_velo_id) DO NOTHING
+          """)
+          db.execute("""
+              UPDATE velos
+              SET km_total=(SELECT km_total FROM velo WHERE id=1),
+                  km_frac=(SELECT km_frac FROM velo WHERE id=1),
+                  km_maj_le=(SELECT km_maj_le FROM velo WHERE id=1),
+                  date_achat=(SELECT date_achat FROM velo WHERE id=1)
+              WHERE legacy_velo_id=1
+          """)
+          db.execute("ALTER TABLE composants ADD COLUMN velo_id INTEGER DEFAULT 1")
+          db.execute("ALTER TABLE sorties ADD COLUMN velo_id INTEGER DEFAULT 1")
+          db.execute("UPDATE composants SET velo_id=1 WHERE velo_id IS NULL")
+          db.execute("UPDATE sorties SET velo_id=1 WHERE velo_id IS NULL")
+          # Rejouer l'insertion vérifie que la contrainte évite les doublons.
+          db.execute("""
+              INSERT INTO velos
+                (nom, type, marque, modele, annee, km_total, km_frac,
+                 km_maj_le, date_achat, legacy_velo_id)
+              VALUES ('Mon CUBE', 'electrique', 'Cube',
+                      'Stereo Hybrid ONE44 EXC 800 (Bosch)', 2025,
+                      2700, 0, NULL, NULL, 1)
+              ON CONFLICT (legacy_velo_id) DO NOTHING
+          """)
+          bike = db.execute("SELECT * FROM velos WHERE legacy_velo_id=1").fetchone()
+          assert bike["km_total"] == 2700, dict(bike)
+          assert bike["date_achat"] == "2025-11-18", dict(bike)
+          assert db.execute("SELECT COUNT(*) FROM velos").fetchone()[0] == 1
+          assert db.execute("SELECT velo_id FROM composants WHERE id=1").fetchone()[0] == 1
+          assert db.execute("SELECT velo_id FROM sorties WHERE id=1").fetchone()[0] == 1
+          print("OK: syntaxe de main.py, copie du CUBE, conservation des kilomètres, attribution composants/sorties et absence de doublon.")
+          PY
