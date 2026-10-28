@@ -47,15 +47,16 @@ Ce fichier ne doit **pas** être mis à jour seulement à la fin : une session p
 
 ## Tâche en cours
 
-REPRISE PAR CHATGPT — 27/10/2026 : correction ciblée de la sauvegarde multi-vélos.
-- Objectif : corriger le kilométrage exporté par `/api/sauvegarde`, qui lisait encore l'ancienne table `velo` alors que les kilomètres courants sont dans `velos`.
-- Branche de test actuelle : `reprise/2026-10-27-correction-sauvegarde`, créée depuis `reprise/2026-10-26-multivelos-completion`. Ne pas fusionner ni déployer sans accord explicite de Math.
-- Enregistré sur GitHub : `main.py`, commit `b90143b8c8308f713a5bbf533c183d47b417ae86`. Le bloc `/api/sauvegarde` lit désormais `velos.km_total` pour le CUBE (id 1), avec repli vers `velo.km_total` si la nouvelle valeur est absente. Le champ JSON `km_total`, les listes de vélos, réglages personnels, composants, historique, sorties et réglages globaux sont conservés.
-- Comparaison GitHub vérifiée : cette branche a 1 commit de plus que sa base `reprise/2026-10-26-multivelos-completion`, sans retard ; seul `main.py` change dans ce commit (7 ajouts, 1 suppression).
-- Contrôle automatique : GitHub Actions run `40578350491`, lien https://github.com/bigone1212/VTT-entretien/actions/runs/40578350491. État au dernier contrôle : `in_progress`; résultat à vérifier. Aucun test Neon, Render, navigateur ou téléphone effectué à cette étape.
-- Local, non enregistré : rien.
-- Prochaine action : attendre et vérifier le résultat du workflow, puis inspecter les étapes/logs. Ne pas fusionner cette branche dans la PR n° 7 ni dans `main` avant validation et nouvel accord explicite.
-- Note : le reste de ce fichier conserve l'historique des étapes multi-vélos antérieures ; ne pas le considérer comme un état plus récent que les commits réellement vérifiés ci-dessus.
+REPRISE PAR CHATGPT — 28/10/2026 : test direct de l'API de sauvegarde multi-vélos.
+- Objectif : vérifier que `GET /api/sauvegarde` renvoie le kilométrage courant de `velos`, même lorsque l'ancienne table `velo` contient une valeur différente.
+- Branche de test actuelle : `reprise/2026-10-27-correction-sauvegarde`, basée sur `reprise/2026-10-26-multivelos-completion`. Ne pas fusionner ni déployer sans accord explicite de Math.
+- Correction de code enregistrée : `main.py`, commit `b90143b8c8308f713a5bbf533c183d47b417ae86`. `/api/sauvegarde` lit désormais `velos.km_total` pour le CUBE (id 1), avec repli vers `velo.km_total` si la nouvelle valeur est absente.
+- Test ajouté sur GitHub : `.github/workflows/maillons-check.yml`, commit `0f8a8bb262a1321ea759a1d60587c374d05b0d37`. Le nouveau contrôle utilise une base SQLite temporaire et appelle réellement la route HTTP `GET /api/sauvegarde` via TestClient, avec `velos.km_total = 2831` et `velo.km_total = 2700`; il vérifie que la réponse HTTP est 200 et que le JSON exporte 2831 km. Ce test n'est pas encore déclaré réussi tant que le workflow n'a pas terminé.
+- Workflow en cours : run `40646891336`, lien https://github.com/bigone1212/VTT-entretien/actions/runs/40646891336. Au dernier contrôle, les vérifications initiales et la syntaxe Python réussissaient ; l'installation des dépendances était encore en cours et le test de sauvegarde n'avait pas encore démarré.
+- Enregistré sur GitHub : les deux commits ci-dessus, uniquement sur la branche de test. Local, non enregistré : rien.
+- Tests restant à faire : attendre le résultat du run `40646891336` et examiner le statut du nouveau test. Aucun test sur Neon, Render, téléphone ou base de production n'a été effectué.
+- Prochaine action : vérifier le workflow et corriger le test seulement si les logs montrent un échec. Ne pas fusionner cette branche dans la PR n° 7 ni dans `main` sans accord explicite distinct.
+- Note : le reste de ce fichier conserve l'historique des étapes multi-vélos antérieures ; les commits réellement vérifiés ci-dessus font foi.
 
 
 REPRISE PAR CHATGPT — 26/10/2026 :
