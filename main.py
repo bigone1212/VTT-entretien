@@ -12240,7 +12240,10 @@ def images_de_la_page(html, base):
             for element in noeud:
                 parcourir(element)
 
-    for bloc in re.findall(r"""<script[^>]+application/ld\+json[^>]*>(.*?)</script>""", html, re.I | re.S):
+    ouvrant = "<scr" + "ipt"
+    fermant = "</scr" + "ipt>"
+    modele = ouvrant + r"""[^>]+application/ld\+json[^>]*>(.*?)""" + fermant
+    for bloc in re.findall(modele, html, re.I | re.S):
         try:
             parcourir(json.loads(bloc))
         except ValueError:
