@@ -1418,6 +1418,163 @@ jobs:
           PY
           rm -f "$SQLITE_PATH"
           PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_photo_lien_nav.py"
+      - name: Vérifier l'enregistrement groupé des repères (SQLite puis PostgreSQL)
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-placement-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_placement_srv.py" <<'PY'
+          import db, main
+          from fastapi import HTTPException
+          main.verifier_auth = lambda _c: None
+          C = "x"
+          g = main.creer_velo(main.NouveauVeloRequest(nom="Gravel pos", type="gravel"), x_code_acces=C)["velo_id"]
+          def pos(v):
+              c = db.connect(); cur = c.cursor(); cur.execute("SELECT id, pos_x, pos_y FROM composants WHERE velo_id = ? ORDER BY id", (v,))
+              r = [tuple(x) for x in cur.fetchall()]; c.close(); return r
+          avant_g, avant_cube = pos(g), pos(1)
+          ids = [p[0] for p in avant_g]
+          P = main.PositionComposant
+          res = main.deplacer_reperes(main.PositionsRequest(positions=[P(id=ids[0], pos_x=11, pos_y=22), P(id=ids[1], pos_x=33, pos_y=44)]), velo_id=g, x_code_acces=C)
+          assert res["deplaces"] == 2
+          apres = pos(g)
+          assert apres[0][1:] == (11, 22) and apres[1][1:] == (33, 44) and apres[2:] == avant_g[2:]
+          assert pos(1) == avant_cube
+          # tout ou rien : un identifiant d'un autre vélo (le CUBE) fait tout refuser
+          try:
+              main.deplacer_reperes(main.PositionsRequest(positions=[P(id=ids[2], pos_x=1, pos_y=1), P(id=avant_cube[0][0], pos_x=2, pos_y=2)]), velo_id=g, x_code_acces=C)
+              raise AssertionError("404 attendu")
+          except HTTPException as e:
+              assert e.status_code == 404
+          assert pos(g) == apres and pos(1) == avant_cube
+          try:
+              main.deplacer_reperes(main.PositionsRequest(positions=[P(id=999999, pos_x=1, pos_y=1)]), velo_id=g, x_code_acces=C)
+              raise AssertionError("404 attendu")
+          except HTTPException as e:
+              assert e.status_code == 404
+          print("OK placement serveur")
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_placement_srv.py"
+          python - <<'PY2'
+          import psycopg
+          with psycopg.connect("postgresql://postgres:postgres@localhost:5432/maillons_test", autocommit=True) as c:
+              c.execute("DROP DATABASE IF EXISTS maillons_placement")
+              c.execute("CREATE DATABASE maillons_placement")
+          PY2
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/maillons_placement PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_placement_srv.py"
+      - name: Tester le placement automatique des repères dans un vrai navigateur
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-placement-nav-test.db
+          CODE_ACCES: test
+        run: |
+          pip install pillow
+          cat > "$RUNNER_TEMP/test_placement_nav.py" <<'PY'
+          import base64, io, json, sys
+          from urllib.parse import urlparse
+          from PIL import Image, ImageDraw
+          from playwright.sync_api import sync_playwright
+          import main
+          html = main.accueil()
+
+          # Photo de test : vélo de profil dessiné sur fond blanc, guidon à droite. Boîte réelle : x 150..1050, y 100..600 (sur 1200x675)
+          im = Image.new("RGB", (1200, 675), "white"); d = ImageDraw.Draw(im)
+          for cx in (330, 870):
+              d.ellipse([cx - 168, 432 - 168, cx + 168, 432 + 168], outline=(20, 20, 20), width=14)
+          d.line([330, 432, 520, 250, 770, 250, 870, 432], fill=(30, 30, 30), width=14)   # cadre + fourche
+          d.line([520, 250, 540, 140], fill=(30, 30, 30), width=14); d.rectangle([500, 100, 580, 125], fill=(30, 30, 30))   # tige + selle
+          d.line([762, 250, 762, 130], fill=(30, 30, 30), width=14); d.rectangle([740, 100, 800, 120], fill=(30, 30, 30))   # potence + guidon
+          buf = io.BytesIO(); im.save(buf, "PNG")
+          PHOTO = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+          FOND_NON_UNI = Image.new("RGB", (1200, 675), (230, 60, 60)); ImageDraw.Draw(FOND_NON_UNI).rectangle([0, 0, 600, 675], fill=(20, 80, 200))
+          b2 = io.BytesIO(); FOND_NON_UNI.save(b2, "PNG"); PHOTO_FOND = "data:image/png;base64," + base64.b64encode(b2.getvalue()).decode()
+
+          NOMS = ["Chaîne ou transmission", "Frein avant", "Frein arrière", "Pneus", "Roues et rayons (contrôle)",
+                  "Direction et roulements (contrôle)", "Contrôle général et serrages", "Fourche (entretien)", "Batterie (contrôle)", "Frein avant (2)"]
+          COMPS = [{"id": 10 + i, "numero": i + 1, "verification": False, "nom": n, "km_actuel": 1, "km_usure": 1, "km_depart": 0, "seuil_alerte": 2000,
+                    "pourcentage_usure": 5, "seuil_jours": 0, "jours_ecoules": None, "jours_usure": None, "coef_usure": 1,
+                    "alerte_entretien": False, "categorie": "piece", "pos_x": 50, "pos_y": 50} for i, n in enumerate(NOMS)]
+          VELOS = [{"id": 1, "nom": "Mon CUBE", "type": "vtt_electrique", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0},
+                   {"id": 2, "nom": "Gravel test", "type": "gravel", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 1, "sorties_a_verifier": 0}]
+          envoi = []; dialogues = []; erreurs = []; photo_courante = {"p": PHOTO}
+          reponses_confirm = []
+
+          with sync_playwright() as p:
+              nav = p.chromium.launch(); ctx = nav.new_context(viewport={"width": 390, "height": 844})
+              def api(route):
+                  r = route.request; u = urlparse(r.url)
+                  if u.path == "/api/velos": corps = VELOS
+                  elif u.path == "/api/velos/2/photo": corps = {"photo": photo_courante["p"]}
+                  elif u.path == "/api/etat": corps = {"km_total": 0, "composants": COMPS if "velo_id=2" in r.url else []}
+                  elif u.path == "/api/composants/positions":
+                      corps = json.loads(r.post_data); envoi.append(corps["positions"])
+                      for q in corps["positions"]:
+                          for c in COMPS:
+                              if c["id"] == q["id"]: c["pos_x"], c["pos_y"] = q["pos_x"], q["pos_y"]
+                      corps = {"statut": "success", "deplaces": len(corps["positions"])}
+                  elif u.path == "/api/mes-reglages": corps = {"valeurs": {}, "maj_le": None}
+                  elif u.path == "/api/reglages": corps = {"terrain_route": 1, "terrain_mixte": 1.2, "terrain_chemin": 1.5, "terrain_sentier": 2, "poids_denivele": 1}
+                  else: corps = []
+                  route.fulfill(status=200, content_type="application/json", body=json.dumps(corps))
+              ctx.route("**/localhost/api/**", api); ctx.route(lambda u: not u.startswith("http://localhost/"), lambda r: r.abort())
+              ctx.add_init_script("sessionStorage.setItem('vtt_code','t'); sessionStorage.setItem('maillons_velo_id','2')")
+              page = ctx.new_page(); page.on("pageerror", lambda e: erreurs.append(str(e)[:200]))
+              def dlg(dd):
+                  dialogues.append((dd.type, dd.message))
+                  if dd.type == "confirm" and reponses_confirm and reponses_confirm.pop(0) is False: dd.dismiss()
+                  else: dd.accept()
+              page.on("dialog", dlg)
+              page.route("http://localhost/", lambda r: r.fulfill(status=200, content_type="text/html", body=html))
+              page.goto("http://localhost/"); page.wait_for_timeout(1500)
+              vis = lambda sel: page.eval_on_selector(sel, "e => getComputedStyle(e).display != 'none'")
+              assert vis("#btnPlacementAuto"), "bouton visible avec une photo enregistrée"
+              if len(sys.argv) > 1: page.locator(".bike-container").screenshot(path=sys.argv[1] + "_avant.png")
+              # Guidon à droite : OK puis OK
+              page.click("#btnPlacementAuto"); page.wait_for_timeout(1500)
+              assert len(envoi) == 1 and len(envoi[0]) == len(COMPS), envoi
+              P = {q["id"]: q for q in envoi[0]}
+              def proche(nom_i, x, y, tol=3.5):
+                  q = P[10 + nom_i]; assert abs(q["pos_x"] - x) <= tol and abs(q["pos_y"] - y) <= tol, (NOMS[nom_i], q, (x, y))
+              proche(1, 70.3, 60.7)    # frein avant
+              proche(2, 29.8, 60.7)    # frein arrière
+              proche(3, 84.1, 60.7)    # pneus (avant)
+              proche(5, 64.4 + 0.0, 33.0, 4.5)   # direction (u .70, v .27)
+              proche(7, 69.5, 48.9)    # fourche
+              # deux repères sur la même zone (Frein avant et Frein avant (2)) : pas exactement au même endroit
+              assert (P[11]["pos_x"], P[11]["pos_y"]) != (P[19]["pos_x"], P[19]["pos_y"])
+              assert all(0 <= q["pos_x"] <= 100 and 0 <= q["pos_y"] <= 100 for q in envoi[0])
+              # Les pastilles affichées suivent les nouvelles positions
+              if len(sys.argv) > 1: page.locator(".bike-container").screenshot(path=sys.argv[1] + "_apres.png")
+              gauche = page.eval_on_selector_all(".hotspot.entretien", "os => os.map(o => [o.style.left, o.style.top])")
+              assert [f"{COMPS[1]['pos_x']}%", f"{COMPS[1]['pos_y']}%"] in gauche, gauche
+              assert "Le fond de la photo" not in " ".join(m for t, m in dialogues if t == "alert")
+              assert any("DROITE" in m for t, m in dialogues if t == "confirm")
+              # Guidon à gauche : le vélo est inversé
+              reponses_confirm[:] = [True, False]
+              page.click("#btnPlacementAuto"); page.wait_for_timeout(1500)
+              G = {q["id"]: q for q in envoi[1]}
+              assert abs(G[11]["pos_x"] - (100 - 70.3)) <= 3.5, G[11]
+              assert abs(G[13]["pos_x"] - (100 - 84.1)) <= 3.5, G[13]
+              # Refus à la première question : rien n'est envoyé
+              reponses_confirm[:] = [False]
+              page.click("#btnPlacementAuto"); page.wait_for_timeout(500)
+              assert len(envoi) == 2
+              # Fond non uni : placement approximatif signalé, rien de cassé
+              photo_courante["p"] = PHOTO_FOND
+              page.evaluate("() => { delete photosVelos[2]; }"); page.evaluate("afficherPhotoVelo()"); page.wait_for_timeout(800)
+              reponses_confirm[:] = [True, True]
+              page.click("#btnPlacementAuto"); page.wait_for_timeout(1500)
+              assert len(envoi) == 3 and any("fond de la photo" in m for t, m in dialogues if t == "alert"), dialogues[-2:]
+              assert all(0 <= q["pos_x"] <= 100 for q in envoi[2])
+              # CUBE (photo de boutique, non enregistrée) : pas de bouton
+              page.select_option("#selectVelo", "1"); page.wait_for_timeout(800)
+              assert not vis("#btnPlacementAuto")
+              assert not erreurs, erreurs
+              nav.close()
+          print("OK placement automatique (navigateur)")
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_placement_nav.py"
       - name: Tester la fiche technique de tous les vélos dans un vrai navigateur
         env:
           SQLITE_PATH: ${{ runner.temp }}/maillons-fiche-test.db

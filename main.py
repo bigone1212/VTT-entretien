@@ -3389,6 +3389,7 @@ def accueil():
 
         <div class="placement-bar">
             <button type="button" id="btnPlacer" onclick="basculerPlacement()"></button>
+            <button type="button" id="btnPlacementAuto" onclick="placementAutomatique()" style="display:none;">Placement automatique</button>
             <span class="form-help" id="placementAide" style="display:none; margin:0;">
                 Touchez un numéro, puis touchez son emplacement exact sur la photo.
             </span>
@@ -4253,6 +4254,8 @@ def accueil():
                     photo.style.visibility = source ? 'visible' : 'hidden';
                 }
                 if (vide) vide.style.display = source ? 'none' : 'flex';
+                const boutonAuto = document.getElementById('btnPlacementAuto');
+                if (boutonAuto) boutonAuto.style.display = source.startsWith('data:') ? '' : 'none';
             }
 
             function choisirPhotoVelo() {
@@ -5455,6 +5458,155 @@ def accueil():
                     if (tout) cartesOuvertes.delete(id); else cartesOuvertes.add(id);
                 });
                 majBoutonDeplier();
+            }
+
+            // ---- Placement automatique des repères sur la photo du vélo (vue de profil) ----
+            // Chaque emplacement est donné dans la boîte qui entoure le vélo : [gauche-droite, haut-bas],
+            // de 0 à 1, pour un vélo tourné vers la droite (guidon à droite).
+            const ANCRES_REPERES = {
+                pneu_ar: [0.045, 0.62], pneu_av: [0.955, 0.62],
+                roue_ar: [0.20, 0.48], roue_av: [0.90, 0.50],
+                moyeu_ar: [0.20, 0.665], moyeu_av: [0.80, 0.665],
+                frein_ar: [0.23, 0.62], frein_av: [0.77, 0.62],
+                derailleur: [0.17, 0.77], chaine: [0.32, 0.77],
+                pedalier: [0.45, 0.72], pedales: [0.47, 0.85],
+                moteur: [0.45, 0.65], batterie: [0.52, 0.49],
+                amorto: [0.40, 0.50], biellette: [0.34, 0.60],
+                fourche: [0.76, 0.46], direction: [0.70, 0.27],
+                guidon: [0.66, 0.09], potence: [0.68, 0.14],
+                tige: [0.34, 0.20], selle: [0.31, 0.05],
+                cadre: [0.52, 0.42]
+            };
+            const DECALAGES_REPERES = [[0, 0], [8, 0], [-8, 0], [0, 13], [0, -13], [8, 13], [-8, -13], [8, -13], [-8, 13]];
+
+            function sansAccents(texte) {
+                const table = { 'à': 'a', 'â': 'a', 'ä': 'a', 'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
+                    'î': 'i', 'ï': 'i', 'ô': 'o', 'ö': 'o', 'ù': 'u', 'û': 'u', 'ü': 'u', 'ç': 'c' };
+                return Array.from(String(texte).toLowerCase()).map(l => table[l] || l).join('');
+            }
+
+            function ancreDuRepere(nom) {
+                const n = sansAccents(nom);
+                const a = (...mots) => mots.some(m => n.includes(m));
+                const avant = a('avant');
+                const arriere = a('arriere');
+                if (a('purge')) return 'guidon';
+                if (a('serrage', 'controle general')) return 'potence';
+                if (a('frein', 'disque', 'plaquette')) return arriere ? 'frein_ar' : 'frein_av';
+                if (a('pneu', 'tubeless')) return avant ? 'pneu_av' : ((arriere || a('tubeless')) ? 'pneu_ar' : 'pneu_av');
+                if (a('moyeu')) return 'moyeu_ar';
+                if (a('rayon', 'roue', 'jante')) return 'roue_av';
+                if (a('biellette')) return 'biellette';
+                if (a('amortisseur', 'suspension arriere')) return 'amorto';
+                if (a('fourche')) return 'fourche';
+                if (a('direction')) return 'direction';
+                if (a('tige de selle')) return 'tige';
+                if (a('selle')) return 'selle';
+                if (a('cable', 'gaine', 'chaine', 'transmission')) return 'chaine';
+                if (a('galet', 'derailleur', 'cassette')) return 'derailleur';
+                if (a('plateau', 'pedalier')) return 'pedalier';
+                if (a('pedale')) return 'pedales';
+                if (a('moteur', 'bosch')) return 'moteur';
+                if (a('batterie')) return 'batterie';
+                return 'cadre';
+            }
+
+            // Cherche le rectangle occupé par le vélo (fond uni clair, comme sur les photos de boutiques).
+            // Retourne null si le fond n'est pas uni : le placement se fait alors sur toute l'image.
+            function boiteDuVelo(img) {
+                const maxi = 320;
+                const echelle = Math.min(1, maxi / Math.max(img.naturalWidth, img.naturalHeight));
+                const w = Math.max(1, Math.round(img.naturalWidth * echelle));
+                const h = Math.max(1, Math.round(img.naturalHeight * echelle));
+                const canvas = document.createElement('canvas');
+                canvas.width = w;
+                canvas.height = h;
+                const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, w, h);
+                ctx.drawImage(img, 0, 0, w, h);
+                const px = ctx.getImageData(0, 0, w, h).data;
+                const lire = (x, y) => { const i = (y * w + x) * 4; return [px[i], px[i + 1], px[i + 2]]; };
+                const coins = [lire(0, 0), lire(w - 1, 0), lire(0, h - 1), lire(w - 1, h - 1)];
+                const fond = [0, 1, 2].map(c => {
+                    const v = coins.map(k => k[c]).sort((p, q) => p - q);
+                    return Math.round((v[1] + v[2]) / 2);
+                });
+                const ecart = (c) => Math.abs(c[0] - fond[0]) + Math.abs(c[1] - fond[1]) + Math.abs(c[2] - fond[2]);
+                if (coins.some(c => ecart(c) > 60)) return null;
+                const colonnes = new Array(w).fill(0);
+                const lignes = new Array(h).fill(0);
+                for (let y = 0; y < h; y++) {
+                    for (let x = 0; x < w; x++) {
+                        if (ecart(lire(x, y)) > 90) { colonnes[x]++; lignes[y]++; }
+                    }
+                }
+                const minCol = Math.max(2, Math.round(h * 0.01));
+                const minLig = Math.max(2, Math.round(w * 0.01));
+                const premier = (t, m) => t.findIndex(v => v >= m);
+                const dernier = (t, m) => { for (let i = t.length - 1; i >= 0; i--) { if (t[i] >= m) return i; } return -1; };
+                const x0 = premier(colonnes, minCol), x1 = dernier(colonnes, minCol);
+                const y0 = premier(lignes, minLig), y1 = dernier(lignes, minLig);
+                if (x0 < 0 || y0 < 0 || x1 - x0 < w * 0.3 || y1 - y0 < h * 0.3) return null;
+                return { x0: x0 / w, x1: (x1 + 1) / w, y0: y0 / h, y1: (y1 + 1) / h };
+            }
+
+            // Calcule la place (en % de la zone photo) de chaque repère.
+            function calculerPlacements(composants, boite, ratioImage, ratioZone, guidonADroite) {
+                let largeur = 1, hauteur = 1, decX = 0, decY = 0;
+                if (ratioImage > ratioZone) { hauteur = ratioZone / ratioImage; decY = (1 - hauteur) / 2; }
+                else { largeur = ratioImage / ratioZone; decX = (1 - largeur) / 2; }
+                const b = boite || { x0: 0.03, x1: 0.97, y0: 0.05, y1: 0.95 };
+                const compte = {};
+                return composants.map(c => {
+                    const ancre = ancreDuRepere(c.nom);
+                    const rang = compte[ancre] || 0;
+                    compte[ancre] = rang + 1;
+                    const u = guidonADroite ? ANCRES_REPERES[ancre][0] : 1 - ANCRES_REPERES[ancre][0];
+                    const v = ANCRES_REPERES[ancre][1];
+                    const deca = DECALAGES_REPERES[rang % DECALAGES_REPERES.length];
+                    const x = 100 * (decX + largeur * (b.x0 + u * (b.x1 - b.x0))) + deca[0];
+                    const y = 100 * (decY + hauteur * (b.y0 + v * (b.y1 - b.y0))) + deca[1];
+                    return {
+                        id: c.id,
+                        pos_x: Math.max(0, Math.min(100, Math.round(x))),
+                        pos_y: Math.max(0, Math.min(100, Math.round(y)))
+                    };
+                });
+            }
+
+            async function placementAutomatique() {
+                const img = document.querySelector('.bike-img');
+                const zone = document.querySelector('.bike-container');
+                if (!img || !zone || !img.src.startsWith('data:') || !img.naturalWidth) {
+                    alert("Le placement automatique a besoin d'une photo enregistrée dans Maillons pour ce vélo.");
+                    return;
+                }
+                if (!Array.isArray(etatComposants) || etatComposants.length === 0) return;
+                const saut = String.fromCharCode(10);
+                if (!confirm('Replacer automatiquement les ' + etatComposants.length + ' repères sur la photo ?' + saut + saut
+                    + 'Leurs positions actuelles seront remplacées. Tu pourras ensuite les corriger à la main avec « Placer les repères ».')) return;
+                const aDroite = confirm('Sur ta photo, le guidon est-il à DROITE ?' + saut + saut
+                    + 'OK = oui, à droite' + saut + 'Annuler = non, à gauche');
+                try {
+                    let boite = null;
+                    try { boite = boiteDuVelo(img); } catch (e) { boite = null; }
+                    const positions = calculerPlacements(
+                        etatComposants, boite, img.naturalWidth / img.naturalHeight,
+                        zone.clientWidth / zone.clientHeight, aDroite
+                    );
+                    const res = await fetch('/api/composants/positions', {
+                        method: 'POST',
+                        headers: getHeaders(),
+                        body: JSON.stringify({ positions: positions })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Placement impossible.');
+                    await chargerEtat();
+                    if (!boite) alert("Le fond de la photo n'est pas uni : placement approximatif. Corrige avec « Placer les repères ».");
+                } catch (e) {
+                    alert(e.message || 'Placement impossible.');
+                }
             }
 
             function basculerPlacement() {
@@ -13183,6 +13335,54 @@ def deplacer_repere(
         conn.commit()
 
         return {"statut": "success"}
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+
+class PositionComposant(BaseModel):
+    id: int
+    pos_x: int = Field(ge=0, le=100)
+    pos_y: int = Field(ge=0, le=100)
+
+
+class PositionsRequest(BaseModel):
+    positions: List[PositionComposant] = Field(min_length=1, max_length=300)
+
+
+@app.post("/api/composants/positions")
+def deplacer_reperes(
+    data: PositionsRequest,
+    velo_id: int = 1,
+    x_code_acces: Optional[str] = Header(default=None)
+):
+    """Enregistre d'un coup la place de plusieurs repères du vélo (placement automatique).
+    Tout ou rien : si un repère n'appartient pas à ce vélo, rien n'est changé."""
+    verifier_auth(x_code_acces)
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        for position in data.positions:
+            cursor.execute(
+                "SELECT id FROM composants WHERE id = ? AND velo_id = ?",
+                (position.id, velo_id)
+            )
+            if cursor.fetchone() is None:
+                raise HTTPException(status_code=404, detail="Composant introuvable pour ce vélo.")
+
+        for position in data.positions:
+            cursor.execute(
+                "UPDATE composants SET pos_x = ?, pos_y = ? WHERE id = ? AND velo_id = ?",
+                (position.pos_x, position.pos_y, position.id, velo_id)
+            )
+        conn.commit()
+
+        return {"statut": "success", "deplaces": len(data.positions)}
 
     except Exception:
         conn.rollback()
