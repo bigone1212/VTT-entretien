@@ -79,6 +79,59 @@ jobs:
           PY
       - name: Installer les dépendances de l'application
         run: pip install -r requirements.txt
+      - name: Tester le téléchargement JSON de la sauvegarde avec des kilométrages divergents
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-sauvegarde-test.db
+          DATABASE_URL: ""
+        run: |
+          pip install httpx
+          python - <<'PY'
+          import os
+          import sqlite3
+          from pathlib import Path
+
+          path = Path(os.environ["SQLITE_PATH"])
+          if path.exists():
+              path.unlink()
+
+          import main
+          from fastapi.testclient import TestClient
+
+          # L'authentification est neutralisée uniquement dans ce test isolé.
+          main.verifier_auth = lambda _code: None
+
+          with TestClient(main.app) as client:
+              with sqlite3.connect(path) as conn:
+                  cube = conn.execute("SELECT id FROM velos WHERE id = 1").fetchone()
+                  ancien = conn.execute("SELECT id FROM velo WHERE id = 1").fetchone()
+                  assert cube is not None, "Le CUBE manque dans velos"
+                  assert ancien is not None, "La ligne historique manque dans velo"
+                  conn.execute("UPDATE velos SET km_total = 2831 WHERE id = 1")
+                  conn.execute("UPDATE velo SET km_total = 2700 WHERE id = 1")
+                  conn.commit()
+
+              reponse = client.get("/api/sauvegarde")
+              assert reponse.status_code == 200, (reponse.status_code, reponse.text)
+              donnees = reponse.json()
+              assert donnees["km_total"] == 2831, donnees.get("km_total")
+              cube_exporte = next(v for v in donnees["velos"] if v["id"] == 1)
+              assert cube_exporte["km_total"] == 2831, cube_exporte
+              assert all(cle in donnees for cle in (
+                  "date_sauvegarde", "km_total", "velos",
+                  "reglages_personnels_par_velo", "composants",
+                  "historique", "sorties", "reglages"
+              )), list(donnees)
+              print("OK : le téléchargement JSON exporte 2831 km depuis velos, pas les 2700 km de velo.")
+
+              # Vérifie aussi le repli historique lorsque le kilométrage courant est absent.
+              with sqlite3.connect(path) as conn:
+                  conn.execute("UPDATE velos SET km_total = NULL WHERE id = 1")
+                  conn.commit()
+              repli = client.get("/api/sauvegarde")
+              assert repli.status_code == 200, (repli.status_code, repli.text)
+              assert repli.json()["km_total"] == 2700, repli.json().get("km_total")
+              print("OK : le repli sur velo fonctionne si le kilométrage de velos est nul.")
+          PY
       - name: Démarrer l'application sur une copie SQLite isolée et vérifier la migration réelle
         env:
           SQLITE_PATH: ${{ runner.temp }}/maillons-migration-test.db
