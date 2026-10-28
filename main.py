@@ -931,6 +931,59 @@ def accueil():
                 text-overflow: ellipsis;
             }
 
+            .select-velo-zone {
+                position: relative;
+                display: inline-block;
+                max-width: 100%;
+                margin-top: 6px;
+            }
+
+            .select-velo-zone::after {
+                content: "";
+                position: absolute;
+                right: 14px;
+                top: 50%;
+                width: 7px;
+                height: 7px;
+                margin-top: -6px;
+                border-right: 2px solid var(--accent);
+                border-bottom: 2px solid var(--accent);
+                transform: rotate(45deg);
+                pointer-events: none;
+            }
+
+            #selectVelo {
+                -webkit-appearance: none;
+                appearance: none;
+                display: block;
+                width: auto;
+                max-width: 100%;
+                min-width: 0;
+                margin: 0;
+                padding: 6px 34px 6px 14px;
+                font-family: inherit;
+                font-size: 0.85rem;
+                font-weight: 700;
+                color: var(--accent);
+                background: rgba(var(--ac-rgb),0.12);
+                border: 1px solid rgba(var(--ac-rgb),0.3);
+                border-radius: 999px;
+                cursor: pointer;
+                text-overflow: ellipsis;
+                transition: border-color 0.15s, box-shadow 0.15s;
+            }
+
+            #selectVelo:focus {
+                border-color: var(--ac2);
+                box-shadow: 0 0 0 3px rgba(var(--ac-rgb),0.22);
+            }
+
+            #selectVelo option {
+                background: var(--card-bg);
+                color: var(--strong);
+                font-weight: 600;
+            }
+
             .km-pill {
                 flex-shrink: 0;
                 font-size: 0.85rem;
@@ -3295,7 +3348,7 @@ def accueil():
             <div class="header-titres">
                 <h1>Maillons</h1>
                 <p class="header-velo" id="headerVeloNom">Mon CUBE</p>
-                <select id="selectVelo" aria-label="Choisir mon vélo" style="margin:4px 0 0; padding:6px 9px; font-size:0.82rem; max-width:100%;"></select>
+                <div class="select-velo-zone"><select id="selectVelo" aria-label="Choisir mon vélo"></select></div>
             </div>
             <span class="km-pill" id="veloInfo">… km</span>
         </header>
