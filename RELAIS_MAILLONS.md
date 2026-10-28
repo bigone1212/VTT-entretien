@@ -50,14 +50,13 @@ Ce fichier ne doit **pas** être mis à jour seulement à la fin : une session p
 REPRISE PAR CHATGPT — 28/10/2026 : test direct de l'API de sauvegarde multi-vélos.
 - Objectif : vérifier que `GET /api/sauvegarde` renvoie le kilométrage courant de `velos`, même lorsque l'ancienne table `velo` contient une valeur différente.
 - Branche de test actuelle : `reprise/2026-10-27-correction-sauvegarde`, basée sur `reprise/2026-10-26-multivelos-completion`. Ne pas fusionner ni déployer sans accord explicite de Math.
-- Correction de code enregistrée : `main.py`, commit `b90143b8c8308f713a5bbf533c183d47b417ae86`. `/api/sauvegarde` lit désormais `velos.km_total` pour le CUBE (id 1), avec repli vers `velo.km_total` si la nouvelle valeur est absente.
-- Test ajouté sur GitHub : `.github/workflows/maillons-check.yml`, commit `0f8a8bb262a1321ea759a1d60587c374d05b0d37`. Le nouveau contrôle utilise une base SQLite temporaire et appelle réellement la route HTTP `GET /api/sauvegarde` via TestClient, avec `velos.km_total = 2831` et `velo.km_total = 2700`; il vérifie que la réponse HTTP est 200 et que le JSON exporte 2831 km. Ce test n'est pas encore déclaré réussi tant que le workflow n'a pas terminé.
-- Workflow en cours : run `40646891336`, lien https://github.com/bigone1212/VTT-entretien/actions/runs/40646891336. Au dernier contrôle, les vérifications initiales et la syntaxe Python réussissaient ; l'installation des dépendances était encore en cours et le test de sauvegarde n'avait pas encore démarré.
-- Enregistré sur GitHub : les deux commits ci-dessus, uniquement sur la branche de test. Local, non enregistré : rien.
-- Tests restant à faire : attendre le résultat du run `40646891336` et examiner le statut du nouveau test. Aucun test sur Neon, Render, téléphone ou base de production n'a été effectué.
-- Prochaine action : vérifier le workflow et corriger le test seulement si les logs montrent un échec. Ne pas fusionner cette branche dans la PR n° 7 ni dans `main` sans accord explicite distinct.
+- Correction applicative enregistrée : `main.py`, commit `b90143b8c8308f713a5bbf533c183d47b417ae86`. `/api/sauvegarde` lit désormais `velos.km_total` pour le CUBE (id 1), avec repli vers `velo.km_total` si la nouvelle valeur est absente.
+- Test HTTP ajouté dans `.github/workflows/maillons-check.yml`, commit `0f8a8bb262a1321ea759a1d60587c374d05b0d37`. Premier essai du run `40646891336` a échoué avant l'appel HTTP : le test créait un schéma incomplet, puis l'import de `main` lançait `init_db()` et attendait la structure complète de `velos`. Ce n'est pas un échec de la route de sauvegarde.
+- Correctif du test enregistré : `.github/workflows/maillons-check.yml`, commit `54f21fa1c27c18a600c3ef73d368c5e8ea68f1a2`. Le test laisse d'abord `main` initialiser le schéma réel dans une base SQLite temporaire, puis impose 2831 km dans `velos` et 2700 km dans `velo` avant d'appeler l'API avec TestClient. Le nouveau résultat est en attente.
+- Enregistré sur GitHub : les commits ci-dessus, uniquement sur la branche de test. Local, non enregistré : rien.
+- Tests : les autres étapes du run `40646891336` ont réussi ; le test de sauvegarde a échoué sur son montage de base incomplet. Le nouveau run déclenché par `54f21fa` doit être vérifié. Aucun test sur Neon, Render, téléphone ou base de production n'a été effectué.
+- Prochaine action : vérifier le nouveau workflow et ses journaux. Corriger le test si nécessaire. Ne pas fusionner cette branche dans la PR n° 7 ni dans `main` sans accord explicite distinct.
 - Note : le reste de ce fichier conserve l'historique des étapes multi-vélos antérieures ; les commits réellement vérifiés ci-dessus font foi.
-
 
 REPRISE PAR CHATGPT — 26/10/2026 :
 - Objectif : valider la migration C3(a) « Plusieurs vélos » sur des moteurs SQLite et PostgreSQL de test avant toute fusion.
