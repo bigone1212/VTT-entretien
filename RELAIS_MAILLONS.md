@@ -47,6 +47,14 @@ Ce fichier ne doit **pas** être mis à jour seulement à la fin : une session p
 
 ## Tâche en cours
 
+AMÉLIORATIONS MULTI-VÉLOS — demandes de Math du 28/10/2026 (Claude ; le multi-vélos est fusionné dans `main` : PR n° 7 fusionnée le 28/10/2026 à 09:00, commit `23be43b`, validée par Math avec ChatGPT ; état réel de Render NON vérifié par Claude). Math veut corriger ce qui ne fonctionne pas de façon optimale. 5 demandes, à traiter UNE À LA FOIS, code sur une branche `reprise/…` d'abord, fusion seulement avec son accord explicite :
+  [ ] 1. Pouvoir SUPPRIMER un vélo (aujourd'hui on peut seulement en ajouter). DÉCISION À PRENDRE AVEC MATH avant de coder : archiver (vélo caché, données gardées ; la colonne `velos.actif` existe déjà) ou supprimer pour de bon avec ses pièces, son historique et ses sorties (kilomètres retirés), ou supprimer en déplaçant les sorties vers un autre vélo. Proposition de Claude : le CUBE (id 1) ne peut PAS être supprimé (l'identifiant 1 sert de valeur par défaut partout dans le code : `velo_id: int = 1`, repli du sélecteur) ; jamais de suppression sans confirmation claire ; sauvegarde conseillée avant.
+  [ ] 2. Un menu « trois petits points » dans la section « Ajouter un vélo » regroupant les fonctions en rapport (ajouter, modifier la fiche, photo, supprimer…). Dépend de 1 et 3.
+  [ ] 3. Photo d'un vélo : pouvoir en enregistrer une ET la supprimer (réponse à donner à Math : oui, c'est faisable ; à ce jour seul le CUBE a sa photo, tirée d'un site de boutique ; les autres vélos affichent un espace « photo à compléter »). Rappel de la décision du 26/10/2026 : photo choisie depuis le téléphone, ou récupérée depuis le lien d'une fiche (Décathlon, Opticycles…) avec COPIE gardée dans la base ; pastilles placées automatiquement au mieux.
+  [ ] 4. Fiche technique : MÊME DESIGN pour tous les vélos (aujourd'hui `ficheTechniqueCube` écrite en dur pour le CUBE et `ficheTechniqueAutre` générique pour les autres). Demande de graphisme : ne pas changer le fonctionnement.
+  [ ] 5. Choix du vélo en haut (`#selectVelo`) : design en accord avec le reste de l'appli. Demande de graphisme : ne pas changer le fonctionnement.
+  Aucun code écrit pour ces 5 demandes à ce stade ; rien d'enregistré hors ce fichier.
+
 SAUVEGARDE MULTI-VÉLOS — reprise par ChatGPT le 28/10/2026 :
 - Objectif autorisé par Math : le JSON de `/api/sauvegarde` doit exporter le kilométrage courant du CUBE depuis `velos`, préserver toutes les clés existantes et ne consulter l'ancienne table `velo` qu'en repli si la ligne `velos` est absente ou si `km_total` est nul.
 - Correctif intégré à la branche de la PR #7 : commit `bd5cea15d9f16ec0595ccada03b88b04080287fc` (`main.py`). Le test est ajouté dans `.github/workflows/maillons-check.yml`, puis renforcé au commit `98b91c3b6a1b8e4e1480a0aa9fe8a5e59e3f69ec` pour couvrir aussi l'absence de la ligne CUBE.
