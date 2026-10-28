@@ -47,6 +47,14 @@ Ce fichier ne doit **pas** être mis à jour seulement à la fin : une session p
 
 ## Tâche en cours
 
+SAUVEGARDE MULTI-VÉLOS — reprise par ChatGPT le 28/10/2026 :
+- Objectif autorisé par Math : tester directement l'export de sauvegarde lorsque le kilométrage de `velos` diffère de celui de l'ancienne table `velo`. La réponse JSON doit contenir le kilométrage actuel du CUBE depuis `velos`, conserver les autres clés exportées et utiliser `velo` uniquement comme repli si la ligne `velos` est absente ou son kilométrage nul.
+- Correctif déjà enregistré sur la branche de reprise, commit `b90143b8c8308f713a5bbf533c183d47b417ae86`, fichier `main.py` uniquement pour le correctif : lecture de `velos` puis repli sur `velo`.
+- État vérifié : `main` n'a pas été modifiée par le correctif ; le commit est sur la branche de travail multi-vélos. Comparaison avec `main` : branche divergente (75 commits en avance, 1 en retard), donc ne pas fusionner sans réconcilier l'historique.
+- Tests : le test spécifique du téléchargement JSON avec des valeurs différentes n'est pas encore réalisé. Le workflow existant ne contient pas de test de la route `/api/sauvegarde`. Aucun accès à Neon, aucune modification de données de production, aucune fusion ni déploiement de code effectués par ChatGPT.
+- Prochaine étape : ajouter ou exécuter un test isolé qui appelle réellement la route de sauvegarde sur une base de test, avec des valeurs différentes dans `velos` et `velo`, puis vérifier le JSON obtenu. La fusion reste en attente du résultat et d'un nouvel examen de la branche.
+
+
 REPRISE PAR CHATGPT — 26/10/2026 :
 - Objectif : valider la migration C3(a) « Plusieurs vélos » sur des moteurs SQLite et PostgreSQL de test avant toute fusion.
 - État GitHub : branche de code `reprise/2026-10-26-plusieurs-velos`. Elle reste divergente de `main` ; le dernier comparatif avait 18 commits en avance et 4 en retard. Ne pas fusionner automatiquement.
