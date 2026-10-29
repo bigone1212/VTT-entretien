@@ -181,7 +181,17 @@ jobs:
           assert composants[3] == "Non concerné — disque de frein (avant)", composants
           assert composants[5] == "Non concerné — purge du liquide de frein", composants
           assert cur.execute("SELECT COUNT(*) FROM composants").fetchone()[0] >= 5
-          print("OK : recherche structurée, détection des freins, entretiens adaptés et conservation des identifiants.")
+
+          main.adapter_freins_velo(cur, 2, "patins", "rigide", "chambre", "courroie")
+          noms_courroie = {r[0] for r in cur.execute("SELECT nom FROM composants WHERE velo_id = 2").fetchall()}
+          assert "Courroie (contrôle et remplacement)" in noms_courroie
+          assert not any("chaîne" in nom.lower() or "cassette" in nom.lower() for nom in noms_courroie if not nom.startswith("Non concerné"))
+          main.adapter_freins_velo(cur, 2, "patins", "rigide", "chambre", "chaine")
+          noms_chaine = {r[0] for r in cur.execute("SELECT nom FROM composants WHERE velo_id = 2").fetchall()}
+          assert "Chaîne (remplacement)" in noms_chaine
+          assert "Non concerné — Courroie (contrôle et remplacement)" in noms_chaine
+
+          print("OK : recherche structurée, équipements adaptés, transitions chaîne/courroie et conservation des identifiants.")
           PY
       - name: Tester le téléchargement JSON de la sauvegarde avec des kilométrages divergents
         env:
