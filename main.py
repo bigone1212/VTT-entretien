@@ -12861,7 +12861,7 @@ def produits_structures(html_page):
     produits = []
     ouvrant = "<scr" + "ipt"
     fermant = "</scr" + "ipt>"
-    modele = re.escape(ouvrant) + r"\\b[^>]*type=[\\\"']application/ld\\+json[\\\"'][^>]*>(.*?)" + re.escape(fermant)
+    modele = re.escape(ouvrant) + r'''[^>]*type=["']application/ld[+]json["'][^>]*>(.*?)''' + re.escape(fermant)
     for bloc in re.findall(modele, html_page, re.I | re.S):
         try:
             noeud = json.loads(bloc)
