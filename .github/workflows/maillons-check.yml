@@ -1777,7 +1777,7 @@ jobs:
           )
           source = Path("main.py").read_text(encoding="utf-8")
           guides_start = source.index("const GUIDES = {")
-          guides_end = source.index("            };\\n\\n            function lienYoutube(nom) {", guides_start)
+          guides_end = source.index("function lienYoutube(nom) {", guides_start)
           guides = source[guides_start:guides_end]
 
           # Chaque pièce et chaque contrôle proposé par chaque type doit avoir
