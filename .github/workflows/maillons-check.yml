@@ -53,6 +53,71 @@ jobs:
           python-version: "3.12"
       - name: Vérifier la syntaxe Python complète
         run: python -m py_compile main.py
+      - name: Tester la recherche de fiche et l'adaptation des freins
+        run: |
+          python - <<'PY'
+          import json
+          import sqlite3
+          import main
+
+          main.verifier_auth = lambda _code: None
+
+          patins = main.entretiens_du_type("route", "patins")
+          noms_patins = [ligne[0] for ligne in patins]
+          assert "Patins de frein (avant)" in noms_patins
+          assert "Patins de frein (arrière)" in noms_patins
+          assert not any("disque de frein" in nom.lower() for nom in noms_patins)
+          assert not any("plaquettes de frein" in nom.lower() for nom in noms_patins)
+          assert not any("purge du liquide" in nom.lower() for nom in noms_patins)
+
+          disques = [ligne[0] for ligne in main.entretiens_du_type("route", "disque")]
+          assert "Plaquettes de frein (avant)" in disques
+          assert "Disque de frein (avant)" in disques
+
+          ouverture = "<scr" + "ipt"
+          fermeture = "</scr" + "ipt>"
+          page = (
+              "<html>" + ouverture + " type='application/ld+json'>" +
+              json.dumps({"@type": "Product", "name": "EDR Easy Route", "brand": {"@type": "Brand", "name": "EDR"}, "releaseDate": "2025"}) +
+              fermeture + "<p>Freins à patins</p></html>"
+          )
+          main.telecharger_lien = lambda url, accepter: ("text/html", page.encode("utf-8"), url)
+          fiche = main.recherche_fiche_velo(
+              main.RechercheFicheVeloRequest(url="https://example.com/edr"),
+              None
+          )
+          assert fiche["marque"] == "EDR", fiche
+          assert fiche["modele"] == "EDR Easy Route", fiche
+          assert fiche["annee"] == 2025, fiche
+          assert fiche["freins"] == "patins", fiche
+
+          conn = sqlite3.connect(":memory:")
+          cur = conn.cursor()
+          cur.execute("CREATE TABLE velos (id INTEGER PRIMARY KEY, type TEXT)")
+          cur.execute("INSERT INTO velos VALUES (2, 'route')")
+          cur.execute("""CREATE TABLE composants (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              velo_id INTEGER, nom TEXT, km_depart INTEGER DEFAULT 0,
+              seuil_alerte INTEGER DEFAULT 0, seuil_jours INTEGER DEFAULT 0,
+              categorie TEXT DEFAULT 'piece', pos_x INTEGER DEFAULT 50,
+              pos_y INTEGER DEFAULT 50, verification INTEGER DEFAULT 0,
+              coef_usure REAL DEFAULT 1
+          )""")
+          cur.executemany(
+              "INSERT INTO composants (id, velo_id, nom, seuil_alerte) VALUES (?, 2, ?, 1000)",
+              [(1, "Plaquettes de frein (avant)"), (2, "Plaquettes de frein (arrière)"),
+               (3, "Disque de frein (avant)"), (4, "Disque de frein (arrière)"),
+               (5, "Purge du liquide de frein")]
+          )
+          main.adapter_freins_velo(cur, 2, "patins")
+          composants = dict(cur.execute("SELECT id, nom FROM composants WHERE velo_id = 2").fetchall())
+          assert composants[1] == "Patins de frein (avant)", composants
+          assert composants[2] == "Patins de frein (arrière)", composants
+          assert composants[3] == "Non concerné — disque de frein (avant)", composants
+          assert composants[5] == "Non concerné — purge du liquide de frein", composants
+          assert cur.execute("SELECT COUNT(*) FROM composants").fetchone()[0] >= 5
+          print("OK : recherche structurée, détection des freins, entretiens adaptés et conservation des identifiants.")
+          PY
       - name: Vérifier le chargement initial du sélecteur multi-vélos
         run: |
           python - <<'PY'
