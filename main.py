@@ -12949,24 +12949,24 @@ def recherche_fiche_velo(data: RechercheFicheVeloRequest, x_code_acces: Optional
     elif disques_trouves and not patins_trouves:
         freins = "disque"
     type_velo = None
-    if re.search(r"\\bvtt\\b", bas) and re.search(r"électrique|electrique|e-bike", bas):
+    if re.search(r"\bvtt\b", bas) and re.search(r"électrique|electrique|e-bike", bas):
         type_velo = "vtt_electrique"
-    elif re.search(r"\\bgravel\\b", bas) and re.search(r"électrique|electrique|e-bike", bas):
+    elif re.search(r"\bgravel\b", bas) and re.search(r"électrique|electrique|e-bike", bas):
         type_velo = "gravel_electrique"
-    elif re.search(r"\\bgravel\\b", bas):
+    elif re.search(r"\bgravel\b", bas):
         type_velo = "gravel"
-    elif re.search(r"\\broute\\b", bas) and re.search(r"électrique|electrique|e-bike", bas):
+    elif re.search(r"\broute\b", bas) and re.search(r"électrique|electrique|e-bike", bas):
         type_velo = "route_electrique"
-    elif re.search(r"\\broute\\b|\\broad bike\\b", bas):
+    elif re.search(r"\broute\b|\broad bike\b", bas):
         type_velo = "route"
-    elif re.search(r"\\benduro\\b", bas):
+    elif re.search(r"\benduro\b", bas):
         type_velo = "enduro"
-    elif re.search(r"\\bdescente\\b|\\bdownhill\\b", bas):
+    elif re.search(r"\bdescente\b|\bdownhill\b", bas):
         type_velo = "descente"
-    elif re.search(r"\\bvtt\\b|\\bmountain bike\\b", bas):
+    elif re.search(r"\bvtt\b|\bmountain bike\b", bas):
         type_velo = "vtt"
-    moteur_match = re.search(r"(?:Bosch\\s+(?:Performance Line|Performance|CX|SX|PX)[^.;,]{0,35}|Shimano\\s+EP[0-9]{1,2}[^.;,]{0,25}|Yamaha\\s+(?:PW|PW-X)[^.;,]{0,25}|Brose[^.;,]{0,25})", texte, re.I)
-    batterie_match = re.search(r"(?:Bosch\\s+Power(?:Tube|Pack)[^.;,]{0,30}|PowerTube\\s*[0-9]{2,4}\\s?Wh|[0-9]{2,4}\\s?Wh(?:\\s+battery|\\s+batterie)?)", texte, re.I)
+    moteur_match = re.search(r"(?:Bosch\s+(?:Performance Line|Performance|CX|SX|PX)[^.;,]{0,35}|Shimano\s+EP[0-9]{1,2}[^.;,]{0,25}|Yamaha\s+(?:PW|PW-X)[^.;,]{0,25}|Brose[^.;,]{0,25})", texte, re.I)
+    batterie_match = re.search(r"(?:Bosch\s+Power(?:Tube|Pack)[^.;,]{0,30}|PowerTube\s*[0-9]{2,4}\s?Wh|[0-9]{2,4}\s?Wh(?:\s+battery|\s+batterie)?)", texte, re.I)
     return {
         "marque": str(marque)[:80] if marque else None,
         "modele": str(modele)[:120] if modele else None,
