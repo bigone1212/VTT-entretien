@@ -3695,7 +3695,7 @@ def accueil():
                     <option value="chaine">Chaîne et dérailleur</option>
                     <option value="courroie">Courroie</option>
                 </select>
-                <div class="form-help">Les caractéristiques trouvées sont proposées, jamais appliquées sans vérification.</div>
+                <div class="form-help">Les caractéristiques trouvées sont proposées, jamais appliquées sans vérification. Les entretiens dépendant d'un équipement non confirmé seront adaptés après validation.</div>
                 <div id="champsElectriques">
                     <label for="nouveauVeloMoteur">Moteur (vélo électrique uniquement)</label>
                     <input id="nouveauVeloMoteur" name="moteur" type="text" maxlength="120">
@@ -12468,6 +12468,7 @@ def adapter_freins_velo(cursor, velo_id, freins, suspension=None, tubeless=None,
             "Disque de frein (avant)": "Non concerné — disque de frein (avant)",
             "Disque de frein (arrière)": "Non concerné — disque de frein (arrière)",
             "Purge du liquide de frein": "Non concerné — purge du liquide de frein",
+            "Freins - contrôle général (type à confirmer)": "Non concerné — Freins - contrôle général (type à confirmer)",
         }
     elif freins in ("disque", "disque_hydraulique", "disque_mecanique"):
         changements = {
@@ -12475,6 +12476,7 @@ def adapter_freins_velo(cursor, velo_id, freins, suspension=None, tubeless=None,
             "Patins de frein (arrière)": "Plaquettes de frein (arrière)",
             "Non concerné — disque de frein (avant)": "Disque de frein (avant)",
             "Non concerné — disque de frein (arrière)": "Disque de frein (arrière)",
+            "Freins - contrôle général (type à confirmer)": "Non concerné — Freins - contrôle général (type à confirmer)",
         }
         if freins == "disque_hydraulique":
             changements["Non concerné — purge du liquide de frein"] = "Purge du liquide de frein"
