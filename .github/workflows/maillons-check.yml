@@ -100,12 +100,24 @@ jobs:
           assert "Plaquettes de frein (avant)" in disques
           assert "Disque de frein (avant)" in disques
 
+          rigide = [ligne[0] for ligne in main.entretiens_du_type("vtt", None, "rigide", "chambre", "courroie")]
+          assert "Courroie (contrôle et remplacement)" in rigide
+          assert not any("chaîne" in nom.lower() or "cassette" in nom.lower() for nom in rigide)
+          assert not any("liquide préventif tubeless" in nom.lower() for nom in rigide)
+          assert not any("fourche -" in nom.lower() or "amortisseur -" in nom.lower() for nom in rigide)
+
+          double = [ligne[0] for ligne in main.entretiens_du_type("vtt", None, "double", "tubeless", "chaine")]
+          assert "Fourche - entretien (50 h)" in double
+          assert "Amortisseur - entretien (50 h)" in double
+          assert "Liquide préventif tubeless (2 pneus)" in double
+          assert "Chaîne (remplacement)" in double
+
           ouverture = "<scr" + "ipt"
           fermeture = "</scr" + "ipt>"
           page = (
               "<html>" + ouverture + " type='application/ld+json'>" +
               json.dumps({"@type": "Product", "name": "EDR Easy Route", "brand": {"@type": "Brand", "name": "EDR"}, "releaseDate": "2025"}) +
-              fermeture + "<p>Freins à patins</p></html>"
+              fermeture + "<p>Freins à patins. Fourche rigide. Chambre à air. Chaîne et dérailleur.</p></html>"
           )
           main.telecharger_lien = lambda url, accepter: ("text/html", page.encode("utf-8"), url)
           fiche = main.recherche_fiche_velo(
@@ -116,6 +128,9 @@ jobs:
           assert fiche["modele"] == "EDR Easy Route", fiche
           assert fiche["annee"] == 2025, fiche
           assert fiche["freins"] == "patins", fiche
+          assert fiche["suspension"] == "rigide", fiche
+          assert fiche["tubeless"] == "chambre", fiche
+          assert fiche["transmission"] == "chaine", fiche
 
           conn = sqlite3.connect(":memory:")
           cur = conn.cursor()
