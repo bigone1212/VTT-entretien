@@ -1756,3 +1756,135 @@ jobs:
           assert db.execute("SELECT velo_id FROM sorties WHERE id=1").fetchone()[0] == 1
           print("OK: syntaxe de main.py, copie du CUBE, conservation des kilomètres, attribution composants/sorties et absence de doublon.")
           PY
+      - name: Vérifier les entretiens par type, les fiches et la mise à niveau sans perte d'historique
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-entretiens-par-type.db
+          DATABASE_URL: ""
+          CODE_ACCES: test
+        run: |
+          python - <<'PY'
+          import sqlite3
+          from pathlib import Path
+
+          import main
+          import db
+
+          main.verifier_auth = lambda _code: None
+
+          types = (
+              "vtt_electrique", "vtt", "enduro", "descente",
+              "gravel", "gravel_electrique", "route", "route_electrique",
+          )
+          source = Path("main.py").read_text(encoding="utf-8")
+          guides_start = source.index("const GUIDES = {")
+          guides_end = source.index("function lienYoutube(nom) {", guides_start)
+          guides = source[guides_start:guides_end]
+
+          # Chaque pièce et chaque contrôle proposé par chaque type doit avoir
+          # une fiche « Comment faire » associée à son nom exact.
+          for type_velo in types:
+              entretiens = main.entretiens_du_type(type_velo)
+              assert entretiens, f"Aucun entretien pour {type_velo}"
+              noms = [item[0] for item in entretiens]
+              assert len(noms) == len(set(noms)), f"Noms en double pour {type_velo}"
+              for nom in noms:
+                  assert '"' + nom + '"' in guides, (
+                      f"Fiche « Comment faire » absente pour {type_velo}: {nom}"
+                  )
+
+          # Créer un vélo de chaque famille : les vérifications doivent être
+          # enregistrées et les pièces électriques réservées aux vélos électriques.
+          ids = {}
+          for type_velo in types:
+              resultat = main.creer_velo(
+                  main.NouveauVeloRequest(nom="Test " + type_velo, type=type_velo),
+                  x_code_acces="test",
+              )
+              ids[type_velo] = resultat["velo_id"]
+              conn = db.connect()
+              cursor = conn.cursor()
+              cursor.execute(
+                  "SELECT nom, verification FROM composants WHERE velo_id = ?",
+                  (ids[type_velo],),
+              )
+              composants = cursor.fetchall()
+              assert composants, f"Aucun composant créé pour {type_velo}"
+              assert any(row[1] == 1 for row in composants), (
+                  f"Aucun contrôle régulier pour {type_velo}"
+              )
+              noms = {row[0] for row in composants}
+              if type_velo in ("vtt_electrique", "gravel_electrique", "route_electrique"):
+                  assert "Batterie (contacts et état)" in noms, type_velo
+              else:
+                  assert "Batterie (contacts et état)" not in noms, type_velo
+              conn.close()
+
+          # Simuler un vélo déjà présent avant cette évolution, avec une
+          # intervention liée à une ancienne pièce générique.
+          conn = db.connect()
+          cursor = conn.cursor()
+          cursor.execute("""
+              INSERT INTO velos (nom, type, marque, modele, actif, km_total, km_frac)
+              VALUES (?, ?, ?, ?, 1, 0, 0)
+          """, ("Vélo historique test", "vtt", "Test", "Ancien modèle"))
+          cursor.execute("SELECT id FROM velos WHERE nom = ?", ("Vélo historique test",))
+          ancien_velo_id = cursor.fetchone()[0]
+          cursor.execute("""
+              INSERT INTO composants (
+                  velo_id, nom, km_depart, seuil_alerte, categorie,
+                  pos_x, pos_y, verification, coef_usure
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          """, (ancien_velo_id, "Frein avant", 1234, 2500, "piece", 50, 50, 0, 1))
+          cursor.execute("SELECT id FROM composants WHERE velo_id = ?", (ancien_velo_id,))
+          composant_id = cursor.fetchone()[0]
+          cursor.execute("""
+              INSERT INTO historique (
+                  composant_id, velo_id, date_remplacement, cout, notes, km_intervention
+              ) VALUES (?, ?, ?, ?, ?, ?)
+          """, (composant_id, ancien_velo_id, "2026-10-01", 12, "À conserver", 1234))
+          conn.commit()
+
+          main.mettre_a_niveau_velos(cursor)
+          conn.commit()
+
+          cursor.execute(
+              "SELECT nom, km_depart, seuil_alerte FROM composants WHERE id = ?",
+              (composant_id,),
+          )
+          composant = cursor.fetchone()
+          assert tuple(composant) == ("Plaquettes de frein (avant)", 1234, 2500), tuple(composant)
+          cursor.execute(
+              "SELECT composant_id, velo_id, notes, km_intervention FROM historique WHERE composant_id = ?",
+              (composant_id,),
+          )
+          historique = cursor.fetchone()
+          assert tuple(historique) == (composant_id, ancien_velo_id, "À conserver", 1234), tuple(historique)
+          cursor.execute(
+              "SELECT COUNT(*) FROM composants WHERE velo_id = ? AND verification = 1",
+              (ancien_velo_id,),
+          )
+          assert cursor.fetchone()[0] > 0, "Les vérifications n'ont pas été ajoutées à l'ancien vélo"
+          cursor.execute(
+              "SELECT valeur FROM reglages WHERE cle = ?",
+              (main.marqueur_entretiens_velo(ancien_velo_id),),
+          )
+          assert cursor.fetchone() is not None, "Le marqueur de migration manque"
+
+          # Une seconde migration ne doit pas créer de doublons.
+          cursor.execute("SELECT COUNT(*) FROM composants WHERE velo_id = ?", (ancien_velo_id,))
+          avant = cursor.fetchone()[0]
+          main.mettre_a_niveau_velos(cursor)
+          conn.commit()
+          cursor.execute("SELECT COUNT(*) FROM composants WHERE velo_id = ?", (ancien_velo_id,))
+          assert cursor.fetchone()[0] == avant, "La migration a créé des doublons au second passage"
+          conn.close()
+
+          # Le vélo historique CUBE (id 1) doit rester en dehors de cette migration.
+          conn = db.connect()
+          cursor = conn.cursor()
+          cursor.execute("SELECT valeur FROM reglages WHERE cle = ?", (main.marqueur_entretiens_velo(1),))
+          assert cursor.fetchone() is None, "La migration par type a touché le CUBE"
+          conn.close()
+
+          print("OK: 8 types, contrôles visibles, fiches complètes, migration d'un vélo existant, historique conservé et seconde migration sans doublon.")
+          PY
