@@ -13125,7 +13125,7 @@ def recherche_fiche_velo(data: RechercheFicheVeloRequest, x_code_acces: Optional
     elif re.search(r"fourche rigide|rigid fork|sans suspension", bas):
         suspension_detectee = "rigide"
     tubeless_detecte = None
-    if re.search(r"tubeless", bas) and not re.search(r"non tubeless|not tubeless", bas):
+    if re.search(r"montage tubeless|pneus? tubeless|tubeless setup|tubeless tyres|tubeless tires|tubeless installé|sans chambre à air", bas) and not re.search(r"tubeless ready|compatible tubeless", bas):
         tubeless_detecte = "tubeless"
     elif re.search(r"chambre à air|chambre a air|inner tube", bas):
         tubeless_detecte = "chambre"
