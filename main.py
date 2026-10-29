@@ -3875,6 +3875,10 @@ def accueil():
                     <span><span class="ftv-libelle">Modèle</span><span class="ftv-valeur" id="ficheAutreModele">—</span></span>
                 </div>
                 <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="13" cy="24" r="9"/><circle cx="35" cy="24" r="9"/><path d="M13 24h22M24 13v22"/></svg></span>
+                    <span><span class="ftv-libelle">Freins</span><span class="ftv-valeur" id="ficheAutreFreins">À confirmer</span></span>
+                </div>
+                <div class="ftv-item">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="7" y="10" width="34" height="30" rx="4"/><path d="M7 19h34M16 6v8m16-8v8"/></svg></span>
                     <span><span class="ftv-libelle">Année</span><span class="ftv-valeur" id="ficheAutreAnnee">—</span></span>
                 </div>
@@ -4835,6 +4839,8 @@ def accueil():
                     if (ficheType) ficheType.textContent = TYPES_VELO[velo.type] || velo.type || 'Non renseigné';
                     if (ficheMarque) ficheMarque.textContent = velo.marque || 'Non renseignée';
                     if (ficheModele) ficheModele.textContent = velo.modele || 'Non renseigné';
+                    const ficheFreins = document.getElementById('ficheAutreFreins');
+                    if (ficheFreins) ficheFreins.textContent = velo.freins === 'patins' ? 'Freins à patins' : velo.freins === 'disque' ? 'Freins à disque' : 'À confirmer';
                     if (ficheAnnee) ficheAnnee.textContent = velo.annee || 'Non renseignée';
                     if (ficheTaille) ficheTaille.textContent = velo.taille || 'Non renseignée';
                     if (ficheMoteur) ficheMoteur.textContent = velo.moteur || 'Non concerné ou non renseigné';
