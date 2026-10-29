@@ -1775,9 +1775,10 @@ jobs:
               "vtt_electrique", "vtt", "enduro", "descente",
               "gravel", "gravel_electrique", "route", "route_electrique",
           )
-          guides_start = main.HTML.index("const GUIDES = {")
-          guides_end = main.HTML.index("const cartesOuvertes", guides_start)
-          guides = main.HTML[guides_start:guides_end]
+          source = Path("main.py").read_text(encoding="utf-8")
+          guides_start = source.index("const GUIDES = {")
+          guides_end = source.index("const cartesOuvertes", guides_start)
+          guides = source[guides_start:guides_end]
 
           # Chaque pièce et chaque contrôle proposé par chaque type doit avoir
           # une fiche « Comment faire » associée à son nom exact.
@@ -1851,13 +1852,13 @@ jobs:
               (composant_id,),
           )
           composant = cursor.fetchone()
-          assert composant == ("Plaquettes de frein (avant)", 1234, 2500), composant
+          assert tuple(composant) == ("Plaquettes de frein (avant)", 1234, 2500), tuple(composant)
           cursor.execute(
               "SELECT composant_id, velo_id, notes, km_intervention FROM historique WHERE composant_id = ?",
               (composant_id,),
           )
           historique = cursor.fetchone()
-          assert historique == (composant_id, ancien_velo_id, "À conserver", 1234), historique
+          assert tuple(historique) == (composant_id, ancien_velo_id, "À conserver", 1234), tuple(historique)
           cursor.execute(
               "SELECT COUNT(*) FROM composants WHERE velo_id = ? AND verification = 1",
               (ancien_velo_id,),
