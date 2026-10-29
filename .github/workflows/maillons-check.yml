@@ -99,6 +99,11 @@ jobs:
           disques = [ligne[0] for ligne in main.entretiens_du_type("route", "disque")]
           assert "Plaquettes de frein (avant)" in disques
           assert "Disque de frein (avant)" in disques
+          assert "Purge du liquide de frein" not in disques
+          hydrauliques = [ligne[0] for ligne in main.entretiens_du_type("route", "disque_hydraulique")]
+          assert "Purge du liquide de frein" in hydrauliques
+          mecaniques = [ligne[0] for ligne in main.entretiens_du_type("route", "disque_mecanique")]
+          assert "Purge du liquide de frein" not in mecaniques
 
           rigide = [ligne[0] for ligne in main.entretiens_du_type("vtt", None, "rigide", "chambre", "courroie")]
           assert "Courroie (contrôle et remplacement)" in rigide
@@ -131,6 +136,18 @@ jobs:
           assert fiche["suspension"] == "rigide", fiche
           assert fiche["tubeless"] == "chambre", fiche
           assert fiche["transmission"] == "chaine", fiche
+
+          page = (
+              "<html>" + ouverture + " type='application/ld+json'>" +
+              json.dumps({"@type": "Product", "name": "Vélo test", "brand": "Test"}) +
+              fermeture + "<p>Freins à disque hydrauliques. Pneus tubeless ready.</p></html>"
+          )
+          hydraulique = main.recherche_fiche_velo(
+              main.RechercheFicheVeloRequest(url="https://example.com/hydraulique"),
+              None
+          )
+          assert hydraulique["freins"] == "disque_hydraulique", hydraulique
+          assert hydraulique["tubeless"] is None, hydraulique
 
           conn = sqlite3.connect(":memory:")
           cur = conn.cursor()
