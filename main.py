@@ -13276,7 +13276,6 @@ def obtenir_etat(
                 rows = [r for r in rows if "liquide préventif tubeless" not in str(r["nom"]).lower()]
             if transmission_velo == "courroie":
                 rows = [r for r in rows if not any(mot in str(r["nom"]).lower() for mot in ("chaîne", "cassette", "plateau", "galets", "câble et gaine de dérailleur"))]
-                rows = [r for r in rows if "courroie (contrôle et remplacement)" in str(r["nom"]).lower() or str(r["nom"]).startswith("Non concerné")]
             elif transmission_velo == "chaine":
                 rows = [r for r in rows if "courroie (contrôle et remplacement)" not in str(r["nom"]).lower()]
 
