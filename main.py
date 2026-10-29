@@ -3913,6 +3913,18 @@ def accueil():
                     <span><span class="ftv-libelle">Freins</span><span class="ftv-valeur" id="ficheAutreFreins">À confirmer</span></span>
                 </div>
                 <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M14 6l-4 28m4-28l10 28m-10-28h7M10 34l-3 8m13-8l3 8M27 12h12m-12 7h12m-12 7h12"/></svg></span>
+                    <span><span class="ftv-libelle">Suspension</span><span class="ftv-valeur" id="ficheAutreSuspension">À confirmer</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="16"/><circle cx="24" cy="24" r="7"/><path d="M24 8v9m16 7h-9M24 40v-9M8 24h9"/></svg></span>
+                    <span><span class="ftv-libelle">Pneus</span><span class="ftv-valeur" id="ficheAutreTubeless">À confirmer</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="12" cy="32" r="7"/><circle cx="36" cy="32" r="7"/><path d="M12 32l8-17h9l7 17M20 15h9M24 15l-4-6"/></svg></span>
+                    <span><span class="ftv-libelle">Transmission</span><span class="ftv-valeur" id="ficheAutreTransmission">À confirmer</span></span>
+                </div>
+                <div class="ftv-item">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="7" y="10" width="34" height="30" rx="4"/><path d="M7 19h34M16 6v8m16-8v8"/></svg></span>
                     <span><span class="ftv-libelle">Année</span><span class="ftv-valeur" id="ficheAutreAnnee">—</span></span>
                 </div>
@@ -4875,6 +4887,12 @@ def accueil():
                     if (ficheModele) ficheModele.textContent = velo.modele || 'Non renseigné';
                     const ficheFreins = document.getElementById('ficheAutreFreins');
                     if (ficheFreins) ficheFreins.textContent = velo.freins === 'patins' ? 'Freins à patins' : velo.freins === 'disque' ? 'Freins à disque' : 'À confirmer';
+                    const ficheSuspension = document.getElementById('ficheAutreSuspension');
+                    if (ficheSuspension) ficheSuspension.textContent = ({ rigide: 'Sans suspension', avant: 'Fourche suspendue', double: 'Fourche et amortisseur arrière' })[velo.suspension] || 'À confirmer';
+                    const ficheTubeless = document.getElementById('ficheAutreTubeless');
+                    if (ficheTubeless) ficheTubeless.textContent = velo.tubeless === 'tubeless' ? 'Tubeless' : velo.tubeless === 'chambre' ? 'Avec chambre à air' : 'À confirmer';
+                    const ficheTransmission = document.getElementById('ficheAutreTransmission');
+                    if (ficheTransmission) ficheTransmission.textContent = velo.transmission === 'courroie' ? 'Courroie' : velo.transmission === 'chaine' ? 'Chaîne et dérailleur' : 'À confirmer';
                     if (ficheAnnee) ficheAnnee.textContent = velo.annee || 'Non renseignée';
                     if (ficheTaille) ficheTaille.textContent = velo.taille || 'Non renseignée';
                     if (ficheMoteur) ficheMoteur.textContent = velo.moteur || 'Non concerné ou non renseigné';
@@ -13194,13 +13212,25 @@ def obtenir_etat(
             (velo_id,)
         )
         rows = cursor.fetchall()
-        cursor.execute("SELECT freins FROM velos WHERE id = ?", (velo_id,))
-        ligne_freins = cursor.fetchone()
-        freins_velo = ligne_freins[0] if ligne_freins else None
+        cursor.execute("SELECT freins, suspension, tubeless, transmission FROM velos WHERE id = ?", (velo_id,))
+        equipement = cursor.fetchone()
+        freins_velo = equipement["freins"] if equipement else None
+        suspension_velo = equipement["suspension"] if equipement else None
+        tubeless_velo = equipement["tubeless"] if equipement else None
+        transmission_velo = equipement["transmission"] if equipement else None
+        rows = [r for r in rows if not str(r["nom"]).startswith("Non concerné")]
         if freins_velo == "patins":
-            rows = [r for r in rows if not (str(r["nom"]).startswith("Non concerné") or "plaquettes de frein" in str(r["nom"]).lower() or "disque de frein" in str(r["nom"]).lower() or "purge du liquide de frein" in str(r["nom"]).lower())]
+            rows = [r for r in rows if not any(mot in str(r["nom"]).lower() for mot in ("plaquettes de frein", "disque de frein", "purge du liquide de frein"))]
         elif freins_velo == "disque":
-            rows = [r for r in rows if not (str(r["nom"]).startswith("Non concerné") or "patins de frein" in str(r["nom"]).lower())]
+            rows = [r for r in rows if "patins de frein" not in str(r["nom"]).lower()]
+        if suspension_velo == "rigide":
+            rows = [r for r in rows if not any(mot in str(r["nom"]).lower() for mot in ("fourche -", "amortisseur -", "roulements de suspension"))]
+        elif suspension_velo == "avant":
+            rows = [r for r in rows if not any(mot in str(r["nom"]).lower() for mot in ("amortisseur -", "roulements de suspension"))]
+        if tubeless_velo == "chambre":
+            rows = [r for r in rows if "liquide préventif tubeless" not in str(r["nom"]).lower()]
+        if transmission_velo == "courroie":
+            rows = [r for r in rows if not any(mot in str(r["nom"]).lower() for mot in ("chaîne", "cassette", "plateau", "galets", "câble et gaine de dérailleur"))]
 
         reglages = lire_reglages(cursor)
         aujourdhui = date.today()
