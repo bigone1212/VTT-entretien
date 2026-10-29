@@ -117,6 +117,13 @@ jobs:
           assert "Liquide préventif tubeless (2 pneus)" in double
           assert "Chaîne (remplacement)" in double
 
+          inconnus = [ligne[0] for ligne in main.entretiens_du_type("vtt", None, None, None, None)]
+          assert "Freins - contrôle général (type à confirmer)" in inconnus
+          assert not any("disque de frein" in nom.lower() or "plaquettes de frein" in nom.lower() for nom in inconnus)
+          assert not any("fourche -" in nom.lower() or "amortisseur -" in nom.lower() for nom in inconnus)
+          assert not any("liquide préventif tubeless" in nom.lower() for nom in inconnus)
+          assert not any("chaîne" in nom.lower() or "cassette" in nom.lower() for nom in inconnus)
+
           ouverture = "<scr" + "ipt"
           fermeture = "</scr" + "ipt>"
           page = (
