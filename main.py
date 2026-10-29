@@ -4951,6 +4951,10 @@ def accueil():
                     if (data.modele) document.getElementById('nouveauVeloModele').value = data.modele;
                     if (data.annee) document.getElementById('nouveauVeloAnnee').value = data.annee;
                     if (data.freins) document.getElementById('nouveauVeloFreins').value = data.freins;
+                    if (data.type) document.getElementById('nouveauVeloType').value = data.type;
+                    if (data.moteur) document.getElementById('nouveauVeloMoteur').value = data.moteur;
+                    if (data.batterie) document.getElementById('nouveauVeloBatterie').value = data.batterie;
+                    afficherNomVeloActif();
                     zone.textContent = 'Source : ' + data.source + '. Vérifie chaque champ avant d’enregistrer. Les caractéristiques non trouvées restent à confirmer.';
                 } catch (e) {
                     zone.textContent = e.message || 'Recherche impossible. Tu peux compléter la fiche manuellement.';
@@ -12944,11 +12948,33 @@ def recherche_fiche_velo(data: RechercheFicheVeloRequest, x_code_acces: Optional
         freins = "patins"
     elif disques_trouves and not patins_trouves:
         freins = "disque"
+    type_velo = None
+    if re.search(r"\\bvtt\\b", bas) and re.search(r"électrique|electrique|e-bike", bas):
+        type_velo = "vtt_electrique"
+    elif re.search(r"\\bgravel\\b", bas) and re.search(r"électrique|electrique|e-bike", bas):
+        type_velo = "gravel_electrique"
+    elif re.search(r"\\bgravel\\b", bas):
+        type_velo = "gravel"
+    elif re.search(r"\\broute\\b", bas) and re.search(r"électrique|electrique|e-bike", bas):
+        type_velo = "route_electrique"
+    elif re.search(r"\\broute\\b|\\broad bike\\b", bas):
+        type_velo = "route"
+    elif re.search(r"\\benduro\\b", bas):
+        type_velo = "enduro"
+    elif re.search(r"\\bdescente\\b|\\bdownhill\\b", bas):
+        type_velo = "descente"
+    elif re.search(r"\\bvtt\\b|\\bmountain bike\\b", bas):
+        type_velo = "vtt"
+    moteur_match = re.search(r"(?:Bosch\\s+(?:Performance Line|Performance|CX|SX|PX)[^.;,]{0,35}|Shimano\\s+EP[0-9]{1,2}[^.;,]{0,25}|Yamaha\\s+(?:PW|PW-X)[^.;,]{0,25}|Brose[^.;,]{0,25})", texte, re.I)
+    batterie_match = re.search(r"(?:Bosch\\s+Power(?:Tube|Pack)[^.;,]{0,30}|PowerTube\\s*[0-9]{2,4}\\s?Wh|[0-9]{2,4}\\s?Wh(?:\\s+battery|\\s+batterie)?)", texte, re.I)
     return {
         "marque": str(marque)[:80] if marque else None,
         "modele": str(modele)[:120] if modele else None,
         "annee": int(annee_match.group(1)) if annee_match else None,
+        "type": type_velo,
         "freins": freins,
+        "moteur": moteur_match.group(0).strip()[:120] if moteur_match else None,
+        "batterie": batterie_match.group(0).strip()[:120] if batterie_match else None,
         "source": finale,
         "message": "Les données extraites doivent être vérifiées sur la fiche constructeur."
     }
