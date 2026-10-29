@@ -12524,9 +12524,11 @@ def adapter_freins_velo(cursor, velo_id, freins, suspension=None, tubeless=None,
     if transmission == "courroie":
         for nom in noms_transmission:
             changements[nom] = "Non concerné — " + nom
+        changements["Non concerné — Courroie (contrôle et remplacement)"] = "Courroie (contrôle et remplacement)"
     elif transmission == "chaine":
         for nom in noms_transmission:
             changements["Non concerné — " + nom] = nom
+        changements["Courroie (contrôle et remplacement)"] = "Non concerné — Courroie (contrôle et remplacement)"
     for ancien, nouveau in changements.items():
         cursor.execute(
             "UPDATE composants SET nom = ? WHERE velo_id = ? AND nom = ?",
@@ -13256,8 +13258,10 @@ def obtenir_etat(
                 rows = [r for r in rows if "liquide préventif tubeless" not in str(r["nom"]).lower()]
             if transmission_velo == "courroie":
                 rows = [r for r in rows if not any(mot in str(r["nom"]).lower() for mot in ("chaîne", "cassette", "plateau", "galets", "câble et gaine de dérailleur"))]
-            elif transmission_velo != "chaine":
-                rows = [r for r in rows if not any(mot in str(r["nom"]).lower() for mot in ("chaîne", "cassette", "plateau", "galets", "câble et gaine de dérailleur"))]
+            else:
+                rows = [r for r in rows if "courroie (contrôle et remplacement)" not in str(r["nom"]).lower()]
+                if transmission_velo != "chaine":
+                    rows = [r for r in rows if not any(mot in str(r["nom"]).lower() for mot in ("chaîne", "cassette", "plateau", "galets", "câble et gaine de dérailleur"))]
 
         reglages = lire_reglages(cursor)
         aujourdhui = date.today()
