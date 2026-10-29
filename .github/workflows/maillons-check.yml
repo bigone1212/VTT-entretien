@@ -1169,7 +1169,7 @@ jobs:
               items = page.eval_on_selector_all("#veloMenuZone [role=menuitem]", "os => os.map(o => [o.textContent.trim(), o.disabled])")
               print("menu:", items)
               noms = [i[0] for i in items]
-              assert len(items) == 5 and noms[4] == "Supprimer « Gravel test »" and not items[4][1], items
+              assert len(items) == 7 and noms[6] == "Supprimer « Gravel test »" and not items[6][1], items
               page.click("#veloMenuZone [role=menuitem]:has-text('Supprimer «')")
               page.wait_for_timeout(1500)
               assert len(dialogues) == 1 and "7 pièce" in dialogues[0] and "3 sortie" in dialogues[0] and "Gravel test" in dialogues[0], dialogues
@@ -1180,7 +1180,7 @@ jobs:
               # CUBE affiché : suppression désactivée
               page.click(bouton)
               items = page.eval_on_selector_all("#veloMenuZone [role=menuitem]", "os => os.map(o => o.disabled)")
-              assert items == [True, False, False, True, True], items
+              assert items == [True, False, False, True, True, True, True], items
               assert not erreurs, erreurs
               nav.close()
           print("OK menu vélo : suppression confirmée, retour au CUBE, CUBE protégé")
@@ -1418,6 +1418,153 @@ jobs:
           PY
           rm -f "$SQLITE_PATH"
           PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_photo_lien_nav.py"
+      - name: Vérifier l'enregistrement groupé des positions des repères (tout ou rien)
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-positions-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_positions_srv.py" <<'PY'
+          import db, main
+          from fastapi import HTTPException
+          main.verifier_auth = lambda _c: None
+          C = "x"
+          def refuse(code, f, *a, **k):
+              try: f(*a, **k)
+              except HTTPException as e:
+                  assert e.status_code == code, (code, e.status_code, e.detail); return
+              raise AssertionError("erreur %s attendue" % code)
+          def pos(velo):
+              c = db.connect(); cur = c.cursor(); cur.execute("SELECT id, pos_x, pos_y FROM composants WHERE velo_id = ? ORDER BY id", (velo,))
+              r = [tuple(x) for x in cur.fetchall()]; c.close(); return r
+          g = main.creer_velo(main.NouveauVeloRequest(nom="Gravel pos", type="gravel"), x_code_acces=C)["velo_id"]
+          h = main.creer_velo(main.NouveauVeloRequest(nom="VTT pos", type="vtt"), x_code_acces=C)["velo_id"]
+          ids_g = [x[0] for x in pos(g)]; avant_g = pos(g); avant_h = pos(h); avant_cube = pos(1)
+          lot = [main.PositionRepere(composant_id=i, pos_x=10 + k, pos_y=20 + k) for k, i in enumerate(ids_g)]
+          r = main.enregistrer_positions_velo(g, main.PositionsRequest(positions=lot), x_code_acces=C)
+          assert r["deplaces"] == len(ids_g)
+          assert pos(g) == [(i, 10 + k, 20 + k) for k, i in enumerate(ids_g)]
+          assert pos(h) == avant_h and pos(1) == avant_cube          # les autres vélos ne bougent pas
+          # tout ou rien : une pièce d'un autre vélo -> rien n'est modifié
+          etranger = pos(h)[0][0]
+          mauvais = [main.PositionRepere(composant_id=ids_g[0], pos_x=99, pos_y=99), main.PositionRepere(composant_id=etranger, pos_x=1, pos_y=1)]
+          refuse(404, main.enregistrer_positions_velo, g, main.PositionsRequest(positions=mauvais), x_code_acces=C)
+          assert pos(g) == [(i, 10 + k, 20 + k) for k, i in enumerate(ids_g)] and pos(h) == avant_h
+          refuse(404, main.enregistrer_positions_velo, 999, main.PositionsRequest(positions=lot[:1]), x_code_acces=C)
+          print("OK positions groupées (serveur)")
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_positions_srv.py"
+      - name: Tester le placement automatique des repères sur une photo dans un vrai navigateur
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-reperes-nav-test.db
+          CODE_ACCES: test
+        run: |
+          pip install pillow
+          cat > "$RUNNER_TEMP/test_reperes_nav.py" <<'PY'
+          import io, json, os, tempfile
+          from urllib.parse import urlparse
+          from PIL import Image, ImageDraw
+          from playwright.sync_api import sync_playwright
+          import main
+          html = main.accueil()
+
+          def velo_png(chemin, taille, boite):
+              """Vélo de profil schématique sur fond blanc, guidon à droite ; boite = (x0, y0, x1, y1) du vélo."""
+              img = Image.new("RGB", taille, (255, 255, 255)); d = ImageDraw.Draw(img)
+              x0, y0, x1, y1 = boite; w, h = x1 - x0, y1 - y0; r = int(w * 0.20)
+              cy = y1 - r
+              for cx in (x0 + r, x1 - r):
+                  d.ellipse((cx - r, cy - r, cx + r, cy + r), outline=(20, 20, 20), width=max(8, r // 8))
+              ar, av = (x0 + r, cy), (x1 - r, cy)
+              haut = (x0 + int(w * 0.45), y0 + int(h * 0.30)); tete = (x0 + int(w * 0.72), y0 + int(h * 0.30))
+              d.line([ar, haut, tete, av], fill=(200, 30, 30), width=14)
+              d.line([haut, (x0 + int(w * 0.34), y0 + 10)], fill=(200, 30, 30), width=14)       # selle
+              d.line([tete, (x0 + int(w * 0.76), y0 + 10)], fill=(30, 30, 200), width=14)       # guidon
+              d.rectangle((x0 + int(w * 0.30), y0, x0 + int(w * 0.40), y0 + 24), fill=(0, 0, 0))
+              img.save(chemin)
+
+          dossier = tempfile.mkdtemp()
+          p1 = os.path.join(dossier, "v1.png"); velo_png(p1, (1600, 900), (300, 150, 1300, 800))
+          p2 = os.path.join(dossier, "v2.png"); velo_png(p2, (1000, 1000), (100, 200, 900, 700))
+
+          NOMS = ["Frein avant", "Frein arrière", "Pneus", "Fourche (entretien)", "Pièce mystère"]
+          COMPS = [{"id": 10 + i, "numero": i + 1, "verification": False, "nom": n, "km_actuel": 10, "km_usure": 10, "km_depart": 0,
+                    "seuil_alerte": 2000, "pourcentage_usure": 5, "seuil_jours": 0, "jours_ecoules": None, "jours_usure": None,
+                    "coef_usure": 1, "alerte_entretien": False, "categorie": "piece", "pos_x": 30, "pos_y": 60} for i, n in enumerate(NOMS)]
+          VELOS = [{"id": 1, "nom": "Mon CUBE", "type": "vtt_electrique", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0},
+                   {"id": 2, "nom": "Gravel test", "type": "gravel", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0}]
+          etat = {"photo": None, "envois": []}; erreurs = []; dialogues = []
+
+          with sync_playwright() as p:
+              nav = p.chromium.launch(); ctx = nav.new_context(viewport={"width": 390, "height": 844})
+              def api(route):
+                  r = route.request; u = urlparse(r.url)
+                  if u.path == "/api/velos": corps = [dict(v) for v in VELOS]
+                  elif u.path == "/api/velos/2/photo":
+                      if r.method == "PUT": etat["photo"] = json.loads(r.post_data)["photo"]; VELOS[1]["a_photo"] = 1; corps = {"statut": "success"}
+                      else: corps = {"photo": etat["photo"]}
+                  elif u.path == "/api/velos/2/positions":
+                      lot = json.loads(r.post_data)["positions"]; etat["envois"].append(lot)
+                      for pos in lot:
+                          for c in COMPS:
+                              if c["id"] == pos["composant_id"]: c["pos_x"], c["pos_y"] = pos["pos_x"], pos["pos_y"]
+                      corps = {"statut": "success", "deplaces": len(lot)}
+                  elif u.path == "/api/etat": corps = {"km_total": 0, "composants": COMPS if u.query.endswith("velo_id=2") or "velo_id=2" in u.query else []}
+                  elif u.path == "/api/mes-reglages": corps = {"valeurs": {}, "maj_le": None}
+                  elif u.path == "/api/reglages": corps = {"terrain_route": 1, "terrain_mixte": 1.2, "terrain_chemin": 1.5, "terrain_sentier": 2, "poids_denivele": 1}
+                  else: corps = []
+                  route.fulfill(status=200, content_type="application/json", body=json.dumps(corps))
+              ctx.route("**/localhost/api/**", api); ctx.route(lambda u: not u.startswith("http://localhost/"), lambda r: r.abort())
+              ctx.add_init_script("sessionStorage.setItem('vtt_code','t'); sessionStorage.setItem('maillons_velo_id','2')")
+              page = ctx.new_page(); page.on("pageerror", lambda e: erreurs.append(str(e)[:200])); page.on("dialog", lambda d: (dialogues.append(d.message), d.accept()))
+              page.route("http://localhost/", lambda r: r.fulfill(status=200, content_type="text/html", body=html))
+              page.goto("http://localhost/"); page.wait_for_timeout(1200)
+
+              def derniere():
+                  return {NOMS[c["composant_id"] - 10]: (c["pos_x"], c["pos_y"]) for c in etat["envois"][-1]}
+              def proche(a, b, tol=3): return abs(a - b) <= tol
+
+              # 1) Photo 16:9 : placement automatique dès l'enregistrement (guidon à droite)
+              with page.expect_file_chooser() as fc: page.click("#btnAjouterPhotoVelo")
+              fc.value.set_files(p1); page.wait_for_timeout(2500)
+              assert len(etat["envois"]) == 1, "placement automatique non lancé"
+              pos = derniere(); print(pos)
+              # vélo = x 300..1300, y 150..800 sur 1600x900 ; frein avant (0,84 ; 0,76) -> x 71,3 % ; y 71,9 %
+              assert proche(pos["Frein avant"][0], 71) and proche(pos["Frein avant"][1], 72), pos["Frein avant"]
+              assert proche(pos["Frein arrière"][0], 29) and proche(pos["Frein arrière"][1], 72), pos["Frein arrière"]
+              assert pos["Frein avant"][0] > pos["Fourche (entretien)"][0] - 15 and pos["Fourche (entretien)"][1] < pos["Frein avant"][1]
+              assert 0 <= min(v for xy in pos.values() for v in xy) and max(v for xy in pos.values() for v in xy) <= 100
+              # les pastilles affichées suivent les nouvelles positions
+              gauche = page.eval_on_selector_all(".hotspot.entretien", "os => os.map(o => [o.title.split(' (')[0], o.style.left, o.style.top])")
+              d = {t: (float(l[:-1]), float(h[:-1])) for t, l, h in gauche}
+              assert proche(d["Frein avant"][0], pos["Frein avant"][0], 1), d
+              # 2) Guidon à gauche : positions en miroir
+              page.evaluate("location.hash = 'reglages'"); page.wait_for_timeout(400)
+              page.click("#veloMenuZone button[aria-label='Actions du vélo']")
+              page.click("#veloMenuZone [role=menuitem]:has-text('guidon à gauche')"); page.wait_for_timeout(1500)
+              assert len(etat["envois"]) == 2
+              miroir = derniere()
+              assert proche(miroir["Frein avant"][0], 100 - pos["Frein avant"][0], 2) and miroir["Frein avant"][1] == pos["Frein avant"][1], (miroir, pos)
+              # 3) Photo carrée (bandes blanches de chaque côté dans le cadre 16:9)
+              page.evaluate("location.hash = 'entretien'"); page.wait_for_timeout(400)
+              page.evaluate("location.hash = 'reglages'"); page.wait_for_timeout(300)
+              page.click("#veloMenuZone button[aria-label='Actions du vélo']")
+              with page.expect_file_chooser() as fc2: page.click("#veloMenuZone [role=menuitem]:has-text('Changer la photo')")
+              fc2.value.set_files(p2); page.wait_for_timeout(2500)
+              assert len(etat["envois"]) == 3
+              pos3 = derniere()
+              # cadre non visible (page Réglages) -> hypothèse 16:9 ; photo 1000x1000 : échelle 9/1000, décalage horizontal (16-9)/2
+              cw, ch = 16.0, 9.0; ech = min(cw / 1000, ch / 1000); dx = (cw - 1000 * ech) / 2
+              attendu_x = (dx + (100 + 0.84 * 800) * ech) / cw * 100; attendu_y = ((200 + 0.76 * 500) * ech + (ch - 1000 * ech) / 2) / ch * 100
+              assert proche(pos3["Frein avant"][0], attendu_x, 3) and proche(pos3["Frein avant"][1], attendu_y, 3), (pos3["Frein avant"], attendu_x, attendu_y)
+              # Pièce inconnue : garde une place plausible, jamais hors cadre
+              assert 0 <= pos3["Pièce mystère"][0] <= 100 and 0 <= pos3["Pièce mystère"][1] <= 100
+              assert not erreurs, erreurs
+              nav.close()
+          print("OK repères automatiques (navigateur)")
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_reperes_nav.py"
       - name: Tester la fiche technique de tous les vélos dans un vrai navigateur
         env:
           SQLITE_PATH: ${{ runner.temp }}/maillons-fiche-test.db
