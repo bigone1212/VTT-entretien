@@ -79,6 +79,138 @@ jobs:
           PY
       - name: Installer les dépendances de l'application
         run: pip install -r requirements.txt
+      - name: Tester la recherche de fiche et l'adaptation des freins
+        run: |
+          python - <<'PY'
+          import json
+          import sqlite3
+          import main
+
+          main.verifier_auth = lambda _code: None
+
+          patins = main.entretiens_du_type("route", "patins")
+          noms_patins = [ligne[0] for ligne in patins]
+          assert "Patins de frein (avant)" in noms_patins
+          assert "Patins de frein (arrière)" in noms_patins
+          assert not any("disque de frein" in nom.lower() for nom in noms_patins)
+          assert not any("plaquettes de frein" in nom.lower() for nom in noms_patins)
+          assert not any("purge du liquide" in nom.lower() for nom in noms_patins)
+
+          disques = [ligne[0] for ligne in main.entretiens_du_type("route", "disque")]
+          assert "Plaquettes de frein (avant)" in disques
+          assert "Disque de frein (avant)" in disques
+          assert "Purge du liquide de frein" not in disques
+          hydrauliques = [ligne[0] for ligne in main.entretiens_du_type("route", "disque_hydraulique")]
+          assert "Purge du liquide de frein" in hydrauliques
+          mecaniques = [ligne[0] for ligne in main.entretiens_du_type("route", "disque_mecanique")]
+          assert "Purge du liquide de frein" not in mecaniques
+
+          rigide = [ligne[0] for ligne in main.entretiens_du_type("vtt", None, "rigide", "chambre", "courroie")]
+          assert "Courroie (contrôle et remplacement)" in rigide
+          assert not any("chaîne" in nom.lower() or "cassette" in nom.lower() for nom in rigide)
+          assert not any("liquide préventif tubeless" in nom.lower() for nom in rigide)
+          assert not any("fourche -" in nom.lower() or "amortisseur -" in nom.lower() for nom in rigide)
+
+          double = [ligne[0] for ligne in main.entretiens_du_type("vtt", None, "double", "tubeless", "chaine")]
+          assert "Fourche - entretien (50 h)" in double
+          assert "Amortisseur - entretien (50 h)" in double
+          assert "Liquide préventif tubeless (2 pneus)" in double
+          assert "Chaîne (remplacement)" in double
+
+          inconnus = [ligne[0] for ligne in main.entretiens_du_type("vtt", None, None, None, None)]
+          assert "Freins - contrôle général (type à confirmer)" in inconnus
+          assert not any("disque de frein" in nom.lower() or "plaquettes de frein" in nom.lower() for nom in inconnus)
+          assert not any("fourche -" in nom.lower() or "amortisseur -" in nom.lower() for nom in inconnus)
+          assert not any("liquide préventif tubeless" in nom.lower() for nom in inconnus)
+          assert not any("chaîne" in nom.lower() or "cassette" in nom.lower() for nom in inconnus)
+
+          from pathlib import Path
+          source = Path("main.py").read_text(encoding="utf-8")
+          guides_start = source.index("const GUIDES = {")
+          guides_end = source.index("function lienYoutube(nom) {", guides_start)
+          guides = source[guides_start:guides_end]
+          configurations = (
+              ("route", "patins", "rigide", "chambre", "chaine"),
+              ("vtt", "disque_hydraulique", "double", "tubeless", "chaine"),
+              ("route", "disque_mecanique", "rigide", "chambre", "courroie"),
+              ("vtt", None, None, None, None),
+          )
+          for configuration in configurations:
+              for ligne in main.entretiens_du_type(*configuration):
+                  assert '"' + ligne[0] + '"' in guides, (
+                      "Fiche « Comment faire » absente pour la configuration "
+                      + str(configuration) + ": " + ligne[0]
+                  )
+
+          ouverture = "<scr" + "ipt"
+          fermeture = "</scr" + "ipt>"
+          page = (
+              "<html>" + ouverture + " type='application/ld+json'>" +
+              json.dumps({"@type": "Product", "name": "EDR Easy Route", "brand": {"@type": "Brand", "name": "EDR"}, "releaseDate": "2025"}) +
+              fermeture + "<p>Freins à patins. Fourche rigide. Chambre à air. Chaîne et dérailleur.</p></html>"
+          )
+          main.telecharger_lien = lambda url, accepter: ("text/html", page.encode("utf-8"), url)
+          fiche = main.recherche_fiche_velo(
+              main.RechercheFicheVeloRequest(url="https://example.com/edr"),
+              None
+          )
+          assert fiche["marque"] == "EDR", fiche
+          assert fiche["modele"] == "EDR Easy Route", fiche
+          assert fiche["annee"] == 2025, fiche
+          assert fiche["freins"] == "patins", fiche
+          assert fiche["suspension"] == "rigide", fiche
+          assert fiche["tubeless"] == "chambre", fiche
+          assert fiche["transmission"] == "chaine", fiche
+
+          page = (
+              "<html>" + ouverture + " type='application/ld+json'>" +
+              json.dumps({"@type": "Product", "name": "Vélo test", "brand": "Test"}) +
+              fermeture + "<p>Freins à disque hydrauliques. Pneus tubeless ready.</p></html>"
+          )
+          hydraulique = main.recherche_fiche_velo(
+              main.RechercheFicheVeloRequest(url="https://example.com/hydraulique"),
+              None
+          )
+          assert hydraulique["freins"] == "disque_hydraulique", hydraulique
+          assert hydraulique["tubeless"] is None, hydraulique
+
+          conn = sqlite3.connect(":memory:")
+          cur = conn.cursor()
+          cur.execute("CREATE TABLE velos (id INTEGER PRIMARY KEY, type TEXT)")
+          cur.execute("INSERT INTO velos VALUES (2, 'route')")
+          cur.execute("""CREATE TABLE composants (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              velo_id INTEGER, nom TEXT, km_depart INTEGER DEFAULT 0,
+              seuil_alerte INTEGER DEFAULT 0, seuil_jours INTEGER DEFAULT 0,
+              categorie TEXT DEFAULT 'piece', pos_x INTEGER DEFAULT 50,
+              pos_y INTEGER DEFAULT 50, verification INTEGER DEFAULT 0,
+              coef_usure REAL DEFAULT 1
+          )""")
+          cur.executemany(
+              "INSERT INTO composants (id, velo_id, nom, seuil_alerte) VALUES (?, 2, ?, 1000)",
+              [(1, "Plaquettes de frein (avant)"), (2, "Plaquettes de frein (arrière)"),
+               (3, "Disque de frein (avant)"), (4, "Disque de frein (arrière)"),
+               (5, "Purge du liquide de frein")]
+          )
+          main.adapter_freins_velo(cur, 2, "patins")
+          composants = dict(cur.execute("SELECT id, nom FROM composants WHERE velo_id = 2").fetchall())
+          assert composants[1] == "Patins de frein (avant)", composants
+          assert composants[2] == "Patins de frein (arrière)", composants
+          assert composants[3] == "Non concerné — disque de frein (avant)", composants
+          assert composants[5] == "Non concerné — purge du liquide de frein", composants
+          assert cur.execute("SELECT COUNT(*) FROM composants").fetchone()[0] >= 5
+
+          main.adapter_freins_velo(cur, 2, "patins", "rigide", "chambre", "courroie")
+          noms_courroie = {r[0] for r in cur.execute("SELECT nom FROM composants WHERE velo_id = 2").fetchall()}
+          assert "Courroie (contrôle et remplacement)" in noms_courroie
+          assert not any("chaîne" in nom.lower() or "cassette" in nom.lower() for nom in noms_courroie if not nom.startswith("Non concerné"))
+          main.adapter_freins_velo(cur, 2, "patins", "rigide", "chambre", "chaine")
+          noms_chaine = {r[0] for r in cur.execute("SELECT nom FROM composants WHERE velo_id = 2").fetchall()}
+          assert "Chaîne (remplacement)" in noms_chaine
+          assert "Non concerné — Courroie (contrôle et remplacement)" in noms_chaine
+
+          print("OK : recherche structurée, équipements adaptés, transitions chaîne/courroie et conservation des identifiants.")
+          PY
       - name: Tester le téléchargement JSON de la sauvegarde avec des kilométrages divergents
         env:
           SQLITE_PATH: ${{ runner.temp }}/maillons-sauvegarde-test.db

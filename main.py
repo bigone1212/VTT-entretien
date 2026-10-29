@@ -7,6 +7,7 @@ import gpx_import
 import hmac
 import ipaddress
 import json
+import html as html_lib
 import math
 import os
 import re
@@ -344,10 +345,8 @@ KM_PAR_TYPE = {
 }
 
 
-def entretiens_du_type(type_velo):
-    """Entretiens et contrôles d'un type de vélo.
-    Liste de (nom, km, jours, catégorie, x %, y %, vérification) ;
-    0 = aucun seuil, vérification 1 = contrôle régulier (bouton « Vérifications »)."""
+def entretiens_du_type(type_velo, freins=None, suspension=None, tubeless=None, transmission=None):
+    """Entretiens adaptés aux caractéristiques validées du vélo."""
     km = KM_PAR_TYPE.get(type_velo) or KM_PAR_TYPE["vtt_electrique"]
     chaine, cassette, plaquettes, disques, pneu_av, pneu_ar, nettoyage, susp = km
     piece, maintenance = "piece", "maintenance"
@@ -371,16 +370,48 @@ def entretiens_du_type(type_velo):
         ("Jeu de direction (contrôle et graissage)", 5000, 365, maintenance, 65, 20, 0),
     ]
 
-    if type_velo in TYPES_TUBELESS:
-        liste.append(("Liquide préventif tubeless (2 pneus)", 0, 120, maintenance, 87, 82, 0))
-
-    if type_velo in TYPES_SUSPENDUS:
+    if freins == "patins":
+        liste = [ligne for ligne in liste if not any(mot in ligne[0].lower() for mot in ("plaquettes de frein", "disque de frein", "purge du liquide de frein"))]
         liste.extend([
-            ("Fourche - entretien (50 h)", susp, 0, maintenance, 75, 44, 0),
-            ("Fourche - révision complète (200 h)", susp * 4, 0, maintenance, 71, 34, 0),
-            ("Amortisseur - entretien (50 h)", susp, 0, maintenance, 44, 44, 0),
-            ("Amortisseur - révision complète (200 h)", susp * 4, 0, maintenance, 48, 50, 0),
+            ("Patins de frein (avant)", plaquettes, 0, piece, 70, 62, 0),
+            ("Patins de frein (arrière)", plaquettes, 0, piece, 22, 47, 0),
+        ])
+    elif freins in ("disque", "disque_hydraulique", "disque_mecanique"):
+        if freins != "disque_hydraulique":
+            liste = [ligne for ligne in liste if "purge du liquide de frein" not in ligne[0].lower()]
+    else:
+        liste = [ligne for ligne in liste if not any(mot in ligne[0].lower() for mot in ("plaquettes de frein", "disque de frein", "purge du liquide de frein", "patins de frein"))]
+        liste.append(("Freins - contrôle général (type à confirmer)", 0, 30, maintenance, 57, 15, 1))
+
+    if transmission == "courroie":
+        termes_transmission = ("chaîne", "lubrification chaîne", "cassette", "plateau", "galets", "câble et gaine de dérailleur")
+        liste = [ligne for ligne in liste if not any(terme in ligne[0].lower() for terme in termes_transmission)]
+        liste.append(("Courroie (contrôle et remplacement)", 10000, 365, piece, 27, 76, 0))
+    elif transmission != "chaine":
+        termes_transmission = ("chaîne", "lubrification chaîne", "cassette", "plateau", "galets", "câble et gaine de dérailleur")
+        liste = [ligne for ligne in liste if not any(terme in ligne[0].lower() for terme in termes_transmission)]
+
+    if tubeless == "chambre":
+        liste = [ligne for ligne in liste if "liquide préventif tubeless" not in ligne[0].lower()]
+    elif tubeless == "tubeless":
+        if not any("liquide préventif tubeless" in ligne[0].lower() for ligne in liste):
+            liste.append(("Liquide préventif tubeless (2 pneus)", 0, 120, maintenance, 87, 82, 0))
+    type_suspension = suspension if suspension in ("rigide", "avant", "double") else None
+    liste = [ligne for ligne in liste if not any(mot in ligne[0].lower() for mot in ("fourche -", "amortisseur -", "roulements de suspension"))]
+    if type_suspension in ("avant", "double"):
+        seuil_susp = susp or 800
+        liste.extend([
+            ("Fourche - entretien (50 h)", seuil_susp, 0, maintenance, 75, 44, 0),
+            ("Fourche - révision complète (200 h)", seuil_susp * 4, 0, maintenance, 71, 34, 0),
+            ("Fourche - pression et SAG (contrôle)", 0, 30, maintenance, 80, 38, 1),
+        ])
+    if type_suspension == "double":
+        seuil_susp = susp or 800
+        liste.extend([
+            ("Amortisseur - entretien (50 h)", seuil_susp, 0, maintenance, 44, 44, 0),
+            ("Amortisseur - révision complète (200 h)", seuil_susp * 4, 0, maintenance, 48, 50, 0),
             ("Roulements de suspension (biellettes)", 3000, 365, maintenance, 35, 56, 0),
+            ("Amortisseur - pression et SAG (contrôle)", 0, 30, maintenance, 41, 50, 1),
         ])
 
     # Contrôles réguliers, regroupés sous le bouton « Vérifications ».
@@ -389,12 +420,6 @@ def entretiens_du_type(type_velo):
         ("Rayons et voile des roues (contrôle)", 0, 180, maintenance, 84, 48, 1),
         ("Contrôle des serrages (vis et boulons)", 0, 180, maintenance, 63, 12, 1),
     ])
-
-    if type_velo in TYPES_SUSPENDUS:
-        liste.extend([
-            ("Fourche - pression et SAG (contrôle)", 0, 30, maintenance, 80, 38, 1),
-            ("Amortisseur - pression et SAG (contrôle)", 0, 30, maintenance, 41, 50, 1),
-        ])
 
     if type_velo in TYPES_ELECTRIQUES:
         liste.extend([
@@ -542,6 +567,10 @@ def init_db():
     # compteur de jours des pièces). Vide pour le CUBE et les vélos déjà créés :
     # on retombe alors sur la date d'achat, comme avant.
     ajouter_colonne(cursor, "velos", "suivi_depuis", "TEXT")
+    ajouter_colonne(cursor, "velos", "freins", "TEXT")
+    ajouter_colonne(cursor, "velos", "suspension", "TEXT")
+    ajouter_colonne(cursor, "velos", "tubeless", "TEXT")
+    ajouter_colonne(cursor, "velos", "transmission", "TEXT")
 
     # Le CUBE reçoit TOUJOURS l'identifiant 1 : les pièces et les sorties
     # existantes sont rattachées au vélo n° 1 (velo_id par défaut).
@@ -3624,6 +3653,11 @@ def accueil():
                     <option value="route">Route</option>
                     <option value="route_electrique">Route électrique</option>
                 </select>
+                <div class="form-help">Recherche automatique des caractéristiques</div>
+                <label for="veloRechercheFiche">Modèle du vélo ou lien constructeur</label>
+                <input id="veloRechercheFiche" type="text" maxlength="2000" placeholder="Ex. : EDR Easy Route ou lien de la fiche">
+                <button type="button" id="boutonRechercheFiche" style="width:100%; margin:6px 0;">Rechercher les caractéristiques</button>
+                <div id="resultatsRechercheFiche" class="form-help" aria-live="polite"></div>
                 <label for="nouveauVeloMarque">Marque (facultatif)</label>
                 <input id="nouveauVeloMarque" name="marque" type="text" maxlength="80">
                 <label for="nouveauVeloModele">Modèle (facultatif)</label>
@@ -3634,6 +3668,34 @@ def accueil():
                 <input id="nouveauVeloTaille" name="taille" type="text" maxlength="30">
                 <label for="nouveauVeloDate">Date d'achat (facultatif)</label>
                 <input id="nouveauVeloDate" name="date_achat" type="date">
+                <label for="nouveauVeloFreins">Freins</label>
+                <select id="nouveauVeloFreins" name="freins">
+                    <option value="inconnu">À confirmer</option>
+                    <option value="disque">Freins à disque (type à confirmer)</option>
+                    <option value="disque_hydraulique">Freins à disque hydrauliques</option>
+                    <option value="disque_mecanique">Freins à disque mécaniques</option>
+                    <option value="patins">Freins à patins</option>
+                </select>
+                <label for="nouveauVeloSuspension">Suspension</label>
+                <select id="nouveauVeloSuspension" name="suspension">
+                    <option value="inconnu">À confirmer</option>
+                    <option value="rigide">Sans suspension</option>
+                    <option value="avant">Fourche suspendue</option>
+                    <option value="double">Fourche et amortisseur arrière</option>
+                </select>
+                <label for="nouveauVeloTubeless">Montage des pneus</label>
+                <select id="nouveauVeloTubeless" name="tubeless">
+                    <option value="inconnu">À confirmer</option>
+                    <option value="chambre">Avec chambre à air</option>
+                    <option value="tubeless">Tubeless</option>
+                </select>
+                <label for="nouveauVeloTransmission">Transmission</label>
+                <select id="nouveauVeloTransmission" name="transmission">
+                    <option value="inconnu">À confirmer</option>
+                    <option value="chaine">Chaîne et dérailleur</option>
+                    <option value="courroie">Courroie</option>
+                </select>
+                <div class="form-help">Les caractéristiques trouvées sont proposées, jamais appliquées sans vérification. Les entretiens dépendant d'un équipement non confirmé seront adaptés après validation.</div>
                 <div id="champsElectriques">
                     <label for="nouveauVeloMoteur">Moteur (vélo électrique uniquement)</label>
                     <input id="nouveauVeloMoteur" name="moteur" type="text" maxlength="120">
@@ -3853,6 +3915,22 @@ def accueil():
                 <div class="ftv-item">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="9" y="8" width="30" height="32" rx="4"/><path d="M15 17h18M15 24h18M15 31h10"/></svg></span>
                     <span><span class="ftv-libelle">Modèle</span><span class="ftv-valeur" id="ficheAutreModele">—</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="13" cy="24" r="9"/><circle cx="35" cy="24" r="9"/><path d="M13 24h22M24 13v22"/></svg></span>
+                    <span><span class="ftv-libelle">Freins</span><span class="ftv-valeur" id="ficheAutreFreins">À confirmer</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M14 6l-4 28m4-28l10 28m-10-28h7M10 34l-3 8m13-8l3 8M27 12h12m-12 7h12m-12 7h12"/></svg></span>
+                    <span><span class="ftv-libelle">Suspension</span><span class="ftv-valeur" id="ficheAutreSuspension">À confirmer</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="16"/><circle cx="24" cy="24" r="7"/><path d="M24 8v9m16 7h-9M24 40v-9M8 24h9"/></svg></span>
+                    <span><span class="ftv-libelle">Pneus</span><span class="ftv-valeur" id="ficheAutreTubeless">À confirmer</span></span>
+                </div>
+                <div class="ftv-item">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="12" cy="32" r="7"/><circle cx="36" cy="32" r="7"/><path d="M12 32l8-17h9l7 17M20 15h9M24 15l-4-6"/></svg></span>
+                    <span><span class="ftv-libelle">Transmission</span><span class="ftv-valeur" id="ficheAutreTransmission">À confirmer</span></span>
                 </div>
                 <div class="ftv-item">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="7" y="10" width="34" height="30" rx="4"/><path d="M7 19h34M16 6v8m16-8v8"/></svg></span>
@@ -4815,6 +4893,14 @@ def accueil():
                     if (ficheType) ficheType.textContent = TYPES_VELO[velo.type] || velo.type || 'Non renseigné';
                     if (ficheMarque) ficheMarque.textContent = velo.marque || 'Non renseignée';
                     if (ficheModele) ficheModele.textContent = velo.modele || 'Non renseigné';
+                    const ficheFreins = document.getElementById('ficheAutreFreins');
+                    if (ficheFreins) ficheFreins.textContent = velo.freins === 'patins' ? 'Freins à patins' : velo.freins === 'disque_hydraulique' ? 'Freins à disque hydrauliques' : velo.freins === 'disque_mecanique' ? 'Freins à disque mécaniques' : velo.freins === 'disque' ? 'Freins à disque, type à confirmer' : 'À confirmer';
+                    const ficheSuspension = document.getElementById('ficheAutreSuspension');
+                    if (ficheSuspension) ficheSuspension.textContent = ({ rigide: 'Sans suspension', avant: 'Fourche suspendue', double: 'Fourche et amortisseur arrière' })[velo.suspension] || 'À confirmer';
+                    const ficheTubeless = document.getElementById('ficheAutreTubeless');
+                    if (ficheTubeless) ficheTubeless.textContent = velo.tubeless === 'tubeless' ? 'Tubeless' : velo.tubeless === 'chambre' ? 'Avec chambre à air' : 'À confirmer';
+                    const ficheTransmission = document.getElementById('ficheAutreTransmission');
+                    if (ficheTransmission) ficheTransmission.textContent = velo.transmission === 'courroie' ? 'Courroie' : velo.transmission === 'chaine' ? 'Chaîne et dérailleur' : 'À confirmer';
                     if (ficheAnnee) ficheAnnee.textContent = velo.annee || 'Non renseignée';
                     if (ficheTaille) ficheTaille.textContent = velo.taille || 'Non renseignée';
                     if (ficheMoteur) ficheMoteur.textContent = velo.moteur || 'Non concerné ou non renseigné';
@@ -4868,6 +4954,10 @@ def accueil():
                 formulaire.elements.date_achat.value = velo.date_achat || '';
                 formulaire.elements.moteur.value = velo.moteur || '';
                 formulaire.elements.batterie.value = velo.batterie || '';
+                if (formulaire.elements.freins) formulaire.elements.freins.value = velo.freins || 'inconnu';
+                if (formulaire.elements.suspension) formulaire.elements.suspension.value = velo.suspension || 'inconnu';
+                if (formulaire.elements.tubeless) formulaire.elements.tubeless.value = velo.tubeless || 'inconnu';
+                if (formulaire.elements.transmission) formulaire.elements.transmission.value = velo.transmission || 'inconnu';
                 veloEditionId = Number(velo.id);
                 document.getElementById('titreFormVelo').textContent = 'Modifier la fiche du vélo';
                 document.getElementById('boutonCreerVelo').textContent = 'Enregistrer la fiche';
@@ -4889,6 +4979,54 @@ def accueil():
                 document.getElementById('nouveauVeloMessage').textContent = '';
                 afficherNomVeloActif();
             }
+
+            async function rechercherFicheVelo(url = null) {
+                const entree = document.getElementById('veloRechercheFiche');
+                const zone = document.getElementById('resultatsRechercheFiche');
+                const recherche = (entree.value || '').trim();
+                if (!url && !recherche) {
+                    zone.textContent = 'Saisis le modèle du vélo ou le lien de sa fiche constructeur.';
+                    return;
+                }
+                zone.textContent = 'Recherche en cours…';
+                try {
+                    const res = await fetch('/api/recherche-fiche-velo', {
+                        method: 'POST',
+                        headers: getHeaders(),
+                        body: JSON.stringify({ recherche: url ? '' : recherche, url: url || '' })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Recherche impossible.');
+                    if (data.candidats) {
+                        zone.textContent = 'Choisis la fiche qui correspond exactement à ton vélo :';
+                        data.candidats.forEach(candidat => {
+                            const bouton = document.createElement('button');
+                            bouton.type = 'button';
+                            bouton.textContent = candidat.titre;
+                            bouton.style.width = '100%';
+                            bouton.style.margin = '4px 0';
+                            bouton.addEventListener('click', () => rechercherFicheVelo(candidat.url));
+                            zone.appendChild(bouton);
+                        });
+                        return;
+                    }
+                    if (data.marque) document.getElementById('nouveauVeloMarque').value = data.marque;
+                    if (data.modele) document.getElementById('nouveauVeloModele').value = data.modele;
+                    if (data.annee) document.getElementById('nouveauVeloAnnee').value = data.annee;
+                    if (data.freins) document.getElementById('nouveauVeloFreins').value = data.freins;
+                    if (data.suspension) document.getElementById('nouveauVeloSuspension').value = data.suspension;
+                    if (data.tubeless) document.getElementById('nouveauVeloTubeless').value = data.tubeless;
+                    if (data.transmission) document.getElementById('nouveauVeloTransmission').value = data.transmission;
+                    if (data.type) document.getElementById('nouveauVeloType').value = data.type;
+                    if (data.moteur) document.getElementById('nouveauVeloMoteur').value = data.moteur;
+                    if (data.batterie) document.getElementById('nouveauVeloBatterie').value = data.batterie;
+                    afficherNomVeloActif();
+                    zone.textContent = 'Source : ' + data.source + '. Vérifie chaque champ avant d’enregistrer. Les caractéristiques non trouvées restent à confirmer.';
+                } catch (e) {
+                    zone.textContent = e.message || 'Recherche impossible. Tu peux compléter la fiche manuellement.';
+                }
+            }
+            document.getElementById('boutonRechercheFiche').addEventListener('click', () => rechercherFicheVelo());
 
             document.getElementById('formAjouterVelo').addEventListener('submit', async event => {
                 event.preventDefault();
@@ -5535,6 +5673,26 @@ def accueil():
                     ["Retirer la chaîne ou la dégager de la cage du dérailleur.", "Dévisser les deux galets, un par un, pour ne pas les mélanger.", "Monter les galets neufs dans le même sens, avec un peu de graisse.", "Remettre la chaîne, vérifier que tout tourne librement."],
                     "Clés Allen, graisse, chiffon",
                     "changer galets dérailleur vélo"],
+                "Freins - contrôle général (type à confirmer)": ["Facile",
+                    "Le type de frein n'est pas encore confirmé. Ce contrôle général permet de repérer un problème sans supposer qu'il s'agit de patins ou de disques.",
+                    ["Actionner chaque levier et vérifier qu'il revient normalement.", "Regarder si les deux freins ralentissent le vélo sans bruit anormal.", "Chercher une fuite, une pièce desserrée ou une usure visible.", "Confirmer le type de frein dans la fiche du vélo avant de choisir les pièces à remplacer."],
+                    "Lampe, chiffon propre",
+                    "contrôler freins vélo"],
+                "Patins de frein (avant)": ["Facile",
+                    "Les patins doivent toucher la jante correctement, sans être usés jusqu'au témoin ni frotter le pneu.",
+                    ["Vérifier l'épaisseur et l'état du caoutchouc.", "Contrôler que le patin touche la piste de freinage et non le pneu.", "Vérifier que la roue tourne librement et que le levier garde une course normale.", "Remplacer les patins par une référence compatible et régler leur alignement."],
+                    "Clé Allen, patins compatibles, chiffon",
+                    "contrôler remplacer patins frein vélo"],
+                "Patins de frein (arrière)": ["Facile",
+                    "Les patins arrière s'usent avec le freinage et doivent rester alignés sur la jante.",
+                    ["Vérifier l'épaisseur et rechercher des fissures.", "Contrôler l'alignement sur la piste de freinage.", "Vérifier le câble, le retour du levier et l'absence de frottement.", "Remplacer par des patins compatibles et tester le freinage à faible vitesse."],
+                    "Clé Allen, patins compatibles, chiffon",
+                    "remplacer patins frein arrière vélo"],
+                "Courroie (contrôle et remplacement)": ["Atelier",
+                    "Une transmission par courroie ne se graisse pas comme une chaîne. Sa tension et son alignement doivent respecter les consignes du fabricant.",
+                    ["Rechercher fissures, dents abîmées ou effilochage.", "Vérifier l'alignement de la courroie et l'absence de bruit anormal.", "Ne pas appliquer d'huile ou de graisse.", "Faire régler la tension et remplacer la courroie selon les préconisations du fabricant ou par un atelier."],
+                    "Lampe, notice du fabricant",
+                    "entretien courroie vélo"],
                 "Plaquettes de frein (avant)": ["Moyen",
                     "Les plaquettes usées freinent mal et abîment le disque. Il faut les changer avant qu'il ne reste moins d'un millimètre de matière.",
                     ["Retirer la roue et la goupille ou la vis qui retient les plaquettes.", "Sortir les plaquettes et repousser doucement les pistons avec un levier plastique.", "Monter les plaquettes neuves, remettre la goupille.", "Remonter la roue, pomper le levier et roder les plaquettes."],
@@ -12254,7 +12412,7 @@ def obtenir_velos(x_code_acces: Optional[str] = Header(default=None)):
         a_verifier = {r[0]: r[1] for r in cursor.fetchall()}
         cursor.execute("""
             SELECT id, nom, type, marque, modele, annee, taille, actif,
-                   km_total, km_frac, km_maj_le, date_achat, moteur, batterie,
+                   km_total, km_frac, km_maj_le, date_achat, moteur, batterie, freins, suspension, tubeless, transmission,
                    CASE WHEN photo IS NULL OR photo = '' THEN 0 ELSE 1 END AS a_photo
             FROM velos
             WHERE actif = 1
@@ -12277,7 +12435,11 @@ def obtenir_velos(x_code_acces: Optional[str] = Header(default=None)):
                 "km_maj_le": row["km_maj_le"],
                 "date_achat": row["date_achat"],
                 "moteur": row["moteur"],
-                "batterie": row["batterie"]
+                "batterie": row["batterie"],
+                "freins": row["freins"],
+                "suspension": row["suspension"],
+                "tubeless": row["tubeless"],
+                "transmission": row["transmission"]
             }
             for row in cursor.fetchall()
         ]
@@ -12295,6 +12457,10 @@ class NouveauVeloRequest(BaseModel):
     date_achat: Optional[str] = Field(default=None, max_length=10)
     moteur: Optional[str] = Field(default=None, max_length=120)
     batterie: Optional[str] = Field(default=None, max_length=120)
+    freins: Optional[str] = Field(default="inconnu", max_length=20)
+    suspension: Optional[str] = Field(default="inconnu", max_length=20)
+    tubeless: Optional[str] = Field(default="inconnu", max_length=20)
+    transmission: Optional[str] = Field(default="inconnu", max_length=20)
 
 
 class ModifierFicheVeloRequest(BaseModel):
@@ -12306,6 +12472,113 @@ class ModifierFicheVeloRequest(BaseModel):
     date_achat: Optional[str] = Field(default=None, max_length=10)
     moteur: Optional[str] = Field(default=None, max_length=120)
     batterie: Optional[str] = Field(default=None, max_length=120)
+    freins: Optional[str] = Field(default="inconnu", max_length=20)
+    suspension: Optional[str] = Field(default="inconnu", max_length=20)
+    tubeless: Optional[str] = Field(default="inconnu", max_length=20)
+    transmission: Optional[str] = Field(default="inconnu", max_length=20)
+
+
+def adapter_freins_velo(cursor, velo_id, freins, suspension=None, tubeless=None, transmission=None):
+    """Adapte les noms des pièces de frein sans supprimer leurs identifiants ni historique."""
+    changements = {}
+    if freins == "patins":
+        changements = {
+            "Plaquettes de frein (avant)": "Patins de frein (avant)",
+            "Plaquettes de frein (arrière)": "Patins de frein (arrière)",
+            "Disque de frein (avant)": "Non concerné — disque de frein (avant)",
+            "Disque de frein (arrière)": "Non concerné — disque de frein (arrière)",
+            "Purge du liquide de frein": "Non concerné — purge du liquide de frein",
+            "Freins - contrôle général (type à confirmer)": "Non concerné — Freins - contrôle général (type à confirmer)",
+        }
+    elif freins in ("disque", "disque_hydraulique", "disque_mecanique"):
+        changements = {
+            "Patins de frein (avant)": "Plaquettes de frein (avant)",
+            "Patins de frein (arrière)": "Plaquettes de frein (arrière)",
+            "Non concerné — disque de frein (avant)": "Disque de frein (avant)",
+            "Non concerné — disque de frein (arrière)": "Disque de frein (arrière)",
+            "Freins - contrôle général (type à confirmer)": "Non concerné — Freins - contrôle général (type à confirmer)",
+        }
+        if freins == "disque_hydraulique":
+            changements["Non concerné — purge du liquide de frein"] = "Purge du liquide de frein"
+        else:
+            changements["Purge du liquide de frein"] = "Non concerné — purge du liquide de frein"
+    if suspension == "rigide":
+        changements.update({
+            "Fourche - entretien (50 h)": "Non concerné — Fourche - entretien (50 h)",
+            "Fourche - révision complète (200 h)": "Non concerné — Fourche - révision complète (200 h)",
+            "Fourche - pression et SAG (contrôle)": "Non concerné — Fourche - pression et SAG (contrôle)",
+            "Amortisseur - entretien (50 h)": "Non concerné — Amortisseur - entretien (50 h)",
+            "Amortisseur - révision complète (200 h)": "Non concerné — Amortisseur - révision complète (200 h)",
+            "Amortisseur - pression et SAG (contrôle)": "Non concerné — Amortisseur - pression et SAG (contrôle)",
+            "Roulements de suspension (biellettes)": "Non concerné — Roulements de suspension (biellettes)",
+        })
+    elif suspension == "avant":
+        changements.update({
+            "Non concerné — Fourche - entretien (50 h)": "Fourche - entretien (50 h)",
+            "Non concerné — Fourche - révision complète (200 h)": "Fourche - révision complète (200 h)",
+            "Non concerné — Fourche - pression et SAG (contrôle)": "Fourche - pression et SAG (contrôle)",
+            "Amortisseur - entretien (50 h)": "Non concerné — Amortisseur - entretien (50 h)",
+            "Amortisseur - révision complète (200 h)": "Non concerné — Amortisseur - révision complète (200 h)",
+            "Amortisseur - pression et SAG (contrôle)": "Non concerné — Amortisseur - pression et SAG (contrôle)",
+            "Roulements de suspension (biellettes)": "Non concerné — Roulements de suspension (biellettes)",
+        })
+    elif suspension == "double":
+        changements.update({
+            "Non concerné — Fourche - entretien (50 h)": "Fourche - entretien (50 h)",
+            "Non concerné — Fourche - révision complète (200 h)": "Fourche - révision complète (200 h)",
+            "Non concerné — Fourche - pression et SAG (contrôle)": "Fourche - pression et SAG (contrôle)",
+            "Non concerné — Amortisseur - entretien (50 h)": "Amortisseur - entretien (50 h)",
+            "Non concerné — Amortisseur - révision complète (200 h)": "Amortisseur - révision complète (200 h)",
+            "Non concerné — Amortisseur - pression et SAG (contrôle)": "Amortisseur - pression et SAG (contrôle)",
+            "Non concerné — Roulements de suspension (biellettes)": "Roulements de suspension (biellettes)",
+        })
+    if tubeless == "chambre":
+        changements["Liquide préventif tubeless (2 pneus)"] = "Non concerné — Liquide préventif tubeless (2 pneus)"
+    elif tubeless == "tubeless":
+        changements["Non concerné — Liquide préventif tubeless (2 pneus)"] = "Liquide préventif tubeless (2 pneus)"
+    noms_transmission = (
+        "Chaîne (remplacement)", "Nettoyage & Lubrification chaîne",
+        "Cassette (remplacement)", "Plateau (remplacement)", "Galets de dérailleur",
+        "Câble et gaine de dérailleur"
+    )
+    if transmission == "courroie":
+        for nom in noms_transmission:
+            changements[nom] = "Non concerné — " + nom
+        changements["Non concerné — Courroie (contrôle et remplacement)"] = "Courroie (contrôle et remplacement)"
+    elif transmission == "chaine":
+        for nom in noms_transmission:
+            changements["Non concerné — " + nom] = nom
+        changements["Courroie (contrôle et remplacement)"] = "Non concerné — Courroie (contrôle et remplacement)"
+    for ancien, nouveau in changements.items():
+        cursor.execute(
+            "UPDATE composants SET nom = ? WHERE velo_id = ? AND nom = ?",
+            (nouveau, velo_id, ancien)
+        )
+    cursor.execute("SELECT nom FROM composants WHERE velo_id = ?", (velo_id,))
+    noms = {r[0] for r in cursor.fetchall()}
+    cursor.execute("SELECT type FROM velos WHERE id = ?", (velo_id,))
+    ligne = cursor.fetchone()
+    type_velo = ligne[0] if ligne else "vtt"
+    liste = entretiens_du_type(type_velo, freins, suspension, tubeless, transmission)
+    if freins in ("patins", "disque", "disque_hydraulique", "disque_mecanique"):
+        a_ajouter = [ligne for ligne in liste if "frein" in ligne[0].lower() or "patin" in ligne[0].lower()]
+    else:
+        a_ajouter = [ligne for ligne in liste if "freins - contrôle général" in ligne[0].lower()]
+    if suspension in ("rigide", "avant", "double"):
+        a_ajouter.extend(ligne for ligne in liste if any(mot in ligne[0].lower() for mot in ("fourche -", "amortisseur -", "roulements de suspension")))
+    if tubeless in ("chambre", "tubeless"):
+        a_ajouter.extend(ligne for ligne in liste if "liquide préventif tubeless" in ligne[0].lower())
+    if transmission in ("chaine", "courroie"):
+        a_ajouter.extend(ligne for ligne in liste if any(mot in ligne[0].lower() for mot in ("chaîne", "cassette", "plateau", "galets", "courroie", "câble et gaine de dérailleur")))
+    for nom, km, jours, categorie, x, y, verification in a_ajouter:
+        if nom not in noms:
+            cursor.execute("""
+                INSERT INTO composants (
+                    velo_id, nom, km_depart, seuil_alerte, seuil_jours,
+                    categorie, pos_x, pos_y, verification, coef_usure
+                ) VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, 1)
+            """, (velo_id, nom, km, jours, categorie, x, y, verification))
+            noms.add(nom)
 
 
 @app.put("/api/velos/{velo_id}")
@@ -12339,7 +12612,9 @@ def modifier_fiche_velo(
         cursor.execute("""
             UPDATE velos
             SET nom = ?, marque = ?, modele = ?, annee = ?, taille = ?,
-                date_achat = ?, moteur = ?, batterie = ?
+                date_achat = ?, moteur = ?, batterie = ?, freins = COALESCE(?, freins),
+                suspension = COALESCE(?, suspension), tubeless = COALESCE(?, tubeless),
+                transmission = COALESCE(?, transmission)
             WHERE id = ? AND actif = 1
         """, (
             nom, (data.marque or "").strip() or None,
@@ -12347,8 +12622,19 @@ def modifier_fiche_velo(
             (data.taille or "").strip() or None, date_achat,
             ((data.moteur or "").strip() or None) if electrique else None,
             ((data.batterie or "").strip() or None) if electrique else None,
+            data.freins if data.freins in ("disque", "disque_hydraulique", "disque_mecanique", "patins") else None,
+            data.suspension if data.suspension in ("rigide", "avant", "double") else None,
+            data.tubeless if data.tubeless in ("chambre", "tubeless") else None,
+            data.transmission if data.transmission in ("chaine", "courroie") else None,
             velo_id
         ))
+        adapter_freins_velo(
+            cursor, velo_id,
+            data.freins if data.freins in ("disque", "disque_hydraulique", "disque_mecanique", "patins") else None,
+            data.suspension if data.suspension in ("rigide", "avant", "double") else None,
+            data.tubeless if data.tubeless in ("chambre", "tubeless") else None,
+            data.transmission if data.transmission in ("chaine", "courroie") else None
+        )
         conn.commit()
         return {"statut": "success", "velo_id": velo_id, "nom": nom}
     except Exception:
@@ -12388,9 +12674,9 @@ def creer_velo(
         cursor.execute("""
             INSERT INTO velos (
                 nom, type, marque, modele, annee, taille, actif, km_total,
-                km_frac, km_maj_le, date_achat, suivi_depuis, moteur, batterie
+                km_frac, km_maj_le, date_achat, suivi_depuis, moteur, batterie, freins, suspension, tubeless, transmission
             )
-            VALUES (?, ?, ?, ?, ?, ?, 1, 0, 0, NULL, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, 1, 0, 0, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             nom, type_velo, (data.marque or "").strip() or None,
             (data.modele or "").strip() or None, data.annee,
@@ -12398,7 +12684,11 @@ def creer_velo(
             date_achat or date.today().isoformat(),
             date.today().isoformat(),
             ((data.moteur or "").strip() or None) if electrique else None,
-            ((data.batterie or "").strip() or None) if electrique else None
+            ((data.batterie or "").strip() or None) if electrique else None,
+            data.freins if data.freins in ("disque", "disque_hydraulique", "disque_mecanique", "patins") else None,
+            data.suspension if data.suspension in ("rigide", "avant", "double") else None,
+            data.tubeless if data.tubeless in ("chambre", "tubeless") else None,
+            data.transmission if data.transmission in ("chaine", "courroie") else None
         ))
         cursor.execute("SELECT id FROM velos WHERE nom = ? ORDER BY id DESC LIMIT 1", (nom,))
         velo_id = cursor.fetchone()[0]
@@ -12412,7 +12702,7 @@ def creer_velo(
         """, [
             (velo_id, nom_comp, km, jours, categorie, x, y, verification)
             for nom_comp, km, jours, categorie, x, y, verification
-            in entretiens_du_type(type_velo)
+            in entretiens_du_type(type_velo, data.freins, data.suspension, data.tubeless, data.transmission)
         ])
         # Ce vélo a déjà sa liste complète : le démarrage ne la retouchera pas.
         poser_marqueur_entretiens(cursor, velo_id)
@@ -12729,6 +13019,165 @@ def images_de_la_page(html, base):
     return trouvees[:6]
 
 
+class RechercheFicheVeloRequest(BaseModel):
+    recherche: Optional[str] = Field(default=None, max_length=200)
+    url: Optional[str] = Field(default=None, max_length=2000)
+
+
+def texte_page_fiche(html_page):
+    """Extrait du texte lisible sans exécuter le contenu de la page."""
+    texte = re.sub(r"<(script|style|noscript)\b[^>]*>.*?</\1>", " ", html_page, flags=re.I | re.S)
+    texte = re.sub(r"<[^>]+>", " ", texte)
+    texte = html_lib.unescape(texte)
+    return re.sub(r"\s+", " ", texte)[:30000]
+
+
+def produits_structures(html_page):
+    produits = []
+    ouvrant = "<scr" + "ipt"
+    fermant = "</scr" + "ipt>"
+    modele = re.escape(ouvrant) + r'''[^>]*type=["']application/ld[+]json["'][^>]*>(.*?)''' + re.escape(fermant)
+    for bloc in re.findall(modele, html_page, re.I | re.S):
+        try:
+            noeud = json.loads(bloc)
+        except ValueError:
+            continue
+        a_visiter = noeud if isinstance(noeud, list) else [noeud]
+        while a_visiter:
+            element = a_visiter.pop(0)
+            if isinstance(element, dict):
+                type_objet = element.get("@type", [])
+                if isinstance(type_objet, str):
+                    type_objet = [type_objet]
+                if any(str(t).lower() == "product" for t in type_objet):
+                    produits.append(element)
+                for valeur in element.values():
+                    if isinstance(valeur, (dict, list)):
+                        a_visiter.append(valeur)
+            elif isinstance(element, list):
+                a_visiter.extend(element)
+    return produits
+
+@app.post("/api/recherche-fiche-velo")
+def recherche_fiche_velo(data: RechercheFicheVeloRequest, x_code_acces: Optional[str] = Header(default=None)):
+    """Recherche une page de vélo ou extrait les caractéristiques publiées par une fiche."""
+    verifier_auth(x_code_acces)
+    recherche = (data.recherche or "").strip()
+    lien = (data.url or "").strip()
+    if not lien and not recherche:
+        raise HTTPException(status_code=400, detail="Saisis un modèle ou un lien constructeur.")
+    if not lien:
+        requete = urllib.parse.urlencode({"q": recherche + " vélo fiche technique constructeur"})
+        try:
+            type_contenu, octets, finale = telecharger_lien("https://html.duckduckgo.com/html/?" + requete, "text/html")
+        except ValueError as e:
+            raise HTTPException(status_code=502, detail="La recherche web n'a pas abouti. Tu peux coller directement le lien constructeur. " + str(e))
+        page = octets.decode("utf-8", errors="replace")
+        candidats = []
+        for balise in re.findall(r"<a\b[^>]*class=[\"'][^\"']*result__a[^\"']*[\"'][^>]*>.*?</a>", page, re.I | re.S):
+            href = re.search(r"href=[\"']([^\"']+)[\"']", balise, re.I)
+            titre = texte_page_fiche(balise)
+            if not href or not titre:
+                continue
+            url_candidate = html_lib.unescape(href.group(1))
+            parsed = urllib.parse.urlparse(url_candidate)
+            if parsed.netloc.endswith("duckduckgo.com") and parsed.path.startswith("/l/"):
+                cible = urllib.parse.parse_qs(parsed.query).get("uddg", [None])[0]
+                if cible:
+                    url_candidate = cible
+            if urllib.parse.urlparse(url_candidate).scheme in ("http", "https") and all(c["url"] != url_candidate for c in candidats):
+                candidats.append({"titre": titre[:180], "url": url_candidate})
+            if len(candidats) >= 5:
+                break
+        if not candidats:
+            raise HTTPException(status_code=404, detail="Aucune fiche trouvée. Essaie avec le nom exact ou colle le lien constructeur.")
+        return {"candidats": candidats}
+
+    if "://" not in lien:
+        lien = "https://" + lien
+    try:
+        type_contenu, octets, finale = telecharger_lien(lien, "text/html,application/xhtml+xml")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if type_contenu not in ("text/html", "application/xhtml+xml"):
+        raise HTTPException(status_code=400, detail="Le lien ne mène pas à une page web lisible.")
+    page = octets[:2000000].decode("utf-8", errors="replace")
+    texte = texte_page_fiche(page)
+    produits = produits_structures(page)
+    produit = produits[0] if produits else {}
+    marque = produit.get("brand")
+    if isinstance(marque, dict):
+        marque = marque.get("name")
+    modele = produit.get("model") or produit.get("name")
+    annee_source = produit.get("releaseDate") or produit.get("datePublished") or ""
+    annee_match = re.search(r"\b(19[5-9][0-9]|20[0-9]{2}|2100)\b", str(annee_source) + " " + str(modele or ""))
+    bas = texte.lower()
+    freins = None
+    patins_trouves = bool(re.search(r"freins? (?:à|a) patins|freinage sur jante|rim brakes?|v-brakes?", bas))
+    disques_trouves = bool(re.search(r"freins? (?:à|a) disques?|freinage à disque|disc brakes?", bas))
+    hydrauliques_trouves = bool(re.search(r"freins? (?:à|a) disques? hydrauliques?|freinage hydraulique", bas))
+    mecaniques_trouves = bool(re.search(r"freins? (?:à|a) disques? mécaniques?|mechanical disc brakes?", bas))
+    if patins_trouves and not disques_trouves:
+        freins = "patins"
+    elif disques_trouves and not patins_trouves:
+        if hydrauliques_trouves and not mecaniques_trouves:
+            freins = "disque_hydraulique"
+        elif mecaniques_trouves and not hydrauliques_trouves:
+            freins = "disque_mecanique"
+        else:
+            freins = "disque"
+    type_velo = None
+    if re.search(r"\bvtt\b", bas) and re.search(r"électrique|electrique|e-bike", bas):
+        type_velo = "vtt_electrique"
+    elif re.search(r"\bgravel\b", bas) and re.search(r"électrique|electrique|e-bike", bas):
+        type_velo = "gravel_electrique"
+    elif re.search(r"\bgravel\b", bas):
+        type_velo = "gravel"
+    elif re.search(r"\broute\b", bas) and re.search(r"électrique|electrique|e-bike", bas):
+        type_velo = "route_electrique"
+    elif re.search(r"\broute\b|\broad bike\b", bas):
+        type_velo = "route"
+    elif re.search(r"\benduro\b", bas):
+        type_velo = "enduro"
+    elif re.search(r"\bdescente\b|\bdownhill\b", bas):
+        type_velo = "descente"
+    elif re.search(r"\bvtt\b|\bmountain bike\b", bas):
+        type_velo = "vtt"
+    moteur_match = re.search(r"(?:Bosch\s+(?:Performance Line|Performance|CX|SX|PX)[^.;,]{0,35}|Shimano\s+EP[0-9]{1,2}[^.;,]{0,25}|Yamaha\s+(?:PW|PW-X)[^.;,]{0,25}|Brose[^.;,]{0,25})", texte, re.I)
+    batterie_match = re.search(r"(?:Bosch\s+Power(?:Tube|Pack)[^.;,]{0,30}|PowerTube\s*[0-9]{2,4}\s?Wh|[0-9]{2,4}\s?Wh(?:\s+battery|\s+batterie)?)", texte, re.I)
+    suspension_detectee = None
+    if re.search(r"full suspension|suspension intégrale|double suspension|tout suspendu", bas):
+        suspension_detectee = "double"
+    elif re.search(r"hardtail|semi-rigide|semi rigide|fourche suspendue|front suspension", bas):
+        suspension_detectee = "avant"
+    elif re.search(r"fourche rigide|rigid fork|sans suspension", bas):
+        suspension_detectee = "rigide"
+    tubeless_detecte = None
+    if re.search(r"montage tubeless|pneus? tubeless|tubeless setup|tubeless tyres|tubeless tires|tubeless installé|sans chambre à air", bas) and not re.search(r"tubeless ready|compatible tubeless", bas):
+        tubeless_detecte = "tubeless"
+    elif re.search(r"chambre à air|chambre a air|inner tube", bas):
+        tubeless_detecte = "chambre"
+    transmission_detectee = None
+    if re.search(r"courroie|belt drive", bas):
+        transmission_detectee = "courroie"
+    elif re.search(r"chaîne|chaine|chain drive", bas):
+        transmission_detectee = "chaine"
+    return {
+        "marque": str(marque)[:80] if marque else None,
+        "modele": str(modele)[:120] if modele else None,
+        "annee": int(annee_match.group(1)) if annee_match else None,
+        "type": type_velo,
+        "freins": freins,
+        "suspension": suspension_detectee,
+        "tubeless": tubeless_detecte,
+        "transmission": transmission_detectee,
+        "moteur": moteur_match.group(0).strip()[:120] if moteur_match else None,
+        "batterie": batterie_match.group(0).strip()[:120] if batterie_match else None,
+        "source": finale,
+        "message": "Les données extraites doivent être vérifiées sur la fiche constructeur."
+    }
+
+
 @app.post("/api/photo-depuis-lien")
 def photo_depuis_lien(data: LienPhotoRequest, x_code_acces: Optional[str] = Header(default=None)):
     """Va chercher la photo d'un vélo à partir du lien d'une fiche (Décathlon, Opticycles…)
@@ -12805,6 +13254,31 @@ def obtenir_etat(
             (velo_id,)
         )
         rows = cursor.fetchall()
+        cursor.execute("SELECT freins, suspension, tubeless, transmission FROM velos WHERE id = ?", (velo_id,))
+        equipement = cursor.fetchone()
+        freins_velo = equipement["freins"] if equipement else None
+        suspension_velo = equipement["suspension"] if equipement else None
+        tubeless_velo = equipement["tubeless"] if equipement else None
+        transmission_velo = equipement["transmission"] if equipement else None
+        if velo_id != 1:
+            rows = [r for r in rows if not str(r["nom"]).startswith("Non concerné")]
+            if freins_velo == "patins":
+                rows = [r for r in rows if not any(mot in str(r["nom"]).lower() for mot in ("plaquettes de frein", "disque de frein", "purge du liquide de frein"))]
+            elif freins_velo in ("disque", "disque_hydraulique", "disque_mecanique"):
+                rows = [r for r in rows if "patins de frein" not in str(r["nom"]).lower()]
+                if freins_velo != "disque_hydraulique":
+                    rows = [r for r in rows if "purge du liquide de frein" not in str(r["nom"]).lower()]
+            if suspension_velo == "rigide":
+                rows = [r for r in rows if not any(mot in str(r["nom"]).lower() for mot in ("fourche -", "amortisseur -", "roulements de suspension"))]
+            elif suspension_velo == "avant":
+                rows = [r for r in rows if not any(mot in str(r["nom"]).lower() for mot in ("amortisseur -", "roulements de suspension"))]
+            if tubeless_velo == "chambre":
+                rows = [r for r in rows if "liquide préventif tubeless" not in str(r["nom"]).lower()]
+            if transmission_velo == "courroie":
+                rows = [r for r in rows if not any(mot in str(r["nom"]).lower() for mot in ("chaîne", "cassette", "plateau", "galets", "câble et gaine de dérailleur"))]
+            elif transmission_velo == "chaine":
+                rows = [r for r in rows if "courroie (contrôle et remplacement)" not in str(r["nom"]).lower()]
+
 
         reglages = lire_reglages(cursor)
         aujourdhui = date.today()
