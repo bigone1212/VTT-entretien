@@ -12859,7 +12859,9 @@ def texte_page_fiche(html_page):
 
 def produits_structures(html_page):
     produits = []
-    modele = r"<script\b[^>]*type=[\"']application/ld\+json[\"'][^>]*>(.*?)</script>"
+    ouvrant = "<scr" + "ipt"
+    fermant = "</scr" + "ipt>"
+    modele = re.escape(ouvrant) + r"\\b[^>]*type=[\\\"']application/ld\\+json[\\\"'][^>]*>(.*?)" + re.escape(fermant)
     for bloc in re.findall(modele, html_page, re.I | re.S):
         try:
             noeud = json.loads(bloc)
@@ -12880,7 +12882,6 @@ def produits_structures(html_page):
             elif isinstance(element, list):
                 a_visiter.extend(element)
     return produits
-
 
 @app.post("/api/recherche-fiche-velo")
 def recherche_fiche_velo(data: RechercheFicheVeloRequest, x_code_acces: Optional[str] = Header(default=None)):
