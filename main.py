@@ -376,23 +376,27 @@ def entretiens_du_type(type_velo, freins=None, suspension=None, tubeless=None, t
             ("Patins de frein (avant)", plaquettes, 0, piece, 70, 62, 0),
             ("Patins de frein (arrière)", plaquettes, 0, piece, 22, 47, 0),
         ])
-    elif freins != "disque_hydraulique":
-        liste = [ligne for ligne in liste if "purge du liquide de frein" not in ligne[0].lower()]
+    elif freins in ("disque", "disque_hydraulique", "disque_mecanique"):
+        if freins != "disque_hydraulique":
+            liste = [ligne for ligne in liste if "purge du liquide de frein" not in ligne[0].lower()]
+    else:
+        liste = [ligne for ligne in liste if not any(mot in ligne[0].lower() for mot in ("plaquettes de frein", "disque de frein", "purge du liquide de frein", "patins de frein"))]
+        liste.append(("Freins - contrôle général (type à confirmer)", 0, 30, maintenance, 57, 15, 1))
 
     if transmission == "courroie":
         termes_transmission = ("chaîne", "lubrification chaîne", "cassette", "plateau", "galets", "câble et gaine de dérailleur")
         liste = [ligne for ligne in liste if not any(terme in ligne[0].lower() for terme in termes_transmission)]
         liste.append(("Courroie (contrôle et remplacement)", 10000, 365, piece, 27, 76, 0))
+    elif transmission != "chaine":
+        termes_transmission = ("chaîne", "lubrification chaîne", "cassette", "plateau", "galets", "câble et gaine de dérailleur")
+        liste = [ligne for ligne in liste if not any(terme in ligne[0].lower() for terme in termes_transmission)]
 
     if tubeless == "chambre":
         liste = [ligne for ligne in liste if "liquide préventif tubeless" not in ligne[0].lower()]
     elif tubeless == "tubeless":
         if not any("liquide préventif tubeless" in ligne[0].lower() for ligne in liste):
             liste.append(("Liquide préventif tubeless (2 pneus)", 0, 120, maintenance, 87, 82, 0))
-    elif type_velo in TYPES_TUBELESS:
-        liste.append(("Liquide préventif tubeless (2 pneus)", 0, 120, maintenance, 87, 82, 0))
-
-    type_suspension = suspension if suspension in ("rigide", "avant", "double") else ("double" if type_velo in TYPES_SUSPENDUS else "rigide")
+    type_suspension = suspension if suspension in ("rigide", "avant", "double") else None
     liste = [ligne for ligne in liste if not any(mot in ligne[0].lower() for mot in ("fourche -", "amortisseur -", "roulements de suspension"))]
     if type_suspension in ("avant", "double"):
         seuil_susp = susp or 800
@@ -12532,10 +12536,10 @@ def adapter_freins_velo(cursor, velo_id, freins, suspension=None, tubeless=None,
     ligne = cursor.fetchone()
     type_velo = ligne[0] if ligne else "vtt"
     liste = entretiens_du_type(type_velo, freins, suspension, tubeless, transmission)
-    if freins in ("patins", "disque"):
+    if freins in ("patins", "disque", "disque_hydraulique", "disque_mecanique"):
         a_ajouter = [ligne for ligne in liste if "frein" in ligne[0].lower() or "patin" in ligne[0].lower()]
     else:
-        a_ajouter = []
+        a_ajouter = [ligne for ligne in liste if "freins - contrôle général" in ligne[0].lower()]
     if suspension in ("rigide", "avant", "double"):
         a_ajouter.extend(ligne for ligne in liste if any(mot in ligne[0].lower() for mot in ("fourche -", "amortisseur -", "roulements de suspension")))
     if tubeless in ("chambre", "tubeless"):
@@ -13237,15 +13241,19 @@ def obtenir_etat(
             rows = [r for r in rows if not any(mot in str(r["nom"]).lower() for mot in ("plaquettes de frein", "disque de frein", "purge du liquide de frein"))]
         elif freins_velo in ("disque", "disque_hydraulique", "disque_mecanique"):
             rows = [r for r in rows if "patins de frein" not in str(r["nom"]).lower()]
+        else:
+            rows = [r for r in rows if not any(mot in str(r["nom"]).lower() for mot in ("plaquettes de frein", "disque de frein", "purge du liquide de frein", "patins de frein"))]
         if freins_velo != "disque_hydraulique":
             rows = [r for r in rows if "purge du liquide de frein" not in str(r["nom"]).lower()]
-        if suspension_velo == "rigide":
+        if suspension_velo not in ("avant", "double"):
             rows = [r for r in rows if not any(mot in str(r["nom"]).lower() for mot in ("fourche -", "amortisseur -", "roulements de suspension"))]
         elif suspension_velo == "avant":
             rows = [r for r in rows if not any(mot in str(r["nom"]).lower() for mot in ("amortisseur -", "roulements de suspension"))]
-        if tubeless_velo == "chambre":
+        if tubeless_velo != "tubeless":
             rows = [r for r in rows if "liquide préventif tubeless" not in str(r["nom"]).lower()]
         if transmission_velo == "courroie":
+            rows = [r for r in rows if not any(mot in str(r["nom"]).lower() for mot in ("chaîne", "cassette", "plateau", "galets", "câble et gaine de dérailleur"))]
+        elif transmission_velo != "chaine":
             rows = [r for r in rows if not any(mot in str(r["nom"]).lower() for mot in ("chaîne", "cassette", "plateau", "galets", "câble et gaine de dérailleur"))]
 
         reglages = lire_reglages(cursor)
