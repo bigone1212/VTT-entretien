@@ -376,6 +376,8 @@ def entretiens_du_type(type_velo, freins=None, suspension=None, tubeless=None, t
             ("Patins de frein (avant)", plaquettes, 0, piece, 70, 62, 0),
             ("Patins de frein (arrière)", plaquettes, 0, piece, 22, 47, 0),
         ])
+    elif freins != "disque_hydraulique":
+        liste = [ligne for ligne in liste if "purge du liquide de frein" not in ligne[0].lower()]
 
     if transmission == "courroie":
         termes_transmission = ("chaîne", "lubrification chaîne", "cassette", "plateau", "galets", "câble et gaine de dérailleur")
@@ -3665,7 +3667,9 @@ def accueil():
                 <label for="nouveauVeloFreins">Freins</label>
                 <select id="nouveauVeloFreins" name="freins">
                     <option value="inconnu">À confirmer</option>
-                    <option value="disque">Freins à disque</option>
+                    <option value="disque">Freins à disque (type à confirmer)</option>
+                    <option value="disque_hydraulique">Freins à disque hydrauliques</option>
+                    <option value="disque_mecanique">Freins à disque mécaniques</option>
                     <option value="patins">Freins à patins</option>
                 </select>
                 <label for="nouveauVeloSuspension">Suspension</label>
@@ -4886,7 +4890,7 @@ def accueil():
                     if (ficheMarque) ficheMarque.textContent = velo.marque || 'Non renseignée';
                     if (ficheModele) ficheModele.textContent = velo.modele || 'Non renseigné';
                     const ficheFreins = document.getElementById('ficheAutreFreins');
-                    if (ficheFreins) ficheFreins.textContent = velo.freins === 'patins' ? 'Freins à patins' : velo.freins === 'disque' ? 'Freins à disque' : 'À confirmer';
+                    if (ficheFreins) ficheFreins.textContent = velo.freins === 'patins' ? 'Freins à patins' : velo.freins === 'disque_hydraulique' ? 'Freins à disque hydrauliques' : velo.freins === 'disque_mecanique' ? 'Freins à disque mécaniques' : velo.freins === 'disque' ? 'Freins à disque, type à confirmer' : 'À confirmer';
                     const ficheSuspension = document.getElementById('ficheAutreSuspension');
                     if (ficheSuspension) ficheSuspension.textContent = ({ rigide: 'Sans suspension', avant: 'Fourche suspendue', double: 'Fourche et amortisseur arrière' })[velo.suspension] || 'À confirmer';
                     const ficheTubeless = document.getElementById('ficheAutreTubeless');
@@ -12461,14 +12465,17 @@ def adapter_freins_velo(cursor, velo_id, freins, suspension=None, tubeless=None,
             "Disque de frein (arrière)": "Non concerné — disque de frein (arrière)",
             "Purge du liquide de frein": "Non concerné — purge du liquide de frein",
         }
-    elif freins == "disque":
+    elif freins in ("disque", "disque_hydraulique", "disque_mecanique"):
         changements = {
             "Patins de frein (avant)": "Plaquettes de frein (avant)",
             "Patins de frein (arrière)": "Plaquettes de frein (arrière)",
             "Non concerné — disque de frein (avant)": "Disque de frein (avant)",
             "Non concerné — disque de frein (arrière)": "Disque de frein (arrière)",
-            "Non concerné — purge du liquide de frein": "Purge du liquide de frein",
         }
+        if freins == "disque_hydraulique":
+            changements["Non concerné — purge du liquide de frein"] = "Purge du liquide de frein"
+        else:
+            changements["Purge du liquide de frein"] = "Non concerné — purge du liquide de frein"
     if suspension == "rigide":
         changements.update({
             "Fourche - entretien (50 h)": "Non concerné — Fourche - entretien (50 h)",
@@ -12587,7 +12594,7 @@ def modifier_fiche_velo(
             (data.taille or "").strip() or None, date_achat,
             ((data.moteur or "").strip() or None) if electrique else None,
             ((data.batterie or "").strip() or None) if electrique else None,
-            data.freins if data.freins in ("disque", "patins") else None,
+            data.freins if data.freins in ("disque", "disque_hydraulique", "disque_mecanique", "patins") else None,
             data.suspension if data.suspension in ("rigide", "avant", "double") else None,
             data.tubeless if data.tubeless in ("chambre", "tubeless") else None,
             data.transmission if data.transmission in ("chaine", "courroie") else None,
@@ -12595,7 +12602,7 @@ def modifier_fiche_velo(
         ))
         adapter_freins_velo(
             cursor, velo_id,
-            data.freins if data.freins in ("disque", "patins") else None,
+            data.freins if data.freins in ("disque", "disque_hydraulique", "disque_mecanique", "patins") else None,
             data.suspension if data.suspension in ("rigide", "avant", "double") else None,
             data.tubeless if data.tubeless in ("chambre", "tubeless") else None,
             data.transmission if data.transmission in ("chaine", "courroie") else None
@@ -12650,7 +12657,7 @@ def creer_velo(
             date.today().isoformat(),
             ((data.moteur or "").strip() or None) if electrique else None,
             ((data.batterie or "").strip() or None) if electrique else None,
-            data.freins if data.freins in ("disque", "patins") else None,
+            data.freins if data.freins in ("disque", "disque_hydraulique", "disque_mecanique", "patins") else None,
             data.suspension if data.suspension in ("rigide", "avant", "double") else None,
             data.tubeless if data.tubeless in ("chambre", "tubeless") else None,
             data.transmission if data.transmission in ("chaine", "courroie") else None
@@ -13080,10 +13087,17 @@ def recherche_fiche_velo(data: RechercheFicheVeloRequest, x_code_acces: Optional
     freins = None
     patins_trouves = bool(re.search(r"freins? (?:à|a) patins|freinage sur jante|rim brakes?|v-brakes?", bas))
     disques_trouves = bool(re.search(r"freins? (?:à|a) disques?|freinage à disque|disc brakes?", bas))
+    hydrauliques_trouves = bool(re.search(r"freins? (?:à|a) disques? hydrauliques?|freinage hydraulique", bas))
+    mecaniques_trouves = bool(re.search(r"freins? (?:à|a) disques? mécaniques?|mechanical disc brakes?", bas))
     if patins_trouves and not disques_trouves:
         freins = "patins"
     elif disques_trouves and not patins_trouves:
-        freins = "disque"
+        if hydrauliques_trouves and not mecaniques_trouves:
+            freins = "disque_hydraulique"
+        elif mecaniques_trouves and not hydrauliques_trouves:
+            freins = "disque_mecanique"
+        else:
+            freins = "disque"
     type_velo = None
     if re.search(r"\bvtt\b", bas) and re.search(r"électrique|electrique|e-bike", bas):
         type_velo = "vtt_electrique"
@@ -13221,8 +13235,10 @@ def obtenir_etat(
         rows = [r for r in rows if not str(r["nom"]).startswith("Non concerné")]
         if freins_velo == "patins":
             rows = [r for r in rows if not any(mot in str(r["nom"]).lower() for mot in ("plaquettes de frein", "disque de frein", "purge du liquide de frein"))]
-        elif freins_velo == "disque":
+        elif freins_velo in ("disque", "disque_hydraulique", "disque_mecanique"):
             rows = [r for r in rows if "patins de frein" not in str(r["nom"]).lower()]
+        if freins_velo != "disque_hydraulique":
+            rows = [r for r in rows if "purge du liquide de frein" not in str(r["nom"]).lower()]
         if suspension_velo == "rigide":
             rows = [r for r in rows if not any(mot in str(r["nom"]).lower() for mot in ("fourche -", "amortisseur -", "roulements de suspension"))]
         elif suspension_velo == "avant":
