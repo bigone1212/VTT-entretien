@@ -53,6 +53,32 @@ jobs:
           python-version: "3.12"
       - name: Vérifier la syntaxe Python complète
         run: python -m py_compile main.py
+      - name: Vérifier le chargement initial du sélecteur multi-vélos
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          source = Path("main.py").read_text(encoding="utf-8")
+          marqueur = "// Vérifie si un code est déjà en mémoire"
+          debut = source.index(marqueur)
+          fin = source.index("const MR_GROUPES", debut)
+          initialisation = source[debut:fin]
+          assert "await chargerVelos();" in initialisation, "Le sélecteur n'est pas chargé à la reconnexion"
+          assert "await chargerEtat();" in initialisation, "L'état du vélo n'est pas chargé au démarrage"
+          assert initialisation.index("await chargerVelos();") < initialisation.index("await chargerEtat();"), "L'état est chargé avant la liste des vélos"
+          print("OK: reconnexion automatique, sélecteur multi-vélos chargé avant l'état du vélo.")
+
+          import re
+          import subprocess
+
+          scripts = re.findall(r"<script[^>]*>([\s\S]*?)</script>", source)
+          assert scripts, "Aucun script JavaScript intégré trouvé"
+          for numero, script in enumerate(scripts, start=1):
+              subprocess.run(["node", "--check"], input=script, text=True, check=True)
+              print(f"OK: syntaxe JavaScript du script intégré {numero}/{len(scripts)}.")
+          PY
+      - name: Installer les dépendances de l'application
+        run: pip install -r requirements.txt
       - name: Tester la recherche de fiche et l'adaptation des freins
         run: |
           python - <<'PY'
@@ -118,32 +144,6 @@ jobs:
           assert cur.execute("SELECT COUNT(*) FROM composants").fetchone()[0] >= 5
           print("OK : recherche structurée, détection des freins, entretiens adaptés et conservation des identifiants.")
           PY
-      - name: Vérifier le chargement initial du sélecteur multi-vélos
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          source = Path("main.py").read_text(encoding="utf-8")
-          marqueur = "// Vérifie si un code est déjà en mémoire"
-          debut = source.index(marqueur)
-          fin = source.index("const MR_GROUPES", debut)
-          initialisation = source[debut:fin]
-          assert "await chargerVelos();" in initialisation, "Le sélecteur n'est pas chargé à la reconnexion"
-          assert "await chargerEtat();" in initialisation, "L'état du vélo n'est pas chargé au démarrage"
-          assert initialisation.index("await chargerVelos();") < initialisation.index("await chargerEtat();"), "L'état est chargé avant la liste des vélos"
-          print("OK: reconnexion automatique, sélecteur multi-vélos chargé avant l'état du vélo.")
-
-          import re
-          import subprocess
-
-          scripts = re.findall(r"<script[^>]*>([\s\S]*?)</script>", source)
-          assert scripts, "Aucun script JavaScript intégré trouvé"
-          for numero, script in enumerate(scripts, start=1):
-              subprocess.run(["node", "--check"], input=script, text=True, check=True)
-              print(f"OK: syntaxe JavaScript du script intégré {numero}/{len(scripts)}.")
-          PY
-      - name: Installer les dépendances de l'application
-        run: pip install -r requirements.txt
       - name: Tester le téléchargement JSON de la sauvegarde avec des kilométrages divergents
         env:
           SQLITE_PATH: ${{ runner.temp }}/maillons-sauvegarde-test.db
