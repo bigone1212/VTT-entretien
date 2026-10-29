@@ -12405,8 +12405,8 @@ def adapter_freins_velo(cursor, velo_id, freins):
         }
     for ancien, nouveau in changements.items():
         cursor.execute(
-            "UPDATE composants SET nom = ?, seuil_alerte = CASE WHEN ? LIKE 'Non concerné%' THEN 0 ELSE seuil_alerte END WHERE velo_id = ? AND nom = ?",
-            (nouveau, nouveau, velo_id, ancien)
+            "UPDATE composants SET nom = ? WHERE velo_id = ? AND nom = ?",
+            (nouveau, velo_id, ancien)
         )
     cursor.execute("SELECT nom FROM composants WHERE velo_id = ?", (velo_id,))
     noms = {r[0] for r in cursor.fetchall()}
@@ -12454,7 +12454,7 @@ def modifier_fiche_velo(
         cursor.execute("""
             UPDATE velos
             SET nom = ?, marque = ?, modele = ?, annee = ?, taille = ?,
-                date_achat = ?, moteur = ?, batterie = ?, freins = ?
+                date_achat = ?, moteur = ?, batterie = ?, freins = COALESCE(?, freins)
             WHERE id = ? AND actif = 1
         """, (
             nom, (data.marque or "").strip() or None,
