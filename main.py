@@ -371,6 +371,10 @@ def init_db():
     ajouter_colonne(cursor, "velos", "moteur", "TEXT")
     ajouter_colonne(cursor, "velos", "batterie", "TEXT")
     ajouter_colonne(cursor, "velos", "photo", "TEXT")
+    # Jour où le suivi du vélo démarre dans Maillons (point de départ du
+    # compteur de jours des pièces). Vide pour le CUBE et les vélos déjà créés :
+    # on retombe alors sur la date d'achat, comme avant.
+    ajouter_colonne(cursor, "velos", "suivi_depuis", "TEXT")
 
     # Le CUBE reçoit TOUJOURS l'identifiant 1 : les pièces et les sorties
     # existantes sont rattachées au vélo n° 1 (velo_id par défaut).
@@ -12126,14 +12130,15 @@ def creer_velo(
         cursor.execute("""
             INSERT INTO velos (
                 nom, type, marque, modele, annee, taille, actif, km_total,
-                km_frac, km_maj_le, date_achat, moteur, batterie
+                km_frac, km_maj_le, date_achat, suivi_depuis, moteur, batterie
             )
-            VALUES (?, ?, ?, ?, ?, ?, 1, 0, 0, NULL, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, 1, 0, 0, NULL, ?, ?, ?, ?)
         """, (
             nom, type_velo, (data.marque or "").strip() or None,
             (data.modele or "").strip() or None, data.annee,
             (data.taille or "").strip() or None,
             date_achat or date.today().isoformat(),
+            date.today().isoformat(),
             ((data.moteur or "").strip() or None) if electrique else None,
             ((data.batterie or "").strip() or None) if electrique else None
         ))
@@ -12534,7 +12539,7 @@ def obtenir_etat(
 
     try:
         cursor.execute("""
-            SELECT id, km_total, date_achat, legacy_velo_id
+            SELECT id, km_total, date_achat, legacy_velo_id, suivi_depuis
             FROM velos
             WHERE id = ? AND actif = 1
         """, (velo_id,))
@@ -12549,6 +12554,9 @@ def obtenir_etat(
             if velo["legacy_velo_id"] == 1
             else date.today().isoformat()
         )
+        # Point de départ du compteur de jours : le jour où le vélo a été ajouté
+        # dans Maillons s'il est connu, sinon la date d'achat (CUBE, anciens vélos).
+        date_depart_suivi = velo["suivi_depuis"] or date_achat
 
         cursor.execute(
             "SELECT * FROM composants WHERE velo_id = ? ORDER BY id",
@@ -12616,7 +12624,7 @@ def obtenir_etat(
 
             if seuil_jours > 0:
                 try:
-                    reference = date.fromisoformat((depuis or date_achat)[:10])
+                    reference = date.fromisoformat((depuis or date_depart_suivi)[:10])
                 except ValueError:
                     reference = date.fromisoformat(DATE_ACHAT_PAR_DEFAUT)
 
