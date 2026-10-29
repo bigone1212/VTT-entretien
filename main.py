@@ -318,6 +318,173 @@ def ajouter_composants_une_fois(cursor, marqueur, liste):
     """, (marqueur,))
 
 
+# ------------------------------------------------------------
+# Entretiens et contrôles conseillés pour les vélos autres que le CUBE,
+# selon le type de vélo. Les noms sont génériques (sans marque) : les fiches
+# « Comment faire » de la page sont rangées par nom exact de pièce.
+# ------------------------------------------------------------
+TYPES_ELECTRIQUES = ("vtt_electrique", "gravel_electrique", "route_electrique")
+TYPES_SUSPENDUS = ("vtt_electrique", "vtt", "enduro", "descente")
+TYPES_TUBELESS = (
+    "vtt_electrique", "vtt", "enduro", "descente", "gravel", "gravel_electrique"
+)
+
+# Kilomètres conseillés par type :
+# (chaîne, cassette, plaquettes, disques, pneu avant, pneu arrière,
+#  nettoyage de la chaîne, entretien fourche et amortisseur)
+KM_PAR_TYPE = {
+    "vtt_electrique": (2000, 4000, 1500, 4000, 3500, 2500, 300, 800),
+    "vtt": (2500, 5000, 2000, 4000, 3500, 2500, 300, 800),
+    "enduro": (1500, 3000, 1000, 3000, 2500, 1500, 200, 600),
+    "descente": (1000, 2000, 600, 2500, 1500, 1000, 150, 400),
+    "gravel": (3000, 6000, 2000, 5000, 4000, 3000, 300, 0),
+    "gravel_electrique": (2500, 5000, 1500, 4000, 4000, 3000, 300, 0),
+    "route": (4000, 8000, 3000, 6000, 5000, 4000, 400, 0),
+    "route_electrique": (3000, 6000, 2000, 5000, 5000, 4000, 300, 0),
+}
+
+
+def entretiens_du_type(type_velo):
+    """Entretiens et contrôles d'un type de vélo.
+    Liste de (nom, km, jours, catégorie, x %, y %, vérification) ;
+    0 = aucun seuil, vérification 1 = contrôle régulier (bouton « Vérifications »)."""
+    km = KM_PAR_TYPE.get(type_velo) or KM_PAR_TYPE["vtt_electrique"]
+    chaine, cassette, plaquettes, disques, pneu_av, pneu_ar, nettoyage, susp = km
+    piece, maintenance = "piece", "maintenance"
+
+    liste = [
+        ("Chaîne (remplacement)", chaine, 0, piece, 27, 76, 0),
+        ("Nettoyage & Lubrification chaîne", nettoyage, 0, maintenance, 35, 76, 0),
+        ("Cassette (remplacement)", cassette, 0, piece, 20, 63, 0),
+        ("Plateau (remplacement)", cassette + cassette // 4, 0, piece, 43, 66, 0),
+        ("Galets de dérailleur", cassette, 0, piece, 21, 73, 0),
+        ("Câble et gaine de dérailleur", 0, 365, maintenance, 30, 66, 0),
+        ("Plaquettes de frein (avant)", plaquettes, 0, piece, 70, 62, 0),
+        ("Plaquettes de frein (arrière)", plaquettes, 0, piece, 22, 47, 0),
+        ("Disque de frein (avant)", disques, 0, piece, 79, 58, 0),
+        ("Disque de frein (arrière)", disques, 0, piece, 16, 67, 0),
+        ("Purge du liquide de frein", 0, 180 if type_velo in ("enduro", "descente") else 365, maintenance, 57, 15, 0),
+        ("Pneu (avant)", pneu_av, 0, piece, 93, 63, 0),
+        ("Pneu (arrière)", pneu_ar, 0, piece, 7, 58, 0),
+        ("Pédales (graissage et jeu)", 0, 365, maintenance, 45, 75, 0),
+        ("Roulements de moyeux (avant + arrière)", 5000, 365, maintenance, 76, 68, 0),
+        ("Jeu de direction (contrôle et graissage)", 5000, 365, maintenance, 65, 20, 0),
+    ]
+
+    if type_velo in TYPES_TUBELESS:
+        liste.append(("Liquide préventif tubeless (2 pneus)", 0, 120, maintenance, 87, 82, 0))
+
+    if type_velo in TYPES_SUSPENDUS:
+        liste.extend([
+            ("Fourche - entretien (50 h)", susp, 0, maintenance, 75, 44, 0),
+            ("Fourche - révision complète (200 h)", susp * 4, 0, maintenance, 71, 34, 0),
+            ("Amortisseur - entretien (50 h)", susp, 0, maintenance, 44, 44, 0),
+            ("Amortisseur - révision complète (200 h)", susp * 4, 0, maintenance, 48, 50, 0),
+            ("Roulements de suspension (biellettes)", 3000, 365, maintenance, 35, 56, 0),
+        ])
+
+    # Contrôles réguliers, regroupés sous le bouton « Vérifications ».
+    liste.extend([
+        ("Pneus - pression et état (contrôle)", 0, 14, maintenance, 92, 74, 1),
+        ("Rayons et voile des roues (contrôle)", 0, 180, maintenance, 84, 48, 1),
+        ("Contrôle des serrages (vis et boulons)", 0, 180, maintenance, 63, 12, 1),
+    ])
+
+    if type_velo in TYPES_SUSPENDUS:
+        liste.extend([
+            ("Fourche - pression et SAG (contrôle)", 0, 30, maintenance, 80, 38, 1),
+            ("Amortisseur - pression et SAG (contrôle)", 0, 30, maintenance, 41, 50, 1),
+        ])
+
+    if type_velo in TYPES_ELECTRIQUES:
+        liste.extend([
+            ("Contrôle annuel du moteur et du logiciel", 0, 365, maintenance, 37, 70, 1),
+            ("Batterie (contacts et état)", 0, 180, maintenance, 55, 45, 1),
+        ])
+
+    return liste
+
+
+# Anciens noms génériques donnés aux pièces des vélos ajoutés avant ce modèle :
+# ancien nom -> (nouveau nom, vérification 0/1). Seuls le nom et le drapeau
+# « vérification » changent : identifiant, historique, kilomètres et seuils restent.
+ANCIENS_NOMS_GENERIQUES = {
+    "Chaîne ou transmission": ("Chaîne (remplacement)", 0),
+    "Frein avant": ("Plaquettes de frein (avant)", 0),
+    "Frein arrière": ("Plaquettes de frein (arrière)", 0),
+    "Pneus": ("Pneu (arrière)", 0),
+    "Roues et rayons (contrôle)": ("Rayons et voile des roues (contrôle)", 1),
+    "Direction et roulements (contrôle)": ("Jeu de direction (contrôle et graissage)", 0),
+    "Contrôle général et serrages": ("Contrôle des serrages (vis et boulons)", 1),
+    "Moteur électrique (contrôle)": ("Contrôle annuel du moteur et du logiciel", 1),
+    "Batterie (contrôle)": ("Batterie (contacts et état)", 1),
+    "Fourche (entretien)": ("Fourche - entretien (50 h)", 0),
+    "Suspension arrière (entretien)": ("Amortisseur - entretien (50 h)", 0),
+}
+
+
+def marqueur_entretiens_velo(velo_id):
+    return "migration_entretiens_type_v1_velo_" + str(int(velo_id))
+
+
+def poser_marqueur_entretiens(cursor, velo_id):
+    cursor.execute("""
+        INSERT INTO reglages (cle, valeur)
+        VALUES (?, 1)
+        ON CONFLICT (cle) DO NOTHING
+    """, (marqueur_entretiens_velo(velo_id),))
+
+
+def mettre_a_niveau_un_velo(cursor, velo_id, type_velo):
+    """Renomme les anciennes pièces génériques d'un vélo et ajoute celles du
+    modèle qui manquent. Ne supprime rien et ne touche à aucun autre vélo."""
+    cursor.execute("SELECT nom FROM composants WHERE velo_id = ?", (velo_id,))
+    noms = {r[0] for r in cursor.fetchall()}
+
+    for ancien, (nouveau, verification) in ANCIENS_NOMS_GENERIQUES.items():
+        if ancien in noms and nouveau not in noms:
+            cursor.execute("""
+                UPDATE composants SET nom = ?, verification = ?
+                WHERE velo_id = ? AND nom = ?
+            """, (nouveau, verification, velo_id, ancien))
+            noms.discard(ancien)
+            noms.add(nouveau)
+
+    for nom, km, jours, categorie, x, y, verification in entretiens_du_type(type_velo):
+        if nom in noms:
+            continue
+
+        cursor.execute("""
+            INSERT INTO composants (
+                velo_id, nom, km_depart, seuil_alerte, seuil_jours,
+                categorie, pos_x, pos_y, verification, coef_usure
+            )
+            VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, 1)
+        """, (velo_id, nom, km, jours, categorie, x, y, verification))
+        noms.add(nom)
+
+
+def mettre_a_niveau_velos(cursor):
+    """Une seule fois par vélo (marqueur dans reglages) ; le CUBE n'est jamais touché."""
+    cursor.execute("""
+        SELECT id, type FROM velos
+        WHERE id <> 1 AND legacy_velo_id IS NULL
+        ORDER BY id
+    """)
+
+    for velo_id, type_velo in cursor.fetchall():
+        cursor.execute(
+            "SELECT valeur FROM reglages WHERE cle = ?",
+            (marqueur_entretiens_velo(velo_id),)
+        )
+
+        if cursor.fetchone() is not None:
+            continue
+
+        mettre_a_niveau_un_velo(cursor, velo_id, type_velo)
+        poser_marqueur_entretiens(cursor, velo_id)
+
+
 def init_db():
     conn = db.connect()
     cursor = conn.cursor()
@@ -641,6 +808,7 @@ def init_db():
                 """, (ligne[0], jour, 0.0, note, km))
 
     migrer_composants_v2(cursor)
+    mettre_a_niveau_velos(cursor)
 
     conn.commit()
     conn.close()
@@ -5346,7 +5514,97 @@ def accueil():
                     "Des contacts propres et une batterie en bon état assurent la charge et l'autonomie. Ne jamais ouvrir la batterie.",
                     ["Retirer la batterie, regarder les contacts et le boîtier.", "Nettoyer les contacts avec un chiffon sec.", "Contrôler le verrou et l'absence de choc ou de gonflement.", "Pour un stockage long, la laisser entre 30 et 60 % de charge."],
                     "Chiffon sec",
-                    "entretien batterie Bosch PowerTube vélo électrique"]
+                    "entretien batterie Bosch PowerTube vélo électrique"],
+                "Chaîne (remplacement)": ["Moyen",
+                    "Une chaîne étirée use la cassette et le plateau. La changer à temps coûte bien moins cher que de changer toute la transmission.",
+                    ["Mesurer l'usure avec un testeur de chaîne (à remplacer vers 0,5 %).", "Ouvrir l'ancienne chaîne au maillon rapide ou à l'extracteur.", "Couper la neuve à la même longueur et la monter.", "Fermer le maillon rapide, graisser, vérifier que le passage des vitesses est net."],
+                    "Testeur d'usure, pince à maillon rapide, extracteur de chaîne",
+                    "changer chaine vélo"],
+                "Cassette (remplacement)": ["Moyen",
+                    "Les dents de la cassette s'usent. Une cassette usée fait sauter la chaîne sous l'effort. Elle se change souvent avec la chaîne.",
+                    ["Retirer la roue arrière.", "Dévisser l'écrou de cassette avec l'outil, en bloquant la cassette avec un fouet.", "Monter la cassette neuve sur le corps de roue libre.", "Serrer l'écrou, remonter la roue, régler le dérailleur."],
+                    "Clé de cassette, fouet à chaîne, clé dynamométrique",
+                    "changer cassette vélo"],
+                "Plateau (remplacement)": ["Moyen",
+                    "Le plateau s'use plus lentement que la chaîne. Des dents en forme de crochet ou une chaîne qui saute sont des signes d'usure.",
+                    ["Déposer la manivelle avec l'outil adapté à ton pédalier.", "Dévisser le plateau (ou l'écrou central selon le modèle).", "Monter le plateau neuf dans le bon sens.", "Remonter la manivelle, serrer au couple indiqué, vérifier le passage des vitesses."],
+                    "Clés Allen ou Torx, outil de manivelle, clé dynamométrique",
+                    "changer plateau pédalier vélo"],
+                "Galets de dérailleur": ["Moyen",
+                    "Les deux petites roues du dérailleur arrière guident la chaîne. Usées, elles font du bruit et dégradent le passage des vitesses.",
+                    ["Retirer la chaîne ou la dégager de la cage du dérailleur.", "Dévisser les deux galets, un par un, pour ne pas les mélanger.", "Monter les galets neufs dans le même sens, avec un peu de graisse.", "Remettre la chaîne, vérifier que tout tourne librement."],
+                    "Clés Allen, graisse, chiffon",
+                    "changer galets dérailleur vélo"],
+                "Plaquettes de frein (avant)": ["Moyen",
+                    "Les plaquettes usées freinent mal et abîment le disque. Il faut les changer avant qu'il ne reste moins d'un millimètre de matière.",
+                    ["Retirer la roue et la goupille ou la vis qui retient les plaquettes.", "Sortir les plaquettes et repousser doucement les pistons avec un levier plastique.", "Monter les plaquettes neuves, remettre la goupille.", "Remonter la roue, pomper le levier et roder les plaquettes."],
+                    "Plaquettes compatibles avec ton frein, levier plastique, alcool isopropylique",
+                    "changer plaquettes frein à disque vélo"],
+                "Plaquettes de frein (arrière)": ["Moyen",
+                    "Mêmes principes qu'à l'avant. L'arrière s'use souvent plus vite, surtout sur un vélo lourd ou électrique.",
+                    ["Retirer la roue arrière et la goupille des plaquettes.", "Sortir les anciennes plaquettes, repousser les pistons.", "Monter les neuves, remettre la goupille.", "Remonter la roue, pomper le levier et roder les plaquettes."],
+                    "Plaquettes compatibles avec ton frein, levier plastique, alcool isopropylique",
+                    "changer plaquettes frein arrière à disque vélo"],
+                "Disque de frein (avant)": ["Facile",
+                    "Un disque trop mince ou voilé freine mal. L'épaisseur minimale est gravée sur le disque.",
+                    ["Mesurer l'épaisseur avec un pied à coulisse et la comparer au minimum gravé.", "Dévisser les vis du disque (6 vis Torx ou un verrou central).", "Monter le disque neuf, serrer les vis en croix.", "Remettre les plaquettes si besoin, roder les freins."],
+                    "Pied à coulisse, clé Torx, clé dynamométrique",
+                    "changer disque de frein vélo"],
+                "Disque de frein (arrière)": ["Facile",
+                    "Même contrôle qu'à l'avant : épaisseur minimale gravée sur le disque, et surface propre, sans huile.",
+                    ["Mesurer l'épaisseur avec un pied à coulisse.", "Dévisser les vis du disque.", "Monter le disque neuf, serrer les vis en croix.", "Roder les freins avec quelques freinages progressifs."],
+                    "Pied à coulisse, clé Torx, clé dynamométrique",
+                    "changer disque de frein arrière vélo"],
+                "Purge du liquide de frein": ["Atelier",
+                    "Le liquide de frein absorbe l'humidité avec le temps. Une purge régulière garde un levier ferme et un freinage sûr.",
+                    ["Vérifier que le liquide préconisé est bien le bon (huile minérale ou DOT : jamais l'un pour l'autre).", "Purger avec le kit adapté, un frein après l'autre.", "Contrôler la fermeté du levier et l'absence de fuite.", "Si tu n'as jamais purgé, confie-le à un atelier."],
+                    "Kit de purge de la marque du frein, liquide adapté, gants, chiffons",
+                    "purger frein à disque vélo"],
+                "Pneu (avant)": ["Facile",
+                    "Un pneu usé ou fendu adhère moins et crève plus facilement. L'avant est le pneu le plus important pour tenir la trajectoire.",
+                    ["Regarder la gomme : crampons usés, fissures, flancs abîmés.", "Dégonfler et démonter le pneu de la jante.", "Monter le pneu neuf dans le sens de rotation indiqué sur le flanc.", "Gonfler à la pression conseillée et vérifier l'étanchéité."],
+                    "Démonte-pneus, pompe, manomètre, liquide préventif si tubeless",
+                    "changer pneu vélo"],
+                "Pneu (arrière)": ["Facile",
+                    "L'arrière s'use plus vite car il entraîne et freine. Un pneu lisse ou fendu doit être remplacé.",
+                    ["Regarder la gomme : crampons usés, fissures, flancs abîmés.", "Dégonfler et démonter le pneu de la jante.", "Monter le pneu neuf dans le sens de rotation indiqué sur le flanc.", "Gonfler à la pression conseillée et vérifier l'étanchéité."],
+                    "Démonte-pneus, pompe, manomètre, liquide préventif si tubeless",
+                    "changer pneu arrière vélo"],
+                "Fourche - entretien (50 h)": ["Atelier",
+                    "Toutes les 50 heures environ, la fourche demande un nettoyage et un regraissage des joints. Ça la garde souple et évite l'usure prématurée.",
+                    ["Dépressuriser la fourche et déposer les bas de fourreaux.", "Nettoyer les joints racleurs et les tubes.", "Renouveler l'huile des bas de fourreaux et regraisser les joints.", "Remonter, remettre la pression, noter les réglages."],
+                    "Kit d'entretien de la marque de ta fourche, huile adaptée : à faire en atelier si tu n'as pas l'outillage",
+                    "entretien fourche vélo 50 heures"],
+                "Fourche - révision complète (200 h)": ["Atelier",
+                    "La révision complète, environ toutes les 200 heures, remplace l'huile de cartouche et les pièces d'usure. C'est un travail d'atelier.",
+                    ["Faire démonter la fourche par un atelier spécialisé.", "Demander le changement de l'huile de la cartouche et de la chambre d'air.", "Faire contrôler les bagues et les joints.", "Reprendre les réglages de pression et de détente."],
+                    "Atelier spécialisé suspensions",
+                    "révision complète fourche vélo 200 heures"],
+                "Amortisseur - entretien (50 h)": ["Atelier",
+                    "L'amortisseur arrière demande un entretien léger toutes les 50 heures environ : nettoyage et renouvellement de la graisse de la chambre d'air.",
+                    ["Dépressuriser l'amortisseur et déposer la chambre d'air.", "Nettoyer, renouveler l'huile et la graisse des joints.", "Remonter et remettre la pression.", "Noter les réglages et vérifier le SAG."],
+                    "Kit d'entretien de la marque de ton amortisseur, pompe à amortisseur : à faire en atelier si tu n'as pas l'outillage",
+                    "entretien amortisseur arrière vélo 50 heures"],
+                "Amortisseur - révision complète (200 h)": ["Atelier",
+                    "La révision complète, environ toutes les 200 heures, remplace l'huile et les joints internes. Elle redonne à l'amortisseur son comportement d'origine.",
+                    ["Faire démonter l'amortisseur par un atelier spécialisé.", "Demander la vidange complète et le changement des joints.", "Faire contrôler les bagues et les axes de fixation.", "Reprendre les réglages de pression et de détente."],
+                    "Atelier spécialisé suspensions",
+                    "révision complète amortisseur vélo 200 heures"],
+                "Contrôle des serrages (vis et boulons)": ["Facile",
+                    "Les vibrations desserrent peu à peu les vis. Un contrôle régulier évite une pièce qui bouge ou qui casse.",
+                    ["Vérifier chaque vis avec une clé dynamométrique réglée.", "Respecter les valeurs gravées sur les pièces ou celles du manuel du vélo.", "Contrôler potence, cintre, roues, pédalier, axe de selle et freins.", "Noter ce qui avait bougé pour le surveiller."],
+                    "Clé dynamométrique, jeu de clés Allen et Torx",
+                    "contrôle serrage couple vélo clé dynamométrique"],
+                "Contrôle annuel du moteur et du logiciel": ["Atelier",
+                    "Chez un revendeur de la marque du moteur, l'outil de diagnostic lit les erreurs, met à jour le logiciel et contrôle le moteur et la batterie.",
+                    ["Prendre rendez-vous chez un revendeur agréé pour ton moteur.", "Demander le diagnostic complet et la mise à jour du logiciel.", "Faire noter les kilomètres et les éventuelles erreurs.", "Garder la facture ou le compte rendu."],
+                    "Revendeur agréé",
+                    "contrôle annuel moteur vélo électrique diagnostic"],
+                "Batterie (contacts et état)": ["Facile",
+                    "Des contacts propres et une batterie en bon état assurent la charge et l'autonomie. Ne jamais ouvrir la batterie.",
+                    ["Retirer la batterie, regarder les contacts et le boîtier.", "Nettoyer les contacts avec un chiffon sec.", "Contrôler le verrou et l'absence de choc ou de gonflement.", "Pour un stockage long, la laisser à moitié chargée, au sec."],
+                    "Chiffon sec",
+                    "entretien batterie vélo électrique"]
             };
 
             function lienYoutube(nom) {
@@ -12145,35 +12403,19 @@ def creer_velo(
         cursor.execute("SELECT id FROM velos WHERE nom = ? ORDER BY id DESC LIMIT 1", (nom,))
         velo_id = cursor.fetchone()[0]
 
-        composants_base = [
-            ("Chaîne ou transmission", 1500, 180, "piece", 30, 65),
-            ("Frein avant", 1500, 180, "piece", 72, 60),
-            ("Frein arrière", 1500, 180, "piece", 24, 60),
-            ("Pneus", 2500, 180, "piece", 50, 80),
-            ("Roues et rayons (contrôle)", 0, 180, "maintenance", 80, 48),
-            ("Direction et roulements (contrôle)", 0, 365, "maintenance", 50, 20),
-            ("Contrôle général et serrages", 0, 180, "maintenance", 60, 35)
-        ]
-        if electrique:
-            composants_base.extend([
-                ("Moteur électrique (contrôle)", 0, 365, "maintenance", 42, 42),
-                ("Batterie (contrôle)", 0, 180, "maintenance", 55, 50)
-            ])
-        if type_velo in {"vtt_electrique", "vtt", "enduro", "descente"}:
-            composants_base.extend([
-                ("Fourche (entretien)", 800, 365, "maintenance", 76, 38),
-                ("Suspension arrière (entretien)", 800, 365, "maintenance", 44, 48)
-            ])
         cursor.executemany("""
             INSERT INTO composants (
                 velo_id, nom, km_depart, seuil_alerte, seuil_jours,
                 categorie, pos_x, pos_y, verification, coef_usure
             )
-            VALUES (?, ?, 0, ?, ?, ?, ?, ?, 0, 1)
+            VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, 1)
         """, [
-            (velo_id, nom_comp, km, jours, categorie, x, y)
-            for nom_comp, km, jours, categorie, x, y in composants_base
+            (velo_id, nom_comp, km, jours, categorie, x, y, verification)
+            for nom_comp, km, jours, categorie, x, y, verification
+            in entretiens_du_type(type_velo)
         ])
+        # Ce vélo a déjà sa liste complète : le démarrage ne la retouchera pas.
+        poser_marqueur_entretiens(cursor, velo_id)
         conn.commit()
         return {"statut": "success", "velo_id": velo_id, "nom": nom, "type": type_velo}
     except Exception:
