@@ -124,6 +124,24 @@ jobs:
           assert not any("liquide préventif tubeless" in nom.lower() for nom in inconnus)
           assert not any("chaîne" in nom.lower() or "cassette" in nom.lower() for nom in inconnus)
 
+          from pathlib import Path
+          source = Path("main.py").read_text(encoding="utf-8")
+          guides_start = source.index("const GUIDES = {")
+          guides_end = source.index("function lienYoutube(nom) {", guides_start)
+          guides = source[guides_start:guides_end]
+          configurations = (
+              ("route", "patins", "rigide", "chambre", "chaine"),
+              ("vtt", "disque_hydraulique", "double", "tubeless", "chaine"),
+              ("route", "disque_mecanique", "rigide", "chambre", "courroie"),
+              ("vtt", None, None, None, None),
+          )
+          for configuration in configurations:
+              for ligne in main.entretiens_du_type(*configuration):
+                  assert '"' + ligne[0] + '"' in guides, (
+                      "Fiche « Comment faire » absente pour la configuration "
+                      + str(configuration) + ": " + ligne[0]
+                  )
+
           ouverture = "<scr" + "ipt"
           fermeture = "</scr" + "ipt>"
           page = (
