@@ -13172,7 +13172,7 @@ LIBELLES_COMPOSANTS_VELO = {
 }
 
 
-def composants_techniques_de_page(html_page):
+def composants_techniques_de_page(html_page, source_url=None):
     """Extrait les couples libellé/valeur des tableaux et propriétés structurées."""
     trouves = {}
 
@@ -13201,7 +13201,7 @@ def composants_techniques_de_page(html_page):
             return
         trouves.setdefault(categorie, [])
         if valeur not in [item["nom"] for item in trouves[categorie]]:
-            trouves[categorie].append({"nom": valeur, "source": "fiche"})
+            trouves[categorie].append({"nom": valeur, "source": source_url or "fiche"})
 
     # Tableaux de spécifications classiques (label dans la première cellule).
     for ligne in re.findall(r"<tr\b[^>]*>(.*?)</tr>", html_page, re.I | re.S):
@@ -13290,6 +13290,105 @@ def composants_techniques_de_page(html_page):
     return resultat
 
 
+def rechercher_pages_composants(requete, url_origine):
+    """Recherche quelques fiches indépendantes, sans quitter les garde-fous réseau."""
+    if not requete:
+        return []
+    params = urllib.parse.urlencode({"q": requete + " vélo fiche technique composants"})
+    try:
+        _, octets, _ = telecharger_lien("https://html.duckduckgo.com/html/?" + params, "text/html")
+    except ValueError:
+        return []
+    page = octets.decode("utf-8", errors="replace")
+    domaine_origine = (urllib.parse.urlparse(url_origine).hostname or "").lower()
+    candidats = []
+    domaines = set()
+    for balise in re.findall(r"<a\b[^>]*class=["'][^"']*result__a[^"']*["'][^>]*>.*?</a>", page, re.I | re.S):
+        href = re.search(r"href=["']([^"']+)["']", balise, re.I)
+        titre = texte_page_fiche(balise)
+        if not href or not titre:
+            continue
+        cible = html_lib.unescape(href.group(1))
+        parsed = urllib.parse.urlparse(cible)
+        if parsed.netloc.endswith("duckduckgo.com") and parsed.path.startswith("/l/"):
+            cible = urllib.parse.parse_qs(parsed.query).get("uddg", [None])[0] or cible
+        parsed = urllib.parse.urlparse(cible)
+        domaine = (parsed.hostname or "").lower()
+        if parsed.scheme not in ("http", "https") or not domaine or domaine == domaine_origine or domaine in domaines:
+            continue
+        domaines.add(domaine)
+        candidats.append({"titre": titre[:180], "url": cible})
+        if len(candidats) >= 5:
+            break
+    pages = []
+    for candidat in candidats:
+        try:
+            type_contenu, contenu, finale = telecharger_lien(candidat["url"], "text/html,application/xhtml+xml")
+        except ValueError:
+            continue
+        if type_contenu not in ("text/html", "application/xhtml+xml"):
+            continue
+        pages.append((finale, contenu[:2000000].decode("utf-8", errors="replace")))
+        if len(pages) >= 3:
+            break
+    return pages
+
+
+def recouper_composants_techniques(pages):
+    """Fusionne les résultats en conservant les sources et les désaccords."""
+    regroupes = {}
+    sources = []
+    domaines_sources = set()
+    for url, html_page in pages:
+        domaine = (urllib.parse.urlparse(url).hostname or "").lower()
+        if domaine and domaine not in domaines_sources:
+            domaines_sources.add(domaine)
+            sources.append({"url": url, "domaine": domaine})
+        for piece in composants_techniques_de_page(html_page, url):
+            if not piece.get("nom"):
+                continue
+            cle = (piece["categorie"], re.sub(r"\s+", " ", piece["nom"]).strip().casefold())
+            regroupes.setdefault(piece["categorie"], {})
+            entree = regroupes[piece["categorie"]].setdefault(cle[1], {
+                "categorie": piece["categorie"],
+                "nom": piece["nom"],
+                "sources": [],
+                "origine": piece.get("origine") or "Fiche consultée"
+            })
+            source = piece.get("source") or url
+            if source not in entree["sources"]:
+                entree["sources"].append(source)
+    resultat = []
+    categories_connues = [item[0] for item in LIBELLES_COMPOSANTS_VELO.values()]
+    for categorie in categories_connues:
+        choix = list(regroupes.get(categorie, {}).values())
+        if not choix:
+            resultat.append({"categorie": categorie, "nom": None, "statut": "non_trouve", "origine": None, "sources": []})
+            continue
+        for choix_piece in choix:
+            domaines = {
+                (urllib.parse.urlparse(source).hostname or "").lower()
+                for source in choix_piece["sources"]
+                if urllib.parse.urlparse(source).hostname
+            }
+            if len(choix) > 1:
+                statut = "choix"
+            elif len(domaines) >= 2:
+                statut = "recoupe"
+            else:
+                statut = "a_confirmer"
+            resultat.append({
+                "categorie": categorie,
+                "nom": choix_piece["nom"],
+                "statut": statut,
+                "origine": choix_piece["origine"],
+                "source": choix_piece["sources"][0] if choix_piece["sources"] else None,
+                "sources": choix_piece["sources"],
+                "nombre_sources": len(domaines)
+            })
+    return resultat, sources
+
+
 @app.post("/api/recherche-fiche-velo")
 def recherche_fiche_velo(data: RechercheFicheVeloRequest, x_code_acces: Optional[str] = Header(default=None)):
     """Recherche une page de vélo ou extrait les caractéristiques publiées par une fiche."""
@@ -13337,13 +13436,17 @@ def recherche_fiche_velo(data: RechercheFicheVeloRequest, x_code_acces: Optional
     texte = texte_page_fiche(page)
     produits = produits_structures(page)
     produit = produits[0] if produits else {}
-    composants_techniques = composants_techniques_de_page(page)
+    composants_techniques = composants_techniques_de_page(page, finale)
     marque = produit.get("brand")
     if isinstance(marque, dict):
         marque = marque.get("name")
     modele = produit.get("model") or produit.get("name")
     annee_source = produit.get("releaseDate") or produit.get("datePublished") or ""
     annee_match = re.search(r"\b(19[5-9][0-9]|20[0-9]{2}|2100)\b", str(annee_source) + " " + str(modele or ""))
+    requete_composants = " ".join(str(x) for x in (marque, modele, annee_match.group(1) if annee_match else recherche) if x)
+    pages_composants = [(finale, page)]
+    pages_composants.extend(rechercher_pages_composants(requete_composants, finale))
+    composants_techniques, sources_fiche = recouper_composants_techniques(pages_composants)
     bas = texte.lower()
     freins = None
     patins_trouves = bool(re.search(r"freins? (?:à|a) patins|freinage sur jante|rim brakes?|v-brakes?", bas))
@@ -13407,6 +13510,7 @@ def recherche_fiche_velo(data: RechercheFicheVeloRequest, x_code_acces: Optional
         "moteur": moteur_match.group(0).strip()[:120] if moteur_match else None,
         "batterie": batterie_match.group(0).strip()[:120] if batterie_match else None,
         "composants_techniques": composants_techniques,
+        "sources_fiche": sources_fiche,
         "source": finale,
         "message": "Les données extraites doivent être vérifiées sur la fiche constructeur."
     }
