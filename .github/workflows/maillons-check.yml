@@ -2107,6 +2107,87 @@ jobs:
           assert all(item["origine"] == "Fiche consultée" for item in trouves.values() if item["categorie"] != "plaquettes")
           print("OK: composants extraits, compatibilités Shimano BR-M6120 sourcées et aucun patin/plaquette deviné sans étrier exact.")
           PY
+      - name: Vérifier le recoupement de plusieurs sources et les variantes
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-recoupement-test.db
+          DATABASE_URL: ""
+          CODE_ACCES: test
+        run: |
+          python - <<'PY'
+          import json
+          import main
+
+          page_a = """
+          <html><head><title>Fuel EXe 9.7 2025</title></head><body>
+          <script type="application/ld+json">
+          {"@type":"Product","name":"Fuel EXe 9.7","brand":{"@type":"Brand","name":"Trek"},"releaseDate":"2025"}
+          </script>
+          <table>
+            <tr><th>Fork</th><td>Fox Rhythm 36, Float EVOL, GRIP, 150 mm</td></tr>
+            <tr><th>Rear Shock</th><td>Fox Performance Float X, 205 x 60 mm</td></tr>
+            <tr><th>Seatpost</th><td>TranzX JD-YSP39, 150 mm travel</td></tr>
+          </table>
+          </body></html>
+          """
+          page_b = """
+          <html><body><table>
+            <tr><th>Fork</th><td>Fox Rhythm 36, Float EVOL, GRIP, 150 mm</td></tr>
+            <tr><th>Rear Shock</th><td>Fox Performance Float X, 205 x 60 mm</td></tr>
+            <tr><th>Seatpost</th><td>Bontrager Line Dropper, 150 mm travel</td></tr>
+          </table></body></html>
+          """
+          url_a = "https://source-a.example/fuel"
+          url_b = "https://source-b.example/fuel"
+          resultats, sources = main.recouper_composants_techniques([
+              (url_a, page_a), (url_b, page_b)
+          ])
+          fourche = next(x for x in resultats if x["categorie"] == "fourche" and x["nom"])
+          assert fourche["statut"] == "recoupe", fourche
+          assert fourche["nombre_sources"] == 2, fourche
+          assert set(fourche["sources"]) == {url_a, url_b}, fourche
+          tiges = [x for x in resultats if x["categorie"] == "tige_de_selle" and x["nom"]]
+          assert len(tiges) == 2 and all(x["statut"] == "choix" for x in tiges), tiges
+          assert next(x for x in resultats if x["categorie"] == "chargeur")["statut"] == "non_trouve"
+          assert len(sources) == 2, sources
+
+          page_recherche = """
+          <html><body>
+          <a class="result__a" href="https://source-a.example/fuel">Fiche A</a>
+          <a class="result__a" href="https://source-b.example/fuel">Fiche B</a>
+          <a class="result__a" href="https://opticycles.com/fuel">Page initiale</a>
+          </body></html>
+          """
+          original = main.telecharger_lien
+          def faux_telechargement(url, accepte):
+              if "duckduckgo.com" in url:
+                  return "text/html", page_recherche.encode(), url
+              if "source-a.example" in url:
+                  return "text/html", page_a.encode(), url
+              if "source-b.example" in url:
+                  return "text/html", page_b.encode(), url
+              raise ValueError("Page indisponible")
+          main.telecharger_lien = faux_telechargement
+          pages = main.rechercher_pages_composants("Trek Fuel EXe 9.7 2025", "https://opticycles.com/fuel")
+          assert len(pages) == 2, pages
+          assert {url for url, _ in pages} == {url_a, url_b}
+          main.verifier_auth = lambda _code: None
+          main.telecharger_lien = lambda url, accepte: (
+              (_ for _ in ()).throw(ValueError("403")) if "opticycles.com" in url
+              else faux_telechargement(url, accepte)
+          )
+          fiche = main.recherche_fiche_velo(
+              main.RechercheFicheVeloRequest(url="https://opticycles.com/fr/trek/fuel-exe-9.7"),
+              None
+          )
+          assert fiche["marque"] == "Trek", fiche
+          assert len(fiche["sources_fiche"]) == 2, fiche["sources_fiche"]
+          fourche = next(x for x in fiche["composants_techniques"] if x["categorie"] == "fourche" and x["nom"])
+          assert fourche["statut"] == "recoupe", fourche
+          tiges = [x for x in fiche["composants_techniques"] if x["categorie"] == "tige_de_selle" and x["nom"]]
+          assert len(tiges) == 2 and all(x["statut"] == "choix" for x in tiges), tiges
+          main.telecharger_lien = original
+          print("OK : plusieurs sites consultés, références concordantes recoupées, désaccords proposés au choix, page 403 contournée sans inventer.")
+          PY
       - name: Vérifier la conservation de la nomenclature technique par vélo
         env:
           SQLITE_PATH: ${{ runner.temp }}/maillons-fiche-composants.db
