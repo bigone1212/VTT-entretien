@@ -13273,8 +13273,8 @@ def composants_techniques_de_page(html_page, source_url=None):
         r"<([a-z][a-z0-9]*)\b[^>]*class=['"][^'"]*(?:spec-value|value|detail)[^'"]*['"][^>]*>"
         r"(.*?)</\3>"
     )
-    for libelle, valeur in re.findall(modele_paires, html_page, re.I | re.S):
-        ajouter(libelle, valeur)
+    for correspondance in re.finditer(modele_paires, html_page, re.I | re.S):
+        ajouter(correspondance.group(2), correspondance.group(4))
 
     # Couples <dt>/<dd> fréquents dans les fiches sans tableau.
     definitions = re.findall(r"<dt\b[^>]*>(.*?)</dt>\s*<dd\b[^>]*>(.*?)</dd>", html_page, re.I | re.S)
