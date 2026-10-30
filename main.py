@@ -13268,9 +13268,9 @@ def composants_techniques_de_page(html_page, source_url=None):
 
     # Certains sites utilisent deux éléments voisins avec des classes label/value.
     modele_paires = (
-        r"<([a-z][a-z0-9]*)\b[^>]*class=['"][^'"]*(?:spec-label|spec-name|label|term)[^'"]*['"][^>]*>"
+        r"""<([a-z][a-z0-9]*)\b[^>]*class=["'][^"']*(?:spec-label|spec-name|label|term)[^"']*["'][^>]*>"""
         r"(.*?)</\1>\s*"
-        r"<([a-z][a-z0-9]*)\b[^>]*class=['"][^'"]*(?:spec-value|value|detail)[^'"]*['"][^>]*>"
+        r"""<([a-z][a-z0-9]*)\b[^>]*class=["'][^"']*(?:spec-value|value|detail)[^"']*["'][^>]*>"""
         r"(.*?)</\3>"
     )
     for correspondance in re.finditer(modele_paires, html_page, re.I | re.S):
