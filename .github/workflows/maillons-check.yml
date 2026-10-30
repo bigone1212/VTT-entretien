@@ -2077,7 +2077,7 @@ jobs:
           main.verifier_auth = lambda _code: None
           contenu = json.dumps([
               {"categorie": "fourche", "nom": "Fox Rhythm 36", "statut": "trouve",
-               "source": "https://exemple.test/fiche", "validation": "a_confirmer"}
+               "source": "https://exemple.test/fiche", "validation": "valide_par_utilisateur"}
           ], ensure_ascii=False)
           resultat = main.creer_velo(
               main.NouveauVeloRequest(
@@ -2090,6 +2090,7 @@ jobs:
           velos = main.obtenir_velos(x_code_acces="test")
           velo = next(v for v in velos if v["id"] == velo_id)
           assert json.loads(velo["fiche_composants"]) == json.loads(contenu), velo
+          assert json.loads(velo["fiche_composants"])[0]["validation"] == "valide_par_utilisateur"
 
           modifie = json.dumps([
               {"categorie": "fourche", "nom": "Fox Rhythm 36", "statut": "trouve",
