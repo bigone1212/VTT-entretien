@@ -49,48 +49,51 @@ Ce fichier ne doit **pas** être mis à jour seulement à la fin : une session p
 
 REPRISE CHATGPT — FIABILISER LA RECHERCHE MULTI-SOURCE DES FICHES VÉLO — 30/10/2026.
 
-Objectif confirmé par Math : corriger l'échec rencontré avec le lien Opticycles. La recherche de secours actuelle dépendait uniquement de DuckDuckGo ; si ce service ne répond pas depuis Render, aucune autre fiche ne pouvait être consultée. Ajouter plusieurs moteurs indépendants, conserver les contrôles de sécurité réseau, les liens sources et les choix entre valeurs contradictoires. Ne jamais inventer une référence. Préserver les fonctions, données et fiches des vélos existants.
+Objectif confirmé par Math : corriger l'échec rencontré avec le lien Opticycles. La recherche de secours dépendait initialement uniquement de DuckDuckGo ; si ce service ne répond pas depuis Render, aucune autre fiche ne peut être consultée. Ajouter plusieurs moteurs indépendants, conserver les contrôles de sécurité réseau, les liens sources et les choix entre valeurs contradictoires. Ne jamais inventer une référence. Préserver les fonctions, données et fiches des vélos existants.
 
 État initial vérifié :
 - Dernier commit de `main` au début de l'intervention : `1e556fad17aa1b4e3de625c12293b83616e2f5d5`.
 - PR #10 fusionnée dans `main` au commit `ae12763bb03eebcff10c5f52adabf4134e3c26ac`.
-- `main.py` relu sur `main` : la fonction `rechercher_pages_composants` utilisait uniquement `https://html.duckduckgo.com/html/`.
-- Render : service de production `VTT-entretien`, branche `main`, auto-déploiement activé. Déploiement du commit `1e556fad17aa1b4e3de625c12293b83616e2f5d5` en état `live` le 30/10/2026 à 09:50:31 UTC. Le code de la PR #10 est donc en ligne.
+- `main.py` relu : `rechercher_pages_composants` utilisait uniquement DuckDuckGo.
+- Render : service de production `VTT-entretien`, branche `main`, auto-déploiement activé. Déploiement du commit `1e556fad17aa1b4e3de625c12293b83616e2f5d5` en état `live` le 30/10/2026 à 09:50:31 UTC.
 - Journaux Render : requête `POST /api/recherche-fiche-velo?velo_id=5` le 30/10/2026 à 10:21:50 UTC renvoie `502 Bad Gateway`. Aucun détail d'exception applicative n'est présent dans les journaux consultés ; la cause réseau exacte n'est pas confirmée.
 - Le service Render de test `maillons-test-2026` est rattaché à une ancienne branche et son auto-déploiement est désactivé. Il n'a pas été utilisé pour valider cette correction.
 
 Modifications enregistrées sur la branche `reprise/2026-10-30-recherche-multisource` :
-- `main.py` : la recherche complémentaire interroge désormais DuckDuckGo (HTML) et Bing (flux RSS) indépendamment. L'échec ou le contenu illisible d'un moteur n'empêche pas d'essayer l'autre. Les résultats sont dédupliqués par domaine, le site d'origine et les domaines des moteurs sont écartés, puis jusqu'à trois fiches externes sont téléchargées avec `telecharger_lien` et ses vérifications réseau existantes (HTTP/HTTPS, ports autorisés, DNS public, redirections revérifiées, taille maximale).
-- `.github/workflows/maillons-check.yml` : ajout d'un test simulant DuckDuckGo indisponible et Bing RSS fonctionnel, en complément du test existant où DuckDuckGo fonctionne.
-- Aucun changement de HTML, CSS ou JavaScript. Aucune donnée de vélo ni base de production modifiée.
+- `main.py` : ajout de Bing (flux RSS) comme second moteur indépendant de DuckDuckGo (HTML). Les deux moteurs sont interrogés séparément ; un refus ou une réponse illisible de l'un ne bloque pas l'autre. Jusqu'à cinq candidats distincts par moteur sont retenus, puis jusqu'à trois pages sont consultées. Les domaines des moteurs et le domaine d'origine sont exclus. Les téléchargements des fiches passent toujours par `telecharger_lien` et ses contrôles existants (HTTP/HTTPS, ports autorisés, DNS public, redirections revérifiées, taille maximale).
+- `.github/workflows/maillons-check.yml` : test ajouté pour simuler DuckDuckGo indisponible et vérifier que Bing RSS fournit quand même les fiches.
+- Aucun changement HTML/CSS/JavaScript. Aucune donnée vélo ni base de production modifiée.
 
 Commits de la branche :
-- `9f26d935a47af6d893beb010f67455777f694c7f` : ajout du second moteur.
-- `03e6d740a204f30f8e436e39fb3cb7d41c65fcf2` : test du repli Bing.
-- `6e9ce0002e702d1491961d3e4ee27d4a75b87534` : nettoyage du filtrage des domaines moteurs.
+- `9f26d935a47af6d893beb010f67455777f694c7f` : ajout de Bing RSS.
+- `03e6d740a204f30f8e436e39fb3cb7d41c65fcf2` : test de repli Bing.
+- `6e9ce0002e702d1491961d3e4ee27d4a75b87534` : filtrage plus strict des domaines des moteurs.
+- `3a2006ee640e0b7db4284f9fe8a878f098874f10` : interroger les deux moteurs même si le premier fournit des résultats, afin de conserver un repli si ses liens sont morts.
 - Branche créée depuis `1e556fad17aa1b4e3de625c12293b83616e2f5d5`.
 
 Tests :
-- Les workflows GitHub Actions des commits `9f26d93` et `03e6d74` ont été lancés automatiquement ; leur résultat était encore `in_progress` lors de la dernière consultation.
-- Le dernier commit `6e9ce00` déclenche une nouvelle exécution ; résultat à vérifier.
-- Le test Bing est simulé : il vérifie le code lorsque DuckDuckGo échoue, mais ne prouve pas que Bing accepte réellement les connexions sortantes depuis Render.
-- Aucun essai réel de cette branche sur Render, aucun test navigateur/téléphone, aucune fusion dans `main`, aucun déploiement de cette correction.
+- GitHub Actions `41041051025` sur `9f26d93` : succès, mais ce run précède l'ajout du nouveau test Bing.
+- GitHub Actions `41041085463` sur `03e6d74` : encore en cours lors du dernier contrôle.
+- GitHub Actions `41041157023` sur `6e9ce00` : encore en cours lors du dernier contrôle.
+- GitHub Actions `41041299352` sur `3a2006e` : encore en cours lors du dernier contrôle.
+- Le test Bing est simulé : il valide le comportement lorsque DuckDuckGo échoue, mais ne prouve pas que Bing accepte réellement les connexions sortantes depuis Render.
+- Aucun essai réel de cette branche sur Render, aucun test visuel navigateur/téléphone, aucune fusion dans `main), aucun déploiement de cette correction.
 - Aucun backslash ajouté dans les parties HTML/CSS/JavaScript.
 
 Enregistré sur GitHub :
-- `main` : mise à jour du relais de reprise au commit `ab804aca9b985b35aca268301f3ff9561d8ca3cc`. Ce commit ne modifie que `RELAIS_MAILLONS.md` ; Render peut le redéployer à l'identique.
-- Branche de test : commits listés ci-dessus, fichiers `main.py` et `.github/workflows/maillons-check.yml`.
+- `main` : journal initial de reprise au commit `ab804aca9b985b35aca268301f3ff9561d8ca3cc`.
+- Branche de test : quatre commits listés ci-dessus ; fichiers applicatifs/test modifiés : `main.py` et `.github/workflows/maillons-check.yml` ; ce fichier de relais y est également actualisé.
 
 Local, non enregistré :
 - Aucun changement local.
 
 Prochaines actions :
 - [x] Lire le relais, vérifier le dernier `main`, inspecter le code et les journaux Render.
-- [x] Créer une branche séparée.
-- [x] Ajouter Bing RSS comme second moteur et un test de repli simulé.
-- [~] Vérifier la dernière exécution complète GitHub Actions et corriger tout échec.
+- [x] Créer une branche séparée et ajouter Bing RSS en moteur indépendant.
+- [x] Ajouter un test simulé de repli si DuckDuckGo échoue.
+- [~] Attendre et vérifier le résultat du workflow complet sur le dernier commit ; corriger tout échec.
 - [ ] Relire le diff final et vérifier la conservation des fonctions existantes.
-- [ ] Ouvrir une PR vers `main) uniquement après validation des contrôles ; demander l'accord explicite de Math avant toute fusion. Aucune publication de cette correction sans son accord.
+- [ ] Ouvrir une PR vers `main` après validation ; demander l'accord explicite de Math avant toute fusion. Aucun déploiement de la correction sans son accord.
 
 ## Archive — reprise automatique de la fiche technique et adaptation des entretiens — 29/10/2026
 
