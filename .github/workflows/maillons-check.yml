@@ -2085,7 +2085,9 @@ jobs:
           trouves = {item["categorie"]: item for item in resultats if item["nom"]}
           assert trouves["fourche"]["nom"].startswith("Fox Rhythm 36"), trouves
           assert "Float X" in trouves["amortisseur"]["nom"], trouves
-          assert "TranzX JD-YSP39" in trouves["tige_de_selle"]["nom"], trouves
+          tiges = [item for item in resultats if item["categorie"] == "tige_de_selle" and item["nom"]]
+          assert any("TranzX JD-YSP39" in item["nom"] for item in tiges), tiges
+          assert all(item["statut"] == "a_confirmer" for item in tiges), tiges
           assert "M6120" in trouves["freins"]["nom"], trouves
           assert "RT66" in trouves["disques"]["nom"], trouves
           assert "XT M8100" in trouves["derailleur"]["nom"], trouves
@@ -2093,7 +2095,6 @@ jobs:
           assert "32 dents" in trouves["plateau"]["nom"], trouves
           assert "M6120" in trouves["etriers"]["nom"], trouves
           assert "Bontrager Arvada" in trouves["selle"]["nom"], trouves
-          assert trouves["tige_de_selle"]["statut"] == "a_confirmer", trouves
           plaquettes = [item for item in resultats if item["categorie"] == "plaquettes" and item["nom"]]
           assert len(plaquettes) == 2, resultats
           assert any("D03S-RX" in item["nom"] for item in plaquettes), plaquettes
