@@ -13380,6 +13380,7 @@ def rechercher_pages_composants(requete, url_origine):
                     cible = urllib.parse.parse_qs(parsed.query).get("uddg", [None])[0] or cible
                 resultats.append((titre, cible))
 
+        ajoutes_moteur = 0
         for titre, cible in resultats:
             parsed = urllib.parse.urlparse(cible)
             domaine = (parsed.hostname or "").lower()
@@ -13392,10 +13393,9 @@ def rechercher_pages_composants(requete, url_origine):
                 continue
             domaines.add(domaine)
             candidats.append({"titre": titre[:180], "url": cible})
-            if len(candidats) >= 8:
+            ajoutes_moteur += 1
+            if ajoutes_moteur >= 5:
                 break
-        if len(candidats) >= 8:
-            break
 
     pages = []
     for candidat in candidats:
