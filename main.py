@@ -13247,7 +13247,7 @@ def composants_techniques_de_page(html_page, source_url=None):
     # un titre de composant (Fourche, Suspension arrière, Selle...) suivi de
     # sous-libellés « Modèle » et « Débattement ». On rattache le modèle au titre.
     entetes = list(re.finditer(
-        r"<h([1-6])\\b[^>]*>(.*?)</h\\1>",
+        r"<h([1-6])\b[^>]*>(.*?)</h\1>",
         html_page,
         re.I | re.S
     ))
@@ -13263,9 +13263,9 @@ def composants_techniques_de_page(html_page, source_url=None):
                 break
         bloc_section = html_page[entete.end():fin_section]
         texte_section = re.sub(r"<[^>]+>", " ", bloc_section)
-        texte_section = re.sub(r"\\s+", " ", html_lib.unescape(texte_section)).strip()
+        texte_section = re.sub(r"\s+", " ", html_lib.unescape(texte_section)).strip()
         modele = re.search(
-            r"\\b(?:modele|model)\\s*[:：]?\\s*(.+?)(?=\\b(?:debattement|travel|type|capacite|capacity|taille|size)\\b|$)",
+            r"\b(?:modele|model)\s*[:：]?\s*(.+?)(?=\b(?:debattement|travel|type|capacite|capacity|taille|size)\b|$)",
             texte_section,
             re.I | re.S
         )
