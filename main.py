@@ -13271,7 +13271,7 @@ def composants_techniques_de_page(html_page, source_url=None):
         texte_section = re.sub(r"<[^>]+>", " ", bloc_section)
         texte_section = re.sub(r"\s+", " ", html_lib.unescape(texte_section)).strip()
         modele = re.search(
-            r"\b(?:modele|model)\s*[:：]?\s*(.+?)(?=\b(?:debattement|travel|type|capacite|capacity|taille|size)\b|$)",
+            r"\b(?:modele|modèle|model)\s*[:：]?\s*(.+?)(?=\b(?:debattement|d[eé]battement|travel|type|capacite|capacité|capacity|taille|size)\b|$)",
             texte_section,
             re.I | re.S
         )
