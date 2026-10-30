@@ -1,97 +1,53 @@
-# Mise à jour du relais — 30/10/2026, après fusion de la PR #12
+# Mise à jour du relais — 30/10/2026 — diagnostic recherche des composants techniques
 
-- **PR #12 fusionnée dans `main)** : correction de la recherche de fiche vélo par nom, avec DuckDuckGo prioritaire et Bing RSS en secours.
-- Commit de fusion sur `main` : `2de94d7b90be033586d2be397363023d5bc99c8c`. La PR est vérifiée comme fermée et fusionnée.
-- Commit de la branche fusionnée : `16ab70492a3e50c7fb27f52b95bb2bc507709877`.
-- Fichiers de l'application modifiés : `main.py` et `.github/workflows/maillons-check.yml`.
-- Contrôles avant fusion : workflow GitHub Actions `41043744468`, run 197, terminé avec succès. Les 34 contrôles annoncés sur ce commit ont réussi.
-- Vérification après fusion : le commit de fusion est bien le dernier commit de `main` au moment du contrôle. Aucun check-run GitHub n'est associé directement au commit de fusion ; le succès du workflow sur le commit de la PR est confirmé, mais un contrôle post-fusion distinct n'est pas confirmé.
-- Aucun changement de données, aucune opération sur Neon. Aucune action manuelle de déploiement Render n'a été lancée. Le dépôt avait précédemment un auto-déploiement Render actif sur chaque commit de `main` ; vérifier l'état du déploiement avant de conclure que la correction est en production.
-- **Prochaine étape utilisateur** : tester dans Maillons la recherche de fiche vélo en saisissant le modèle sans lien constructeur. Si le message d'échec persiste, noter le modèle saisi et l'heure du test.
-- Cette mise à jour ne remplace pas les archives historiques ci-dessous ; les notes anciennes restent des archives et ne décrivent pas nécessairement l'état courant.
+- Dernier commit de `main` vérifié avant cette note : `70a0a2e09fd5c2fcbee23f110786ec6ce20f1f59` (« Mettre à jour le relais après fusion de la PR #12 »).
+- Le fichier `main.py` a été relu sur `main` ; blob SHA : `648ea25d17c1ac3043797159caf8c8d75776e11f`.
+- Le test utilisateur concerne un autre vélo : **Trek Fuel EXe 9.7**. L'année 2025 était celle du test évoqué dans l'historique ; à confirmer si nécessaire avant toute validation des composants.
+- Constat du code : l'extraction reconnaît principalement les tableaux HTML, les couples `<dt>/<dd>` et certaines propriétés JSON-LD. Les composants présentés dans des blocs texte, listes, tableaux à structure différente ou données intégrées à des scripts non JSON-LD peuvent donc être ignorés.
+- Autre limite constatée : la recherche secondaire ne télécharge que trois pages au maximum, et ne fait qu'une requête globale sur la marque, le modèle, l'année et le titre. Les résultats de recherche eux-mêmes ne sont pas utilisés comme preuves de composants.
+- La fusion de la PR #12 a bien été enregistrée ; la recherche par nom fonctionne selon le dernier test utilisateur, mais la récupération des références précises (fourche, amortisseur, tige de selle, selle, freins/plaquettes, etc.) reste insuffisante.
+- **Objectif de la prochaine intervention** : améliorer de façon ciblée l'extraction et la couverture des sources, avec provenance et statuts explicites ; présenter plusieurs choix lorsque les sources divergent ; ne jamais transformer une compatibilité possible en équipement d'origine confirmé.
+- **Avant tout code** : créer une branche `reprise/2026-10-30-composants-fiche-velo` après relecture de `main), puis tester sur des exemples HTML représentatifs et compléter les tests automatisés. Ne pas fusionner sans accord explicite de Math.
+- Fichiers prévus : `main.py` et `.github/workflows/maillons-check.yml` uniquement si les tests doivent être ajoutés. Aucun changement à Neon, aux données, à Render ou aux fonctions de sorties/entretien.
+- Enregistré sur GitHub : ce point de reprise dans `RELAIS_MAILLONS.md` (commit à reporter dans la prochaine mise à jour).
+- Local, non enregistré : aucun changement de code.
+- État : diagnostic initial réalisé ; correction non commencée ; tests non réalisés.
 
 ---
 
-# RELAIS_MAILLONS.md — passage de témoin Claude ⇄ ChatGPT
-
-> Ce fichier est la mémoire commune de l'appli **Maillons**. Quiconque (Claude, ChatGPT ou autre) reprend le travail doit le **lire en premier** et le **mettre à jour en dernier**.
-> Dépôt : `bigone1212/VTT-entretien` — branche de travail : `main`.
-> **Aucun secret ici** (ni clé, ni mot de passe, ni jeton, ni adresse de base de données). Seuls les *noms* de variables d'environnement sont cités.
-
-## 0. Mode d'emploi du relais
-
-**Au début d'une intervention**
-1. Lire ce fichier en entier, **en commençant par la section « Tâche en cours »** (juste après celle-ci), puis vérifier que le dernier commit de `main` correspond bien à la section 8 et à la section « Tâche en cours ». S'il y a des commits plus récents, lire leurs messages : quelqu'un a travaillé entre-temps, parfois sans avoir pu mettre ce fichier à jour.
-2. Avant de réécrire un gros morceau de `main.py`, comparer l'ancienne et la nouvelle version : le 24/10/2026, la fiche de sortie a **disparu lors d'un assemblage** de versions (voir section 3).
-
-**À la fin d'une intervention significative**
-1. Mettre à jour les sections 2 à 8 avec ce qui est **réellement connu**.
-2. Séparer clairement : **terminé**, **en cours**, **à faire**.
-3. Ne jamais écrire qu'un test a réussi s'il n'a pas été fait. Ne jamais écrire qu'une modification est enregistrée ou déployée sans l'avoir vérifié (voir comment en section 8).
-4. Conserver les décisions et problèmes encore utiles des interventions précédentes ; ne supprimer que ce qui est résolu ou périmé (et le dire).
-5. Enregistrer ce fichier dans le dépôt, avec le reste du travail ou dans un commit séparé.
-
-**À propos de Math (le propriétaire)** : il se dit non technicien. Réponses en français, simples, **une seule étape à la fois**. Ses règles :
-1. Explications simples, en français, une étape à la fois.
-2. **Pas de backslash** dans le HTML, le CSS ou le JavaScript de `main.py`.
-3. Tester avant de livrer, puis lui dire ce qu'il a à faire (attendre Render, rouvrir l'appli…).
-4. Pour une demande de graphisme, **ne pas changer le fonctionnement** de l'appli.
-5. Ne pas toucher aux autres fichiers que `main.py` sans le lui dire.
-
-## 0 bis. Protocole de reprise après interruption
-
-Ce fichier ne doit **pas** être mis à jour seulement à la fin : une session peut s'arrêter à tout moment (limite d'utilisation atteinte, coupure). Pour chaque tâche significative :
-
-1. **Avant de commencer** : écrire dans la section « Tâche en cours » l'objectif et les étapes prévues, et enregistrer sur GitHub (commit de ce seul fichier). Pas de modification de code avant.
-2. **Pendant le travail** : mettre à jour la section après chaque étape importante, et en particulier après chaque modification de code **vérifiée et enregistrée**. Le plus simple : une même étape = un commit contenant le code vérifié **et** la mise à jour de ce fichier.
-3. **Contenu de chaque mise à jour** : fichiers modifiés, changements réalisés, tests effectués et leur résultat, problèmes rencontrés, prochaine action.
-4. **Deux listes séparées, toujours** : « Enregistré sur GitHub » (avec le numéro de commit, vérifié) et « Local, non enregistré » (modifications qui n'existent que dans l'espace de travail de la session et qui seraient perdues).
-5. **Limite d'utilisation proche** : l'enregistrement d'un point de reprise fiable passe avant tout le reste. Ne rien abandonner : tout changement non enregistré est soit enregistré, soit décrit précisément dans « Local, non enregistré ». Ne jamais écraser le travail existant (relire l'état de GitHub avant d'envoyer). Du code **non testé** ne va **pas** sur `main` (Render peut le publier) : il est envoyé sur une branche séparée nommée `reprise/AAAA-MM-JJ`, dont le nom est noté dans la section « Tâche en cours » sur `main`. Elle n'est fusionnée dans `main` qu'après test.
-6. **Ne jamais marquer une tâche ou une étape comme terminée** si elle ne l'est pas. États autorisés : `[ ]` à faire, `[~]` commencée ou non vérifiée, `[x]` terminée **et** vérifiée.
-7. **Si une session s'est arrêtée sans mettre à jour ce fichier**, ce qui est écrit ici est le dernier état *connu*, pas forcément l'état réel. Celui qui reprend (Claude ou ChatGPT) doit **vérifier le code réel avant de poursuivre** : comparer `git log` de `main` avec le dernier commit noté ci-dessous (tout commit plus récent est un travail non consigné : lire son contenu), chercher d'éventuelles branches `reprise/…`, relire les fichiers concernés, puis corriger ce fichier avant de continuer. Les modifications « locales » d'une session interrompue sont à considérer comme perdues, sauf si elles figurent sur une branche `reprise/…`.
-
-**Règle de publication — décidée par Math le 25/10/2026, valable pour Claude et ChatGPT**
-- **Toute modification du code de l'appli** (`main.py`, `db.py`, `gpx_import.py`, `requirements.txt`) est d'abord enregistrée et testée sur une **branche séparée** `reprise/AAAA-MM-JJ` (on peut ajouter un mot sur le sujet, ex. `reprise/2026-10-26-filtre-zone`). Cette branche sert aussi de point de reprise.
-- **Fusion dans `main` uniquement avec l'accord explicite de Math**, après test. Render se met à jour à partir de `main` (mise à jour automatique non vérifiée) : fusionner dans `main` revient peut-être à **déployer**. Aucun déploiement sans l'accord de Math.
-- Les mises à jour de **ce fichier seul** (journal, état, décisions) vont directement sur `main`, car elles ne changent pas l'appli. Elles peuvent provoquer un redéploiement identique (voir section 8).
-- Avant de fusionner : relire l'état de `main` (quelqu'un d'autre a pu y enregistrer du travail) et ne rien écraser.
-- Ne pas modifier d'autres fichiers que ceux prévus par la tâche sans en informer Math.
-
-*Limite connue : le numéro d'un commit n'existe qu'une fois ce commit créé ; il ne peut donc pas figurer dans le fichier qui l'accompagne. Il est ajouté à la mise à jour suivante. Entre-temps, `git log` fait foi.*
-
 ## Tâche en cours
 
-REPRISE CHATGPT — CORRECTION RECHERCHE FICHE VÉLO PAR NOM — PRÊTE À FUSIONNER SOUS ACCORD — 30/10/2026.
+DIAGNOSTIC — COMPLÉTUDE DES COMPOSANTS DE LA FICHE TECHNIQUE — 30/10/2026.
 
-Objectif : lorsque l'utilisateur recherche une fiche vélo par nom de modèle sans fournir de lien, garder DuckDuckGo prioritaire et utiliser Bing RSS si DuckDuckGo échoue ou ne fournit aucun lien exploitable.
+Objectif : à partir du test sur le Trek Fuel EXe 9.7, comprendre pourquoi Maillons retrouve la page mais pas les références précises des composants. Améliorer la recherche et l'extraction sans inventer d'équipement.
 
 État vérifié :
-- Cause initiale confirmée dans `recherche_fiche_velo` : le chemin `if not lien:` n'interrogeait que DuckDuckGo et renvoyait directement une erreur 502 en cas d'échec.
-- Correction réalisée sur la branche dédiée `reprise/2026-10-30-recherche-par-nom-bing`.
-- `main.py` : ajout du repli Bing RSS dans le seul chemin de recherche par nom ; validation des URL candidates ; distinction entre échec des deux moteurs (502) et absence de résultat (404) ; nettoyage des titres DuckDuckGo.
-- `.github/workflows/maillons-check.yml` : tests simulés pour DuckDuckGo fonctionnel, Bing de secours, échec des deux moteurs et absence de résultat.
-- Le chemin de saisie directe d'un lien constructeur, dont Opticycles, n'a pas été modifié.
-- Aucun changement aux données, à Neon, aux entretiens, à l'historique, aux sorties, aux fiches des vélos ou à Render.
+- [x] Relire le relais et vérifier le dernier commit de `main`.
+- [x] Relire les fonctions d'extraction et de recherche de `main.py`.
+- [ ] Créer une branche dédiée après avoir figé ce point de reprise.
+- [ ] Concevoir des tests d'extraction sur différents formats HTML réels et représentatifs.
+- [ ] Améliorer l'extraction ciblée des composants et la couverture des sources.
+- [ ] Exécuter les tests et relire le diff.
+- [ ] Demander à Math de tester ; aucune fusion sans son accord.
 
-Tests :
-- GitHub Actions run `41043744468` (run n° 197) : terminé avec succès.
-- Syntaxe Python, tests existants de l'application, tests navigateur et migrations SQLite/PostgreSQL temporaires : réussis.
-- Nouveau test de recherche par nom : réussi.
-- Deux corrections de test effectuées après inspection des logs : encodage d'une chaîne accentuée en bytes, puis normalisation des espaces du titre DDG. Le dernier passage est entièrement vert.
+Constats :
+- `composants_techniques_de_page` traite les tableaux classiques (première cellule = libellé), les couples `<dt>/<dd>` et les données JSON-LD.
+- Les présentations en listes, blocs de texte, tableaux à structure atypique et données incorporées autrement ne sont pas couvertes.
+- `rechercher_pages_composants` utilise DuckDuckGo et Bing, déduplique par domaine et ne conserve que trois pages téléchargées.
+- La requête secondaire est globale ; les snippets des moteurs ne sont pas considérés comme des preuves de composants.
+- Le recoupement sait déjà distinguer une référence confirmée par plusieurs domaines, une référence isolée et plusieurs choix concurrents. Cette logique doit être préservée.
 
-GitHub :
-- Branche : `reprise/2026-10-30-recherche-par-nom-bing`.
-- Dernier commit de la branche : `16ab70492a3e50c7fb27f52b95bb2bc507709877`.
-- PR #12 : https://github.com/bigone1212/VTT-entretien/pull/12
-- PR ouverte, non fusionnée, prête pour revue ; GitHub indique `mergeable: true`.
-- Fichiers modifiés dans la PR : uniquement `main.py` et `.github/workflows/maillons-check.yml`.
-- Aucun déploiement Render déclenché par ChatGPT ; aucune opération sur Neon.
+Enregistré sur GitHub :
+- Dépôt : `bigone1212/VTT-entretien`, branche `main`.
+- Dernier commit avant cette note : `70a0a2e09fd5c2fcbee23f110786ec6ce20f1f59`.
+- Code relu : `main.py`, blob `648ea25d17c1ac3043797159caf8c8d75776e11f`.
+- Cette note de reprise est enregistrée par le commit créé pour cette mise à jour.
 
-Décision attendue :
-- Demander à Math son accord explicite pour fusionner la PR #12.
-- Ne pas fusionner et ne pas déployer avant cet accord.
+Local, non enregistré :
+- Aucun changement de code.
 
-
+Aucune opération Neon, Render, fusion ou déploiement manuel.
+ 
 ## Archive — reprise automatique de la fiche technique et adaptation des entretiens — 29/10/2026
 
 REPRISE CHATGPT — RECHERCHE AUTOMATIQUE DE LA FICHE TECHNIQUE ET ENTRETIENS ADAPTÉS — 29/10/2026.
