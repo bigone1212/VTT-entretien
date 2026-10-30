@@ -47,70 +47,36 @@ Ce fichier ne doit **pas** être mis à jour seulement à la fin : une session p
 
 ## Tâche en cours
 
-REPRISE CHATGPT — CORRIGER LA RECHERCHE DE FICHE VÉLO PAR NOM — 30/10/2026.
+REPRISE CHATGPT — CORRECTION RECHERCHE FICHE VÉLO PAR NOM — PRÊTE À FUSIONNER SOUS ACCORD — 30/10/2026.
 
-Objectif autorisé par Math : préparer une correction sur une branche séparée, sans toucher au code de `main`, sans fusion et sans déploiement Render. Le message affiché dans Maillons (« La recherche web n'a pas abouti… ») vient du chemin de recherche par nom de modèle, qui n'utilise actuellement que DuckDuckGo. Bing RSS existe déjà dans `rechercher_pages_composants`, mais cette fonction n'est pas appelée dans ce chemin initial.
+Objectif : lorsque l'utilisateur recherche une fiche vélo par nom de modèle sans fournir de lien, garder DuckDuckGo prioritaire et utiliser Bing RSS si DuckDuckGo échoue ou ne fournit aucun lien exploitable.
 
-Plan :
-- Ajouter un repli Bing RSS dans le seul bloc `if not lien:` de `recherche_fiche_velo`.
-- Garder DuckDuckGo prioritaire ; ne contacter Bing que si DuckDuckGo échoue.
-- Extraire les résultats DDG et Bing en conservant leurs formats respectifs, filtrer les URL HTTP/HTTPS et dédupliquer les candidats.
-- Si les deux moteurs échouent, renvoyer une erreur claire ; si les deux répondent sans résultat, garder le message « aucune fiche trouvée ».
-- Ajouter des tests simulés : DDG OK, DDG en échec + Bing OK, DDG et Bing en échec, aucun résultat.
-- Ne pas modifier le chemin de saisie d'un lien constructeur, les fonctions d'entretien, les données ni les fiches des vélos.
-- Ne pas ajouter de backslash dans les parties HTML/CSS/JavaScript de `main.py`.
-- Relire le diff, exécuter les contrôles disponibles et ouvrir une PR vers `main`. Demander l'accord de Math avant toute fusion.
+État vérifié :
+- Cause initiale confirmée dans `recherche_fiche_velo` : le chemin `if not lien:` n'interrogeait que DuckDuckGo et renvoyait directement une erreur 502 en cas d'échec.
+- Correction réalisée sur la branche dédiée `reprise/2026-10-30-recherche-par-nom-bing`.
+- `main.py` : ajout du repli Bing RSS dans le seul chemin de recherche par nom ; validation des URL candidates ; distinction entre échec des deux moteurs (502) et absence de résultat (404) ; nettoyage des titres DuckDuckGo.
+- `.github/workflows/maillons-check.yml` : tests simulés pour DuckDuckGo fonctionnel, Bing de secours, échec des deux moteurs et absence de résultat.
+- Le chemin de saisie directe d'un lien constructeur, dont Opticycles, n'a pas été modifié.
+- Aucun changement aux données, à Neon, aux entretiens, à l'historique, aux sorties, aux fiches des vélos ou à Render.
 
-État vérifié avant cette intervention :
-- Tête de `main` : `fe74e738bcbb39faeb1f9aa989a8c91c027ffc80` (« Consigner la fusion du correctif multi-source »), postérieure au commit de fusion PR #11 `79524172a0818f763f54d550db817bb43dfea5a4`.
-- `main.py` relu : le bloc sans URL appelle uniquement `https://html.duckduckgo.com/html/` et renvoie directement une erreur 502 si le téléchargement échoue.
-- `rechercher_pages_composants` interroge déjà DDG et Bing RSS séparément ; son parsing Bing et ses garde-fous peuvent guider le nouveau bloc.
-- Workflow existant : `.github/workflows/maillons-check.yml`, avec un test multi-source qui simule déjà DDG en échec et Bing fonctionnel pour le chemin de secours par lien.
-- Branches de reprise anciennes repérées ; aucune n'est réutilisée pour cette correction.
+Tests :
+- GitHub Actions run `41043744468` (run n° 197) : terminé avec succès.
+- Syntaxe Python, tests existants de l'application, tests navigateur et migrations SQLite/PostgreSQL temporaires : réussis.
+- Nouveau test de recherche par nom : réussi.
+- Deux corrections de test effectuées après inspection des logs : encodage d'une chaîne accentuée en bytes, puis normalisation des espaces du titre DDG. Le dernier passage est entièrement vert.
 
-Enregistré sur GitHub :
-- État initial vérifié : `main` à `fe74e738bcbb39faeb1f9aa989a8c91c027ffc80`.
-- Cette mise à jour de relais sera enregistrée séparément sur `main` avant la création de la branche de code.
+GitHub :
+- Branche : `reprise/2026-10-30-recherche-par-nom-bing`.
+- Dernier commit de la branche : `16ab70492a3e50c7fb27f52b95bb2bc507709877`.
+- PR #12 : https://github.com/bigone1212/VTT-entretien/pull/12
+- PR ouverte, non fusionnée, prête pour revue ; GitHub indique `mergeable: true`.
+- Fichiers modifiés dans la PR : uniquement `main.py` et `.github/workflows/maillons-check.yml`.
+- Aucun déploiement Render déclenché par ChatGPT ; aucune opération sur Neon.
 
-Local, non enregistré :
-- Aucun changement de code.
+Décision attendue :
+- Demander à Math son accord explicite pour fusionner la PR #12.
+- Ne pas fusionner et ne pas déployer avant cet accord.
 
-Prochaines actions :
-- [x] Relire le relais et vérifier la tête réelle de `main`.
-- [x] Identifier la cause exacte dans les deux chemins de recherche.
-- [x] Enregistrer le point de reprise sur `main` (commit `41a6eacd5ba5c13be05c1ec1669f7108b2fdc460`) et créer la branche dédiée `reprise/2026-10-30-recherche-par-nom-bing`.
-- [x] Modifier uniquement la recherche par nom dans `main.py` et ajouter les tests dans `.github/workflows/maillons-check.yml`.
-- [x] Ouvrir la PR brouillon #12 : https://github.com/bigone1212/VTT-entretien/pull/12 (tête `a2ea3925068c0cb4a8cf2aaabd23baf4e143e3a7`).
-- [~] Vérifier les contrôles GitHub Actions ; aucun statut n'était encore visible au dernier contrôle.
-- [ ] Relire le résultat final des tests, puis demander l'accord explicite de Math avant toute fusion.
-
-DERNIÈRE INTERVENTION TERMINÉE — RECHERCHE MULTI-SOURCE DES FICHES VÉLO — 30/10/2026.
-
-- PR #11 fusionnée dans `main` avec l'accord explicite de Math.
-- PR : https://github.com/bigone1212/VTT-entretien/pull/11
-- Commit squash : `79524172a0818f763f54d550db817bb43dfea5a4`.
-- Modification de `main.py` : ajout de Bing RSS comme second moteur indépendant de DuckDuckGo ; chaque moteur est interrogé séparément, les résultats sont dédupliqués, le domaine d'origine et ceux des moteurs sont exclus, les pages externes continuent d'être téléchargées avec les protections réseau existantes.
-- Modification de `.github/workflows/maillons-check.yml` : test simulant DuckDuckGo indisponible et Bing fonctionnel.
-- Contrôles GitHub Actions sur la branche finale : succès complet, 34 étapes sur 34, aucun échec (run `41041957248`). Les runs de vérification antérieurs sur la branche de travail ont également réussi.
-- Les tests Bing sont simulés ; ils ne démontrent pas encore que Render arrive réellement à interroger Bing en conditions réelles.
-- Aucun changement HTML/CSS/JavaScript, aucune donnée vélo ni base Neon modifiée.
-- Aucun déploiement manuel déclenché. Render a automatiquement commencé le déploiement du commit de fusion `79524172a0818f763f54d550db817bb43dfea5a4` à 10:39:27 UTC ; statut au dernier contrôle : `build_in_progress`. Vérifier qu'il devient `live` avant de demander à Math de tester la recherche.
-- Après déploiement, faire un essai avec le lien Opticycles ; vérifier si Bing fonctionne réellement depuis Render et consulter les journaux en cas de nouvel échec.
-
-Enregistré sur GitHub :
-- `main.py` et `.github/workflows/maillons-check.yml` fusionnés par PR #11.
-- Ce relais est mis à jour après la fusion.
-
-Local, non enregistré :
-- Aucun changement local.
-
-Prochaines actions :
-- [x] Diagnostiquer la recherche de fiche qui renvoyait 502.
-- [x] Ajouter un second moteur indépendant.
-- [x] Ajouter et faire réussir les tests automatiques.
-- [x] Fusionner la PR #11 après accord explicite de Math.
-- [~] Vérifier que le déploiement automatique Render termine avec succès.
-- [ ] Demander à Math de refaire l'essai Opticycles une fois le service en ligne.
 
 ## Archive — reprise automatique de la fiche technique et adaptation des entretiens — 29/10/2026
 
