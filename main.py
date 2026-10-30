@@ -13514,7 +13514,7 @@ def recherche_fiche_velo(data: RechercheFicheVeloRequest, x_code_acces: Optional
                 page = octets.decode("utf-8", errors="replace")
                 for balise in re.findall(r'<a\b[^>]*class="[^"]*result__a[^"]*"[^>]*>.*?</a>', page, re.I | re.S):
                     href = re.search(r'href="([^"]+)"', balise, re.I)
-                    titre = texte_page_fiche(balise)
+                    titre = texte_page_fiche(balise).strip()
                     if href and titre:
                         resultats.append((titre, html_lib.unescape(href.group(1))))
 
