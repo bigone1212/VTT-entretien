@@ -47,40 +47,51 @@ Ce fichier ne doit **pas** être mis à jour seulement à la fin : une session p
 
 ## Tâche en cours
 
-REPRISE CHATGPT — NOMENCLATURE DÉTAILLÉE ET RECOUPEMENT MULTI-SOURCE — 30/10/2026.
+REPRISE CHATGPT — FIABILISER LA RECHERCHE MULTI-SOURCE DES FICHES VÉLO — 30/10/2026.
 
-Objectif confirmé par Math : améliorer la recherche de fiche technique pour identifier les noms exacts et références des composants, consulter plusieurs sites, et laisser Math choisir lorsqu'une information n'est pas recoupée ou que les sources se contredisent. Ne jamais inventer une référence ni présenter une compatibilité comme une pièce montée d'origine. Préserver EDR Easy Route à patins, le CUBE id 1, historiques, kilomètres, sorties et toutes les fonctions existantes.
+Objectif confirmé par Math : corriger l'échec rencontré avec le lien Opticycles. La recherche de secours actuelle dépendait uniquement de DuckDuckGo ; si ce service ne répond pas depuis Render, aucune autre fiche ne pouvait être consultée. Ajouter plusieurs moteurs indépendants, conserver les contrôles de sécurité réseau, les liens sources et les choix entre valeurs contradictoires. Ne jamais inventer une référence. Préserver les fonctions, données et fiches des vélos existants.
 
-Base de travail vérifiée avant fusion : `main` au commit `7c384ec025cb168d95c3317d6c36fba638ff7742`. Branche : `reprise/2026-10-30-fiche-technique-composants`. PR #10 fusionnée le 30/10/2026 à 09:48:53 UTC (10:48:53 heure de Paris) par squash. Commit de fusion sur `main` : `ae12763bb03eebcff10c5f52adabf4134e3c26ac`. Dernier commit de branche avant fusion : `cfa689a9139b94e61748c3610ba07a1b7d50bddf`. `main` vérifiée après fusion : commit `ae12763bb03eebcff10c5f52adabf4134e3c26ac`.
+État initial vérifié :
+- Dernier commit de `main` au début de l'intervention : `1e556fad17aa1b4e3de625c12293b83616e2f5d5`.
+- PR #10 fusionnée dans `main` au commit `ae12763bb03eebcff10c5f52adabf4134e3c26ac`.
+- `main.py` relu sur `main` : la fonction `rechercher_pages_composants` utilisait uniquement `https://html.duckduckgo.com/html/`.
+- Render : service de production `VTT-entretien`, branche `main`, auto-déploiement activé. Déploiement du commit `1e556fad17aa1b4e3de625c12293b83616e2f5d5` en état `live` le 30/10/2026 à 09:50:31 UTC. Le code de la PR #10 est donc en ligne.
+- Journaux Render : requête `POST /api/recherche-fiche-velo?velo_id=5` le 30/10/2026 à 10:21:50 UTC renvoie `502 Bad Gateway`. Aucun détail d'exception applicative n'est présent dans les journaux consultés ; la cause réseau exacte n'est pas confirmée.
+- Le service Render de test `maillons-test-2026` est rattaché à une ancienne branche et son auto-déploiement est désactivé. Il n'a pas été utilisé pour valider cette correction.
 
-Modifications enregistrées sur la branche :
-- `main.py` : extraction des composants depuis les lignes de tableaux HTML, couples `dt/dd` et propriétés Schema.org `additionalProperty`. Catégories : cadre, fourche, amortisseur, tige de selle, freins, étriers, plaquettes, disques, transmission, dérailleur, cassette, chaîne, plateau, pédalier, pédales, manettes, poignées, jeu de direction, moyeux, chargeur, roues, pneus, selle, cintre, potence, moteur et batterie.
-- Recherche complémentaire sur DuckDuckGo et téléchargement de jusqu'à trois fiches indépendantes, en plus de la page initiale. Les téléchargements passent par `telecharger_lien` et ses contrôles de sécurité réseau.
-- Si la page initiale est inaccessible (ex. refus 403), la recherche de secours récupère la marque, l'année et le modèle depuis les segments de l'URL, puis tente les autres sites.
-- Recoupement par catégorie : `recoupe` quand une même valeur apparaît sur plusieurs domaines, `choix` quand plusieurs valeurs différentes existent, `a_confirmer` si une seule source fournit la valeur, `non_trouve` si rien n'a été trouvé. Les liens des sources sont conservés.
-- Interface : choix radio exclusif par catégorie ; une valeur recoupée peut être pré-sélectionnée, les désaccords ne sont pas pré-sélectionnés. Math choisit puis clique sur « Enregistrer ma sélection ». Les sources restent visibles dans la fiche.
-- Enregistrement dans `velos.fiche_composants`, migration additive SQLite/PostgreSQL, restitution par `GET /api/velos`. La modification d'une fiche recharge aussi la nomenclature existante dans le formulaire pour éviter de l'effacer involontairement.
-- Compatibilité fabricant proposée pour l'étrier Shimano BR-M6120 : D03S-RX Resin (standard fabricant) et D02S-MX Metal (option). Ce sont des compatibilités possibles, pas la preuve de la garniture réellement montée ; Math doit choisir.
-- Cette nomenclature détaillée ne change pas les intervalles d'entretien. L'adaptation existante par type de frein, suspension, pneus et transmission reste inchangée. Aucun changement des historiques ou des pièces existantes n'est effectué par cette recherche.
+Modifications enregistrées sur la branche `reprise/2026-10-30-recherche-multisource` :
+- `main.py` : la recherche complémentaire interroge désormais DuckDuckGo (HTML) et Bing (flux RSS) indépendamment. L'échec ou le contenu illisible d'un moteur n'empêche pas d'essayer l'autre. Les résultats sont dédupliqués par domaine, le site d'origine et les domaines des moteurs sont écartés, puis jusqu'à trois fiches externes sont téléchargées avec `telecharger_lien` et ses vérifications réseau existantes (HTTP/HTTPS, ports autorisés, DNS public, redirections revérifiées, taille maximale).
+- `.github/workflows/maillons-check.yml` : ajout d'un test simulant DuckDuckGo indisponible et Bing RSS fonctionnel, en complément du test existant où DuckDuckGo fonctionne.
+- Aucun changement de HTML, CSS ou JavaScript. Aucune donnée de vélo ni base de production modifiée.
 
-Fichiers modifiés sur la branche : `main.py`, `.github/workflows/maillons-check.yml`, `RELAIS_MAILLONS.md`. Aucun fichier local non enregistré.
+Commits de la branche :
+- `9f26d935a47af6d893beb010f67455777f694c7f` : ajout du second moteur.
+- `03e6d740a204f30f8e436e39fb3cb7d41c65fcf2` : test du repli Bing.
+- `6e9ce0002e702d1491961d3e4ee27d4a75b87534` : nettoyage du filtrage des domaines moteurs.
+- Branche créée depuis `1e556fad17aa1b4e3de625c12293b83616e2f5d5`.
 
 Tests :
-- Run GitHub Actions `41031859234` : succès complet pour l'état précédent de la fiche technique (extraction initiale, stockage/relecture, migrations, navigateur, etc.). Il ne couvre pas les dernières modifications multi-source.
-- Run `41034375375` : échec au test navigateur car le test cliquait sur « Modifier cette fiche » dans un panneau `details` replié. Test corrigé pour ouvrir le panneau avant le clic.
-- Run `41034777976` : échec au même test navigateur, cette fois parce que le test comparait la sélection encore non enregistrée dans le formulaire avec la fiche déjà enregistrée. Le test a été corrigé pour comparer avec les données réellement présentes dans le vélo.
-- Run `41034996584` : échec au test multi-source car le test vérifiait que la toute première recherche contenait « Trek 2025 », alors qu'une première recherche générale avait déjà été enregistrée avant le scénario de secours. Le test a été corrigé pour vérifier que l'une des recherches contient bien la marque et l'année. Aucun de ces échecs ne signalait une régression fonctionnelle dans l'application ; ils ont révélé des attentes de test mal formulées.
-- Run `41035297211` sur le commit `99127df5f0b5c6452eb5cab24dcd597702228a74` : **succès complet**. Tous les 30 contrôles sont passés, dont syntaxe Python, chargement initial, recherche de fiche et adaptation des freins, migrations SQLite et PostgreSQL temporaires, tests navigateur existants, extraction des composants, recoupement multi-source et variantes, repli sur URL complète avec marque/année, conservation de la nomenclature par vélo. Aucun test n'a été ignoré.
-- Run GitHub Actions `41035675273` associé au dernier commit de branche `cfa689a9139b94e61748c3610ba07a1b7d50bddf` : terminé avec succès. Le code et les tests n'avaient pas changé depuis le run complet `41035297211` ; ce dernier couvre les 30 contrôles détaillés ci-dessus.
-- Le lien Opticycles fourni par Math a précédemment renvoyé 403 dans l'environnement de consultation ; le parseur n'a pas encore été validé en direct sur cette page. Le test de secours simule ce refus et vérifie la recherche alternative ; ce test n'est pas une preuve que tous les sites accepteront les téléchargements.
-- Recherche documentaire externe effectuée pour le Trek Fuel EXe 9.7 2025 : Trek, Trek Store, MTB Database et des détaillants publient des spécifications utiles. Les différences de tige de selle/selle selon taille ou variante sont précisément le type de désaccord que l'interface doit laisser choisir. Le résultat réel dans Maillons reste à contrôler par Math.
+- Les workflows GitHub Actions des commits `9f26d93` et `03e6d74` ont été lancés automatiquement ; leur résultat était encore `in_progress` lors de la dernière consultation.
+- Le dernier commit `6e9ce00` déclenche une nouvelle exécution ; résultat à vérifier.
+- Le test Bing est simulé : il vérifie le code lorsque DuckDuckGo échoue, mais ne prouve pas que Bing accepte réellement les connexions sortantes depuis Render.
+- Aucun essai réel de cette branche sur Render, aucun test navigateur/téléphone, aucune fusion dans `main`, aucun déploiement de cette correction.
+- Aucun backslash ajouté dans les parties HTML/CSS/JavaScript.
 
-État de publication :
-- PR #10 fusionnée dans `main` par squash ; commit de fusion vérifié : `ae12763bb03eebcff10c5f52adabf4134e3c26ac`.
-- `main` relue après fusion ; les trois fichiers attendus sont présents dans le commit : `main.py`, `.github/workflows/maillons-check.yml` et `RELAIS_MAILLONS.md`.
-- Aucun déploiement manuel déclenché. Le déploiement Render automatique après la fusion et son résultat ne sont pas vérifiés dans cette intervention. Aucune écriture directe dans Neon.
-- Limite à conserver : le lien Opticycles a déjà renvoyé 403 ; le secours multi-source est testé avec un refus simulé, pas avec ce site en direct. Les résultats réels de la fiche devront être vérifiés dans Maillons après le déploiement.
-- Prochaine action : Math attend la fin du redéploiement Render, puis teste la recherche d'une fiche vélo et vérifie les composants proposés, leurs sources et les choix possibles. Ne pas annoncer le déploiement terminé avant vérification.
+Enregistré sur GitHub :
+- `main` : mise à jour du relais de reprise au commit `ab804aca9b985b35aca268301f3ff9561d8ca3cc`. Ce commit ne modifie que `RELAIS_MAILLONS.md` ; Render peut le redéployer à l'identique.
+- Branche de test : commits listés ci-dessus, fichiers `main.py` et `.github/workflows/maillons-check.yml`.
+
+Local, non enregistré :
+- Aucun changement local.
+
+Prochaines actions :
+- [x] Lire le relais, vérifier le dernier `main`, inspecter le code et les journaux Render.
+- [x] Créer une branche séparée.
+- [x] Ajouter Bing RSS comme second moteur et un test de repli simulé.
+- [~] Vérifier la dernière exécution complète GitHub Actions et corriger tout échec.
+- [ ] Relire le diff final et vérifier la conservation des fonctions existantes.
+- [ ] Ouvrir une PR vers `main) uniquement après validation des contrôles ; demander l'accord explicite de Math avant toute fusion. Aucune publication de cette correction sans son accord.
+
 ## Archive — reprise automatique de la fiche technique et adaptation des entretiens — 29/10/2026
 
 REPRISE CHATGPT — RECHERCHE AUTOMATIQUE DE LA FICHE TECHNIQUE ET ENTRETIENS ADAPTÉS — 29/10/2026.
