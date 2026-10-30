@@ -1772,10 +1772,10 @@ jobs:
               assert selection[0]["categorie"] == "fourche"
               assert selection[1]["categorie"] == "tige_de_selle"
               assert all(piece["validation"] == "valide_par_utilisateur" for piece in selection)
+              page.click("#ficheTechniqueAutre summary"); page.wait_for_timeout(300)
               page.click("#btnModifierFicheVelo"); page.wait_for_timeout(300)
               assert json.loads(page.locator("#nouveauVeloFicheComposants").input_value()) == selection
               page.click("#btnAnnulerEditionFiche"); page.wait_for_timeout(200)
-              page.click("#ficheTechniqueAutre summary"); page.wait_for_timeout(300)
               assert page.eval_on_selector("#ficheTechniqueAutre", "e => e.open") is True
               if CAPTURE:
                   page.locator("#ficheTechniqueAutre").scroll_into_view_if_needed()
