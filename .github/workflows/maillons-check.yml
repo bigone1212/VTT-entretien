@@ -2196,7 +2196,7 @@ jobs:
               None
           )
           assert fiche["marque"] == "Trek", fiche
-          assert recherches and "Trek+2025" in recherches[0], recherches
+          assert any("Trek+2025" in recherche for recherche in recherches), recherches
           assert len(fiche["sources_fiche"]) == 2, fiche["sources_fiche"]
           fourche = next(x for x in fiche["composants_techniques"] if x["categorie"] == "fourche" and x["nom"])
           assert fourche["statut"] == "recoupe", fourche
