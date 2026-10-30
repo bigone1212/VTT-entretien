@@ -16,6 +16,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import unicodedata
 from typing import Optional, List, Dict
 from datetime import date, datetime, timedelta, timezone
 
@@ -571,6 +572,7 @@ def init_db():
     ajouter_colonne(cursor, "velos", "suspension", "TEXT")
     ajouter_colonne(cursor, "velos", "tubeless", "TEXT")
     ajouter_colonne(cursor, "velos", "transmission", "TEXT")
+    ajouter_colonne(cursor, "velos", "fiche_composants", "TEXT")
 
     # Le CUBE reçoit TOUJOURS l'identifiant 1 : les pièces et les sorties
     # existantes sont rattachées au vélo n° 1 (velo_id par défaut).
@@ -3658,6 +3660,7 @@ def accueil():
                 <input id="veloRechercheFiche" type="text" maxlength="2000" placeholder="Ex. : EDR Easy Route ou lien de la fiche">
                 <button type="button" id="boutonRechercheFiche" style="width:100%; margin:6px 0;">Rechercher les caractéristiques</button>
                 <div id="resultatsRechercheFiche" class="form-help" aria-live="polite"></div>
+                <input type="hidden" id="nouveauVeloFicheComposants" name="fiche_composants">
                 <label for="nouveauVeloMarque">Marque (facultatif)</label>
                 <input id="nouveauVeloMarque" name="marque" type="text" maxlength="80">
                 <label for="nouveauVeloModele">Modèle (facultatif)</label>
@@ -3949,6 +3952,7 @@ def accueil():
                     <span><span class="ftv-libelle">Batterie</span><span class="ftv-valeur" id="ficheAutreBatterie">—</span></span>
                 </div>
             </div>
+            <div id="ficheComposantsTechniques" class="ftv-note"></div>
             <button type="button" id="btnModifierFicheVelo" onclick="modifierFicheVelo()" style="width:100%; margin: 4px 0 8px;">Modifier cette fiche</button>
         </details>
 
@@ -4889,6 +4893,39 @@ def accueil():
                 const ficheMoteur = document.getElementById('ficheAutreMoteur');
                 const ficheBatterie = document.getElementById('ficheAutreBatterie');
                 if (velo) {
+                    const zoneComposants = document.getElementById('ficheComposantsTechniques');
+                    if (zoneComposants) {
+                        zoneComposants.replaceChildren();
+                        let composants = [];
+                        try { composants = JSON.parse(velo.fiche_composants || '[]'); } catch (e) { composants = []; }
+                        if (Array.isArray(composants) && composants.length) {
+                            const titreComposants = document.createElement('strong');
+                            titreComposants.textContent = 'Nomenclature des composants';
+                            zoneComposants.appendChild(titreComposants);
+                            const listeComposants = document.createElement('ul');
+                            listeComposants.style.paddingLeft = '20px';
+                            composants.forEach(piece => {
+                                const ligne = document.createElement('li');
+                                ligne.textContent = String(piece.categorie || 'Composant').replaceAll('_', ' ')
+                                    + ' : ' + String(piece.nom || 'Non renseigné')
+                                    + (piece.validation === 'valide_par_utilisateur' ? ' · validé par toi' : ' · à confirmer')
+                                    + (piece.origine && piece.origine !== 'Fiche consultée' ? ' · ' + piece.origine : '');
+                                listeComposants.appendChild(ligne);
+                                const sourcesPiece = Array.isArray(piece.sources) ? piece.sources : (piece.source ? [piece.source] : []);
+                                sourcesPiece.forEach(url => {
+                                    const lienSource = document.createElement('a');
+                                    lienSource.href = url;
+                                    lienSource.target = '_blank';
+                                    lienSource.rel = 'noopener noreferrer';
+                                    lienSource.textContent = 'Source : ' + (new URL(url)).hostname;
+                                    lienSource.style.display = 'block';
+                                    lienSource.style.fontSize = '0.85em';
+                                    listeComposants.appendChild(lienSource);
+                                });
+                            });
+                            zoneComposants.appendChild(listeComposants);
+                        }
+                    }
                     if (ficheNom) ficheNom.textContent = velo.nom || 'Mon vélo';
                     if (ficheType) ficheType.textContent = TYPES_VELO[velo.type] || velo.type || 'Non renseigné';
                     if (ficheMarque) ficheMarque.textContent = velo.marque || 'Non renseignée';
@@ -4954,6 +4991,7 @@ def accueil():
                 formulaire.elements.date_achat.value = velo.date_achat || '';
                 formulaire.elements.moteur.value = velo.moteur || '';
                 formulaire.elements.batterie.value = velo.batterie || '';
+                if (formulaire.elements.fiche_composants) formulaire.elements.fiche_composants.value = velo.fiche_composants || '';
                 if (formulaire.elements.freins) formulaire.elements.freins.value = velo.freins || 'inconnu';
                 if (formulaire.elements.suspension) formulaire.elements.suspension.value = velo.suspension || 'inconnu';
                 if (formulaire.elements.tubeless) formulaire.elements.tubeless.value = velo.tubeless || 'inconnu';
@@ -5022,6 +5060,83 @@ def accueil():
                     if (data.batterie) document.getElementById('nouveauVeloBatterie').value = data.batterie;
                     afficherNomVeloActif();
                     zone.textContent = 'Source : ' + data.source + '. Vérifie chaque champ avant d’enregistrer. Les caractéristiques non trouvées restent à confirmer.';
+                    if (Array.isArray(data.sources_fiche) && data.sources_fiche.length) {
+                        const sourcesTitre = document.createElement('p');
+                        sourcesTitre.textContent = 'Sites consultés : ' + data.sources_fiche.length;
+                        zone.appendChild(sourcesTitre);
+                        data.sources_fiche.forEach(source => {
+                            const lienSource = document.createElement('a');
+                            lienSource.href = source.url;
+                            lienSource.target = '_blank';
+                            lienSource.rel = 'noopener noreferrer';
+                            lienSource.textContent = source.domaine;
+                            lienSource.style.marginRight = '12px';
+                            zone.appendChild(lienSource);
+                        });
+                    }
+                    if (Array.isArray(data.composants_techniques)) {
+                        const titre = document.createElement('h4');
+                        titre.textContent = 'Composants techniques repérés';
+                        zone.appendChild(titre);
+                        const liste = document.createElement('ul');
+                        liste.style.paddingLeft = '20px';
+                        const casesComposants = [];
+                        data.composants_techniques.forEach(piece => {
+                            if (!piece.nom) return;
+                            const ligne = document.createElement('li');
+                            const libelle = document.createElement('label');
+                            const choix = document.createElement('input');
+                            choix.type = 'radio';
+                            choix.name = 'composant-' + piece.categorie;
+                            choix.checked = piece.statut === 'recoupe';
+                            choix.style.marginRight = '7px';
+                            casesComposants.push({ piece: piece, choix: choix });
+                            const nom = piece.categorie.replaceAll('_', ' ');
+                            const statut = piece.statut === 'choix' ? ' · plusieurs versions trouvées, à choisir'
+                                : piece.statut === 'recoupe' ? ' · recoupé sur plusieurs sites'
+                                : ' · une seule source, à confirmer';
+                            libelle.appendChild(choix);
+                            libelle.appendChild(document.createTextNode(nom + ' : ' + piece.nom + statut
+                                + (piece.origine && piece.origine !== 'Fiche consultée' ? ' · ' + piece.origine : '')));
+                            ligne.appendChild(libelle);
+                            liste.appendChild(ligne);
+                            (piece.sources || (piece.source ? [piece.source] : [])).forEach(url => {
+                                const lienSource = document.createElement('a');
+                                lienSource.href = url;
+                                lienSource.target = '_blank';
+                                lienSource.rel = 'noopener noreferrer';
+                                lienSource.textContent = 'Source : ' + (new URL(url)).hostname;
+                                lienSource.style.display = 'block';
+                                lienSource.style.fontSize = '0.85em';
+                                liste.appendChild(lienSource);
+                            });
+                        });
+                        zone.appendChild(liste);
+                        const note = document.createElement('p');
+                        note.textContent = 'Une seule option peut être retenue par catégorie. Si les sites ne concordent pas, choisis la bonne version ou ne coche rien. Les composants non recoupés restent à confirmer.';
+                        zone.appendChild(note);
+                        const enregistrer = document.createElement('button');
+                        enregistrer.type = 'button';
+                        enregistrer.textContent = 'Enregistrer ma sélection dans la fiche';
+                        enregistrer.style.width = '100%';
+                        enregistrer.addEventListener('click', () => {
+                            const champ = document.getElementById('nouveauVeloFicheComposants');
+                            const propositions = casesComposants.filter(item => item.choix.checked).map(item => ({
+                                categorie: item.piece.categorie,
+                                nom: item.piece.nom,
+                                statut: item.piece.statut,
+                                source: item.piece.source || data.source,
+                                sources: item.piece.sources || [item.piece.source || data.source],
+                                nombre_sources: item.piece.nombre_sources || 1,
+                                origine: item.piece.origine || 'Fiche consultée',
+                                validation: 'valide_par_utilisateur'
+                            }));
+                            champ.value = JSON.stringify(propositions);
+                            note.textContent = propositions.length + ' composants enregistrés comme validés par toi. Les autres restent à confirmer.';
+                            enregistrer.disabled = true;
+                        });
+                        zone.appendChild(enregistrer);
+                    }
                 } catch (e) {
                     zone.textContent = e.message || 'Recherche impossible. Tu peux compléter la fiche manuellement.';
                 }
@@ -12412,7 +12527,7 @@ def obtenir_velos(x_code_acces: Optional[str] = Header(default=None)):
         a_verifier = {r[0]: r[1] for r in cursor.fetchall()}
         cursor.execute("""
             SELECT id, nom, type, marque, modele, annee, taille, actif,
-                   km_total, km_frac, km_maj_le, date_achat, moteur, batterie, freins, suspension, tubeless, transmission,
+                   km_total, km_frac, km_maj_le, date_achat, moteur, batterie, freins, suspension, tubeless, transmission, fiche_composants,
                    CASE WHEN photo IS NULL OR photo = '' THEN 0 ELSE 1 END AS a_photo
             FROM velos
             WHERE actif = 1
@@ -12439,7 +12554,8 @@ def obtenir_velos(x_code_acces: Optional[str] = Header(default=None)):
                 "freins": row["freins"],
                 "suspension": row["suspension"],
                 "tubeless": row["tubeless"],
-                "transmission": row["transmission"]
+                "transmission": row["transmission"],
+                "fiche_composants": row["fiche_composants"]
             }
             for row in cursor.fetchall()
         ]
@@ -12461,6 +12577,7 @@ class NouveauVeloRequest(BaseModel):
     suspension: Optional[str] = Field(default="inconnu", max_length=20)
     tubeless: Optional[str] = Field(default="inconnu", max_length=20)
     transmission: Optional[str] = Field(default="inconnu", max_length=20)
+    fiche_composants: Optional[str] = Field(default=None, max_length=30000)
 
 
 class ModifierFicheVeloRequest(BaseModel):
@@ -12476,6 +12593,7 @@ class ModifierFicheVeloRequest(BaseModel):
     suspension: Optional[str] = Field(default="inconnu", max_length=20)
     tubeless: Optional[str] = Field(default="inconnu", max_length=20)
     transmission: Optional[str] = Field(default="inconnu", max_length=20)
+    fiche_composants: Optional[str] = Field(default=None, max_length=30000)
 
 
 def adapter_freins_velo(cursor, velo_id, freins, suspension=None, tubeless=None, transmission=None):
@@ -12614,7 +12732,8 @@ def modifier_fiche_velo(
             SET nom = ?, marque = ?, modele = ?, annee = ?, taille = ?,
                 date_achat = ?, moteur = ?, batterie = ?, freins = COALESCE(?, freins),
                 suspension = COALESCE(?, suspension), tubeless = COALESCE(?, tubeless),
-                transmission = COALESCE(?, transmission)
+                transmission = COALESCE(?, transmission),
+                fiche_composants = COALESCE(?, fiche_composants)
             WHERE id = ? AND actif = 1
         """, (
             nom, (data.marque or "").strip() or None,
@@ -12626,6 +12745,7 @@ def modifier_fiche_velo(
             data.suspension if data.suspension in ("rigide", "avant", "double") else None,
             data.tubeless if data.tubeless in ("chambre", "tubeless") else None,
             data.transmission if data.transmission in ("chaine", "courroie") else None,
+            data.fiche_composants,
             velo_id
         ))
         adapter_freins_velo(
@@ -12674,9 +12794,9 @@ def creer_velo(
         cursor.execute("""
             INSERT INTO velos (
                 nom, type, marque, modele, annee, taille, actif, km_total,
-                km_frac, km_maj_le, date_achat, suivi_depuis, moteur, batterie, freins, suspension, tubeless, transmission
+                km_frac, km_maj_le, date_achat, suivi_depuis, moteur, batterie, freins, suspension, tubeless, transmission, fiche_composants
             )
-            VALUES (?, ?, ?, ?, ?, ?, 1, 0, 0, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, 1, 0, 0, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             nom, type_velo, (data.marque or "").strip() or None,
             (data.modele or "").strip() or None, data.annee,
@@ -12688,7 +12808,8 @@ def creer_velo(
             data.freins if data.freins in ("disque", "disque_hydraulique", "disque_mecanique", "patins") else None,
             data.suspension if data.suspension in ("rigide", "avant", "double") else None,
             data.tubeless if data.tubeless in ("chambre", "tubeless") else None,
-            data.transmission if data.transmission in ("chaine", "courroie") else None
+            data.transmission if data.transmission in ("chaine", "courroie") else None,
+            data.fiche_composants
         ))
         cursor.execute("SELECT id FROM velos WHERE nom = ? ORDER BY id DESC LIMIT 1", (nom,))
         velo_id = cursor.fetchone()[0]
@@ -13058,6 +13179,255 @@ def produits_structures(html_page):
                 a_visiter.extend(element)
     return produits
 
+
+LIBELLES_COMPOSANTS_VELO = {
+    "cadre": ("cadre", ("frame", "cadre")),
+    "fourche": ("fourche", ("fork", "fourche")),
+    "amortisseur": ("amortisseur", ("shock", "rear shock", "amortisseur", "suspension arriere")),
+    "tige_de_selle": ("tige_de_selle", ("seatpost", "seat post", "tige de selle")),
+    "freins": ("freins", ("brake", "brakes", "frein", "freins", "brakeset")),
+    "etriers": ("etriers", ("brake caliper", "caliper", "etrier", "étrier")),
+    "plaquettes": ("plaquettes", ("brake pad", "brake pads", "plaquette", "plaquettes")),
+    "disques": ("disques", ("brake rotor", "rotor", "disque", "disques")),
+    "transmission": ("transmission", ("drivetrain", "transmission")),
+    "derailleur": ("derailleur", ("rear derailleur", "derailleur", "dérailleur", "d.arriere")),
+    "cassette": ("cassette", ("cassette", "sprocket", "pignon")),
+    "chaine": ("chaine", ("chain", "chaine", "chaîne")),
+    "plateau": ("plateau", ("chainring", "plateau")),
+    "pedalier": ("pedalier", ("crankset", "crank", "pedalier", "pédalier")),
+    "pedales": ("pedales", ("pedals", "pedal", "pedales", "pédales")),
+    "manettes": ("manettes", ("shifter", "shifters", "manette", "manettes")),
+    "poignees": ("poignees", ("grips", "poignees", "poignées")),
+    "jeu_direction": ("jeu_direction", ("headset", "jeu de direction")),
+    "moyeux": ("moyeux", ("hub", "hubs", "moyeu", "moyeux")),
+    "chargeur": ("chargeur", ("charger", "chargeur")),
+    "roues": ("roues", ("wheelset", "wheel", "wheels", "roue", "roues")),
+    "pneus": ("pneus", ("tire", "tires", "tyre", "tyres", "pneu", "pneus")),
+    "selle": ("selle", ("saddle", "selle")),
+    "cintre": ("cintre", ("handlebar", "handlebars", "cintre", "guidon")),
+    "potence": ("potence", ("stem", "potence")),
+    "moteur": ("moteur", ("motor", "moteur")),
+    "batterie": ("batterie", ("battery", "batterie")),
+}
+
+
+def composants_techniques_de_page(html_page, source_url=None):
+    """Extrait les couples libellé/valeur des tableaux et propriétés structurées."""
+    trouves = {}
+
+    def categorie_pour(libelle):
+        texte = html_lib.unescape(str(libelle or "")).lower()
+        texte = unicodedata.normalize("NFKD", texte)
+        texte = "".join(c for c in texte if not unicodedata.combining(c))
+        cle = re.sub(r"[^a-z0-9]+", " ", texte).strip()
+        correspondances = []
+        for categorie, (nom, synonymes) in LIBELLES_COMPOSANTS_VELO.items():
+            for synonyme in synonymes:
+                terme = unicodedata.normalize("NFKD", synonyme.lower())
+                terme = "".join(c for c in terme if not unicodedata.combining(c))
+                terme = re.sub(r"[^a-z0-9]+", " ", terme).strip()
+                if cle == terme or cle.startswith(terme + " ") or cle.endswith(" " + terme):
+                    correspondances.append((len(terme), nom))
+        return max(correspondances)[1] if correspondances else None
+
+    def ajouter(libelle, valeur):
+        categorie = categorie_pour(libelle)
+        valeur = re.sub(r"\s+", " ", html_lib.unescape(str(valeur or ""))).strip(" :;|")
+        valeur = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", valeur)).strip()
+        if not categorie or not valeur or len(valeur) > 500:
+            return
+        if valeur.lower() in ("n/a", "not applicable", "non applicable", "-", "—"):
+            return
+        trouves.setdefault(categorie, [])
+        if valeur not in [item["nom"] for item in trouves[categorie]]:
+            trouves[categorie].append({"nom": valeur, "source": source_url or "fiche"})
+
+    # Tableaux de spécifications classiques (label dans la première cellule).
+    for ligne in re.findall(r"<tr\b[^>]*>(.*?)</tr>", html_page, re.I | re.S):
+        cellules = re.findall(r"<(?:th|td)\b[^>]*>(.*?)</(?:th|td)>", ligne, re.I | re.S)
+        if len(cellules) >= 2:
+            ajouter(cellules[0], cellules[1])
+
+    # Couples <dt>/<dd> fréquents dans les fiches sans tableau.
+    definitions = re.findall(r"<dt\b[^>]*>(.*?)</dt>\s*<dd\b[^>]*>(.*?)</dd>", html_page, re.I | re.S)
+    for libelle, valeur in definitions:
+        ajouter(libelle, valeur)
+
+    # Données structurées Schema.org : additionalProperty et propriétés produit.
+    def parcourir(noeud):
+        if isinstance(noeud, dict):
+            nom = noeud.get("name") or noeud.get("propertyID")
+            valeur = noeud.get("value") or noeud.get("description")
+            if nom and valeur and not isinstance(valeur, (dict, list)):
+                ajouter(nom, valeur)
+            for cle, element in noeud.items():
+                if cle in ("additionalProperty", "properties", "specifications", "specs"):
+                    parcourir(element)
+                elif isinstance(element, (dict, list)):
+                    parcourir(element)
+        elif isinstance(noeud, list):
+            for element in noeud:
+                parcourir(element)
+
+    ouvrant = "<scr" + "ipt"
+    fermant = "</scr" + "ipt>"
+    modele = re.escape(ouvrant) + r'''[^>]*type=["']application/ld[+]json["'][^>]*>(.*?)''' + re.escape(fermant)
+    for bloc in re.findall(modele, html_page, re.I | re.S):
+        try:
+            parcourir(json.loads(bloc))
+        except (ValueError, TypeError):
+            continue
+
+    # Compatibilité fabricant connue : Shimano BR-M6120.
+    # Le fabricant indique D03S-RX comme garniture standard et D02S-MX comme option métal.
+    # Ce sont des choix compatibles, pas une preuve de la matière montée d'origine.
+    texte_freins = " ".join(
+        valeur["nom"] for categorie in ("freins", "etriers")
+        for valeur in trouves.get(categorie, [])
+    )
+    if re.search(r"\b(?:BR-)?M6120\b", texte_freins, re.I) and "plaquettes" not in trouves:
+        source_shimano = "https://productinfo.shimano.com/index.html/product/BR-M6120"
+        trouves["plaquettes"] = [
+            {
+                "nom": "Shimano D03S-RX Resin, sans ailettes (standard)",
+                "source": source_shimano,
+                "origine": "Compatibilité fabricant — Shimano BR-M6120"
+            },
+            {
+                "nom": "Shimano D02S-MX Metal, sans ailettes (option)",
+                "source": source_shimano,
+                "origine": "Compatibilité fabricant — Shimano BR-M6120"
+            }
+        ]
+
+    resultat = []
+    for categorie, valeurs in trouves.items():
+        variantes_taille = any(
+            re.search(r"\b(?:size|taille)\s*[: ]|(?:^|[,;])\s*T\.?\s?(?:S|M|L|XL)\s*[-: ]", valeur["nom"], re.I)
+            for valeur in valeurs
+        )
+        statut = "trouve" if len(valeurs) == 1 and not variantes_taille else "a_confirmer"
+        for valeur in valeurs:
+            resultat.append({
+                "categorie": categorie,
+                "nom": valeur["nom"],
+                "statut": statut,
+                "origine": valeur.get("origine") or "Fiche consultée",
+                "source": valeur.get("source")
+            })
+
+    categories_connues = [item[0] for item in LIBELLES_COMPOSANTS_VELO.values()]
+    presentes = {item["categorie"] for item in resultat}
+    for categorie in categories_connues:
+        if categorie not in presentes:
+            resultat.append({
+                "categorie": categorie,
+                "nom": None,
+                "statut": "non_trouve",
+                "origine": None
+            })
+    return resultat
+
+
+def rechercher_pages_composants(requete, url_origine):
+    """Recherche quelques fiches indépendantes, sans quitter les garde-fous réseau."""
+    if not requete:
+        return []
+    params = urllib.parse.urlencode({"q": requete + " vélo fiche technique composants"})
+    try:
+        _, octets, _ = telecharger_lien("https://html.duckduckgo.com/html/?" + params, "text/html")
+    except ValueError:
+        return []
+    page = octets.decode("utf-8", errors="replace")
+    domaine_origine = (urllib.parse.urlparse(url_origine).hostname or "").lower()
+    candidats = []
+    domaines = set()
+    for balise in re.findall(r'<a\b[^>]*class="[^"]*result__a[^"]*"[^>]*>.*?</a>', page, re.I | re.S):
+        href = re.search(r'href="([^"]+)"', balise, re.I)
+        titre = texte_page_fiche(balise)
+        if not href or not titre:
+            continue
+        cible = html_lib.unescape(href.group(1))
+        parsed = urllib.parse.urlparse(cible)
+        if parsed.netloc.endswith("duckduckgo.com") and parsed.path.startswith("/l/"):
+            cible = urllib.parse.parse_qs(parsed.query).get("uddg", [None])[0] or cible
+        parsed = urllib.parse.urlparse(cible)
+        domaine = (parsed.hostname or "").lower()
+        if parsed.scheme not in ("http", "https") or not domaine or domaine == domaine_origine or domaine in domaines:
+            continue
+        domaines.add(domaine)
+        candidats.append({"titre": titre[:180], "url": cible})
+        if len(candidats) >= 5:
+            break
+    pages = []
+    for candidat in candidats:
+        try:
+            type_contenu, contenu, finale = telecharger_lien(candidat["url"], "text/html,application/xhtml+xml")
+        except ValueError:
+            continue
+        if type_contenu not in ("text/html", "application/xhtml+xml"):
+            continue
+        pages.append((finale, contenu[:2000000].decode("utf-8", errors="replace")))
+        if len(pages) >= 3:
+            break
+    return pages
+
+
+def recouper_composants_techniques(pages):
+    """Fusionne les résultats en conservant les sources et les désaccords."""
+    regroupes = {}
+    sources = []
+    domaines_sources = set()
+    for url, html_page in pages:
+        domaine = (urllib.parse.urlparse(url).hostname or "").lower()
+        if domaine and domaine not in domaines_sources:
+            domaines_sources.add(domaine)
+            sources.append({"url": url, "domaine": domaine})
+        for piece in composants_techniques_de_page(html_page, url):
+            if not piece.get("nom"):
+                continue
+            cle = (piece["categorie"], re.sub(r"\s+", " ", piece["nom"]).strip().casefold())
+            regroupes.setdefault(piece["categorie"], {})
+            entree = regroupes[piece["categorie"]].setdefault(cle[1], {
+                "categorie": piece["categorie"],
+                "nom": piece["nom"],
+                "sources": [],
+                "origine": piece.get("origine") or "Fiche consultée"
+            })
+            source = piece.get("source") or url
+            if source not in entree["sources"]:
+                entree["sources"].append(source)
+    resultat = []
+    categories_connues = [item[0] for item in LIBELLES_COMPOSANTS_VELO.values()]
+    for categorie in categories_connues:
+        choix = list(regroupes.get(categorie, {}).values())
+        if not choix:
+            resultat.append({"categorie": categorie, "nom": None, "statut": "non_trouve", "origine": None, "sources": []})
+            continue
+        for choix_piece in choix:
+            domaines = {
+                (urllib.parse.urlparse(source).hostname or "").lower()
+                for source in choix_piece["sources"]
+                if urllib.parse.urlparse(source).hostname
+            }
+            if len(choix) > 1:
+                statut = "choix"
+            elif len(domaines) >= 2:
+                statut = "recoupe"
+            else:
+                statut = "a_confirmer"
+            resultat.append({
+                "categorie": categorie,
+                "nom": choix_piece["nom"],
+                "statut": statut,
+                "origine": choix_piece["origine"],
+                "source": choix_piece["sources"][0] if choix_piece["sources"] else None,
+                "sources": choix_piece["sources"],
+                "nombre_sources": len(domaines)
+            })
+    return resultat, sources
+
+
 @app.post("/api/recherche-fiche-velo")
 def recherche_fiche_velo(data: RechercheFicheVeloRequest, x_code_acces: Optional[str] = Header(default=None)):
     """Recherche une page de vélo ou extrait les caractéristiques publiées par une fiche."""
@@ -13095,22 +13465,51 @@ def recherche_fiche_velo(data: RechercheFicheVeloRequest, x_code_acces: Optional
 
     if "://" not in lien:
         lien = "https://" + lien
+    erreur_source = None
     try:
         type_contenu, octets, finale = telecharger_lien(lien, "text/html,application/xhtml+xml")
+        if type_contenu not in ("text/html", "application/xhtml+xml"):
+            raise ValueError("Le lien ne mène pas à une page web lisible.")
+        page = octets[:2000000].decode("utf-8", errors="replace")
+        pages_initiales = [(finale, page)]
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    if type_contenu not in ("text/html", "application/xhtml+xml"):
-        raise HTTPException(status_code=400, detail="Le lien ne mène pas à une page web lisible.")
-    page = octets[:2000000].decode("utf-8", errors="replace")
+        erreur_source = str(e)
+        segments_url = [
+            urllib.parse.unquote(segment)
+            for segment in urllib.parse.urlparse(lien).path.split("/")
+            if segment
+        ]
+        segments_inutiles = {"fr-fr", "en-gb", "en-us", "velo", "vtt", "velo-electrique", "vtt-electrique", "electric-bike", "mountain-bike"}
+        segments_utiles = [segment for segment in segments_url if segment.lower() not in segments_inutiles]
+        recherche_secours = re.sub(r"[-_]+", " ", " ".join(segments_utiles[-4:])).strip()
+        pages_initiales = rechercher_pages_composants(recherche_secours, lien)
+        if not pages_initiales:
+            raise HTTPException(status_code=400, detail=erreur_source + " Aucune autre fiche n'a pu être consultée.")
+        finale, page = pages_initiales[0]
+    if not page:
+        raise HTTPException(status_code=400, detail="Aucune fiche vélo exploitable n'a été trouvée.")
     texte = texte_page_fiche(page)
     produits = produits_structures(page)
     produit = produits[0] if produits else {}
+    composants_techniques = composants_techniques_de_page(page, finale)
     marque = produit.get("brand")
     if isinstance(marque, dict):
         marque = marque.get("name")
     modele = produit.get("model") or produit.get("name")
     annee_source = produit.get("releaseDate") or produit.get("datePublished") or ""
     annee_match = re.search(r"\b(19[5-9][0-9]|20[0-9]{2}|2100)\b", str(annee_source) + " " + str(modele or ""))
+    titre_match = re.search(r"<title[^>]*>(.*?)</title>", page, re.I | re.S)
+    titre_page = texte_page_fiche(titre_match.group(1))[:160] if titre_match else ""
+    requete_composants = " ".join(str(x) for x in (marque, modele, annee_match.group(1) if annee_match else recherche, titre_page) if x)
+    pages_composants = list(pages_initiales)
+    pages_composants.extend(rechercher_pages_composants(requete_composants, finale))
+    pages_uniques = []
+    urls_vues = set()
+    for url_page, html_page in pages_composants:
+        if url_page not in urls_vues:
+            urls_vues.add(url_page)
+            pages_uniques.append((url_page, html_page))
+    composants_techniques, sources_fiche = recouper_composants_techniques(pages_uniques)
     bas = texte.lower()
     freins = None
     patins_trouves = bool(re.search(r"freins? (?:à|a) patins|freinage sur jante|rim brakes?|v-brakes?", bas))
@@ -13173,6 +13572,8 @@ def recherche_fiche_velo(data: RechercheFicheVeloRequest, x_code_acces: Optional
         "transmission": transmission_detectee,
         "moteur": moteur_match.group(0).strip()[:120] if moteur_match else None,
         "batterie": batterie_match.group(0).strip()[:120] if batterie_match else None,
+        "composants_techniques": composants_techniques,
+        "sources_fiche": sources_fiche,
         "source": finale,
         "message": "Les données extraites doivent être vérifiées sur la fiche constructeur."
     }

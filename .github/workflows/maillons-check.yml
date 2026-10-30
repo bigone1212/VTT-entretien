@@ -1711,7 +1711,7 @@ jobs:
           CAPTURE = False
           V = [{"id": 1, "nom": "Mon CUBE", "type": "vtt_electrique", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0},
                {"id": 2, "nom": "Gravel élec", "type": "gravel_electrique", "marque": "Canyon", "modele": "Grail:ON", "annee": 2024, "taille": "M",
-                "moteur": "Bosch SX", "batterie": "400 Wh", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0},
+                "moteur": "Bosch SX", "batterie": "400 Wh", "fiche_composants": json.dumps([{"categorie": "fourche", "nom": "Fox Rhythm 36", "validation": "valide_par_utilisateur"}]), "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0},
                {"id": 3, "nom": "Route simple", "type": "route", "marque": None, "modele": None, "annee": None, "taille": None,
                 "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0}]
           erreurs = []
@@ -1719,7 +1719,31 @@ jobs:
               nav = p.chromium.launch(); ctx = nav.new_context(viewport={"width": 390, "height": 900})
               def api(r):
                   u = urlparse(r.request.url)
-                  corps = V if u.path == "/api/velos" else ({"km_total": 0, "composants": []} if u.path == "/api/etat" else ({"valeurs": {}, "maj_le": None} if u.path == "/api/mes-reglages" else ({"terrain_route": 1, "terrain_mixte": 1.2, "terrain_chemin": 1.5, "terrain_sentier": 2, "poids_denivele": 1} if u.path == "/api/reglages" else [])))
+                  if u.path == "/api/velos":
+                      corps = V
+                  elif u.path == "/api/recherche-fiche-velo":
+                      corps = {"source": "https://exemple.test/fiche",
+                          "sources_fiche": [
+                              {"url": "https://trek.example/fuel", "domaine": "trek.example"},
+                              {"url": "https://shop.example/fuel", "domaine": "shop.example"}
+                          ],
+                          "composants_techniques": [
+                              {"categorie": "fourche", "nom": "Fox Rhythm 36", "statut": "recoupe",
+                               "source": "https://trek.example/fuel", "sources": ["https://trek.example/fuel", "https://shop.example/fuel"]},
+                              {"categorie": "tige_de_selle", "nom": "TranzX JD-YSP39, 100 mm", "statut": "choix",
+                               "source": "https://trek.example/fuel", "sources": ["https://trek.example/fuel"]},
+                              {"categorie": "tige_de_selle", "nom": "TranzX JD-YSP39, 150 mm", "statut": "choix",
+                               "source": "https://shop.example/fuel", "sources": ["https://shop.example/fuel"]},
+                              {"categorie": "plaquettes", "nom": None, "statut": "non_trouve"}
+                          ]}
+                  elif u.path == "/api/etat":
+                      corps = {"km_total": 0, "composants": []}
+                  elif u.path == "/api/mes-reglages":
+                      corps = {"valeurs": {}, "maj_le": None}
+                  elif u.path == "/api/reglages":
+                      corps = {"terrain_route": 1, "terrain_mixte": 1.2, "terrain_chemin": 1.5, "terrain_sentier": 2, "poids_denivele": 1}
+                  else:
+                      corps = []
                   r.fulfill(status=200, content_type="application/json", body=json.dumps(corps))
               ctx.route("**/localhost/api/**", api); ctx.route(lambda u: not u.startswith("http://localhost/"), lambda r: r.abort())
               ctx.add_init_script("sessionStorage.setItem('vtt_code','t'); sessionStorage.setItem('maillons_velo_id','2')")
@@ -1735,7 +1759,25 @@ jobs:
               assert txt("#ficheAutreNom") == "Gravel élec"
               assert [txt("#ficheAutreType"), txt("#ficheAutreMarque"), txt("#ficheAutreModele"), txt("#ficheAutreAnnee"), txt("#ficheAutreTaille"), txt("#ficheAutreMoteur"), txt("#ficheAutreBatterie")] == ["Gravel électrique", "Canyon", "Grail:ON", "2024", "M", "Bosch SX", "400 Wh"]
               assert shown("#ficheAutreMoteurLigne") and shown("#ficheAutreBatterieLigne")
+              assert "Fox Rhythm 36" in txt("#ficheComposantsTechniques") and "validé par toi" in txt("#ficheComposantsTechniques")
+              page.fill("#veloRechercheFiche", "https://exemple.test/fiche")
+              page.click("#boutonRechercheFiche"); page.wait_for_timeout(300)
+              cases = page.locator("#resultatsRechercheFiche input[type=radio]")
+              assert cases.count() == 3
+              assert cases.nth(0).is_checked() and not cases.nth(1).is_checked()
+              cases.nth(1).check()
+              page.get_by_role("button", name="Enregistrer ma sélection dans la fiche").click()
+              selection = json.loads(page.locator("#nouveauVeloFicheComposants").input_value())
+              assert len(selection) == 2, selection
+              assert selection[0]["categorie"] == "fourche"
+              assert selection[1]["categorie"] == "tige_de_selle"
+              assert all(piece["validation"] == "valide_par_utilisateur" for piece in selection)
               page.click("#ficheTechniqueAutre summary"); page.wait_for_timeout(300)
+              page.click("#btnModifierFicheVelo"); page.wait_for_timeout(300)
+              # L'édition recharge la nomenclature déjà enregistrée du vélo,
+              # pas la sélection encore non enregistrée dans le formulaire.
+              assert json.loads(page.locator("#nouveauVeloFicheComposants").input_value()) == json.loads(V[1]["fiche_composants"])
+              page.click("#btnAnnulerEditionFiche"); page.wait_for_timeout(200)
               assert page.eval_on_selector("#ficheTechniqueAutre", "e => e.open") is True
               if CAPTURE:
                   page.locator("#ficheTechniqueAutre").scroll_into_view_if_needed()
@@ -2019,4 +2061,199 @@ jobs:
           conn.close()
 
           print("OK: 8 types, contrôles visibles, fiches complètes, migration d'un vélo existant, historique conservé et seconde migration sans doublon.")
+          PY
+      - name: Tester l'extraction des composants techniques d'une fiche vélo
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-composants-test.db
+          DATABASE_URL: ""
+          CODE_ACCES: test
+        run: |
+          python - <<'PY'
+          import main
+
+          page = """
+          <html><body>
+          <table>
+            <tr><th>Fork</th><td>Fox Rhythm 36, Float EVOL, GRIP, 150 mm</td></tr>
+            <tr><th>Rear Shock</th><td>Fox Performance Float X, 205 x 60 mm</td></tr>
+            <tr><th>Brake</th><td>Shimano 4-piston hydraulic disc, M6100 lever, M6120 caliper</td></tr>
+            <tr><th>Brake rotor</th><td>Shimano RT66, 203 mm</td></tr>
+            <tr><th>Seatpost</th><td>TranzX JD-YSP39, 150 mm travel</td></tr>
+            <tr><th>Rear Derailleur</th><td>Shimano XT M8100, long cage</td></tr>
+            <tr><th>Dérailleur arrière</th><td>Shimano XT M8100, chape longue</td></tr>
+            <tr><th>Chaîne</th><td>Shimano SLX M7100, 12 vitesses</td></tr>
+            <tr><th>Plateau</th><td>E*thirteen E*spec, 32 dents</td></tr>
+            <tr><th>Étrier</th><td>Shimano M6120</td></tr>
+            <tr><th>Seatpost</th><td>Size: S, 100 mm travel; Size: M, 150 mm travel; Size: L, XL, 170 mm travel</td></tr>
+          </table>
+          <dl><dt>Chain</dt><dd>Shimano SLX M7100, 12 speed</dd></dl>
+          <script type="application/ld+json">
+          {"@type":"Product","additionalProperty":[
+            {"@type":"PropertyValue","name":"Saddle","value":"Bontrager Arvada, 138 mm"}
+          ]}
+          </script>
+          </body></html>
+          """
+
+          resultats = main.composants_techniques_de_page(page)
+          trouves = {item["categorie"]: item for item in resultats if item["nom"]}
+          assert trouves["fourche"]["nom"].startswith("Fox Rhythm 36"), trouves
+          assert "Float X" in trouves["amortisseur"]["nom"], trouves
+          tiges = [item for item in resultats if item["categorie"] == "tige_de_selle" and item["nom"]]
+          assert any("TranzX JD-YSP39" in item["nom"] for item in tiges), tiges
+          assert all(item["statut"] == "a_confirmer" for item in tiges), tiges
+          assert "M6120" in trouves["freins"]["nom"], trouves
+          assert "RT66" in trouves["disques"]["nom"], trouves
+          assert "XT M8100" in trouves["derailleur"]["nom"], trouves
+          assert "SLX M7100" in trouves["chaine"]["nom"], trouves
+          assert "32 dents" in trouves["plateau"]["nom"], trouves
+          assert "M6120" in trouves["etriers"]["nom"], trouves
+          assert "Bontrager Arvada" in trouves["selle"]["nom"], trouves
+          plaquettes = [item for item in resultats if item["categorie"] == "plaquettes" and item["nom"]]
+          assert len(plaquettes) == 2, resultats
+          assert any("D03S-RX" in item["nom"] for item in plaquettes), plaquettes
+          assert any("D02S-MX" in item["nom"] for item in plaquettes), plaquettes
+          assert all(item["statut"] == "a_confirmer" for item in plaquettes), plaquettes
+          assert all(item["source"] == "https://productinfo.shimano.com/index.html/product/BR-M6120" for item in plaquettes)
+          page_sans_caliper = page.replace("M6120", "MT520")
+          sans_caliper = main.composants_techniques_de_page(page_sans_caliper)
+          assert not any(item["nom"] for item in sans_caliper if item["categorie"] == "plaquettes"), sans_caliper
+          assert all(item["origine"] == "Fiche consultée" for item in trouves.values() if item["categorie"] != "plaquettes")
+          print("OK: composants extraits, compatibilités Shimano BR-M6120 sourcées et aucun patin/plaquette deviné sans étrier exact.")
+          PY
+      - name: Vérifier le recoupement de plusieurs sources et les variantes
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-recoupement-test.db
+          DATABASE_URL: ""
+          CODE_ACCES: test
+        run: |
+          python - <<'PY'
+          import json
+          import main
+
+          page_a = """
+          <html><head><title>Fuel EXe 9.7 2025</title></head><body>
+          <script type="application/ld+json">
+          {"@type":"Product","name":"Fuel EXe 9.7","brand":{"@type":"Brand","name":"Trek"},"releaseDate":"2025"}
+          </script>
+          <table>
+            <tr><th>Fork</th><td>Fox Rhythm 36, Float EVOL, GRIP, 150 mm</td></tr>
+            <tr><th>Rear Shock</th><td>Fox Performance Float X, 205 x 60 mm</td></tr>
+            <tr><th>Seatpost</th><td>TranzX JD-YSP39, 150 mm travel</td></tr>
+          </table>
+          </body></html>
+          """
+          page_b = """
+          <html><body><table>
+            <tr><th>Fork</th><td>Fox Rhythm 36, Float EVOL, GRIP, 150 mm</td></tr>
+            <tr><th>Rear Shock</th><td>Fox Performance Float X, 205 x 60 mm</td></tr>
+            <tr><th>Seatpost</th><td>Bontrager Line Dropper, 150 mm travel</td></tr>
+          </table></body></html>
+          """
+          url_a = "https://source-a.example/fuel"
+          url_b = "https://source-b.example/fuel"
+          resultats, sources = main.recouper_composants_techniques([
+              (url_a, page_a), (url_b, page_b)
+          ])
+          fourche = next(x for x in resultats if x["categorie"] == "fourche" and x["nom"])
+          assert fourche["statut"] == "recoupe", fourche
+          assert fourche["nombre_sources"] == 2, fourche
+          assert set(fourche["sources"]) == {url_a, url_b}, fourche
+          tiges = [x for x in resultats if x["categorie"] == "tige_de_selle" and x["nom"]]
+          assert len(tiges) == 2 and all(x["statut"] == "choix" for x in tiges), tiges
+          assert next(x for x in resultats if x["categorie"] == "chargeur")["statut"] == "non_trouve"
+          assert len(sources) == 2, sources
+
+          page_recherche = """
+          <html><body>
+          <a class="result__a" href="https://source-a.example/fuel">Fiche A</a>
+          <a class="result__a" href="https://source-b.example/fuel">Fiche B</a>
+          <a class="result__a" href="https://opticycles.com/fuel">Page initiale</a>
+          </body></html>
+          """
+          original = main.telecharger_lien
+          recherches = []
+          def faux_telechargement(url, accepte):
+              if "duckduckgo.com" in url:
+                  recherches.append(url)
+                  return "text/html", page_recherche.encode(), url
+              if "source-a.example" in url:
+                  return "text/html", page_a.encode(), url
+              if "source-b.example" in url:
+                  return "text/html", page_b.encode(), url
+              raise ValueError("Page indisponible")
+          main.telecharger_lien = faux_telechargement
+          pages = main.rechercher_pages_composants("Trek Fuel EXe 9.7 2025", "https://opticycles.com/fuel")
+          assert len(pages) == 2, pages
+          assert {url for url, _ in pages} == {url_a, url_b}
+          main.verifier_auth = lambda _code: None
+          main.telecharger_lien = lambda url, accepte: (
+              (_ for _ in ()).throw(ValueError("403")) if "opticycles.com" in url
+              else faux_telechargement(url, accepte)
+          )
+          fiche = main.recherche_fiche_velo(
+              main.RechercheFicheVeloRequest(url="https://opticycles.com/fr-fr/velo-electrique/vtt-electrique/Trek/2025/fuel-exe-9.7"),
+              None
+          )
+          assert fiche["marque"] == "Trek", fiche
+          assert any("Trek+2025" in recherche for recherche in recherches), recherches
+          assert len(fiche["sources_fiche"]) == 2, fiche["sources_fiche"]
+          fourche = next(x for x in fiche["composants_techniques"] if x["categorie"] == "fourche" and x["nom"])
+          assert fourche["statut"] == "recoupe", fourche
+          tiges = [x for x in fiche["composants_techniques"] if x["categorie"] == "tige_de_selle" and x["nom"]]
+          assert len(tiges) == 2 and all(x["statut"] == "choix" for x in tiges), tiges
+          main.telecharger_lien = original
+          print("OK : plusieurs sites consultés, références concordantes recoupées, désaccords proposés au choix, page 403 contournée sans inventer.")
+          PY
+      - name: Vérifier la conservation de la nomenclature technique par vélo
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-fiche-composants.db
+          DATABASE_URL: ""
+          CODE_ACCES: test
+        run: |
+          python - <<'PY'
+          import json
+          import main
+          import db
+
+          main.verifier_auth = lambda _code: None
+          contenu = json.dumps([
+              {"categorie": "fourche", "nom": "Fox Rhythm 36", "statut": "trouve",
+               "source": "https://exemple.test/fiche", "validation": "valide_par_utilisateur"}
+          ], ensure_ascii=False)
+          resultat = main.creer_velo(
+              main.NouveauVeloRequest(
+                  nom="Trek test", type="vtt_electrique", marque="Trek",
+                  modele="Fuel EXe 9.7", annee=2025, fiche_composants=contenu
+              ),
+              x_code_acces="test"
+          )
+          velo_id = resultat["velo_id"]
+          velos = main.obtenir_velos(x_code_acces="test")
+          velo = next(v for v in velos if v["id"] == velo_id)
+          assert json.loads(velo["fiche_composants"]) == json.loads(contenu), velo
+          assert json.loads(velo["fiche_composants"])[0]["validation"] == "valide_par_utilisateur"
+
+          modifie = json.dumps([
+              {"categorie": "fourche", "nom": "Fox Rhythm 36", "statut": "trouve",
+               "source": "https://exemple.test/fiche", "validation": "a_confirmer"},
+              {"categorie": "amortisseur", "nom": "Fox Float X", "statut": "trouve",
+               "source": "https://exemple.test/fiche", "validation": "a_confirmer"}
+          ], ensure_ascii=False)
+          main.modifier_fiche_velo(
+              velo_id,
+              main.ModifierFicheVeloRequest(
+                  nom="Trek test", fiche_composants=modifie
+              ),
+              x_code_acces="test"
+          )
+          velos = main.obtenir_velos(x_code_acces="test")
+          velo = next(v for v in velos if v["id"] == velo_id)
+          assert len(json.loads(velo["fiche_composants"])) == 2, velo
+          conn = db.connect()
+          cur = conn.cursor()
+          cur.execute("SELECT fiche_composants FROM velos WHERE id = ?", (velo_id,))
+          assert len(json.loads(cur.fetchone()[0])) == 2
+          conn.close()
+          print("OK: nomenclature technique enregistrée, relue et mise à jour sans toucher aux autres vélos.")
           PY
