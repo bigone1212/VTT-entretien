@@ -13350,14 +13350,12 @@ def rechercher_pages_composants(requete, url_origine):
     domaine_origine = (urllib.parse.urlparse(url_origine).hostname or "").lower()
     candidats = []
     domaines = set()
-    moteurs_interroges = set()
 
     for moteur, adresse, accepter in moteurs:
         try:
-            type_contenu, octets, _ = telecharger_lien(adresse, accepter)
+            _, octets, _ = telecharger_lien(adresse, accepter)
         except ValueError:
             continue
-        moteurs_interroges.add(moteur)
         resultats = []
         if moteur == "bing":
             try:
@@ -13389,7 +13387,8 @@ def rechercher_pages_composants(requete, url_origine):
                 continue
             if domaine == domaine_origine or domaine in domaines:
                 continue
-            if domaine.endswith("duckduckgo.com") or domaine.endswith("bing.com"):
+            if (domaine == "duckduckgo.com" or domaine.endswith(".duckduckgo.com")
+                    or domaine == "bing.com" or domaine.endswith(".bing.com")):
                 continue
             domaines.add(domaine)
             candidats.append({"titre": titre[:180], "url": cible})
