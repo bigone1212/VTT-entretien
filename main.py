@@ -5022,6 +5022,24 @@ def accueil():
                     if (data.batterie) document.getElementById('nouveauVeloBatterie').value = data.batterie;
                     afficherNomVeloActif();
                     zone.textContent = 'Source : ' + data.source + '. Vérifie chaque champ avant d’enregistrer. Les caractéristiques non trouvées restent à confirmer.';
+                    if (Array.isArray(data.composants_techniques)) {
+                        const titre = document.createElement('h4');
+                        titre.textContent = 'Composants techniques repérés';
+                        zone.appendChild(titre);
+                        const liste = document.createElement('ul');
+                        liste.style.paddingLeft = '20px';
+                        data.composants_techniques.forEach(piece => {
+                            const ligne = document.createElement('li');
+                            const nom = piece.categorie.replaceAll('_', ' ');
+                            ligne.textContent = nom + ' : ' + (piece.nom || 'non trouvé sur cette page')
+                                + (piece.statut === 'a_confirmer' ? ' · plusieurs variantes à confirmer' : '');
+                            liste.appendChild(ligne);
+                        });
+                        zone.appendChild(liste);
+                        const note = document.createElement('p');
+                        note.textContent = 'Les variantes possibles sont affichées séparément. Une pièce non trouvée n’est jamais déduite automatiquement.';
+                        zone.appendChild(note);
+                    }
                 } catch (e) {
                     zone.textContent = e.message || 'Recherche impossible. Tu peux compléter la fiche manuellement.';
                 }
@@ -13058,6 +13076,110 @@ def produits_structures(html_page):
                 a_visiter.extend(element)
     return produits
 
+
+LIBELLES_COMPOSANTS_VELO = {
+    "cadre": ("cadre", ("frame", "cadre")),
+    "fourche": ("fourche", ("fork", "fourche")),
+    "amortisseur": ("amortisseur", ("shock", "rear shock", "amortisseur", "suspension arriere")),
+    "tige_de_selle": ("tige_de_selle", ("seatpost", "seat post", "tige de selle")),
+    "freins": ("freins", ("brake", "brakes", "frein", "freins", "brakeset")),
+    "plaquettes": ("plaquettes", ("brake pad", "brake pads", "plaquette", "plaquettes")),
+    "disques": ("disques", ("brake rotor", "rotor", "disque", "disques")),
+    "transmission": ("transmission", ("drivetrain", "transmission")),
+    "derailleur": ("derailleur", ("rear derailleur", "derailleur", "dérailleur")),
+    "cassette": ("cassette", ("cassette", "sprocket")),
+    "chaine": ("chaine", ("chain", "chaine", "chaîne")),
+    "pedalier": ("pedalier", ("crankset", "crank", "pedalier", "pédalier")),
+    "roues": ("roues", ("wheelset", "wheel", "wheels", "roue", "roues")),
+    "pneus": ("pneus", ("tire", "tires", "tyre", "tyres", "pneu", "pneus")),
+    "selle": ("selle", ("saddle", "selle")),
+    "cintre": ("cintre", ("handlebar", "handlebars", "cintre", "guidon")),
+    "potence": ("potence", ("stem", "potence")),
+    "moteur": ("moteur", ("motor", "moteur")),
+    "batterie": ("batterie", ("battery", "batterie")),
+}
+
+
+def composants_techniques_de_page(html_page):
+    """Extrait les couples libellé/valeur des tableaux et propriétés structurées."""
+    trouves = {}
+
+    def categorie_pour(libelle):
+        cle = re.sub(r"[^a-z0-9]+", " ", html_lib.unescape(str(libelle or "")).lower()).strip()
+        for categorie, (nom, synonymes) in LIBELLES_COMPOSANTS_VELO.items():
+            for synonyme in synonymes:
+                terme = re.sub(r"[^a-z0-9]+", " ", synonyme.lower()).strip()
+                if cle == terme or cle.startswith(terme + " ") or cle.endswith(" " + terme):
+                    return nom
+        return None
+
+    def ajouter(libelle, valeur):
+        categorie = categorie_pour(libelle)
+        valeur = re.sub(r"\s+", " ", html_lib.unescape(str(valeur or ""))).strip(" :;|")
+        valeur = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", valeur)).strip()
+        if not categorie or not valeur or len(valeur) > 500:
+            return
+        if valeur.lower() in ("n/a", "not applicable", "non applicable", "-", "—"):
+            return
+        trouves.setdefault(categorie, [])
+        if valeur not in [item["nom"] for item in trouves[categorie]]:
+            trouves[categorie].append({"nom": valeur, "source": "fiche"})
+
+    # Tableaux de spécifications classiques (label dans la première cellule).
+    for ligne in re.findall(r"<tr\b[^>]*>(.*?)</tr>", html_page, re.I | re.S):
+        cellules = re.findall(r"<(?:th|td)\b[^>]*>(.*?)</(?:th|td)>", ligne, re.I | re.S)
+        if len(cellules) >= 2:
+            ajouter(cellules[0], cellules[1])
+
+    # Données structurées Schema.org : additionalProperty et propriétés produit.
+    def parcourir(noeud):
+        if isinstance(noeud, dict):
+            nom = noeud.get("name") or noeud.get("propertyID")
+            valeur = noeud.get("value") or noeud.get("description")
+            if nom and valeur and not isinstance(valeur, (dict, list)):
+                ajouter(nom, valeur)
+            for cle, element in noeud.items():
+                if cle in ("additionalProperty", "properties", "specifications", "specs"):
+                    parcourir(element)
+                elif isinstance(element, (dict, list)):
+                    parcourir(element)
+        elif isinstance(noeud, list):
+            for element in noeud:
+                parcourir(element)
+
+    ouvrant = "<scr" + "ipt"
+    fermant = "</scr" + "ipt>"
+    modele = re.escape(ouvrant) + r'''[^>]*type=["']application/ld[+]json["'][^>]*>(.*?)''' + re.escape(fermant)
+    for bloc in re.findall(modele, html_page, re.I | re.S):
+        try:
+            parcourir(json.loads(bloc))
+        except (ValueError, TypeError):
+            continue
+
+    resultat = []
+    for categorie, valeurs in trouves.items():
+        statut = "trouve" if len(valeurs) == 1 else "a_confirmer"
+        for valeur in valeurs:
+            resultat.append({
+                "categorie": categorie,
+                "nom": valeur["nom"],
+                "statut": statut,
+                "origine": "Fiche consultée"
+            })
+
+    categories_connues = [item[0] for item in LIBELLES_COMPOSANTS_VELO.values()]
+    presentes = {item["categorie"] for item in resultat}
+    for categorie in categories_connues:
+        if categorie not in presentes:
+            resultat.append({
+                "categorie": categorie,
+                "nom": None,
+                "statut": "non_trouve",
+                "origine": None
+            })
+    return resultat
+
+
 @app.post("/api/recherche-fiche-velo")
 def recherche_fiche_velo(data: RechercheFicheVeloRequest, x_code_acces: Optional[str] = Header(default=None)):
     """Recherche une page de vélo ou extrait les caractéristiques publiées par une fiche."""
@@ -13105,6 +13227,7 @@ def recherche_fiche_velo(data: RechercheFicheVeloRequest, x_code_acces: Optional
     texte = texte_page_fiche(page)
     produits = produits_structures(page)
     produit = produits[0] if produits else {}
+    composants_techniques = composants_techniques_de_page(page)
     marque = produit.get("brand")
     if isinstance(marque, dict):
         marque = marque.get("name")
@@ -13173,6 +13296,7 @@ def recherche_fiche_velo(data: RechercheFicheVeloRequest, x_code_acces: Optional
         "transmission": transmission_detectee,
         "moteur": moteur_match.group(0).strip()[:120] if moteur_match else None,
         "batterie": batterie_match.group(0).strip()[:120] if batterie_match else None,
+        "composants_techniques": composants_techniques,
         "source": finale,
         "message": "Les données extraites doivent être vérifiées sur la fiche constructeur."
     }
