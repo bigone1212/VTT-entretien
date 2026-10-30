@@ -16,6 +16,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import unicodedata
 from typing import Optional, List, Dict
 from datetime import date, datetime, timedelta, timezone
 
@@ -13143,13 +13144,21 @@ LIBELLES_COMPOSANTS_VELO = {
     "amortisseur": ("amortisseur", ("shock", "rear shock", "amortisseur", "suspension arriere")),
     "tige_de_selle": ("tige_de_selle", ("seatpost", "seat post", "tige de selle")),
     "freins": ("freins", ("brake", "brakes", "frein", "freins", "brakeset")),
+    "etriers": ("etriers", ("brake caliper", "caliper", "etrier", "étrier")),
     "plaquettes": ("plaquettes", ("brake pad", "brake pads", "plaquette", "plaquettes")),
     "disques": ("disques", ("brake rotor", "rotor", "disque", "disques")),
     "transmission": ("transmission", ("drivetrain", "transmission")),
-    "derailleur": ("derailleur", ("rear derailleur", "derailleur", "dérailleur")),
-    "cassette": ("cassette", ("cassette", "sprocket")),
+    "derailleur": ("derailleur", ("rear derailleur", "derailleur", "dérailleur", "d.arriere")),
+    "cassette": ("cassette", ("cassette", "sprocket", "pignon")),
     "chaine": ("chaine", ("chain", "chaine", "chaîne")),
+    "plateau": ("plateau", ("chainring", "plateau")),
     "pedalier": ("pedalier", ("crankset", "crank", "pedalier", "pédalier")),
+    "pedales": ("pedales", ("pedals", "pedal", "pedales", "pédales")),
+    "manettes": ("manettes", ("shifter", "shifters", "manette", "manettes")),
+    "poignees": ("poignees", ("grips", "poignees", "poignées")),
+    "jeu_direction": ("jeu_direction", ("headset", "jeu de direction")),
+    "moyeux": ("moyeux", ("hub", "hubs", "moyeu", "moyeux")),
+    "chargeur": ("chargeur", ("charger", "chargeur")),
     "roues": ("roues", ("wheelset", "wheel", "wheels", "roue", "roues")),
     "pneus": ("pneus", ("tire", "tires", "tyre", "tyres", "pneu", "pneus")),
     "selle": ("selle", ("saddle", "selle")),
@@ -13165,11 +13174,16 @@ def composants_techniques_de_page(html_page):
     trouves = {}
 
     def categorie_pour(libelle):
-        cle = re.sub(r"[^a-z0-9]+", " ", html_lib.unescape(str(libelle or "")).lower()).strip()
+        texte = html_lib.unescape(str(libelle or "")).lower()
+        texte = unicodedata.normalize("NFKD", texte)
+        texte = "".join(c for c in texte if not unicodedata.combining(c))
+        cle = re.sub(r"[^a-z0-9]+", " ", texte).strip()
         correspondances = []
         for categorie, (nom, synonymes) in LIBELLES_COMPOSANTS_VELO.items():
             for synonyme in synonymes:
-                terme = re.sub(r"[^a-z0-9]+", " ", synonyme.lower()).strip()
+                terme = unicodedata.normalize("NFKD", synonyme.lower())
+                terme = "".join(c for c in terme if not unicodedata.combining(c))
+                terme = re.sub(r"[^a-z0-9]+", " ", terme).strip()
                 if cle == terme or cle.startswith(terme + " ") or cle.endswith(" " + terme):
                     correspondances.append((len(terme), nom))
         return max(correspondances)[1] if correspondances else None
