@@ -1,3 +1,14 @@
+# Mise à jour du relais — 30/10/2026 — régression de la recherche de fiche (en cours)
+
+- Retour de Math (30/10/2026, ~15h10) après le déploiement de la PR #14 : la recherche du Trek Fuel EXe 9.7 ne retrouve AUCUN composant, et il a PERDU le nom du moteur et la capacité de la batterie (champs qui étaient remplis avant).
+- Objectif : redonner une recherche qui répond, sans toucher à ce qui est validé (altitudes, survols 3D, filtres).
+- Diagnostic (mesuré en local, pas encore confirmé sur Render) : depuis les PR #13/#14, le motif HTML « libellé / valeur par classes » de `composants_techniques_de_page` est quadratique. Mesure sur une page de test synthétique : 65 Ko = 0,7 s ; 130 Ko = 2,3 s ; 260 Ko = 10 s, alors que l'ancien code (commit `cf4d8f3`) faisait 0,0 s. Une vraie page de boutique fait souvent plusieurs centaines de Ko : la recherche, qui analyse jusqu'à 6 pages (et la 1re deux fois), peut donc durer des minutes et ne jamais répondre, d'où l'absence de moteur/batterie (même réponse).
+- Plan : (1) branche `reprise/2026-10-30-recherche-trop-lente` ; (2) borner ce motif pour qu'il reste rapide ; (3) ne plus analyser deux fois la 1re page ; (4) tests de vitesse et de résultat (mêmes composants trouvés qu'avant sur les pages de test) ; (5) PR, puis accord de Math avant toute fusion.
+- État : rien n'est encore corrigé ni enregistré sur `main` en dehors de cette note. Aucun déploiement, aucune opération Neon, aucune donnée modifiée.
+- Non testé : vraies pages Opticycles/Décathlon (inaccessibles depuis l'environnement de Claude), Render, téléphone.
+
+---
+
 # Mise à jour du relais — 30/10/2026 — fusion PR #14
 
 - Après le test utilisateur, le problème persistait : les fiches affichaient les catégories génériques « Suspension », « Fourche » et « Amortisseur arrière » sans les noms précis.
