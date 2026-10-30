@@ -13243,11 +13243,38 @@ def composants_techniques_de_page(html_page, source_url=None):
         if valeur not in [item["nom"] for item in trouves[categorie]]:
             trouves[categorie].append({"nom": valeur, "source": source_url or "fiche"})
 
-    # Tableaux de spécifications classiques (label dans la première cellule).
+    # Tableaux : certaines fiches placent plusieurs couples libellé/valeur sur une ligne.
     for ligne in re.findall(r"<tr\b[^>]*>(.*?)</tr>", html_page, re.I | re.S):
         cellules = re.findall(r"<(?:th|td)\b[^>]*>(.*?)</(?:th|td)>", ligne, re.I | re.S)
-        if len(cellules) >= 2:
-            ajouter(cellules[0], cellules[1])
+        for index in range(0, len(cellules) - 1, 2):
+            ajouter(cellules[index], cellules[index + 1])
+
+    # Blocs de caractéristiques : listes et paragraphes avec « Fork: ... »,
+    # « Rear shock — ... » ou un libellé mis en gras avant la valeur.
+    for balise, bloc in re.findall(r"<(li|p)\b[^>]*>(.*?)</\1>", html_page, re.I | re.S):
+        valeur_gras = re.match(
+            r"\s*<(?:strong|b)\b[^>]*>(.*?)</(?:strong|b)>\s*[:：-]?\s*(.+)",
+            bloc,
+            re.I | re.S
+        )
+        if valeur_gras:
+            ajouter(valeur_gras.group(1), valeur_gras.group(2))
+            continue
+        texte_bloc = re.sub(r"<[^>]+>", " ", bloc)
+        texte_bloc = re.sub(r"\s+", " ", html_lib.unescape(texte_bloc)).strip()
+        paire = re.match(r"^(.{1,70}?)(?:\s*[:：]\s*|\s+[–—-]\s+)(.{2,500})$", texte_bloc)
+        if paire:
+            ajouter(paire.group(1), paire.group(2))
+
+    # Certains sites utilisent deux éléments voisins avec des classes label/value.
+    modele_paires = (
+        r"<([a-z][a-z0-9]*)\b[^>]*class=['"][^'"]*(?:spec-label|spec-name|label|term)[^'"]*['"][^>]*>"
+        r"(.*?)</\1>\s*"
+        r"<([a-z][a-z0-9]*)\b[^>]*class=['"][^'"]*(?:spec-value|value|detail)[^'"]*['"][^>]*>"
+        r"(.*?)</\3>"
+    )
+    for libelle, valeur in re.findall(modele_paires, html_page, re.I | re.S):
+        ajouter(libelle, valeur)
 
     # Couples <dt>/<dd> fréquents dans les fiches sans tableau.
     definitions = re.findall(r"<dt\b[^>]*>(.*?)</dt>\s*<dd\b[^>]*>(.*?)</dd>", html_page, re.I | re.S)
@@ -13406,7 +13433,7 @@ def rechercher_pages_composants(requete, url_origine):
         if type_contenu not in ("text/html", "application/xhtml+xml"):
             continue
         pages.append((finale, contenu[:2000000].decode("utf-8", errors="replace")))
-        if len(pages) >= 3:
+        if len(pages) >= 6:
             break
     return pages
 
