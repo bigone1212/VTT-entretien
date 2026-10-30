@@ -1711,7 +1711,7 @@ jobs:
           CAPTURE = False
           V = [{"id": 1, "nom": "Mon CUBE", "type": "vtt_electrique", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0},
                {"id": 2, "nom": "Gravel élec", "type": "gravel_electrique", "marque": "Canyon", "modele": "Grail:ON", "annee": 2024, "taille": "M",
-                "moteur": "Bosch SX", "batterie": "400 Wh", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0},
+                "moteur": "Bosch SX", "batterie": "400 Wh", "fiche_composants": json.dumps([{"categorie": "fourche", "nom": "Fox Rhythm 36", "validation": "valide_par_utilisateur"}]), "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0},
                {"id": 3, "nom": "Route simple", "type": "route", "marque": None, "modele": None, "annee": None, "taille": None,
                 "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0}]
           erreurs = []
@@ -1719,7 +1719,23 @@ jobs:
               nav = p.chromium.launch(); ctx = nav.new_context(viewport={"width": 390, "height": 900})
               def api(r):
                   u = urlparse(r.request.url)
-                  corps = V if u.path == "/api/velos" else ({"km_total": 0, "composants": []} if u.path == "/api/etat" else ({"valeurs": {}, "maj_le": None} if u.path == "/api/mes-reglages" else ({"terrain_route": 1, "terrain_mixte": 1.2, "terrain_chemin": 1.5, "terrain_sentier": 2, "poids_denivele": 1} if u.path == "/api/reglages" else [])))
+                  if u.path == "/api/velos":
+                      corps = V
+                  elif u.path == "/api/recherche-fiche-velo":
+                      corps = {"source": "https://exemple.test/fiche", "composants_techniques": [
+                          {"categorie": "fourche", "nom": "Fox Rhythm 36", "statut": "trouve"},
+                          {"categorie": "tige_de_selle", "nom": "TranzX JD-YSP39, 100 mm", "statut": "a_confirmer"},
+                          {"categorie": "tige_de_selle", "nom": "TranzX JD-YSP39, 150 mm", "statut": "a_confirmer"},
+                          {"categorie": "plaquettes", "nom": None, "statut": "non_trouve"}
+                      ]}
+                  elif u.path == "/api/etat":
+                      corps = {"km_total": 0, "composants": []}
+                  elif u.path == "/api/mes-reglages":
+                      corps = {"valeurs": {}, "maj_le": None}
+                  elif u.path == "/api/reglages":
+                      corps = {"terrain_route": 1, "terrain_mixte": 1.2, "terrain_chemin": 1.5, "terrain_sentier": 2, "poids_denivele": 1}
+                  else:
+                      corps = []
                   r.fulfill(status=200, content_type="application/json", body=json.dumps(corps))
               ctx.route("**/localhost/api/**", api); ctx.route(lambda u: not u.startswith("http://localhost/"), lambda r: r.abort())
               ctx.add_init_script("sessionStorage.setItem('vtt_code','t'); sessionStorage.setItem('maillons_velo_id','2')")
@@ -1735,6 +1751,18 @@ jobs:
               assert txt("#ficheAutreNom") == "Gravel élec"
               assert [txt("#ficheAutreType"), txt("#ficheAutreMarque"), txt("#ficheAutreModele"), txt("#ficheAutreAnnee"), txt("#ficheAutreTaille"), txt("#ficheAutreMoteur"), txt("#ficheAutreBatterie")] == ["Gravel électrique", "Canyon", "Grail:ON", "2024", "M", "Bosch SX", "400 Wh"]
               assert shown("#ficheAutreMoteurLigne") and shown("#ficheAutreBatterieLigne")
+              assert "Fox Rhythm 36" in txt("#ficheComposantsTechniques") and "validé par toi" in txt("#ficheComposantsTechniques")
+              page.fill("#veloRechercheFiche", "https://exemple.test/fiche")
+              page.click("#boutonRechercheFiche"); page.wait_for_timeout(300)
+              cases = page.locator("#resultatsRechercheFiche input[type=checkbox]")
+              assert cases.count() == 3
+              assert cases.nth(0).is_checked() and not cases.nth(1).is_checked()
+              cases.nth(1).check()
+              page.get_by_role("button", name="Enregistrer ma sélection dans la fiche").click()
+              selection = json.loads(page.locator("#nouveauVeloFicheComposants").input_value())
+              assert selection[0]["validation"] == "valide_par_utilisateur"
+              assert selection[1]["validation"] == "valide_par_utilisateur"
+              assert selection[2]["validation"] == "a_confirmer"
               page.click("#ficheTechniqueAutre summary"); page.wait_for_timeout(300)
               assert page.eval_on_selector("#ficheTechniqueAutre", "e => e.open") is True
               if CAPTURE:
