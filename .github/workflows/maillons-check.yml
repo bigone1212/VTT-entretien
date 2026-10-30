@@ -2020,3 +2020,46 @@ jobs:
 
           print("OK: 8 types, contrôles visibles, fiches complètes, migration d'un vélo existant, historique conservé et seconde migration sans doublon.")
           PY
+      - name: Tester l'extraction des composants techniques d'une fiche vélo
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-composants-test.db
+          DATABASE_URL: ""
+          CODE_ACCES: test
+        run: |
+          python - <<'PY'
+          import main
+
+          page = """
+          <html><body>
+          <table>
+            <tr><th>Fork</th><td>Fox Rhythm 36, Float EVOL, GRIP, 150 mm</td></tr>
+            <tr><th>Rear Shock</th><td>Fox Performance Float X, 205 x 60 mm</td></tr>
+            <tr><th>Brake</th><td>Shimano 4-piston hydraulic disc, M6100 lever, M6120 caliper</td></tr>
+            <tr><th>Brake rotor</th><td>Shimano RT66, 203 mm</td></tr>
+            <tr><th>Seatpost</th><td>TranzX JD-YSP39, 150 mm travel</td></tr>
+            <tr><th>Rear Derailleur</th><td>Shimano XT M8100, long cage</td></tr>
+          </table>
+          <dl><dt>Chain</dt><dd>Shimano SLX M7100, 12 speed</dd></dl>
+          <script type="application/ld+json">
+          {"@type":"Product","additionalProperty":[
+            {"@type":"PropertyValue","name":"Saddle","value":"Bontrager Arvada, 138 mm"}
+          ]}
+          </script>
+          </body></html>
+          """
+
+          resultats = main.composants_techniques_de_page(page)
+          trouves = {item["categorie"]: item for item in resultats if item["nom"]}
+          assert trouves["fourche"]["nom"].startswith("Fox Rhythm 36"), trouves
+          assert "Float X" in trouves["amortisseur"]["nom"], trouves
+          assert "TranzX JD-YSP39" in trouves["tige_de_selle"]["nom"], trouves
+          assert "M6120" in trouves["freins"]["nom"], trouves
+          assert "RT66" in trouves["disques"]["nom"], trouves
+          assert "XT M8100" in trouves["derailleur"]["nom"], trouves
+          assert "SLX M7100" in trouves["chaine"]["nom"], trouves
+          assert "Bontrager Arvada" in trouves["selle"]["nom"], trouves
+          assert not any(item["nom"] for item in resultats if item["categorie"] == "plaquettes"), resultats
+          assert any(item["categorie"] == "plaquettes" and item["statut"] == "non_trouve" for item in resultats)
+          assert all(item["origine"] == "Fiche consultée" for item in trouves.values())
+          print("OK: fourche, amortisseur, tige de selle, freins, disques, transmission et selle extraits; plaquettes non inventées.")
+          PY
