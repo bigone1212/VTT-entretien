@@ -2170,8 +2170,10 @@ jobs:
           </body></html>
           """
           original = main.telecharger_lien
+          recherches = []
           def faux_telechargement(url, accepte):
               if "duckduckgo.com" in url:
+                  recherches.append(url)
                   return "text/html", page_recherche.encode(), url
               if "source-a.example" in url:
                   return "text/html", page_a.encode(), url
@@ -2188,10 +2190,11 @@ jobs:
               else faux_telechargement(url, accepte)
           )
           fiche = main.recherche_fiche_velo(
-              main.RechercheFicheVeloRequest(url="https://opticycles.com/fr/trek/fuel-exe-9.7"),
+              main.RechercheFicheVeloRequest(url="https://opticycles.com/fr-fr/velo-electrique/vtt-electrique/Trek/2025/fuel-exe-9.7"),
               None
           )
           assert fiche["marque"] == "Trek", fiche
+          assert recherches and "Trek+2025" in recherches[0], recherches
           assert len(fiche["sources_fiche"]) == 2, fiche["sources_fiche"]
           fourche = next(x for x in fiche["composants_techniques"] if x["categorie"] == "fourche" and x["nom"])
           assert fourche["statut"] == "recoupe", fourche
