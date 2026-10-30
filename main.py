@@ -13340,8 +13340,8 @@ def rechercher_pages_composants(requete, url_origine):
     domaine_origine = (urllib.parse.urlparse(url_origine).hostname or "").lower()
     candidats = []
     domaines = set()
-    for balise in re.findall(r"<a\b[^>]*class=["'][^"']*result__a[^"']*["'][^>]*>.*?</a>", page, re.I | re.S):
-        href = re.search(r"href=["']([^"']+)["']", balise, re.I)
+    for balise in re.findall(r'<a\b[^>]*class="[^"]*result__a[^"]*"[^>]*>.*?</a>', page, re.I | re.S):
+        href = re.search(r'href="([^"]+)"', balise, re.I)
         titre = texte_page_fiche(balise)
         if not href or not titre:
             continue
@@ -13463,13 +13463,23 @@ def recherche_fiche_velo(data: RechercheFicheVeloRequest, x_code_acces: Optional
 
     if "://" not in lien:
         lien = "https://" + lien
+    erreur_source = None
     try:
         type_contenu, octets, finale = telecharger_lien(lien, "text/html,application/xhtml+xml")
+        if type_contenu not in ("text/html", "application/xhtml+xml"):
+            raise ValueError("Le lien ne mène pas à une page web lisible.")
+        page = octets[:2000000].decode("utf-8", errors="replace")
+        pages_initiales = [(finale, page)]
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    if type_contenu not in ("text/html", "application/xhtml+xml"):
-        raise HTTPException(status_code=400, detail="Le lien ne mène pas à une page web lisible.")
-    page = octets[:2000000].decode("utf-8", errors="replace")
+        erreur_source = str(e)
+        slug = urllib.parse.unquote(urllib.parse.urlparse(lien).path.rstrip("/").split("/")[-1])
+        recherche_secours = re.sub(r"[-_]+", " ", slug).strip()
+        pages_initiales = rechercher_pages_composants(recherche_secours, lien)
+        if not pages_initiales:
+            raise HTTPException(status_code=400, detail=erreur_source + " Aucune autre fiche n'a pu être consultée.")
+        finale, page = pages_initiales[0]
+    if not page:
+        raise HTTPException(status_code=400, detail="Aucune fiche vélo exploitable n'a été trouvée.")
     texte = texte_page_fiche(page)
     produits = produits_structures(page)
     produit = produits[0] if produits else {}
@@ -13480,10 +13490,18 @@ def recherche_fiche_velo(data: RechercheFicheVeloRequest, x_code_acces: Optional
     modele = produit.get("model") or produit.get("name")
     annee_source = produit.get("releaseDate") or produit.get("datePublished") or ""
     annee_match = re.search(r"\b(19[5-9][0-9]|20[0-9]{2}|2100)\b", str(annee_source) + " " + str(modele or ""))
-    requete_composants = " ".join(str(x) for x in (marque, modele, annee_match.group(1) if annee_match else recherche) if x)
-    pages_composants = [(finale, page)]
+    titre_match = re.search(r"<title[^>]*>(.*?)</title>", page, re.I | re.S)
+    titre_page = texte_page_fiche(titre_match.group(1))[:160] if titre_match else ""
+    requete_composants = " ".join(str(x) for x in (marque, modele, annee_match.group(1) if annee_match else recherche, titre_page) if x)
+    pages_composants = list(pages_initiales)
     pages_composants.extend(rechercher_pages_composants(requete_composants, finale))
-    composants_techniques, sources_fiche = recouper_composants_techniques(pages_composants)
+    pages_uniques = []
+    urls_vues = set()
+    for url_page, html_page in pages_composants:
+        if url_page not in urls_vues:
+            urls_vues.add(url_page)
+            pages_uniques.append((url_page, html_page))
+    composants_techniques, sources_fiche = recouper_composants_techniques(pages_uniques)
     bas = texte.lower()
     freins = None
     patins_trouves = bool(re.search(r"freins? (?:à|a) patins|freinage sur jante|rim brakes?|v-brakes?", bas))
