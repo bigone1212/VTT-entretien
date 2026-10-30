@@ -2094,10 +2094,17 @@ jobs:
           assert "M6120" in trouves["etriers"]["nom"], trouves
           assert "Bontrager Arvada" in trouves["selle"]["nom"], trouves
           assert trouves["tige_de_selle"]["statut"] == "a_confirmer", trouves
-          assert not any(item["nom"] for item in resultats if item["categorie"] == "plaquettes"), resultats
-          assert any(item["categorie"] == "plaquettes" and item["statut"] == "non_trouve" for item in resultats)
-          assert all(item["origine"] == "Fiche consultée" for item in trouves.values())
-          print("OK: fourche, amortisseur, tige de selle, freins, disques, transmission et selle extraits; plaquettes non inventées.")
+          plaquettes = [item for item in resultats if item["categorie"] == "plaquettes" and item["nom"]]
+          assert len(plaquettes) == 2, resultats
+          assert any("D03S-RX" in item["nom"] for item in plaquettes), plaquettes
+          assert any("D02S-MX" in item["nom"] for item in plaquettes), plaquettes
+          assert all(item["statut"] == "a_confirmer" for item in plaquettes), plaquettes
+          assert all(item["source"] == "https://productinfo.shimano.com/index.html/product/BR-M6120" for item in plaquettes)
+          page_sans_caliper = page.replace("M6120", "MT520")
+          sans_caliper = main.composants_techniques_de_page(page_sans_caliper)
+          assert not any(item["nom"] for item in sans_caliper if item["categorie"] == "plaquettes"), sans_caliper
+          assert all(item["origine"] == "Fiche consultée" for item in trouves.values() if item["categorie"] != "plaquettes")
+          print("OK: composants extraits, compatibilités Shimano BR-M6120 sourcées et aucun patin/plaquette deviné sans étrier exact.")
           PY
       - name: Vérifier la conservation de la nomenclature technique par vélo
         env:
