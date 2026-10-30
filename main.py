@@ -13133,7 +13133,7 @@ def composants_techniques_de_page(html_page):
             ajouter(cellules[0], cellules[1])
 
     # Couples <dt>/<dd> fréquents dans les fiches sans tableau.
-    definitions = re.findall(r"<dt\\b[^>]*>(.*?)</dt>\\s*<dd\\b[^>]*>(.*?)</dd>", html_page, re.I | re.S)
+    definitions = re.findall(r"<dt\b[^>]*>(.*?)</dt>\s*<dd\b[^>]*>(.*?)</dd>", html_page, re.I | re.S)
     for libelle, valeur in definitions:
         ajouter(libelle, valeur)
 
