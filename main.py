@@ -13262,6 +13262,12 @@ def composants_techniques_de_page(html_page, source_url=None):
                 fin_section = suivant.start()
                 break
         bloc_section = html_page[entete.end():fin_section]
+        bloc_section = re.sub(
+            r"<h[1-6]\\b[^>]*>(.*?)</h[1-6]>",
+            r" \\1 ",
+            bloc_section,
+            flags=re.I | re.S
+        )
         texte_section = re.sub(r"<[^>]+>", " ", bloc_section)
         texte_section = re.sub(r"\s+", " ", html_lib.unescape(texte_section)).strip()
         modele = re.search(
