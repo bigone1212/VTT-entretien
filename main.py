@@ -5066,7 +5066,8 @@ def accueil():
                             const nom = piece.categorie.replaceAll('_', ' ');
                             libelle.appendChild(choix);
                             libelle.appendChild(document.createTextNode(nom + ' : ' + piece.nom
-                                + (piece.statut === 'a_confirmer' ? ' · variante à choisir' : '')));
+                                + (piece.statut === 'a_confirmer' ? ' · variante à choisir' : '')
+                                + (piece.origine && piece.origine !== 'Fiche consultée' ? ' · ' + piece.origine : '')));
                             ligne.appendChild(libelle);
                             liste.appendChild(ligne);
                         });
@@ -5084,7 +5085,8 @@ def accueil():
                                 categorie: item.piece.categorie,
                                 nom: item.piece.nom,
                                 statut: item.piece.statut,
-                                source: data.source,
+                                source: item.piece.source || data.source,
+                                origine: item.piece.origine || 'Fiche consultée',
                                 validation: item.choix.checked ? 'valide_par_utilisateur' : 'a_confirmer'
                             }));
                             champ.value = JSON.stringify(propositions);
@@ -13236,6 +13238,28 @@ def composants_techniques_de_page(html_page):
         except (ValueError, TypeError):
             continue
 
+    # Compatibilité fabricant connue : Shimano BR-M6120.
+    # Le fabricant indique D03S-RX comme garniture standard et D02S-MX comme option métal.
+    # Ce sont des choix compatibles, pas une preuve de la matière montée d'origine.
+    texte_freins = " ".join(
+        valeur["nom"] for categorie in ("freins", "etriers")
+        for valeur in trouves.get(categorie, [])
+    )
+    if re.search(r"\b(?:BR-)?M6120\b", texte_freins, re.I) and "plaquettes" not in trouves:
+        source_shimano = "https://productinfo.shimano.com/index.html/product/BR-M6120"
+        trouves["plaquettes"] = [
+            {
+                "nom": "Shimano D03S-RX Resin, sans ailettes (standard)",
+                "source": source_shimano,
+                "origine": "Compatibilité fabricant — Shimano BR-M6120"
+            },
+            {
+                "nom": "Shimano D02S-MX Metal, sans ailettes (option)",
+                "source": source_shimano,
+                "origine": "Compatibilité fabricant — Shimano BR-M6120"
+            }
+        ]
+
     resultat = []
     for categorie, valeurs in trouves.items():
         variantes_taille = any(
@@ -13248,7 +13272,8 @@ def composants_techniques_de_page(html_page):
                 "categorie": categorie,
                 "nom": valeur["nom"],
                 "statut": statut,
-                "origine": "Fiche consultée"
+                "origine": valeur.get("origine") or "Fiche consultée",
+                "source": valeur.get("source")
             })
 
     categories_connues = [item[0] for item in LIBELLES_COMPOSANTS_VELO.values()]
