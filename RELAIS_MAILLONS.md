@@ -3,11 +3,11 @@
 - Dernier commit de `main` avant cette note : `cf4d8f3ae1d1a68ee3da0cff919a0a05b1004acd`.
 - Branche isolée créée : `reprise/2026-10-30-composants-fiche-velo`.
 - PR #13 ouverte en brouillon : https://github.com/bigone1212/VTT-entretien/pull/13 — non fusionnée.
-- Tête de la branche de la PR : `fd8e3368287fbbdfac5f2a6203368a9ce380cdc4` (3 commits au-dessus du point de départ).
+- Tête actuelle de la branche de la PR : `11fa8fe7f46820e731f2855ca3eada26ff42d8ad` (4 commits au-dessus du point de départ).
 - Fichiers modifiés : `main.py` et `.github/workflows/maillons-check.yml`.
 - Modifications : lecture de plusieurs couples par ligne de tableau ; extraction de libellés/valeurs dans les listes et paragraphes ; prise en charge de paires d'éléments HTML avec classes label/value ; augmentation de 3 à 6 pages secondaires maximum.
 - Tests ajoutés pour la fourche, l'amortisseur, la tige de selle, la selle et les freins dans plusieurs structures HTML.
-- Contrôle GitHub Actions de la PR #13 : run `41045716587`, n° 201, état **queued** au dernier contrôle. Aucun test n'est encore déclaré réussi ou échoué.
+- Contrôle GitHub Actions : le run initial `41045716587` (n° 201) a échoué immédiatement à la compilation Python à cause d'une chaîne de motif HTML mal délimitée. La cause a été corrigée sur la branche. Le nouveau run `41045877610` (n° 203) était **in_progress** au dernier contrôle ; aucun succès global n'est encore confirmé.
 - Aucun changement sur `main.py` de production, aucune donnée modifiée, aucune opération Neon, aucun déploiement Render et aucune fusion.
 - Le modèle de test est le Trek Fuel EXe 9.7. L'année 2025 est celle mentionnée dans l'historique du test, à reconfirmer si l'on doit valider les références d'équipement exactes.
 
@@ -29,7 +29,7 @@ Objectif : mieux récupérer les noms et références précis des composants d'u
 - [x] Porter le maximum de pages secondaires de 3 à 6.
 - [x] Ajouter les tests ciblés dans le workflow GitHub Actions.
 - [x] Ouvrir la PR #13 en brouillon pour déclencher les contrôles.
-- [ ] Attendre le résultat CI ; corriger tout échec.
+- [~] Le premier run CI a détecté une erreur de syntaxe dans le motif HTML ; correction enregistrée sur la branche. Le nouveau run est en cours (`41045877610`). Attendre son résultat et corriger tout autre échec.
 - [ ] Relire le diff final et vérifier les risques de régression.
 - [ ] Faire tester la recherche à Math.
 - [ ] Demander son accord avant toute fusion ; aucune fusion ou publication sans accord explicite.
@@ -42,10 +42,10 @@ Diagnostic confirmé :
 Enregistré sur GitHub :
 - Point de départ `main` : `cf4d8f3ae1d1a68ee3da0cff919a0a05b1004acd`.
 - Branche : `reprise/2026-10-30-composants-fiche-velo`.
-- Tête : `fd8e3368287fbbdfac5f2a6203368a9ce380cdc4`.
+- Tête : `11fa8fe7f46820e731f2855ca3eada26ff42d8ad`.
 - PR #13 : https://github.com/bigone1212/VTT-entretien/pull/13, brouillon, non fusionnée.
 - Fichiers : `main.py`, `.github/workflows/maillons-check.yml`.
-- Workflow run `41045716587`, n° 201 : queued au dernier contrôle.
+- Workflow run `41045716587`, n° 201 : échec de syntaxe corrigé ; nouveau run `41045877610`, n° 203 : en cours.
 
 Local, non enregistré :
 - Aucun changement de code.
