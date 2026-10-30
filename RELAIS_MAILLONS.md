@@ -47,6 +47,22 @@ Ce fichier ne doit **pas** être mis à jour seulement à la fin : une session p
 
 ## Tâche en cours
 
+REPRISE CHATGPT — NOMENCLATURE DÉTAILLÉE DES COMPOSANTS — 30/10/2026.
+Objectif confirmé par Math : enrichir la recherche de fiche technique pour relever les noms et références précis des composants (fourche, amortisseur, tige de selle, freins/étriers, plaquettes si réellement publiées, transmission, roues, pneus, selle, cintre, etc.). Distinguer les données réellement présentes sur la page des variantes et des informations absentes. Ne jamais inventer une référence ni déduire une référence de plaquettes sans compatibilité vérifiée. La validation humaine reste nécessaire avant d'adapter les entretiens. Préserver les cas EDR à patins et CUBE id 1, ainsi que tous les historiques et kilométrages.
+Base vérifiée : branche `main` au commit `7c384ec025cb168d95c3317d6c36fba638ff7742`. Branche de travail créée à partir de ce SHA : `reprise/2026-10-30-fiche-technique-composants`. Aucun changement sur `main`, aucune fusion et aucun déploiement.
+Modifications enregistrées sur la branche :
+- `main.py` : extraction des libellés/valeurs depuis les lignes de tableaux HTML, les couples `dt/dd` et les propriétés Schema.org `additionalProperty`; catégories dédiées pour fourche, amortisseur, tige de selle, freins, plaquettes, disques, transmission, dérailleur, cassette, chaîne, pédalier, roues, pneus, selle, cintre, potence, moteur et batterie.
+- Les variantes multiples sont signalées « à confirmer ». Les catégories non présentes sont signalées « non trouvé » ; aucune plaquette n'est déduite si la page ne donne pas sa référence.
+- Interface : aperçu des composants trouvés, avec ajout volontaire à la fiche. Les éléments sauvegardés gardent leur source et restent marqués « à confirmer » ; ils n'adaptent pas les entretiens.
+- Base : ajout non destructif de `velos.fiche_composants`; la nomenclature peut être sauvegardée et relue avec la fiche du vélo. Les données existantes restent nulles et inchangées.
+- `.github/workflows/maillons-check.yml` : tests ciblés d'extraction (dont séparation freins/disques et absence de plaquettes inventées) et de sauvegarde/relecture de la nomenclature.
+Commits sur la branche : `9aed16d`, `a3c8fdc`, `7d2dbc0`, `3b9fa04`, `9aac4a9`, `f9c9223`, `8422342` (le dernier commit à contrôler est `8422342489b806e0be66490f2c9b8ed5753bb1b0`). Tests : run GitHub Actions `41030386514` terminé avec succès pour l'extraction, avant l'ajout du stockage ; run `41030689675` sur le dernier commit en cours au moment de cette note. Ne pas annoncer la suite complète comme réussie avant vérification du run final.
+Limites connues : le lien Opticycles fourni par Math renvoie 403 lors de la consultation web de cette session ; la page réelle n'a donc pas été testée directement par le parseur. Les sources publiques Trek/tiers corroborent plusieurs spécifications, mais la tige de selle varie selon la taille du cadre et aucune référence exacte de plaquettes n'a été confirmée. L'interface stocke actuellement les composants proposés comme « à confirmer » ; leur validation individuelle et leur utilisation pour adapter les entretiens restent à faire avant de considérer le chantier complet.
+Fichiers modifiés : `main.py`, `.github/workflows/maillons-check.yml`, et ce relais sur la branche uniquement. Local, non enregistré : aucun.
+Prochaine étape : attendre le run `41030689675`, corriger tout échec, vérifier les tests navigateur et le diff complet, puis ouvrir une PR vers `main`. Demander à Math son accord avant fusion. Ne pas fusionner ni déployer sans cet accord.
+
+## Archive — reprise automatique de la fiche technique et adaptation des entretiens — 29/10/2026
+
 REPRISE CHATGPT — RECHERCHE AUTOMATIQUE DE LA FICHE TECHNIQUE ET ENTRETIENS ADAPTÉS — 29/10/2026.
 Objectif confirmé par Math : les deux fonctions ensemble. (1) Rechercher les caractéristiques techniques d'un vélo à partir de son modèle ou d'une URL constructeur et préremplir sa fiche ; (2) après validation explicite par Math, adapter les entretiens, vérifications, pièces et conseils à l'équipement réel. Les données incertaines doivent être signalées comme à confirmer, jamais devinées. Cas à préserver : EDR Easy Route = freins à patins ; CUBE Stereo Hybrid ONE44 EXC 800 (Bosch) = équipements de son modèle validé. Conserver historiques, kilomètres et fonctions existantes.
 Branche prévue : `reprise/2026-10-29-fiche-technique-auto`. Pas de modification de code sur `main`, pas de fusion ni de déploiement sans accord explicite de Math.
