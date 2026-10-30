@@ -3659,6 +3659,7 @@ def accueil():
                 <input id="veloRechercheFiche" type="text" maxlength="2000" placeholder="Ex. : EDR Easy Route ou lien de la fiche">
                 <button type="button" id="boutonRechercheFiche" style="width:100%; margin:6px 0;">Rechercher les caractéristiques</button>
                 <div id="resultatsRechercheFiche" class="form-help" aria-live="polite"></div>
+                <input type="hidden" id="nouveauVeloFicheComposants" name="fiche_composants">
                 <label for="nouveauVeloMarque">Marque (facultatif)</label>
                 <input id="nouveauVeloMarque" name="marque" type="text" maxlength="80">
                 <label for="nouveauVeloModele">Modèle (facultatif)</label>
@@ -3950,6 +3951,7 @@ def accueil():
                     <span><span class="ftv-libelle">Batterie</span><span class="ftv-valeur" id="ficheAutreBatterie">—</span></span>
                 </div>
             </div>
+            <div id="ficheComposantsTechniques" class="ftv-note"></div>
             <button type="button" id="btnModifierFicheVelo" onclick="modifierFicheVelo()" style="width:100%; margin: 4px 0 8px;">Modifier cette fiche</button>
         </details>
 
@@ -4890,6 +4892,27 @@ def accueil():
                 const ficheMoteur = document.getElementById('ficheAutreMoteur');
                 const ficheBatterie = document.getElementById('ficheAutreBatterie');
                 if (velo) {
+                    const zoneComposants = document.getElementById('ficheComposantsTechniques');
+                    if (zoneComposants) {
+                        zoneComposants.replaceChildren();
+                        let composants = [];
+                        try { composants = JSON.parse(velo.fiche_composants || '[]'); } catch (e) { composants = []; }
+                        if (Array.isArray(composants) && composants.length) {
+                            const titreComposants = document.createElement('strong');
+                            titreComposants.textContent = 'Nomenclature des composants';
+                            zoneComposants.appendChild(titreComposants);
+                            const listeComposants = document.createElement('ul');
+                            listeComposants.style.paddingLeft = '20px';
+                            composants.forEach(piece => {
+                                const ligne = document.createElement('li');
+                                ligne.textContent = String(piece.categorie || 'Composant').replaceAll('_', ' ')
+                                    + ' : ' + String(piece.nom || 'Non renseigné')
+                                    + ' · à confirmer';
+                                listeComposants.appendChild(ligne);
+                            });
+                            zoneComposants.appendChild(listeComposants);
+                        }
+                    }
                     if (ficheNom) ficheNom.textContent = velo.nom || 'Mon vélo';
                     if (ficheType) ficheType.textContent = TYPES_VELO[velo.type] || velo.type || 'Non renseigné';
                     if (ficheMarque) ficheMarque.textContent = velo.marque || 'Non renseignée';
@@ -5030,16 +5053,35 @@ def accueil():
                         const liste = document.createElement('ul');
                         liste.style.paddingLeft = '20px';
                         data.composants_techniques.forEach(piece => {
+                            if (!piece.nom) return;
                             const ligne = document.createElement('li');
                             const nom = piece.categorie.replaceAll('_', ' ');
-                            ligne.textContent = nom + ' : ' + (piece.nom || 'non trouvé sur cette page')
+                            ligne.textContent = nom + ' : ' + piece.nom
                                 + (piece.statut === 'a_confirmer' ? ' · plusieurs variantes à confirmer' : '');
                             liste.appendChild(ligne);
                         });
                         zone.appendChild(liste);
                         const note = document.createElement('p');
-                        note.textContent = 'Les variantes possibles sont affichées séparément. Une pièce non trouvée n’est jamais déduite automatiquement.';
+                        note.textContent = 'Ces références sont des propositions issues de la page, pas encore validées. Les variantes selon la taille restent à confirmer.';
                         zone.appendChild(note);
+                        const enregistrer = document.createElement('button');
+                        enregistrer.type = 'button';
+                        enregistrer.textContent = 'Ajouter ces composants à la fiche';
+                        enregistrer.style.width = '100%';
+                        enregistrer.addEventListener('click', () => {
+                            const champ = document.getElementById('nouveauVeloFicheComposants');
+                            const propositions = data.composants_techniques.filter(piece => piece.nom).map(piece => ({
+                                categorie: piece.categorie,
+                                nom: piece.nom,
+                                statut: piece.statut,
+                                source: data.source,
+                                validation: 'a_confirmer'
+                            }));
+                            champ.value = JSON.stringify(propositions);
+                            note.textContent = propositions.length + ' composants ajoutés au formulaire. Ils seront enregistrés comme « à confirmer », sans modifier les entretiens.';
+                            enregistrer.disabled = true;
+                        });
+                        zone.appendChild(enregistrer);
                     }
                 } catch (e) {
                     zone.textContent = e.message || 'Recherche impossible. Tu peux compléter la fiche manuellement.';
