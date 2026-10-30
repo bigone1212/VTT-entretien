@@ -1722,12 +1722,20 @@ jobs:
                   if u.path == "/api/velos":
                       corps = V
                   elif u.path == "/api/recherche-fiche-velo":
-                      corps = {"source": "https://exemple.test/fiche", "composants_techniques": [
-                          {"categorie": "fourche", "nom": "Fox Rhythm 36", "statut": "trouve"},
-                          {"categorie": "tige_de_selle", "nom": "TranzX JD-YSP39, 100 mm", "statut": "a_confirmer"},
-                          {"categorie": "tige_de_selle", "nom": "TranzX JD-YSP39, 150 mm", "statut": "a_confirmer"},
-                          {"categorie": "plaquettes", "nom": None, "statut": "non_trouve"}
-                      ]}
+                      corps = {"source": "https://exemple.test/fiche",
+                          "sources_fiche": [
+                              {"url": "https://trek.example/fuel", "domaine": "trek.example"},
+                              {"url": "https://shop.example/fuel", "domaine": "shop.example"}
+                          ],
+                          "composants_techniques": [
+                              {"categorie": "fourche", "nom": "Fox Rhythm 36", "statut": "recoupe",
+                               "source": "https://trek.example/fuel", "sources": ["https://trek.example/fuel", "https://shop.example/fuel"]},
+                              {"categorie": "tige_de_selle", "nom": "TranzX JD-YSP39, 100 mm", "statut": "choix",
+                               "source": "https://trek.example/fuel", "sources": ["https://trek.example/fuel"]},
+                              {"categorie": "tige_de_selle", "nom": "TranzX JD-YSP39, 150 mm", "statut": "choix",
+                               "source": "https://shop.example/fuel", "sources": ["https://shop.example/fuel"]},
+                              {"categorie": "plaquettes", "nom": None, "statut": "non_trouve"}
+                          ]}
                   elif u.path == "/api/etat":
                       corps = {"km_total": 0, "composants": []}
                   elif u.path == "/api/mes-reglages":
@@ -1754,15 +1762,16 @@ jobs:
               assert "Fox Rhythm 36" in txt("#ficheComposantsTechniques") and "validé par toi" in txt("#ficheComposantsTechniques")
               page.fill("#veloRechercheFiche", "https://exemple.test/fiche")
               page.click("#boutonRechercheFiche"); page.wait_for_timeout(300)
-              cases = page.locator("#resultatsRechercheFiche input[type=checkbox]")
+              cases = page.locator("#resultatsRechercheFiche input[type=radio]")
               assert cases.count() == 3
               assert cases.nth(0).is_checked() and not cases.nth(1).is_checked()
               cases.nth(1).check()
               page.get_by_role("button", name="Enregistrer ma sélection dans la fiche").click()
               selection = json.loads(page.locator("#nouveauVeloFicheComposants").input_value())
-              assert selection[0]["validation"] == "valide_par_utilisateur"
-              assert selection[1]["validation"] == "valide_par_utilisateur"
-              assert selection[2]["validation"] == "a_confirmer"
+              assert len(selection) == 2, selection
+              assert selection[0]["categorie"] == "fourche"
+              assert selection[1]["categorie"] == "tige_de_selle"
+              assert all(piece["validation"] == "valide_par_utilisateur" for piece in selection)
               page.click("#ficheTechniqueAutre summary"); page.wait_for_timeout(300)
               assert page.eval_on_selector("#ficheTechniqueAutre", "e => e.open") is True
               if CAPTURE:
