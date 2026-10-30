@@ -2070,6 +2070,7 @@ jobs:
             <tr><th>Chaîne</th><td>Shimano SLX M7100, 12 vitesses</td></tr>
             <tr><th>Plateau</th><td>E*thirteen E*spec, 32 dents</td></tr>
             <tr><th>Étrier</th><td>Shimano M6120</td></tr>
+            <tr><th>Seatpost</th><td>Size: S, 100 mm travel; Size: M, 150 mm travel; Size: L, XL, 170 mm travel</td></tr>
           </table>
           <dl><dt>Chain</dt><dd>Shimano SLX M7100, 12 speed</dd></dl>
           <script type="application/ld+json">
@@ -2092,6 +2093,7 @@ jobs:
           assert "32 dents" in trouves["plateau"]["nom"], trouves
           assert "M6120" in trouves["etriers"]["nom"], trouves
           assert "Bontrager Arvada" in trouves["selle"]["nom"], trouves
+          assert trouves["tige_de_selle"]["statut"] == "a_confirmer", trouves
           assert not any(item["nom"] for item in resultats if item["categorie"] == "plaquettes"), resultats
           assert any(item["categorie"] == "plaquettes" and item["statut"] == "non_trouve" for item in resultats)
           assert all(item["origine"] == "Fiche consultée" for item in trouves.values())
