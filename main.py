@@ -4991,6 +4991,7 @@ def accueil():
                 formulaire.elements.date_achat.value = velo.date_achat || '';
                 formulaire.elements.moteur.value = velo.moteur || '';
                 formulaire.elements.batterie.value = velo.batterie || '';
+                if (formulaire.elements.fiche_composants) formulaire.elements.fiche_composants.value = velo.fiche_composants || '';
                 if (formulaire.elements.freins) formulaire.elements.freins.value = velo.freins || 'inconnu';
                 if (formulaire.elements.suspension) formulaire.elements.suspension.value = velo.suspension || 'inconnu';
                 if (formulaire.elements.tubeless) formulaire.elements.tubeless.value = velo.tubeless || 'inconnu';
