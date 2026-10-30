@@ -1,3 +1,17 @@
+# Mise à jour du relais — 30/10/2026, après fusion de la PR #12
+
+- **PR #12 fusionnée dans `main)** : correction de la recherche de fiche vélo par nom, avec DuckDuckGo prioritaire et Bing RSS en secours.
+- Commit de fusion sur `main` : `2de94d7b90be033586d2be397363023d5bc99c8c`. La PR est vérifiée comme fermée et fusionnée.
+- Commit de la branche fusionnée : `16ab70492a3e50c7fb27f52b95bb2bc507709877`.
+- Fichiers de l'application modifiés : `main.py` et `.github/workflows/maillons-check.yml`.
+- Contrôles avant fusion : workflow GitHub Actions `41043744468`, run 197, terminé avec succès. Les 34 contrôles annoncés sur ce commit ont réussi.
+- Vérification après fusion : le commit de fusion est bien le dernier commit de `main` au moment du contrôle. Aucun check-run GitHub n'est associé directement au commit de fusion ; le succès du workflow sur le commit de la PR est confirmé, mais un contrôle post-fusion distinct n'est pas confirmé.
+- Aucun changement de données, aucune opération sur Neon. Aucune action manuelle de déploiement Render n'a été lancée. Le dépôt avait précédemment un auto-déploiement Render actif sur chaque commit de `main` ; vérifier l'état du déploiement avant de conclure que la correction est en production.
+- **Prochaine étape utilisateur** : tester dans Maillons la recherche de fiche vélo en saisissant le modèle sans lien constructeur. Si le message d'échec persiste, noter le modèle saisi et l'heure du test.
+- Cette mise à jour ne remplace pas les archives historiques ci-dessous ; les notes anciennes restent des archives et ne décrivent pas nécessairement l'état courant.
+
+---
+
 # RELAIS_MAILLONS.md — passage de témoin Claude ⇄ ChatGPT
 
 > Ce fichier est la mémoire commune de l'appli **Maillons**. Quiconque (Claude, ChatGPT ou autre) reprend le travail doit le **lire en premier** et le **mettre à jour en dernier**.
