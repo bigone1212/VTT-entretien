@@ -105,6 +105,29 @@ jobs:
           assert ("selle", "Bontrager Arvada") in extraits_specs, extraits_specs
           assert ("freins", "Shimano Deore M6120") in extraits_specs, extraits_specs
 
+          # Présentation par sections utilisée notamment par Opticycles :
+          # titre du composant, sous-titre « Modèle », puis valeur.
+          html_sections = """
+          <h3>Fourche</h3>
+          <h4>Modèle</h4><p>Fox Rhythm 36, Float EVOL, GRIP</p>
+          <h4>Débattement</h4><p>150 mm</p>
+          <h3>Suspension arrière</h3>
+          <h4>Modèle</h4><p>Fox Performance Float X</p>
+          <h4>Débattement</h4><p>140 mm</p>
+          <h3>Selle</h3>
+          <h4>Modèle</h4><p>Bontrager Arvada, rails chromoly</p>
+          """
+          pieces_sections = main.composants_techniques_de_page(
+              html_sections, "https://example.test/sections"
+          )
+          extraits_sections = {
+              (piece["categorie"], piece["nom"])
+              for piece in pieces_sections if piece.get("nom")
+          }
+          assert ("fourche", "Fox Rhythm 36, Float EVOL, GRIP") in extraits_sections, extraits_sections
+          assert ("amortisseur", "Fox Performance Float X") in extraits_sections, extraits_sections
+          assert ("selle", "Bontrager Arvada, rails chromoly") in extraits_sections, extraits_sections
+
           main.verifier_auth = lambda _code: None
 
           patins = main.entretiens_du_type("route", "patins")

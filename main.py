@@ -13186,7 +13186,7 @@ LIBELLES_COMPOSANTS_VELO = {
     "fourche": ("fourche", ("fork", "fourche")),
     "amortisseur": ("amortisseur", ("shock", "rear shock", "amortisseur", "suspension arriere")),
     "tige_de_selle": ("tige_de_selle", ("seatpost", "seat post", "tige de selle")),
-    "freins": ("freins", ("brake", "brakes", "frein", "freins", "brakeset")),
+    "freins": ("freins", ("brake", "brakes", "frein", "freins", "freinage", "brakeset", "braking")),
     "etriers": ("etriers", ("brake caliper", "caliper", "etrier", "étrier")),
     "plaquettes": ("plaquettes", ("brake pad", "brake pads", "plaquette", "plaquettes")),
     "disques": ("disques", ("brake rotor", "rotor", "disque", "disques")),
@@ -13242,6 +13242,41 @@ def composants_techniques_de_page(html_page, source_url=None):
         trouves.setdefault(categorie, [])
         if valeur not in [item["nom"] for item in trouves[categorie]]:
             trouves[categorie].append({"nom": valeur, "source": source_url or "fiche"})
+
+    # Certaines fiches (dont Opticycles) organisent les caractéristiques en sections :
+    # un titre de composant (Fourche, Suspension arrière, Selle...) suivi de
+    # sous-libellés « Modèle » et « Débattement ». On rattache le modèle au titre.
+    entetes = list(re.finditer(
+        r"<h([1-6])\b[^>]*>(.*?)</h\1>",
+        html_page,
+        re.I | re.S
+    ))
+    for index, entete in enumerate(entetes):
+        categorie = categorie_pour(entete.group(2))
+        if not categorie:
+            continue
+        niveau = int(entete.group(1))
+        fin_section = len(html_page)
+        for suivant in entetes[index + 1:]:
+            if int(suivant.group(1)) <= niveau:
+                fin_section = suivant.start()
+                break
+        bloc_section = html_page[entete.end():fin_section]
+        bloc_section = re.sub(
+            r"<h[1-6]\b[^>]*>(.*?)</h[1-6]>",
+            r" \1 ",
+            bloc_section,
+            flags=re.I | re.S
+        )
+        texte_section = re.sub(r"<[^>]+>", " ", bloc_section)
+        texte_section = re.sub(r"\s+", " ", html_lib.unescape(texte_section)).strip()
+        modele = re.search(
+            r"\b(?:modele|modèle|model)\s*[:：]?\s*(.+?)(?=\b(?:debattement|d[eé]battement|travel|type|capacite|capacité|capacity|taille|size)\b|$)",
+            texte_section,
+            re.I | re.S
+        )
+        if modele:
+            ajouter(entete.group(2), modele.group(1))
 
     # Tableaux : certaines fiches placent plusieurs couples libellé/valeur sur une ligne.
     for ligne in re.findall(r"<tr\b[^>]*>(.*?)</tr>", html_page, re.I | re.S):
