@@ -13106,12 +13106,13 @@ def composants_techniques_de_page(html_page):
 
     def categorie_pour(libelle):
         cle = re.sub(r"[^a-z0-9]+", " ", html_lib.unescape(str(libelle or "")).lower()).strip()
+        correspondances = []
         for categorie, (nom, synonymes) in LIBELLES_COMPOSANTS_VELO.items():
             for synonyme in synonymes:
                 terme = re.sub(r"[^a-z0-9]+", " ", synonyme.lower()).strip()
                 if cle == terme or cle.startswith(terme + " ") or cle.endswith(" " + terme):
-                    return nom
-        return None
+                    correspondances.append((len(terme), nom))
+        return max(correspondances)[1] if correspondances else None
 
     def ajouter(libelle, valeur):
         categorie = categorie_pour(libelle)
@@ -13130,6 +13131,11 @@ def composants_techniques_de_page(html_page):
         cellules = re.findall(r"<(?:th|td)\b[^>]*>(.*?)</(?:th|td)>", ligne, re.I | re.S)
         if len(cellules) >= 2:
             ajouter(cellules[0], cellules[1])
+
+    # Couples <dt>/<dd> fréquents dans les fiches sans tableau.
+    definitions = re.findall(r"<dt\\b[^>]*>(.*?)</dt>\\s*<dd\\b[^>]*>(.*?)</dd>", html_page, re.I | re.S)
+    for libelle, valeur in definitions:
+        ajouter(libelle, valeur)
 
     # Données structurées Schema.org : additionalProperty et propriétés produit.
     def parcourir(noeud):
