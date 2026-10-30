@@ -47,6 +47,42 @@ Ce fichier ne doit **pas** être mis à jour seulement à la fin : une session p
 
 ## Tâche en cours
 
+REPRISE CHATGPT — CORRIGER LA RECHERCHE DE FICHE VÉLO PAR NOM — 30/10/2026.
+
+Objectif autorisé par Math : préparer une correction sur une branche séparée, sans toucher au code de `main`, sans fusion et sans déploiement Render. Le message affiché dans Maillons (« La recherche web n'a pas abouti… ») vient du chemin de recherche par nom de modèle, qui n'utilise actuellement que DuckDuckGo. Bing RSS existe déjà dans `rechercher_pages_composants`, mais cette fonction n'est pas appelée dans ce chemin initial.
+
+Plan :
+- Ajouter un repli Bing RSS dans le seul bloc `if not lien:` de `recherche_fiche_velo`.
+- Garder DuckDuckGo prioritaire ; ne contacter Bing que si DuckDuckGo échoue.
+- Extraire les résultats DDG et Bing en conservant leurs formats respectifs, filtrer les URL HTTP/HTTPS et dédupliquer les candidats.
+- Si les deux moteurs échouent, renvoyer une erreur claire ; si les deux répondent sans résultat, garder le message « aucune fiche trouvée ».
+- Ajouter des tests simulés : DDG OK, DDG en échec + Bing OK, DDG et Bing en échec, aucun résultat.
+- Ne pas modifier le chemin de saisie d'un lien constructeur, les fonctions d'entretien, les données ni les fiches des vélos.
+- Ne pas ajouter de backslash dans les parties HTML/CSS/JavaScript de `main.py`.
+- Relire le diff, exécuter les contrôles disponibles et ouvrir une PR vers `main`. Demander l'accord de Math avant toute fusion.
+
+État vérifié avant cette intervention :
+- Tête de `main` : `fe74e738bcbb39faeb1f9aa989a8c91c027ffc80` (« Consigner la fusion du correctif multi-source »), postérieure au commit de fusion PR #11 `79524172a0818f763f54d550db817bb43dfea5a4`.
+- `main.py` relu : le bloc sans URL appelle uniquement `https://html.duckduckgo.com/html/` et renvoie directement une erreur 502 si le téléchargement échoue.
+- `rechercher_pages_composants` interroge déjà DDG et Bing RSS séparément ; son parsing Bing et ses garde-fous peuvent guider le nouveau bloc.
+- Workflow existant : `.github/workflows/maillons-check.yml`, avec un test multi-source qui simule déjà DDG en échec et Bing fonctionnel pour le chemin de secours par lien.
+- Branches de reprise anciennes repérées ; aucune n'est réutilisée pour cette correction.
+
+Enregistré sur GitHub :
+- État initial vérifié : `main` à `fe74e738bcbb39faeb1f9aa989a8c91c027ffc80`.
+- Cette mise à jour de relais sera enregistrée séparément sur `main` avant la création de la branche de code.
+
+Local, non enregistré :
+- Aucun changement de code.
+
+Prochaines actions :
+- [x] Relire le relais et vérifier la tête réelle de `main`.
+- [x] Identifier la cause exacte dans les deux chemins de recherche.
+- [~] Enregistrer ce point de reprise sur `main`, puis créer une branche dédiée.
+- [ ] Modifier uniquement la recherche par nom et ajouter les tests.
+- [ ] Exécuter et vérifier les contrôles GitHub Actions.
+- [ ] Ouvrir une PR et attendre l'accord explicite de Math avant fusion.
+
 DERNIÈRE INTERVENTION TERMINÉE — RECHERCHE MULTI-SOURCE DES FICHES VÉLO — 30/10/2026.
 
 - PR #11 fusionnée dans `main` avec l'accord explicite de Math.
