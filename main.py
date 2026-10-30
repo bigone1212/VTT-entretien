@@ -4911,6 +4911,17 @@ def accueil():
                                     + (piece.validation === 'valide_par_utilisateur' ? ' · validé par toi' : ' · à confirmer')
                                     + (piece.origine && piece.origine !== 'Fiche consultée' ? ' · ' + piece.origine : '');
                                 listeComposants.appendChild(ligne);
+                                const sourcesPiece = Array.isArray(piece.sources) ? piece.sources : (piece.source ? [piece.source] : []);
+                                sourcesPiece.forEach(url => {
+                                    const lienSource = document.createElement('a');
+                                    lienSource.href = url;
+                                    lienSource.target = '_blank';
+                                    lienSource.rel = 'noopener noreferrer';
+                                    lienSource.textContent = 'Source : ' + (new URL(url)).hostname;
+                                    lienSource.style.display = 'block';
+                                    lienSource.style.fontSize = '0.85em';
+                                    listeComposants.appendChild(lienSource);
+                                });
                             });
                             zoneComposants.appendChild(listeComposants);
                         }
@@ -5048,6 +5059,20 @@ def accueil():
                     if (data.batterie) document.getElementById('nouveauVeloBatterie').value = data.batterie;
                     afficherNomVeloActif();
                     zone.textContent = 'Source : ' + data.source + '. Vérifie chaque champ avant d’enregistrer. Les caractéristiques non trouvées restent à confirmer.';
+                    if (Array.isArray(data.sources_fiche) && data.sources_fiche.length) {
+                        const sourcesTitre = document.createElement('p');
+                        sourcesTitre.textContent = 'Sites consultés : ' + data.sources_fiche.length;
+                        zone.appendChild(sourcesTitre);
+                        data.sources_fiche.forEach(source => {
+                            const lienSource = document.createElement('a');
+                            lienSource.href = source.url;
+                            lienSource.target = '_blank';
+                            lienSource.rel = 'noopener noreferrer';
+                            lienSource.textContent = source.domaine;
+                            lienSource.style.marginRight = '12px';
+                            zone.appendChild(lienSource);
+                        });
+                    }
                     if (Array.isArray(data.composants_techniques)) {
                         const titre = document.createElement('h4');
                         titre.textContent = 'Composants techniques repérés';
@@ -5060,21 +5085,34 @@ def accueil():
                             const ligne = document.createElement('li');
                             const libelle = document.createElement('label');
                             const choix = document.createElement('input');
-                            choix.type = 'checkbox';
-                            choix.checked = piece.statut === 'trouve';
+                            choix.type = 'radio';
+                            choix.name = 'composant-' + piece.categorie;
+                            choix.checked = piece.statut === 'recoupe';
                             choix.style.marginRight = '7px';
                             casesComposants.push({ piece: piece, choix: choix });
                             const nom = piece.categorie.replaceAll('_', ' ');
+                            const statut = piece.statut === 'choix' ? ' · plusieurs versions trouvées, à choisir'
+                                : piece.statut === 'recoupe' ? ' · recoupé sur plusieurs sites'
+                                : ' · une seule source, à confirmer';
                             libelle.appendChild(choix);
-                            libelle.appendChild(document.createTextNode(nom + ' : ' + piece.nom
-                                + (piece.statut === 'a_confirmer' ? ' · variante à choisir' : '')
+                            libelle.appendChild(document.createTextNode(nom + ' : ' + piece.nom + statut
                                 + (piece.origine && piece.origine !== 'Fiche consultée' ? ' · ' + piece.origine : '')));
                             ligne.appendChild(libelle);
                             liste.appendChild(ligne);
+                            (piece.sources || (piece.source ? [piece.source] : [])).forEach(url => {
+                                const lienSource = document.createElement('a');
+                                lienSource.href = url;
+                                lienSource.target = '_blank';
+                                lienSource.rel = 'noopener noreferrer';
+                                lienSource.textContent = 'Source : ' + (new URL(url)).hostname;
+                                lienSource.style.display = 'block';
+                                lienSource.style.fontSize = '0.85em';
+                                liste.appendChild(lienSource);
+                            });
                         });
                         zone.appendChild(liste);
                         const note = document.createElement('p');
-                        note.textContent = 'Ces références sont des propositions issues de la page, pas encore validées. Les variantes selon la taille restent à confirmer.';
+                        note.textContent = 'Une seule option peut être retenue par catégorie. Si les sites ne concordent pas, choisis la bonne version ou ne coche rien. Les composants non recoupés restent à confirmer.';
                         zone.appendChild(note);
                         const enregistrer = document.createElement('button');
                         enregistrer.type = 'button';
@@ -5082,23 +5120,22 @@ def accueil():
                         enregistrer.style.width = '100%';
                         enregistrer.addEventListener('click', () => {
                             const champ = document.getElementById('nouveauVeloFicheComposants');
-                            const propositions = casesComposants.map(item => ({
+                            const propositions = casesComposants.filter(item => item.choix.checked).map(item => ({
                                 categorie: item.piece.categorie,
                                 nom: item.piece.nom,
                                 statut: item.piece.statut,
                                 source: item.piece.source || data.source,
+                                sources: item.piece.sources || [item.piece.source || data.source],
+                                nombre_sources: item.piece.nombre_sources || 1,
                                 origine: item.piece.origine || 'Fiche consultée',
-                                validation: item.choix.checked ? 'valide_par_utilisateur' : 'a_confirmer'
+                                validation: 'valide_par_utilisateur'
                             }));
                             champ.value = JSON.stringify(propositions);
-                            const valides = propositions.filter(piece => piece.validation === 'valide_par_utilisateur').length;
-                            note.textContent = valides + ' composants marqués comme validés par toi et '
-                                + (propositions.length - valides) + ' laissés à confirmer. Les entretiens ne sont pas modifiés par ces références.';
+                            note.textContent = propositions.length + ' composants enregistrés comme validés par toi. Les autres restent à confirmer.';
                             enregistrer.disabled = true;
                         });
                         zone.appendChild(enregistrer);
-                    }
-                } catch (e) {
+                    }                } catch (e) {
                     zone.textContent = e.message || 'Recherche impossible. Tu peux compléter la fiche manuellement.';
                 }
             }
