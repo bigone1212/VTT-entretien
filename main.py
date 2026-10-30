@@ -13238,7 +13238,11 @@ def composants_techniques_de_page(html_page):
 
     resultat = []
     for categorie, valeurs in trouves.items():
-        statut = "trouve" if len(valeurs) == 1 else "a_confirmer"
+        variantes_taille = any(
+            re.search(r"\b(?:size|taille)\s*[: ]|(?:^|[,;])\s*T\.?\s?(?:S|M|L|XL)\s*[-: ]", valeur["nom"], re.I)
+            for valeur in valeurs
+        )
+        statut = "trouve" if len(valeurs) == 1 and not variantes_taille else "a_confirmer"
         for valeur in valeurs:
             resultat.append({
                 "categorie": categorie,
