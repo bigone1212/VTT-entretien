@@ -2063,3 +2063,54 @@ jobs:
           assert all(item["origine"] == "Fiche consultée" for item in trouves.values())
           print("OK: fourche, amortisseur, tige de selle, freins, disques, transmission et selle extraits; plaquettes non inventées.")
           PY
+      - name: Vérifier la conservation de la nomenclature technique par vélo
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-fiche-composants.db
+          DATABASE_URL: ""
+          CODE_ACCES: test
+        run: |
+          python - <<'PY'
+          import json
+          import main
+          import db
+
+          main.verifier_auth = lambda _code: None
+          contenu = json.dumps([
+              {"categorie": "fourche", "nom": "Fox Rhythm 36", "statut": "trouve",
+               "source": "https://exemple.test/fiche", "validation": "a_confirmer"}
+          ], ensure_ascii=False)
+          resultat = main.creer_velo(
+              main.NouveauVeloRequest(
+                  nom="Trek test", type="vtt_electrique", marque="Trek",
+                  modele="Fuel EXe 9.7", annee=2025, fiche_composants=contenu
+              ),
+              x_code_acces="test"
+          )
+          velo_id = resultat["velo_id"]
+          velos = main.obtenir_velos(x_code_acces="test")
+          velo = next(v for v in velos if v["id"] == velo_id)
+          assert json.loads(velo["fiche_composants"]) == json.loads(contenu), velo
+
+          modifie = json.dumps([
+              {"categorie": "fourche", "nom": "Fox Rhythm 36", "statut": "trouve",
+               "source": "https://exemple.test/fiche", "validation": "a_confirmer"},
+              {"categorie": "amortisseur", "nom": "Fox Float X", "statut": "trouve",
+               "source": "https://exemple.test/fiche", "validation": "a_confirmer"}
+          ], ensure_ascii=False)
+          main.modifier_fiche_velo(
+              velo_id,
+              main.ModifierFicheVeloRequest(
+                  nom="Trek test", fiche_composants=modifie
+              ),
+              x_code_acces="test"
+          )
+          velos = main.obtenir_velos(x_code_acces="test")
+          velo = next(v for v in velos if v["id"] == velo_id)
+          assert len(json.loads(velo["fiche_composants"])) == 2, velo
+          conn = db.connect()
+          cur = conn.cursor()
+          cur.execute("SELECT fiche_composants FROM velos WHERE id = ?", (velo_id,))
+          assert len(json.loads(cur.fetchone()[0])) == 2
+          conn.close()
+          print("OK: nomenclature technique enregistrée, relue et mise à jour sans toucher aux autres vélos.")
+          PY
