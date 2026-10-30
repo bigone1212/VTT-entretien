@@ -86,6 +86,25 @@ jobs:
           import sqlite3
           import main
 
+          # Extraction des composants dans plusieurs présentations HTML utilisées
+          # par les fiches vélo : paires de tableau, listes, paragraphes et classes label/value.
+          html_specs = """
+          <table><tr><td>Fork</td><td>Fox Rhythm 36</td><td>Rear shock</td><td>Fox Float X</td></tr></table>
+          <ul><li><strong>Seatpost:</strong> TranzX JD-YSP39, 150 mm</li></ul>
+          <p>Saddle — Bontrager Arvada</p>
+          <div class="spec-row"><span class="spec-label">Brakes</span><span class="spec-value">Shimano Deore M6120</span></div>
+          """
+          pieces_specs = main.composants_techniques_de_page(html_specs, "https://example.test/specs")
+          extraits_specs = {
+              (piece["categorie"], piece["nom"])
+              for piece in pieces_specs if piece.get("nom")
+          }
+          assert ("fourche", "Fox Rhythm 36") in extraits_specs, extraits_specs
+          assert ("amortisseur", "Fox Float X") in extraits_specs, extraits_specs
+          assert ("tige_de_selle", "TranzX JD-YSP39, 150 mm") in extraits_specs, extraits_specs
+          assert ("selle", "Bontrager Arvada") in extraits_specs, extraits_specs
+          assert ("freins", "Shimano Deore M6120") in extraits_specs, extraits_specs
+
           main.verifier_auth = lambda _code: None
 
           patins = main.entretiens_du_type("route", "patins")
