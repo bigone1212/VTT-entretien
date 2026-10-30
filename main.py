@@ -5135,7 +5135,8 @@ def accueil():
                             enregistrer.disabled = true;
                         });
                         zone.appendChild(enregistrer);
-                    }                } catch (e) {
+                    }
+                } catch (e) {
                     zone.textContent = e.message || 'Recherche impossible. Tu peux compléter la fiche manuellement.';
                 }
             }
