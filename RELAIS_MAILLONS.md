@@ -1,3 +1,16 @@
+# Mise à jour du relais — 30/10/2026 — fusion PR #13
+
+- PR #13 « Améliorer l’extraction des composants des fiches vélo » : **fusionnée** le 30/10/2026.
+- Commit de fusion sur `main` : `c304757993423d2b906ce6a7be9375ce9e4d3e00`.
+- Vérification GitHub : PR fermée avec `merged=true`; `main.py` contient désormais les modifications fusionnées (blob `22b37789906c7cb2abaca6a2080957799a9fd8b3`).
+- CI avant fusion : run `41045877610`, n° 203, terminé avec succès. Le test d'extraction HTML ciblant fourche, amortisseur, tige de selle, selle et freins est réussi.
+- Changements livrés : extraction de plusieurs paires libellé/valeur par ligne de tableau, extraction de listes/paragraphes et paires HTML label/value ; recherche secondaire portée de 3 à 6 pages.
+- Limite restante : les tests automatiques utilisent des fragments HTML simulés. La recherche réelle sur le Trek Fuel EXe 9.7 doit encore être testée par Math dans l'application.
+- Aucun changement Neon ou opération sur les données. Aucun déploiement manuel Render. L'éventuel déploiement automatique après le merge n'a pas encore été confirmé.
+- Prochaine étape : Math teste la recherche de fiche du Trek Fuel EXe 9.7 sur Maillons et indique quels composants sont retrouvés ou manquants. Ne pas annoncer la correction validée en production avant ce test.
+
+---
+
 # Mise à jour du relais — 30/10/2026 — PR #13, extraction des composants
 
 - Dernier commit de `main` avant cette note : `a6e759ea782a4d40974b2c7d85f1230a81d5e46a` (mise à jour du relais après correction et CI).
