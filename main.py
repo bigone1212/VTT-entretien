@@ -571,6 +571,7 @@ def init_db():
     ajouter_colonne(cursor, "velos", "suspension", "TEXT")
     ajouter_colonne(cursor, "velos", "tubeless", "TEXT")
     ajouter_colonne(cursor, "velos", "transmission", "TEXT")
+    ajouter_colonne(cursor, "velos", "fiche_composants", "TEXT")
 
     # Le CUBE reçoit TOUJOURS l'identifiant 1 : les pièces et les sorties
     # existantes sont rattachées au vélo n° 1 (velo_id par défaut).
@@ -12430,7 +12431,7 @@ def obtenir_velos(x_code_acces: Optional[str] = Header(default=None)):
         a_verifier = {r[0]: r[1] for r in cursor.fetchall()}
         cursor.execute("""
             SELECT id, nom, type, marque, modele, annee, taille, actif,
-                   km_total, km_frac, km_maj_le, date_achat, moteur, batterie, freins, suspension, tubeless, transmission,
+                   km_total, km_frac, km_maj_le, date_achat, moteur, batterie, freins, suspension, tubeless, transmission, fiche_composants,
                    CASE WHEN photo IS NULL OR photo = '' THEN 0 ELSE 1 END AS a_photo
             FROM velos
             WHERE actif = 1
@@ -12457,7 +12458,8 @@ def obtenir_velos(x_code_acces: Optional[str] = Header(default=None)):
                 "freins": row["freins"],
                 "suspension": row["suspension"],
                 "tubeless": row["tubeless"],
-                "transmission": row["transmission"]
+                "transmission": row["transmission"],
+                "fiche_composants": row["fiche_composants"]
             }
             for row in cursor.fetchall()
         ]
@@ -12479,6 +12481,7 @@ class NouveauVeloRequest(BaseModel):
     suspension: Optional[str] = Field(default="inconnu", max_length=20)
     tubeless: Optional[str] = Field(default="inconnu", max_length=20)
     transmission: Optional[str] = Field(default="inconnu", max_length=20)
+    fiche_composants: Optional[str] = Field(default=None, max_length=30000)
 
 
 class ModifierFicheVeloRequest(BaseModel):
@@ -12494,6 +12497,7 @@ class ModifierFicheVeloRequest(BaseModel):
     suspension: Optional[str] = Field(default="inconnu", max_length=20)
     tubeless: Optional[str] = Field(default="inconnu", max_length=20)
     transmission: Optional[str] = Field(default="inconnu", max_length=20)
+    fiche_composants: Optional[str] = Field(default=None, max_length=30000)
 
 
 def adapter_freins_velo(cursor, velo_id, freins, suspension=None, tubeless=None, transmission=None):
@@ -12632,7 +12636,8 @@ def modifier_fiche_velo(
             SET nom = ?, marque = ?, modele = ?, annee = ?, taille = ?,
                 date_achat = ?, moteur = ?, batterie = ?, freins = COALESCE(?, freins),
                 suspension = COALESCE(?, suspension), tubeless = COALESCE(?, tubeless),
-                transmission = COALESCE(?, transmission)
+                transmission = COALESCE(?, transmission),
+                fiche_composants = COALESCE(?, fiche_composants)
             WHERE id = ? AND actif = 1
         """, (
             nom, (data.marque or "").strip() or None,
@@ -12644,6 +12649,7 @@ def modifier_fiche_velo(
             data.suspension if data.suspension in ("rigide", "avant", "double") else None,
             data.tubeless if data.tubeless in ("chambre", "tubeless") else None,
             data.transmission if data.transmission in ("chaine", "courroie") else None,
+            data.fiche_composants,
             velo_id
         ))
         adapter_freins_velo(
@@ -12692,9 +12698,9 @@ def creer_velo(
         cursor.execute("""
             INSERT INTO velos (
                 nom, type, marque, modele, annee, taille, actif, km_total,
-                km_frac, km_maj_le, date_achat, suivi_depuis, moteur, batterie, freins, suspension, tubeless, transmission
+                km_frac, km_maj_le, date_achat, suivi_depuis, moteur, batterie, freins, suspension, tubeless, transmission, fiche_composants
             )
-            VALUES (?, ?, ?, ?, ?, ?, 1, 0, 0, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, 1, 0, 0, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             nom, type_velo, (data.marque or "").strip() or None,
             (data.modele or "").strip() or None, data.annee,
@@ -12706,7 +12712,8 @@ def creer_velo(
             data.freins if data.freins in ("disque", "disque_hydraulique", "disque_mecanique", "patins") else None,
             data.suspension if data.suspension in ("rigide", "avant", "double") else None,
             data.tubeless if data.tubeless in ("chambre", "tubeless") else None,
-            data.transmission if data.transmission in ("chaine", "courroie") else None
+            data.transmission if data.transmission in ("chaine", "courroie") else None,
+            data.fiche_composants
         ))
         cursor.execute("SELECT id FROM velos WHERE nom = ? ORDER BY id DESC LIMIT 1", (nom,))
         velo_id = cursor.fetchone()[0]
