@@ -1,52 +1,56 @@
-# Mise à jour du relais — 30/10/2026 — diagnostic recherche des composants techniques
+# Mise à jour du relais — 30/10/2026 — PR #13, extraction des composants
 
-- Dernier commit de `main` vérifié avant cette note : `70a0a2e09fd5c2fcbee23f110786ec6ce20f1f59` (« Mettre à jour le relais après fusion de la PR #12 »).
-- Le fichier `main.py` a été relu sur `main` ; blob SHA : `648ea25d17c1ac3043797159caf8c8d75776e11f`.
-- Le test utilisateur concerne un autre vélo : **Trek Fuel EXe 9.7**. L'année 2025 était celle du test évoqué dans l'historique ; à confirmer si nécessaire avant toute validation des composants.
-- Constat du code : l'extraction reconnaît principalement les tableaux HTML, les couples `<dt>/<dd>` et certaines propriétés JSON-LD. Les composants présentés dans des blocs texte, listes, tableaux à structure différente ou données intégrées à des scripts non JSON-LD peuvent donc être ignorés.
-- Autre limite constatée : la recherche secondaire ne télécharge que trois pages au maximum, et ne fait qu'une requête globale sur la marque, le modèle, l'année et le titre. Les résultats de recherche eux-mêmes ne sont pas utilisés comme preuves de composants.
-- La fusion de la PR #12 a bien été enregistrée ; la recherche par nom fonctionne selon le dernier test utilisateur, mais la récupération des références précises (fourche, amortisseur, tige de selle, selle, freins/plaquettes, etc.) reste insuffisante.
-- **Objectif de la prochaine intervention** : améliorer de façon ciblée l'extraction et la couverture des sources, avec provenance et statuts explicites ; présenter plusieurs choix lorsque les sources divergent ; ne jamais transformer une compatibilité possible en équipement d'origine confirmé.
-- **Avant tout code** : créer une branche `reprise/2026-10-30-composants-fiche-velo` après relecture de `main), puis tester sur des exemples HTML représentatifs et compléter les tests automatisés. Ne pas fusionner sans accord explicite de Math.
-- Fichiers prévus : `main.py` et `.github/workflows/maillons-check.yml` uniquement si les tests doivent être ajoutés. Aucun changement à Neon, aux données, à Render ou aux fonctions de sorties/entretien.
-- Enregistré sur GitHub : ce point de reprise dans `RELAIS_MAILLONS.md` (commit à reporter dans la prochaine mise à jour).
-- Local, non enregistré : aucun changement de code.
-- État : diagnostic initial réalisé ; correction non commencée ; tests non réalisés.
+- Dernier commit de `main` avant cette note : `cf4d8f3ae1d1a68ee3da0cff919a0a05b1004acd`.
+- Branche isolée créée : `reprise/2026-10-30-composants-fiche-velo`.
+- PR #13 ouverte en brouillon : https://github.com/bigone1212/VTT-entretien/pull/13 — non fusionnée.
+- Tête de la branche de la PR : `fd8e3368287fbbdfac5f2a6203368a9ce380cdc4` (3 commits au-dessus du point de départ).
+- Fichiers modifiés : `main.py` et `.github/workflows/maillons-check.yml`.
+- Modifications : lecture de plusieurs couples par ligne de tableau ; extraction de libellés/valeurs dans les listes et paragraphes ; prise en charge de paires d'éléments HTML avec classes label/value ; augmentation de 3 à 6 pages secondaires maximum.
+- Tests ajoutés pour la fourche, l'amortisseur, la tige de selle, la selle et les freins dans plusieurs structures HTML.
+- Contrôle GitHub Actions de la PR #13 : run `41045716587`, n° 201, état **queued** au dernier contrôle. Aucun test n'est encore déclaré réussi ou échoué.
+- Aucun changement sur `main.py` de production, aucune donnée modifiée, aucune opération Neon, aucun déploiement Render et aucune fusion.
+- Le modèle de test est le Trek Fuel EXe 9.7. L'année 2025 est celle mentionnée dans l'historique du test, à reconfirmer si l'on doit valider les références d'équipement exactes.
 
 ---
 
+
 ## Tâche en cours
 
-DIAGNOSTIC — COMPLÉTUDE DES COMPOSANTS DE LA FICHE TECHNIQUE — 30/10/2026.
+AMÉLIORER LA RECHERCHE DES COMPOSANTS TECHNIQUES — PR #13 — 30/10/2026.
 
-Objectif : à partir du test sur le Trek Fuel EXe 9.7, comprendre pourquoi Maillons retrouve la page mais pas les références précises des composants. Améliorer la recherche et l'extraction sans inventer d'équipement.
+Objectif : mieux récupérer les noms et références précis des composants d'un vélo à partir de plusieurs présentations de fiches techniques, sans inventer les équipements.
 
-État vérifié :
-- [x] Relire le relais et vérifier le dernier commit de `main`.
-- [x] Relire les fonctions d'extraction et de recherche de `main.py`.
-- [ ] Créer une branche dédiée après avoir figé ce point de reprise.
-- [ ] Concevoir des tests d'extraction sur différents formats HTML réels et représentatifs.
-- [ ] Améliorer l'extraction ciblée des composants et la couverture des sources.
-- [ ] Exécuter les tests et relire le diff.
-- [ ] Demander à Math de tester ; aucune fusion sans son accord.
+État :
+- [x] Relire le relais, vérifier le dernier commit de `main` et relire `main.py`.
+- [x] Confirmer avec Math que le test concerne le Trek Fuel EXe 9.7.
+- [x] Identifier la limite : extraction limitée aux tableaux simples, `<dt>/<dd>` et JSON-LD ; recherche secondaire limitée à trois pages.
+- [x] Créer la branche dédiée `reprise/2026-10-30-composants-fiche-velo`.
+- [x] Modifier l'extraction pour les lignes de tableaux à plusieurs paires, les listes/paragraphes et les éléments HTML voisins label/value.
+- [x] Porter le maximum de pages secondaires de 3 à 6.
+- [x] Ajouter les tests ciblés dans le workflow GitHub Actions.
+- [x] Ouvrir la PR #13 en brouillon pour déclencher les contrôles.
+- [ ] Attendre le résultat CI ; corriger tout échec.
+- [ ] Relire le diff final et vérifier les risques de régression.
+- [ ] Faire tester la recherche à Math.
+- [ ] Demander son accord avant toute fusion ; aucune fusion ou publication sans accord explicite.
 
-Constats :
-- `composants_techniques_de_page` traite les tableaux classiques (première cellule = libellé), les couples `<dt>/<dd>` et les données JSON-LD.
-- Les présentations en listes, blocs de texte, tableaux à structure atypique et données incorporées autrement ne sont pas couvertes.
-- `rechercher_pages_composants` utilise DuckDuckGo et Bing, déduplique par domaine et ne conserve que trois pages téléchargées.
-- La requête secondaire est globale ; les snippets des moteurs ne sont pas considérés comme des preuves de composants.
-- Le recoupement sait déjà distinguer une référence confirmée par plusieurs domaines, une référence isolée et plusieurs choix concurrents. Cette logique doit être préservée.
+Diagnostic confirmé :
+- Les composants absents de l'interface n'étaient pas masqués par l'affichage : ils n'étaient pas extraits par le serveur.
+- Les extraits de résultats des moteurs ne sont pas considérés comme preuve d'équipement.
+- Le recoupement des sources et les statuts existants doivent être préservés ; une compatibilité possible ne vaut pas preuve de montage d'origine.
 
 Enregistré sur GitHub :
-- Dépôt : `bigone1212/VTT-entretien`, branche `main`.
-- Dernier commit avant cette note : `70a0a2e09fd5c2fcbee23f110786ec6ce20f1f59`.
-- Code relu : `main.py`, blob `648ea25d17c1ac3043797159caf8c8d75776e11f`.
-- Cette note de reprise est enregistrée par le commit créé pour cette mise à jour.
+- Point de départ `main` : `cf4d8f3ae1d1a68ee3da0cff919a0a05b1004acd`.
+- Branche : `reprise/2026-10-30-composants-fiche-velo`.
+- Tête : `fd8e3368287fbbdfac5f2a6203368a9ce380cdc4`.
+- PR #13 : https://github.com/bigone1212/VTT-entretien/pull/13, brouillon, non fusionnée.
+- Fichiers : `main.py`, `.github/workflows/maillons-check.yml`.
+- Workflow run `41045716587`, n° 201 : queued au dernier contrôle.
 
 Local, non enregistré :
 - Aucun changement de code.
 
-Aucune opération Neon, Render, fusion ou déploiement manuel.
+Aucun changement de données, aucune opération Neon, aucun déploiement Render.
  
 ## Archive — reprise automatique de la fiche technique et adaptation des entretiens — 29/10/2026
 
