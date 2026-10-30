@@ -2228,6 +2228,88 @@ jobs:
           main.telecharger_lien = original
           print("OK : plusieurs sites consultés, références concordantes recoupées, désaccords proposés au choix, page 403 contournée sans inventer.")
           PY
+      - name: Vérifier la recherche de fiche vélo par nom avec repli Bing
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-recherche-par-nom.db
+          DATABASE_URL: ""
+          CODE_ACCES: test
+        run: |
+          python - <<'PY'
+          import main
+          from fastapi import HTTPException
+
+          main.verifier_auth = lambda _code: None
+          url_ddg = "https://constructeur.example/fiche-ddg"
+          url_bing = "https://constructeur.example/fiche-bing"
+          page_ddg = '<html><a class="result__a" href="' + url_ddg + '">Fiche constructeur</a></html>'
+          rss_bing = """<?xml version="1.0" encoding="UTF-8"?>
+          <rss version="2.0"><channel>
+            <item><title>Fiche constructeur Bing</title><link>https://constructeur.example/fiche-bing</link></item>
+          </channel></rss>"""
+
+          # DuckDuckGo répond : ses résultats sont utilisés sans appeler Bing.
+          appels = []
+          def ddg_ok(url, accepte):
+              appels.append(url)
+              if "duckduckgo.com" in url:
+                  return "text/html", page_ddg.encode(), url
+              raise AssertionError("Bing ne devait pas être appelé")
+          main.telecharger_lien = ddg_ok
+          resultat = main.recherche_fiche_velo(
+              main.RechercheFicheVeloRequest(recherche="Cube Stereo Hybrid"), None
+          )
+          assert resultat["candidats"] == [{"titre": "Fiche constructeur", "url": url_ddg}], resultat
+          assert len(appels) == 1 and "duckduckgo.com" in appels[0], appels
+
+          # DuckDuckGo échoue : Bing RSS prend le relais.
+          appels = []
+          def bing_secours(url, accepte):
+              appels.append(url)
+              if "duckduckgo.com" in url:
+                  raise ValueError("DuckDuckGo indisponible")
+              if "bing.com/search" in url:
+                  return "application/rss+xml", rss_bing.encode(), url
+              raise AssertionError("URL inattendue: " + url)
+          main.telecharger_lien = bing_secours
+          resultat = main.recherche_fiche_velo(
+              main.RechercheFicheVeloRequest(recherche="Cube Stereo Hybrid"), None
+          )
+          assert resultat["candidats"] == [{"titre": "Fiche constructeur Bing", "url": url_bing}], resultat
+          assert len(appels) == 2 and "duckduckgo.com" in appels[0] and "bing.com/search" in appels[1], appels
+
+          # Les deux moteurs échouent : erreur 502 explicite.
+          def deux_echecs(url, accepte):
+              raise ValueError("Moteur indisponible")
+          main.telecharger_lien = deux_echecs
+          try:
+              main.recherche_fiche_velo(
+                  main.RechercheFicheVeloRequest(recherche="Cube Stereo Hybrid"), None
+              )
+              raise AssertionError("Une erreur 502 était attendue")
+          except HTTPException as erreur:
+              assert erreur.status_code == 502, erreur.status_code
+              assert "DuckDuckGo ni Bing" in erreur.detail, erreur.detail
+
+          # Aucun moteur ne fournit de lien : réponse 404, pas une erreur réseau 502.
+          appels = []
+          def aucun_resultat(url, accepte):
+              appels.append(url)
+              if "duckduckgo.com" in url:
+                  return "text/html", b"<html><body>No results</body></html>", url
+              return "application/rss+xml", b"<rss><channel></channel></rss>", url
+          main.telecharger_lien = aucun_resultat
+          try:
+              main.recherche_fiche_velo(
+                  main.RechercheFicheVeloRequest(recherche="Cube Stereo Hybrid"), None
+              )
+              raise AssertionError("Une erreur 404 était attendue")
+          except HTTPException as erreur:
+              assert erreur.status_code == 404, erreur.status_code
+              assert "Aucune fiche trouvée" in erreur.detail, erreur.detail
+          assert len(appels) == 2, appels
+
+          print("OK : DDG prioritaire, Bing de secours, erreurs réseau distinguées de l'absence de résultats.")
+          PY
       - name: Vérifier la conservation de la nomenclature technique par vélo
         env:
           SQLITE_PATH: ${{ runner.temp }}/maillons-fiche-composants.db

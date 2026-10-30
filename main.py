@@ -13476,28 +13476,68 @@ def recherche_fiche_velo(data: RechercheFicheVeloRequest, x_code_acces: Optional
         raise HTTPException(status_code=400, detail="Saisis un modèle ou un lien constructeur.")
     if not lien:
         requete = urllib.parse.urlencode({"q": recherche + " vélo fiche technique constructeur"})
-        try:
-            type_contenu, octets, finale = telecharger_lien("https://html.duckduckgo.com/html/?" + requete, "text/html")
-        except ValueError as e:
-            raise HTTPException(status_code=502, detail="La recherche web n'a pas abouti. Tu peux coller directement le lien constructeur. " + str(e))
-        page = octets.decode("utf-8", errors="replace")
+        moteurs = [
+            (
+                "duckduckgo",
+                "https://html.duckduckgo.com/html/?" + requete,
+                "text/html",
+            ),
+            (
+                "bing",
+                "https://www.bing.com/search?format=rss&" + requete,
+                "application/rss+xml,application/xml,text/xml",
+            ),
+        ]
         candidats = []
-        for balise in re.findall(r"<a\b[^>]*class=[\"'][^\"']*result__a[^\"']*[\"'][^>]*>.*?</a>", page, re.I | re.S):
-            href = re.search(r"href=[\"']([^\"']+)[\"']", balise, re.I)
-            titre = texte_page_fiche(balise)
-            if not href or not titre:
+        moteurs_en_echec = []
+
+        for moteur, adresse, accepter in moteurs:
+            try:
+                _, octets, _ = telecharger_lien(adresse, accepter)
+            except ValueError as e:
+                moteurs_en_echec.append(str(e))
                 continue
-            url_candidate = html_lib.unescape(href.group(1))
-            parsed = urllib.parse.urlparse(url_candidate)
-            if parsed.netloc.endswith("duckduckgo.com") and parsed.path.startswith("/l/"):
-                cible = urllib.parse.parse_qs(parsed.query).get("uddg", [None])[0]
-                if cible:
-                    url_candidate = cible
-            if urllib.parse.urlparse(url_candidate).scheme in ("http", "https") and all(c["url"] != url_candidate for c in candidats):
-                candidats.append({"titre": titre[:180], "url": url_candidate})
-            if len(candidats) >= 5:
+
+            resultats = []
+            if moteur == "bing":
+                try:
+                    racine = ET.fromstring(octets)
+                except ET.ParseError:
+                    moteurs_en_echec.append("Flux RSS Bing illisible")
+                    continue
+                for element in racine.findall(".//item"):
+                    titre = (element.findtext("title") or "").strip()
+                    cible = (element.findtext("link") or "").strip()
+                    if titre and cible:
+                        resultats.append((titre, cible))
+            else:
+                page = octets.decode("utf-8", errors="replace")
+                for balise in re.findall(r'<a\b[^>]*class="[^"]*result__a[^"]*"[^>]*>.*?</a>', page, re.I | re.S):
+                    href = re.search(r'href="([^"]+)"', balise, re.I)
+                    titre = texte_page_fiche(balise).strip()
+                    if href and titre:
+                        resultats.append((titre, html_lib.unescape(href.group(1))))
+
+            for titre, cible in resultats:
+                cible = html_lib.unescape(cible)
+                parsed = urllib.parse.urlparse(cible)
+                if parsed.scheme not in ("http", "https") or not parsed.hostname:
+                    continue
+                if any(item["url"] == cible for item in candidats):
+                    continue
+                candidats.append({"titre": titre[:180], "url": cible})
+                if len(candidats) >= 5:
+                    break
+
+            # Le second moteur n'est utile que si le premier échoue ou ne fournit
+            # aucun lien exploitable.
+            if candidats:
                 break
+
         if not candidats:
+            if len(moteurs_en_echec) == len(moteurs):
+                detail = " ; ".join(moteurs_en_echec)
+                raise HTTPException(status_code=502, detail="La recherche web n'a pas abouti avec DuckDuckGo ni Bing. Tu peux coller directement le lien constructeur. " + detail)
             raise HTTPException(status_code=404, detail="Aucune fiche trouvée. Essaie avec le nom exact ou colle le lien constructeur.")
         return {"candidats": candidats}
 
