@@ -2295,7 +2295,7 @@ jobs:
           def aucun_resultat(url, accepte):
               appels.append(url)
               if "duckduckgo.com" in url:
-                  return "text/html", b"<html><body>Aucun résultat</body></html>", url
+                  return "text/html", b"<html><body>No results</body></html>", url
               return "application/rss+xml", b"<rss><channel></channel></rss>", url
           main.telecharger_lien = aucun_resultat
           try:
