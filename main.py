@@ -4907,7 +4907,7 @@ def accueil():
                                 const ligne = document.createElement('li');
                                 ligne.textContent = String(piece.categorie || 'Composant').replaceAll('_', ' ')
                                     + ' : ' + String(piece.nom || 'Non renseigné')
-                                    + ' · à confirmer';
+                                    + (piece.validation === 'valide_par_utilisateur' ? ' · validé par toi' : ' · à confirmer');
                                 listeComposants.appendChild(ligne);
                             });
                             zoneComposants.appendChild(listeComposants);
@@ -5052,12 +5052,21 @@ def accueil():
                         zone.appendChild(titre);
                         const liste = document.createElement('ul');
                         liste.style.paddingLeft = '20px';
+                        const casesComposants = [];
                         data.composants_techniques.forEach(piece => {
                             if (!piece.nom) return;
                             const ligne = document.createElement('li');
+                            const libelle = document.createElement('label');
+                            const choix = document.createElement('input');
+                            choix.type = 'checkbox';
+                            choix.checked = piece.statut === 'trouve';
+                            choix.style.marginRight = '7px';
+                            casesComposants.push({ piece: piece, choix: choix });
                             const nom = piece.categorie.replaceAll('_', ' ');
-                            ligne.textContent = nom + ' : ' + piece.nom
-                                + (piece.statut === 'a_confirmer' ? ' · plusieurs variantes à confirmer' : '');
+                            libelle.appendChild(choix);
+                            libelle.appendChild(document.createTextNode(nom + ' : ' + piece.nom
+                                + (piece.statut === 'a_confirmer' ? ' · variante à choisir' : '')));
+                            ligne.appendChild(libelle);
                             liste.appendChild(ligne);
                         });
                         zone.appendChild(liste);
@@ -5066,19 +5075,21 @@ def accueil():
                         zone.appendChild(note);
                         const enregistrer = document.createElement('button');
                         enregistrer.type = 'button';
-                        enregistrer.textContent = 'Ajouter ces composants à la fiche';
+                        enregistrer.textContent = 'Enregistrer ma sélection dans la fiche';
                         enregistrer.style.width = '100%';
                         enregistrer.addEventListener('click', () => {
                             const champ = document.getElementById('nouveauVeloFicheComposants');
-                            const propositions = data.composants_techniques.filter(piece => piece.nom).map(piece => ({
-                                categorie: piece.categorie,
-                                nom: piece.nom,
-                                statut: piece.statut,
+                            const propositions = casesComposants.map(item => ({
+                                categorie: item.piece.categorie,
+                                nom: item.piece.nom,
+                                statut: item.piece.statut,
                                 source: data.source,
-                                validation: 'a_confirmer'
+                                validation: item.choix.checked ? 'valide_par_utilisateur' : 'a_confirmer'
                             }));
                             champ.value = JSON.stringify(propositions);
-                            note.textContent = propositions.length + ' composants ajoutés au formulaire. Ils seront enregistrés comme « à confirmer », sans modifier les entretiens.';
+                            const valides = propositions.filter(piece => piece.validation === 'valide_par_utilisateur').length;
+                            note.textContent = valides + ' composants marqués comme validés par toi et '
+                                + (propositions.length - valides) + ' laissés à confirmer. Les entretiens ne sont pas modifiés par ces références.';
                             enregistrer.disabled = true;
                         });
                         zone.appendChild(enregistrer);
