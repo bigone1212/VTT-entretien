@@ -4908,7 +4908,8 @@ def accueil():
                                 const ligne = document.createElement('li');
                                 ligne.textContent = String(piece.categorie || 'Composant').replaceAll('_', ' ')
                                     + ' : ' + String(piece.nom || 'Non renseigné')
-                                    + (piece.validation === 'valide_par_utilisateur' ? ' · validé par toi' : ' · à confirmer');
+                                    + (piece.validation === 'valide_par_utilisateur' ? ' · validé par toi' : ' · à confirmer')
+                                    + (piece.origine && piece.origine !== 'Fiche consultée' ? ' · ' + piece.origine : '');
                                 listeComposants.appendChild(ligne);
                             });
                             zoneComposants.appendChild(listeComposants);
