@@ -78,10 +78,11 @@ Local, non enregistré :
 Prochaines actions :
 - [x] Relire le relais et vérifier la tête réelle de `main`.
 - [x] Identifier la cause exacte dans les deux chemins de recherche.
-- [~] Enregistrer ce point de reprise sur `main`, puis créer une branche dédiée.
-- [ ] Modifier uniquement la recherche par nom et ajouter les tests.
-- [ ] Exécuter et vérifier les contrôles GitHub Actions.
-- [ ] Ouvrir une PR et attendre l'accord explicite de Math avant fusion.
+- [x] Enregistrer le point de reprise sur `main` (commit `41a6eacd5ba5c13be05c1ec1669f7108b2fdc460`) et créer la branche dédiée `reprise/2026-10-30-recherche-par-nom-bing`.
+- [x] Modifier uniquement la recherche par nom dans `main.py` et ajouter les tests dans `.github/workflows/maillons-check.yml`.
+- [x] Ouvrir la PR brouillon #12 : https://github.com/bigone1212/VTT-entretien/pull/12 (tête `a2ea3925068c0cb4a8cf2aaabd23baf4e143e3a7`).
+- [~] Vérifier les contrôles GitHub Actions ; aucun statut n'était encore visible au dernier contrôle.
+- [ ] Relire le résultat final des tests, puis demander l'accord explicite de Math avant toute fusion.
 
 DERNIÈRE INTERVENTION TERMINÉE — RECHERCHE MULTI-SOURCE DES FICHES VÉLO — 30/10/2026.
 
