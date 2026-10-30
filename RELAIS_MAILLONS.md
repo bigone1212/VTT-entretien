@@ -1,3 +1,18 @@
+# Mise à jour du relais — 30/10/2026 — fusion PR #14
+
+- Après le test utilisateur, le problème persistait : les fiches affichaient les catégories génériques « Suspension », « Fourche » et « Amortisseur arrière » sans les noms précis.
+- Diagnostic : l'extracteur ne rattachait pas les valeurs du sous-bloc « Modèle » aux titres de sections de composants.
+- PR #14 « Mieux extraire les composants des fiches présentées par sections » : **fusionnée** avec l'accord explicite de Math le 30/10/2026.
+- Commit de fusion `main` : `7ebe65e7ded63ef8323d717790e8cf8527d9ea04`.
+- Commit de la correction : `7bd6e8babd24f07c458f90cb472e37c405a5ed7a`.
+- Fichiers modifiés : `main.py`, `.github/workflows/maillons-check.yml`, `RELAIS_MAILLONS.md`.
+- CI complet réussi sur le push (run 208, `41067096997`) et sur la PR (run 210, `41067217577`). Le test dédié confirme l'extraction de la fourche, de l'amortisseur arrière et de la selle depuis une structure HTML par sections. La page Opticycles réelle n'a pas pu être téléchargée par le serveur (403) : le test reproduit la structure HTML, il ne valide pas encore l'extraction réelle de cette page en production.
+- Vérification Render après fusion : le service `VTT-entretien` a bien démarré le déploiement automatique du commit `7ebe65e7ded63ef8323d717790e8cf8527d9ea04` (`build_in_progress` à 14:01:59 UTC). **Ne pas annoncer le déploiement terminé avant vérification de son statut `live`.**
+- Aucun changement de données, aucune opération Neon et aucun déploiement manuel.
+- Étape suivante : vérifier le statut Render jusqu'à `live`, puis demander à Math de refaire une recherche du Trek Fuel EXe 9.7. Ne pas modifier les altitudes, survols 3D ou filtres qui sont validés.
+
+---
+
 # Mise à jour du relais — 30/10/2026 — extraction des sections de composants (en cours)
 
 - Retour de Math après PR #13 : sur l'application, la fiche affiche toujours les catégories génériques (« Suspension », « Fourche », « Amortisseur arrière ») sans les noms des composants.
