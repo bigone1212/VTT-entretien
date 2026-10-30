@@ -13474,8 +13474,14 @@ def recherche_fiche_velo(data: RechercheFicheVeloRequest, x_code_acces: Optional
         pages_initiales = [(finale, page)]
     except ValueError as e:
         erreur_source = str(e)
-        slug = urllib.parse.unquote(urllib.parse.urlparse(lien).path.rstrip("/").split("/")[-1])
-        recherche_secours = re.sub(r"[-_]+", " ", slug).strip()
+        segments_url = [
+            urllib.parse.unquote(segment)
+            for segment in urllib.parse.urlparse(lien).path.split("/")
+            if segment
+        ]
+        segments_inutiles = {"fr-fr", "en-gb", "en-us", "velo", "vtt", "velo-electrique", "vtt-electrique", "electric-bike", "mountain-bike"}
+        segments_utiles = [segment for segment in segments_url if segment.lower() not in segments_inutiles]
+        recherche_secours = re.sub(r"[-_]+", " ", " ".join(segments_utiles[-4:])).strip()
         pages_initiales = rechercher_pages_composants(recherche_secours, lien)
         if not pages_initiales:
             raise HTTPException(status_code=400, detail=erreur_source + " Aucune autre fiche n'a pu être consultée.")
