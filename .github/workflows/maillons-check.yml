@@ -2186,6 +2186,29 @@ jobs:
           pages = main.rechercher_pages_composants("Trek Fuel EXe 9.7 2025", "https://opticycles.com/fuel")
           assert len(pages) == 2, pages
           assert {url for url, _ in pages} == {url_a, url_b}
+
+          # Si DuckDuckGo ne répond pas, Bing RSS doit fournir les fiches de secours.
+          rss_bing = """<?xml version="1.0" encoding="UTF-8"?>
+          <rss version="2.0"><channel>
+            <item><title>Fiche A via Bing</title><link>https://source-a.example/fuel</link></item>
+            <item><title>Fiche B via Bing</title><link>https://source-b.example/fuel</link></item>
+          </channel></rss>"""
+          def faux_bing(url, accepte):
+              if "duckduckgo.com" in url:
+                  raise ValueError("Moteur temporairement indisponible")
+              if "bing.com/search" in url:
+                  return "application/rss+xml", rss_bing.encode(), url
+              if "source-a.example" in url:
+                  return "text/html", page_a.encode(), url
+              if "source-b.example" in url:
+                  return "text/html", page_b.encode(), url
+              raise ValueError("Page indisponible")
+          main.telecharger_lien = faux_bing
+          pages_bing = main.rechercher_pages_composants("Trek Fuel EXe 9.7 2025", "https://opticycles.com/fuel")
+          assert len(pages_bing) == 2, pages_bing
+          assert {url for url, _ in pages_bing} == {url_a, url_b}, pages_bing
+          main.telecharger_lien = faux_telechargement
+
           main.verifier_auth = lambda _code: None
           main.telecharger_lien = lambda url, accepte: (
               (_ for _ in ()).throw(ValueError("403")) if "opticycles.com" in url

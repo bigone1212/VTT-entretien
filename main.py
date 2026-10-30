@@ -17,6 +17,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import unicodedata
+import xml.etree.ElementTree as ET
 from typing import Optional, List, Dict
 from datetime import date, datetime, timedelta, timezone
 
@@ -13330,35 +13331,72 @@ def composants_techniques_de_page(html_page, source_url=None):
 
 
 def rechercher_pages_composants(requete, url_origine):
-    """Recherche quelques fiches indépendantes, sans quitter les garde-fous réseau."""
+    """Recherche des fiches avec deux moteurs indépendants et les garde-fous réseau."""
     if not requete:
         return []
     params = urllib.parse.urlencode({"q": requete + " vélo fiche technique composants"})
-    try:
-        _, octets, _ = telecharger_lien("https://html.duckduckgo.com/html/?" + params, "text/html")
-    except ValueError:
-        return []
-    page = octets.decode("utf-8", errors="replace")
+    moteurs = [
+        (
+            "duckduckgo",
+            "https://html.duckduckgo.com/html/?" + params,
+            "text/html",
+        ),
+        (
+            "bing",
+            "https://www.bing.com/search?format=rss&" + params,
+            "application/rss+xml,application/xml,text/xml",
+        ),
+    ]
     domaine_origine = (urllib.parse.urlparse(url_origine).hostname or "").lower()
     candidats = []
     domaines = set()
-    for balise in re.findall(r'<a\b[^>]*class="[^"]*result__a[^"]*"[^>]*>.*?</a>', page, re.I | re.S):
-        href = re.search(r'href="([^"]+)"', balise, re.I)
-        titre = texte_page_fiche(balise)
-        if not href or not titre:
+
+    for moteur, adresse, accepter in moteurs:
+        try:
+            _, octets, _ = telecharger_lien(adresse, accepter)
+        except ValueError:
             continue
-        cible = html_lib.unescape(href.group(1))
-        parsed = urllib.parse.urlparse(cible)
-        if parsed.netloc.endswith("duckduckgo.com") and parsed.path.startswith("/l/"):
-            cible = urllib.parse.parse_qs(parsed.query).get("uddg", [None])[0] or cible
-        parsed = urllib.parse.urlparse(cible)
-        domaine = (parsed.hostname or "").lower()
-        if parsed.scheme not in ("http", "https") or not domaine or domaine == domaine_origine or domaine in domaines:
-            continue
-        domaines.add(domaine)
-        candidats.append({"titre": titre[:180], "url": cible})
-        if len(candidats) >= 5:
-            break
+        resultats = []
+        if moteur == "bing":
+            try:
+                racine = ET.fromstring(octets)
+            except ET.ParseError:
+                continue
+            for element in racine.findall(".//item"):
+                titre = (element.findtext("title") or "").strip()
+                cible = (element.findtext("link") or "").strip()
+                if cible and titre:
+                    resultats.append((titre, cible))
+        else:
+            page = octets.decode("utf-8", errors="replace")
+            for balise in re.findall(r'<a\b[^>]*class="[^"]*result__a[^"]*"[^>]*>.*?</a>', page, re.I | re.S):
+                href = re.search(r'href="([^"]+)"', balise, re.I)
+                titre = texte_page_fiche(balise)
+                if not href or not titre:
+                    continue
+                cible = html_lib.unescape(href.group(1))
+                parsed = urllib.parse.urlparse(cible)
+                if parsed.netloc.endswith("duckduckgo.com") and parsed.path.startswith("/l/"):
+                    cible = urllib.parse.parse_qs(parsed.query).get("uddg", [None])[0] or cible
+                resultats.append((titre, cible))
+
+        ajoutes_moteur = 0
+        for titre, cible in resultats:
+            parsed = urllib.parse.urlparse(cible)
+            domaine = (parsed.hostname or "").lower()
+            if parsed.scheme not in ("http", "https") or not domaine:
+                continue
+            if domaine == domaine_origine or domaine in domaines:
+                continue
+            if (domaine == "duckduckgo.com" or domaine.endswith(".duckduckgo.com")
+                    or domaine == "bing.com" or domaine.endswith(".bing.com")):
+                continue
+            domaines.add(domaine)
+            candidats.append({"titre": titre[:180], "url": cible})
+            ajoutes_moteur += 1
+            if ajoutes_moteur >= 5:
+                break
+
     pages = []
     for candidat in candidats:
         try:
