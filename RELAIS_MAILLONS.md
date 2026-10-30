@@ -1,3 +1,18 @@
+# Mise à jour du relais — 30/10/2026 — extraction des sections de composants (en cours)
+
+- Retour de Math après PR #13 : sur l'application, la fiche affiche toujours les catégories génériques (« Suspension », « Fourche », « Amortisseur arrière ») sans les noms des composants.
+- Vérification Render : le service de production `VTT-entretien` suit `main`, auto-déploiement activé. Le déploiement du commit `2d8d9fb53d1ace6cf56a323667213578c2fef978` est `live`; il inclut le merge de la PR #13 (`c304757993423d2b906ce6a7be9375ce9e4d3e00`). Le problème ne vient donc pas d'un déploiement manquant.
+- Diagnostic du code : l'extracteur couvre tableaux, paragraphes/listes, classes label/value et JSON-LD, mais ne rattache pas le sous-bloc « Modèle » au titre de section « Fourche » / « Suspension arrière ». Le workflow précédent testait ces autres formats mais pas cette structure réelle.
+- Source de test identifiée : Opticycles, Trek Fuel EXe 9.7 2025. La page présente les composants sous des titres de section, puis « Modèle » et « Débattement ». La récupération directe Opticycles a déjà été signalée comme refusée (403) depuis Render/serveur ; la recherche secondaire doit donc rester en mesure d'extraire les pages de secours.
+- Branche de correction : `reprise/2026-10-30-extraction-sections-composants`.
+- Changements en cours : ajout d'une extraction par sections HTML titrées (titres de composant et sous-titre « Modèle ») ; ajout de « freinage » comme synonyme de catégorie ; test CI ciblé pour fourche, amortisseur et selle.
+- Fichiers touchés : `main.py`, `.github/workflows/maillons-check.yml`.
+- CI push run `41066930011` (n° 208) en cours au moment de cette note. Aucun résultat de test annoncé avant la fin du run.
+- Aucun changement sur `main`, aucune fusion, aucun déploiement Render, aucune modification Neon ou des données. PR à ouvrir après vérification du CI.
+- Étape suivante : lire le résultat complet du CI ; corriger si nécessaire ; ouvrir une PR pour revue. Demander l'accord de Math avant toute fusion.
+
+---
+
 # Mise à jour du relais — 30/10/2026 — fusion PR #13
 
 - PR #13 « Améliorer l’extraction des composants des fiches vélo » : **fusionnée** le 30/10/2026.
