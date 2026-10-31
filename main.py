@@ -1250,6 +1250,26 @@ def accueil():
                 border-color: var(--accent);
             }
 
+            #reponseIA {
+                display: block;
+                background: var(--field);
+                border: 1px solid var(--field-line);
+                border-radius: 12px;
+                padding: 10px;
+                color: var(--strong);
+                font-family: inherit;
+                font-size: 1rem;
+                outline: none;
+                width: 100%;
+                box-sizing: border-box;
+                margin-bottom: 10px;
+                resize: vertical;
+            }
+
+            #reponseIA:focus {
+                border-color: var(--accent);
+            }
+
             button.btn-primary {
                 background: var(--accent);
                 color: var(--on-accent);
@@ -3660,6 +3680,19 @@ def accueil():
                 <label for="veloRechercheFiche">Modèle du vélo ou lien constructeur</label>
                 <input id="veloRechercheFiche" type="text" maxlength="2000" placeholder="Ex. : EDR Easy Route ou lien de la fiche">
                 <button type="button" id="boutonRechercheFiche" style="width:100%; margin:6px 0;">Rechercher les caractéristiques</button>
+                <details id="ficheIA" style="margin:6px 0;">
+                    <summary>Pas de résultat ? Chercher avec mon IA (Claude, ChatGPT…)</summary>
+                    <div class="form-help">
+                        1. Touche « Copier la demande ».<br>
+                        2. Ouvre Claude, ChatGPT ou une autre IA qui sait chercher sur le web, et colle la demande.<br>
+                        3. Copie sa réponse, colle-la ci-dessous, puis touche « Remplir la fiche ».
+                    </div>
+                    <button type="button" id="boutonCopierDemandeIA" style="width:100%; margin:6px 0;">Copier la demande</button>
+                    <label for="reponseIA">Réponse de l'IA</label>
+                    <textarea id="reponseIA" rows="5" maxlength="30000" placeholder="Colle ici la réponse de l'IA"></textarea>
+                    <button type="button" id="boutonRemplirFicheIA" style="width:100%; margin:6px 0;">Remplir la fiche</button>
+                    <div id="messageIA" class="form-help" aria-live="polite"></div>
+                </details>
                 <div id="resultatsRechercheFiche" class="form-help" aria-live="polite"></div>
                 <input type="hidden" id="nouveauVeloFicheComposants" name="fiche_composants">
                 <label for="nouveauVeloMarque">Marque (facultatif)</label>
@@ -5047,38 +5080,7 @@ def accueil():
                 afficherNomVeloActif();
             }
 
-            async function rechercherFicheVelo(url = null) {
-                const entree = document.getElementById('veloRechercheFiche');
-                const zone = document.getElementById('resultatsRechercheFiche');
-                const recherche = (entree.value || '').trim();
-                if (!url && !recherche) {
-                    zone.textContent = 'Saisis le modèle du vélo ou le lien de sa fiche constructeur.';
-                    return;
-                }
-                zone.textContent = 'Recherche en cours…';
-                try {
-                    const res = await fetch('/api/recherche-fiche-velo', {
-                        method: 'POST',
-                        headers: getHeaders(),
-                        body: JSON.stringify({ recherche: url ? '' : recherche, url: url || '' })
-                    });
-                    const data = await res.json();
-                    if (!res.ok) throw new Error(data.detail || 'Recherche impossible.');
-                    if (data.candidats) {
-                        zone.textContent = 'Choisis la fiche qui correspond exactement à ton vélo :';
-                        data.candidats.forEach(candidat => {
-                            const bouton = document.createElement('button');
-                            bouton.type = 'button';
-                            let siteCandidat = '';
-                            try { siteCandidat = new URL(candidat.url).hostname.replace('www.', ''); } catch (e) { siteCandidat = ''; }
-                            bouton.textContent = siteCandidat ? candidat.titre + ' (' + siteCandidat + ')' : candidat.titre;
-                            bouton.style.width = '100%';
-                            bouton.style.margin = '4px 0';
-                            bouton.addEventListener('click', () => rechercherFicheVelo(candidat.url));
-                            zone.appendChild(bouton);
-                        });
-                        return;
-                    }
+            function afficherResultatFiche(data, zone) {
                     if (data.marque) document.getElementById('nouveauVeloMarque').value = data.marque;
                     if (data.modele) document.getElementById('nouveauVeloModele').value = data.modele;
                     if (data.annee) document.getElementById('nouveauVeloAnnee').value = data.annee;
@@ -5174,11 +5176,199 @@ def accueil():
                         });
                         zone.appendChild(enregistrer);
                     }
+            }
+
+            async function rechercherFicheVelo(url = null) {
+                const entree = document.getElementById('veloRechercheFiche');
+                const zone = document.getElementById('resultatsRechercheFiche');
+                const recherche = (entree.value || '').trim();
+                if (!url && !recherche) {
+                    zone.textContent = 'Saisis le modèle du vélo ou le lien de sa fiche constructeur.';
+                    return;
+                }
+                zone.textContent = 'Recherche en cours…';
+                try {
+                    const res = await fetch('/api/recherche-fiche-velo', {
+                        method: 'POST',
+                        headers: getHeaders(),
+                        body: JSON.stringify({ recherche: url ? '' : recherche, url: url || '' })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Recherche impossible.');
+                    if (data.candidats) {
+                        zone.textContent = 'Choisis la fiche qui correspond exactement à ton vélo :';
+                        data.candidats.forEach(candidat => {
+                            const bouton = document.createElement('button');
+                            bouton.type = 'button';
+                            let siteCandidat = '';
+                            try { siteCandidat = new URL(candidat.url).hostname.replace('www.', ''); } catch (e) { siteCandidat = ''; }
+                            bouton.textContent = siteCandidat ? candidat.titre + ' (' + siteCandidat + ')' : candidat.titre;
+                            bouton.style.width = '100%';
+                            bouton.style.margin = '4px 0';
+                            bouton.addEventListener('click', () => rechercherFicheVelo(candidat.url));
+                            zone.appendChild(bouton);
+                        });
+                        return;
+                    }
+                    afficherResultatFiche(data, zone);
                 } catch (e) {
                     zone.textContent = e.message || 'Recherche impossible. Tu peux compléter la fiche manuellement.';
                 }
             }
             document.getElementById('boutonRechercheFiche').addEventListener('click', () => rechercherFicheVelo());
+
+            const CATEGORIES_IA = ['cadre', 'fourche', 'amortisseur', 'tige_de_selle', 'freins', 'etriers', 'plaquettes', 'disques', 'transmission', 'derailleur', 'cassette', 'chaine', 'plateau', 'pedalier', 'pedales', 'manettes', 'poignees', 'jeu_direction', 'moyeux', 'chargeur', 'roues', 'pneus', 'selle', 'cintre', 'potence', 'moteur', 'batterie'];
+            const TYPES_IA = ['vtt_electrique', 'vtt', 'enduro', 'descente', 'gravel', 'gravel_electrique', 'route', 'route_electrique'];
+            const FREINS_IA = ['patins', 'disque_hydraulique', 'disque_mecanique', 'disque'];
+            const SUSPENSIONS_IA = ['rigide', 'avant', 'double'];
+            const TUBELESS_IA = ['tubeless', 'chambre'];
+            const TRANSMISSIONS_IA = ['chaine', 'courroie'];
+
+            function sujetDemandeIA() {
+                const saisi = (document.getElementById('veloRechercheFiche').value || '').trim();
+                if (saisi) return saisi;
+                return ['nouveauVeloMarque', 'nouveauVeloModele', 'nouveauVeloAnnee']
+                    .map(id => (document.getElementById(id).value || '').trim())
+                    .filter(Boolean).join(' ');
+            }
+
+            function texteDemandeIA(sujet) {
+                const exemple = {
+                    marque: 'Trek', modele: 'Fuel EXe 9.7', annee: 2025, type: 'vtt_electrique',
+                    freins: 'disque_hydraulique', suspension: 'double', tubeless: 'tubeless', transmission: 'chaine',
+                    moteur: 'TQ HPR50', batterie: '360 Wh',
+                    composants: [
+                        { categorie: 'fourche', nom: 'Fox Rhythm 36', source: 'https://exemple.com/fiche-du-velo' },
+                        { categorie: 'tige_de_selle', nom: 'Taille M : TranzX JD-YSP39, 150 mm', source: 'https://exemple.com/fiche-du-velo' }
+                    ]
+                };
+                const lignes = [
+                    'Je tiens le carnet d’entretien de mon vélo. Cherche sur le web la fiche technique du vélo suivant : ' + sujet + '.',
+                    'Réponds UNIQUEMENT avec un bloc JSON, sans autre texte, au format donné en exemple plus bas.',
+                    'N’invente rien : si une information est introuvable, mets null (ou ne mets pas la ligne).',
+                    'Pour chaque composant, donne dans « source » l’adresse de la page où tu l’as lu. S’il existe plusieurs versions selon la taille du cadre, mets une ligne par version, avec un nom qui commence par « Taille M : ».',
+                    'Valeurs permises. type : ' + TYPES_IA.join(', ') + '. freins : ' + FREINS_IA.join(', ') + '. suspension : ' + SUSPENSIONS_IA.join(', ') + '. tubeless : ' + TUBELESS_IA.join(', ') + '. transmission : ' + TRANSMISSIONS_IA.join(', ') + '. categorie des composants : ' + CATEGORIES_IA.join(', ') + '.',
+                    'Exemple de format :',
+                    JSON.stringify(exemple, null, 2)
+                ];
+                return lignes.join(String.fromCharCode(10));
+            }
+
+            async function copierDemandeIA() {
+                const message = document.getElementById('messageIA');
+                const sujet = sujetDemandeIA();
+                if (!sujet) {
+                    message.textContent = 'Écris d’abord le nom du vélo dans le champ « Modèle du vélo ou lien constructeur ».';
+                    return;
+                }
+                const texte = texteDemandeIA(sujet);
+                try {
+                    await navigator.clipboard.writeText(texte);
+                    message.textContent = 'Demande copiée. Colle-la maintenant dans ton IA.';
+                } catch (e) {
+                    const zone = document.createElement('textarea');
+                    zone.value = texte;
+                    zone.setAttribute('readonly', '');
+                    zone.style.position = 'fixed';
+                    zone.style.opacity = '0';
+                    document.body.appendChild(zone);
+                    zone.select();
+                    let copie = false;
+                    try { copie = document.execCommand('copy'); } catch (e2) { copie = false; }
+                    document.body.removeChild(zone);
+                    message.textContent = copie ? 'Demande copiée. Colle-la maintenant dans ton IA.' : 'La copie automatique a échoué. Sélectionne et copie le texte de la demande ci-dessous.';
+                    if (!copie) {
+                        const secours = document.getElementById('reponseIA');
+                        secours.value = texte;
+                    }
+                }
+            }
+
+            function adresseWebSure(valeur) {
+                try {
+                    const adresse = new URL(String(valeur || ''));
+                    return (adresse.protocol === 'https:' || adresse.protocol === 'http:') ? adresse.href : null;
+                } catch (e) { return null; }
+            }
+
+            // La réponse de l'IA est un texte non vérifié : on ne garde que ce qui est reconnu.
+            function donneesDepuisReponseIA(texte) {
+                const debut = texte.indexOf('{');
+                const fin = texte.lastIndexOf('}');
+                if (debut < 0 || fin <= debut) throw new Error('Je ne trouve pas de bloc JSON dans cette réponse. Demande à l’IA de répondre uniquement avec le bloc JSON.');
+                let brut;
+                try { brut = JSON.parse(texte.slice(debut, fin + 1)); } catch (e) { throw new Error('Cette réponse n’est pas lisible. Demande à l’IA de répondre uniquement avec le bloc JSON.'); }
+                if (!brut || typeof brut !== 'object' || Array.isArray(brut)) throw new Error('Cette réponse n’a pas le bon format.');
+                const texteCourt = (valeur, max) => (typeof valeur === 'string' && valeur.trim()) ? valeur.trim().slice(0, max) : null;
+                const dans = (valeur, liste) => liste.includes(valeur) ? valeur : null;
+                const annee = Number.isInteger(brut.annee) && brut.annee >= 1950 && brut.annee <= 2100 ? brut.annee : null;
+                const parCategorie = {};
+                (Array.isArray(brut.composants) ? brut.composants : []).slice(0, 60).forEach(piece => {
+                    if (!piece || typeof piece !== 'object') return;
+                    const categorie = dans(piece.categorie, CATEGORIES_IA);
+                    const nom = texteCourt(piece.nom, 300);
+                    if (!categorie || !nom) return;
+                    const source = adresseWebSure(piece.source);
+                    parCategorie[categorie] = parCategorie[categorie] || [];
+                    if (!parCategorie[categorie].some(x => x.nom === nom)) parCategorie[categorie].push({ nom: nom, source: source });
+                });
+                const composants = [];
+                Object.keys(parCategorie).forEach(categorie => {
+                    const versions = parCategorie[categorie];
+                    versions.forEach(version => composants.push({
+                        categorie: categorie,
+                        nom: version.nom,
+                        statut: versions.length > 1 ? 'choix' : 'a_confirmer',
+                        origine: 'Réponse de ton IA',
+                        source: version.source,
+                        sources: version.source ? [version.source] : [],
+                        nombre_sources: 1
+                    }));
+                });
+                const sites = [];
+                composants.forEach(piece => {
+                    if (!piece.source) return;
+                    const domaine = (new URL(piece.source)).hostname;
+                    if (!sites.some(x => x.domaine === domaine)) sites.push({ url: piece.source, domaine: domaine });
+                });
+                return {
+                    marque: texteCourt(brut.marque, 80),
+                    modele: texteCourt(brut.modele, 120),
+                    annee: annee,
+                    type: dans(brut.type, TYPES_IA),
+                    freins: dans(brut.freins, FREINS_IA),
+                    suspension: dans(brut.suspension, SUSPENSIONS_IA),
+                    tubeless: dans(brut.tubeless, TUBELESS_IA),
+                    transmission: dans(brut.transmission, TRANSMISSIONS_IA),
+                    moteur: texteCourt(brut.moteur, 120),
+                    batterie: texteCourt(brut.batterie, 120),
+                    composants_techniques: composants,
+                    sources_fiche: sites,
+                    source: 'la réponse de ton IA'
+                };
+            }
+
+            function remplirFicheDepuisIA() {
+                const message = document.getElementById('messageIA');
+                const zone = document.getElementById('resultatsRechercheFiche');
+                const texte = document.getElementById('reponseIA').value || '';
+                if (!texte.trim()) {
+                    message.textContent = 'Colle d’abord la réponse de l’IA dans la zone ci-dessus.';
+                    return;
+                }
+                try {
+                    const data = donneesDepuisReponseIA(texte);
+                    zone.textContent = '';
+                    afficherResultatFiche(data, zone);
+                    message.textContent = data.composants_techniques.length + ' composants lus. Vérifie-les dans la liste plus bas, puis enregistre la fiche.';
+                } catch (e) {
+                    message.textContent = e.message || 'Réponse illisible.';
+                }
+            }
+
+            document.getElementById('boutonCopierDemandeIA').addEventListener('click', copierDemandeIA);
+            document.getElementById('boutonRemplirFicheIA').addEventListener('click', remplirFicheDepuisIA);
+
 
             document.getElementById('formAjouterVelo').addEventListener('submit', async event => {
                 event.preventDefault();
