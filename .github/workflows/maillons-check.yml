@@ -1867,7 +1867,7 @@ jobs:
               assert page.eval_on_selector("#ficheAutreTailleChoix", "e => e.value") == "M"
               assert page.eval_on_selector_all("#ficheAutreTailleChoix option", "o => o.map(x => x.value)") == ["", "XS", "S", "M", "L", "XL", "XXL"]
               # La fiche suit ce qui est connu : une carte par composant, rien pour ce qui est inconnu
-              cartes = page.eval_on_selector_all("#ficheAutreEquipement .ftv-item", "els => els.map(e => e.innerText.replace(/\\s+/g, ' ').trim())")
+              cartes = page.eval_on_selector_all("#ficheAutreEquipement .ftv-item", "els => els.map(e => Array.from(e.children[1].children).map(x => x.textContent.trim()).join(' '))")
               assert any(c.startswith("Moteur Bosch SX") for c in cartes), cartes
               assert any(c.startswith("Batterie 400 Wh") for c in cartes), cartes
               assert any(c.startswith("Fourche Fox Rhythm 36") and "Validé par toi" in c for c in cartes), cartes
