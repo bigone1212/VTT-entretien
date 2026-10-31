@@ -3925,35 +3925,11 @@ def accueil():
                     <span><span class="ftv-libelle">Modèle</span><span class="ftv-valeur" id="ficheAutreModele">—</span></span>
                 </div>
                 <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="13" cy="24" r="9"/><circle cx="35" cy="24" r="9"/><path d="M13 24h22M24 13v22"/></svg></span>
-                    <span><span class="ftv-libelle">Freins</span><span class="ftv-valeur" id="ficheAutreFreins">À confirmer</span></span>
-                </div>
-                <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M14 6l-4 28m4-28l10 28m-10-28h7M10 34l-3 8m13-8l3 8M27 12h12m-12 7h12m-12 7h12"/></svg></span>
-                    <span><span class="ftv-libelle">Suspension</span><span class="ftv-valeur" id="ficheAutreSuspension">À confirmer</span></span>
-                </div>
-                <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="16"/><circle cx="24" cy="24" r="7"/><path d="M24 8v9m16 7h-9M24 40v-9M8 24h9"/></svg></span>
-                    <span><span class="ftv-libelle">Pneus</span><span class="ftv-valeur" id="ficheAutreTubeless">À confirmer</span></span>
-                </div>
-                <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="12" cy="32" r="7"/><circle cx="36" cy="32" r="7"/><path d="M12 32l8-17h9l7 17M20 15h9M24 15l-4-6"/></svg></span>
-                    <span><span class="ftv-libelle">Transmission</span><span class="ftv-valeur" id="ficheAutreTransmission">À confirmer</span></span>
-                </div>
-                <div class="ftv-item">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="7" y="10" width="34" height="30" rx="4"/><path d="M7 19h34M16 6v8m16-8v8"/></svg></span>
                     <span><span class="ftv-libelle">Année</span><span class="ftv-valeur" id="ficheAutreAnnee">—</span></span>
                 </div>
-                <div class="ftv-item" id="ficheAutreMoteurLigne">
-                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M13 10h15l7 7v14l-7 7H13l-5-7V17z"/><path d="M17 16h9v16h-9z"/><path d="M20 12v4m4-4v4M20 32v4m4-4v4M8 21H4m4 8H4m31-8h5m-5 8h5"/></svg></span>
-                    <span><span class="ftv-libelle">Moteur</span><span class="ftv-valeur" id="ficheAutreMoteur">—</span></span>
-                </div>
-                <div class="ftv-item" id="ficheAutreBatterieLigne">
-                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="10" y="10" width="27" height="29" rx="4"/><path d="M18 6h11v4M37 19h4v11h-4"/><path d="M24 15l-6 11h6l-2 8 9-13h-6l2-6"/></svg></span>
-                    <span><span class="ftv-libelle">Batterie</span><span class="ftv-valeur" id="ficheAutreBatterie">—</span></span>
-                </div>
             </div>
-            <div id="ficheComposantsTechniques" class="ftv-note"></div>
+            <div class="ftv-grille" id="ficheAutreEquipement"></div>
             <button type="button" id="btnModifierFicheVelo" onclick="modifierFicheVelo()" style="width:100%; margin: 4px 0 8px;">Modifier cette fiche</button>
         </details>
 
@@ -4873,6 +4849,108 @@ def accueil():
                 }
             }
 
+            const ORDRE_EQUIPEMENT = ['moteur', 'batterie', 'cadre', 'fourche', 'amortisseur', 'suspension', 'freins', 'etriers', 'plaquettes', 'disques', 'transmission', 'derailleur', 'cassette', 'chaine', 'plateau', 'pedalier', 'pedales', 'manettes', 'roues', 'pneus', 'moyeux', 'jeu_direction', 'cintre', 'potence', 'poignees', 'tige_de_selle', 'selle', 'chargeur'];
+            const LIBELLES_EQUIPEMENT = { etriers: 'Étriers', derailleur: 'Dérailleur', chaine: 'Chaîne', pedalier: 'Pédalier', pedales: 'Pédales', tige_de_selle: 'Tige de selle', jeu_direction: 'Jeu de direction', poignees: 'Poignées', suspension: 'Suspension' };
+            const ICONE_FREINS = '<svg viewBox="0 0 48 48"><circle cx="13" cy="24" r="9"/><circle cx="35" cy="24" r="9"/><path d="M13 24h22M24 13v22"/></svg>';
+            const ICONE_SUSPENSION = '<svg viewBox="0 0 48 48"><path d="M14 6l-4 28m4-28l10 28m-10-28h7M10 34l-3 8m13-8l3 8M27 12h12m-12 7h12m-12 7h12"/></svg>';
+            const ICONE_PNEUS = '<svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="16"/><circle cx="24" cy="24" r="7"/><path d="M24 8v9m16 7h-9M24 40v-9M8 24h9"/></svg>';
+            const ICONE_TRANSMISSION = '<svg viewBox="0 0 48 48"><circle cx="12" cy="32" r="7"/><circle cx="36" cy="32" r="7"/><path d="M12 32l8-17h9l7 17M20 15h9M24 15l-4-6"/></svg>';
+            const ICONE_MOTEUR = '<svg viewBox="0 0 48 48"><path d="M13 10h15l7 7v14l-7 7H13l-5-7V17z"/><path d="M17 16h9v16h-9z"/><path d="M20 12v4m4-4v4M20 32v4m4-4v4M8 21H4m4 8H4m31-8h5m-5 8h5"/></svg>';
+            const ICONE_BATTERIE = '<svg viewBox="0 0 48 48"><rect x="10" y="10" width="27" height="29" rx="4"/><path d="M18 6h11v4M37 19h4v11h-4"/><path d="M24 15l-6 11h6l-2 8 9-13h-6l2-6"/></svg>';
+            const ICONE_PIECE = '<svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="8"/><path d="M24 6v6m0 24v6M6 24h6m24 0h6M11 11l4 4m18 18l4 4M37 11l-4 4M15 33l-4 4"/></svg>';
+            const ICONES_EQUIPEMENT = {
+                moteur: ICONE_MOTEUR, batterie: ICONE_BATTERIE,
+                freins: ICONE_FREINS, etriers: ICONE_FREINS, plaquettes: ICONE_FREINS, disques: ICONE_FREINS,
+                fourche: ICONE_SUSPENSION, amortisseur: ICONE_SUSPENSION, suspension: ICONE_SUSPENSION,
+                pneus: ICONE_PNEUS, roues: ICONE_PNEUS,
+                transmission: ICONE_TRANSMISSION, chaine: ICONE_TRANSMISSION, cassette: ICONE_TRANSMISSION,
+                derailleur: ICONE_TRANSMISSION, plateau: ICONE_TRANSMISSION, pedalier: ICONE_TRANSMISSION
+            };
+
+            function libelleEquipement(categorie) {
+                const cle = String(categorie || 'composant');
+                if (LIBELLES_EQUIPEMENT[cle]) return LIBELLES_EQUIPEMENT[cle];
+                return cle.charAt(0).toUpperCase() + cle.slice(1).replaceAll('_', ' ');
+            }
+
+            // La fiche des autres vélos suit ce qui a été trouvé : une carte par composant connu,
+            // rien d'affiché pour ce qui n'est pas connu.
+            function afficherEquipementFiche(velo) {
+                const zone = document.getElementById('ficheAutreEquipement');
+                if (!zone) return;
+                zone.replaceChildren();
+                let composants = [];
+                try { composants = JSON.parse(velo.fiche_composants || '[]'); } catch (e) { composants = []; }
+                if (!Array.isArray(composants)) composants = [];
+                const cartes = composants.filter(c => c && c.nom).map(c => ({
+                    categorie: String(c.categorie || 'composant'),
+                    nom: String(c.nom),
+                    trouve: true,
+                    valide: c.validation === 'valide_par_utilisateur',
+                    sources: Array.isArray(c.sources) ? c.sources : (c.source ? [c.source] : [])
+                }));
+                const present = categorie => cartes.some(c => c.categorie === categorie);
+                const ajouterConnu = (categorie, nom) => cartes.push({ categorie: categorie, nom: nom, trouve: false, valide: false, sources: [] });
+                const electrique = ['vtt_electrique', 'gravel_electrique', 'route_electrique', 'electrique'].includes(velo.type);
+                if (electrique && velo.moteur && !present('moteur')) ajouterConnu('moteur', velo.moteur);
+                if (electrique && velo.batterie && !present('batterie')) ajouterConnu('batterie', velo.batterie);
+                const freins = ({ patins: 'Freins à patins', disque_hydraulique: 'Freins à disque hydrauliques', disque_mecanique: 'Freins à disque mécaniques', disque: 'Freins à disque' })[velo.freins];
+                if (freins && !present('freins') && !present('etriers')) ajouterConnu('freins', freins);
+                const suspension = ({ rigide: 'Sans suspension', avant: 'Fourche suspendue', double: 'Fourche et amortisseur arrière' })[velo.suspension];
+                if (suspension && !present('fourche') && !present('amortisseur')) ajouterConnu('suspension', suspension);
+                const pneus = ({ tubeless: 'Tubeless', chambre: 'Avec chambre à air' })[velo.tubeless];
+                if (pneus && !present('pneus')) ajouterConnu('pneus', pneus);
+                const transmission = ({ courroie: 'Courroie', chaine: 'Chaîne et dérailleur' })[velo.transmission];
+                if (transmission && !present('transmission') && !present('chaine')) ajouterConnu('transmission', transmission);
+                const rang = categorie => { const i = ORDRE_EQUIPEMENT.indexOf(categorie); return i < 0 ? 999 : i; };
+                cartes.sort((a, b) => rang(a.categorie) - rang(b.categorie));
+                if (!cartes.length) {
+                    const vide = document.createElement('p');
+                    vide.className = 'ftv-note';
+                    vide.style.gridColumn = '1 / -1';
+                    vide.textContent = 'Aucun composant renseigné. Touche « Modifier cette fiche » pour rechercher la fiche du vélo.';
+                    zone.appendChild(vide);
+                    return;
+                }
+                cartes.forEach(carte => {
+                    const item = document.createElement('div');
+                    item.className = 'ftv-item';
+                    const icone = document.createElement('span');
+                    icone.className = 'ftv-icone';
+                    icone.setAttribute('aria-hidden', 'true');
+                    icone.innerHTML = ICONES_EQUIPEMENT[carte.categorie] || ICONE_PIECE;
+                    const corps = document.createElement('span');
+                    const libelle = document.createElement('span');
+                    libelle.className = 'ftv-libelle';
+                    libelle.textContent = libelleEquipement(carte.categorie);
+                    const valeur = document.createElement('span');
+                    valeur.className = 'ftv-valeur';
+                    valeur.textContent = carte.nom;
+                    corps.appendChild(libelle);
+                    corps.appendChild(valeur);
+                    if (carte.trouve) {
+                        const info = document.createElement('span');
+                        info.className = 'ftv-libelle';
+                        info.textContent = carte.valide ? 'Validé par toi' : 'À confirmer';
+                        if (carte.sources.length) {
+                            try {
+                                const lien = document.createElement('a');
+                                lien.href = carte.sources[0];
+                                lien.target = '_blank';
+                                lien.rel = 'noopener noreferrer';
+                                lien.textContent = (new URL(carte.sources[0])).hostname;
+                                info.appendChild(document.createTextNode(' · '));
+                                info.appendChild(lien);
+                            } catch (e) { /* source illisible : on n'affiche pas le lien */ }
+                        }
+                        corps.appendChild(info);
+                    }
+                    item.appendChild(icone);
+                    item.appendChild(corps);
+                    zone.appendChild(item);
+                });
+            }
+
             function afficherNomVeloActif() {
                 const velo = velosDisponibles.find(v => Number(v.id) === veloActifId);
                 const titre = document.getElementById('headerVeloNom');
@@ -4890,63 +4968,14 @@ def accueil():
                 const ficheMarque = document.getElementById('ficheAutreMarque');
                 const ficheModele = document.getElementById('ficheAutreModele');
                 const ficheAnnee = document.getElementById('ficheAutreAnnee');
-                const ficheMoteur = document.getElementById('ficheAutreMoteur');
-                const ficheBatterie = document.getElementById('ficheAutreBatterie');
                 if (velo) {
-                    const zoneComposants = document.getElementById('ficheComposantsTechniques');
-                    if (zoneComposants) {
-                        zoneComposants.replaceChildren();
-                        let composants = [];
-                        try { composants = JSON.parse(velo.fiche_composants || '[]'); } catch (e) { composants = []; }
-                        if (Array.isArray(composants) && composants.length) {
-                            const titreComposants = document.createElement('strong');
-                            titreComposants.textContent = 'Nomenclature des composants';
-                            zoneComposants.appendChild(titreComposants);
-                            const listeComposants = document.createElement('ul');
-                            listeComposants.style.paddingLeft = '20px';
-                            composants.forEach(piece => {
-                                const ligne = document.createElement('li');
-                                ligne.textContent = String(piece.categorie || 'Composant').replaceAll('_', ' ')
-                                    + ' : ' + String(piece.nom || 'Non renseigné')
-                                    + (piece.validation === 'valide_par_utilisateur' ? ' · validé par toi' : ' · à confirmer')
-                                    + (piece.origine && piece.origine !== 'Fiche consultée' ? ' · ' + piece.origine : '');
-                                listeComposants.appendChild(ligne);
-                                const sourcesPiece = Array.isArray(piece.sources) ? piece.sources : (piece.source ? [piece.source] : []);
-                                sourcesPiece.forEach(url => {
-                                    const lienSource = document.createElement('a');
-                                    lienSource.href = url;
-                                    lienSource.target = '_blank';
-                                    lienSource.rel = 'noopener noreferrer';
-                                    lienSource.textContent = 'Source : ' + (new URL(url)).hostname;
-                                    lienSource.style.display = 'block';
-                                    lienSource.style.fontSize = '0.85em';
-                                    listeComposants.appendChild(lienSource);
-                                });
-                            });
-                            zoneComposants.appendChild(listeComposants);
-                        }
-                    }
                     if (ficheNom) ficheNom.textContent = velo.nom || 'Mon vélo';
                     if (ficheType) ficheType.textContent = TYPES_VELO[velo.type] || velo.type || 'Non renseigné';
                     if (ficheMarque) ficheMarque.textContent = velo.marque || 'Non renseignée';
                     if (ficheModele) ficheModele.textContent = velo.modele || 'Non renseigné';
-                    const ficheFreins = document.getElementById('ficheAutreFreins');
-                    if (ficheFreins) ficheFreins.textContent = velo.freins === 'patins' ? 'Freins à patins' : velo.freins === 'disque_hydraulique' ? 'Freins à disque hydrauliques' : velo.freins === 'disque_mecanique' ? 'Freins à disque mécaniques' : velo.freins === 'disque' ? 'Freins à disque, type à confirmer' : 'À confirmer';
-                    const ficheSuspension = document.getElementById('ficheAutreSuspension');
-                    if (ficheSuspension) ficheSuspension.textContent = ({ rigide: 'Sans suspension', avant: 'Fourche suspendue', double: 'Fourche et amortisseur arrière' })[velo.suspension] || 'À confirmer';
-                    const ficheTubeless = document.getElementById('ficheAutreTubeless');
-                    if (ficheTubeless) ficheTubeless.textContent = velo.tubeless === 'tubeless' ? 'Tubeless' : velo.tubeless === 'chambre' ? 'Avec chambre à air' : 'À confirmer';
-                    const ficheTransmission = document.getElementById('ficheAutreTransmission');
-                    if (ficheTransmission) ficheTransmission.textContent = velo.transmission === 'courroie' ? 'Courroie' : velo.transmission === 'chaine' ? 'Chaîne et dérailleur' : 'À confirmer';
                     if (ficheAnnee) ficheAnnee.textContent = velo.annee || 'Non renseignée';
                     afficherTailleFicheAutre();
-                    if (ficheMoteur) ficheMoteur.textContent = velo.moteur || 'Non concerné ou non renseigné';
-                    if (ficheBatterie) ficheBatterie.textContent = velo.batterie || 'Non renseignée';
-                    const estElectriqueVelo = ['vtt_electrique', 'gravel_electrique', 'route_electrique', 'electrique'].includes(velo.type);
-                    const ligneMoteur = document.getElementById('ficheAutreMoteurLigne');
-                    const ligneBatterie = document.getElementById('ficheAutreBatterieLigne');
-                    if (ligneMoteur) ligneMoteur.style.display = estElectriqueVelo ? '' : 'none';
-                    if (ligneBatterie) ligneBatterie.style.display = estElectriqueVelo ? '' : 'none';
+                    afficherEquipementFiche(velo);
                 }
                 const electriques = document.getElementById('champsElectriques');
                 const type = document.getElementById('nouveauVeloType');
