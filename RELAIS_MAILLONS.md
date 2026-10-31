@@ -1,3 +1,14 @@
+# Mise à jour du relais — 31/10/2026 — PR #20 fusionnée (la fiche suit les composants trouvés)
+
+- Demande de Math (31/10/2026) : la fiche technique des autres vélos ne doit plus rester figée ; il a approuvé le principe (une carte par composant trouvé, rien d'affiché pour l'inconnu).
+- PR #20 : **fusionnée** avec l'accord explicite de Math le 31/10/2026. Commit de fusion sur `main` : `8d5eb3f6c5dd9cb409e46d5f808114386969279a`. Fichiers : `main.py`, `.github/workflows/maillons-check.yml`. Aucun changement serveur ni de données.
+- Changement : les lignes fixes Freins / Suspension / Pneus / Transmission / Moteur / Batterie (avec « À confirmer ») sont remplacées par `#ficheAutreEquipement` : une carte (`.ftv-item`) par composant de `fiche_composants`, triées (fonction `afficherEquipementFiche`), avec « Validé par toi » ou « À confirmer » et le site source. Les anciens réglages du vélo (freins, suspension, tubeless, transmission, moteur, batterie) s'affichent encore s'ils sont connus et non couverts par un composant. Vélo sans rien : message invitant à « Modifier cette fiche ». Fiche du CUBE inchangée. Les ids `ficheAutreFreins`, `ficheAutreMoteur(Ligne)`, `ficheAutreBatterie(Ligne)`, `ficheComposantsTechniques`, etc. n'existent plus.
+- Tests : CI de la branche en succès (commit `1200f08`) ; un 1er essai (`f1f0a5c`) avait échoué à cause du test navigateur adapté (lecture du texte d'une fiche fermée), corrigé et rejoué en local puis sur GitHub. Le test navigateur n'a pas été relancé sur `main` après la fusion (le CI ne tourne pas sur `main`).
+- Limites : rendu vérifié dans un navigateur de test (capture) ; Render et téléphone non testés. **Déploiement Render non vérifié : ne pas l'annoncer comme terminé avant statut `live`.** Aucune opération Neon.
+- Étape suivante : Math refait la recherche du Trek Fuel EXe 9.7 avec le lien Roulez Jeunesse, enregistre le vélo, ouvre sa fiche et dit si le rendu lui convient (et si la fourche Fox Rhythm 36 ressort bien).
+
+---
+
 # Mise à jour du relais — 31/10/2026 — PR #18 et #19 fusionnées
 
 - Retour de Math sur la vraie fiche Roulez Jeunesse (après PR #17) : moteur TQ HPR50, batterie 360 Wh, freins, pneus, amortisseur trouvés ; mais cadre « ✅ » et « S,M,L,XL », fourche « ✅ », roues en doublon des pneus.
