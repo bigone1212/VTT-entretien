@@ -1862,7 +1862,10 @@ jobs:
               assert page.eval_on_selector("#ficheTechniqueAutre", "e => e.tagName + '.' + e.className") == "DETAILS.fiche-technique-velo"
               assert shown("#ficheTechniqueAutre") and not shown("#ficheTechniqueCube")
               assert txt("#ficheAutreNom") == "Gravel élec"
-              assert [txt("#ficheAutreType"), txt("#ficheAutreMarque"), txt("#ficheAutreModele"), txt("#ficheAutreAnnee"), txt("#ficheAutreTaille"), txt("#ficheAutreMoteur"), txt("#ficheAutreBatterie")] == ["Gravel électrique", "Canyon", "Grail:ON", "2024", "M", "Bosch SX", "400 Wh"]
+              assert [txt("#ficheAutreType"), txt("#ficheAutreMarque"), txt("#ficheAutreModele"), txt("#ficheAutreAnnee"), txt("#ficheAutreMoteur"), txt("#ficheAutreBatterie")] == ["Gravel électrique", "Canyon", "Grail:ON", "2024", "Bosch SX", "400 Wh"]
+              # Taille du cadre : choix S/M/L/XL comme pour le CUBE, valeur du vélo reprise
+              assert page.eval_on_selector("#ficheAutreTailleChoix", "e => e.value") == "M"
+              assert page.eval_on_selector_all("#ficheAutreTailleChoix option", "o => o.map(x => x.value)") == ["", "XS", "S", "M", "L", "XL", "XXL"]
               assert shown("#ficheAutreMoteurLigne") and shown("#ficheAutreBatterieLigne")
               assert "Fox Rhythm 36" in txt("#ficheComposantsTechniques") and "validé par toi" in txt("#ficheComposantsTechniques")
               page.fill("#veloRechercheFiche", "https://exemple.test/fiche")
@@ -1878,6 +1881,20 @@ jobs:
               assert selection[1]["categorie"] == "tige_de_selle"
               assert all(piece["validation"] == "valide_par_utilisateur" for piece in selection)
               page.click("#ficheTechniqueAutre summary"); page.wait_for_timeout(300)
+              # Choisir une autre taille l'enregistre pour CE vélo (réglages du vélo 2), pas pour le CUBE
+              with page.expect_request(lambda r: "/api/mes-reglages" in r.url and r.method == "POST") as demande_taille:
+                  page.select_option("#ficheAutreTailleChoix", "L")
+              assert "velo_id=2" in demande_taille.value.url, demande_taille.value.url
+              assert json.loads(demande_taille.value.post_data)["valeurs"]["taille_cadre"] == "L"
+              page.wait_for_timeout(300)
+              assert page.eval_on_selector("#ficheAutreTailleChoix", "e => e.value") == "L"
+              # Une seule source suffit : cochée d'office ; plusieurs versions : à choisir
+              page.fill("#veloRechercheFiche", "https://exemple.test/fiche")
+              page.click("#boutonRechercheFiche"); page.wait_for_timeout(300)
+              assert page.locator("#resultatsRechercheFiche input[type=radio]").nth(0).is_checked()
+              # La sélection est déjà dans le formulaire, sans clic sur « Enregistrer ma sélection »
+              auto = json.loads(page.locator("#nouveauVeloFicheComposants").input_value())
+              assert [x["categorie"] for x in auto] == ["fourche"], auto
               page.click("#btnModifierFicheVelo"); page.wait_for_timeout(300)
               # L'édition recharge la nomenclature déjà enregistrée du vélo,
               # pas la sélection encore non enregistrée dans le formulaire.
