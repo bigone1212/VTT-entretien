@@ -13241,6 +13241,11 @@ def composants_techniques_de_page(html_page, source_url=None):
             return
         if valeur.lower() in ("n/a", "not applicable", "non applicable", "-", "—"):
             return
+        # Cases cochées (✅) et simples listes de tailles (S, M, L, XL) : pas des composants.
+        if not re.search(r"[A-Za-z0-9]", valeur):
+            return
+        if re.fullmatch(r"(?:XXS|XS|S|M|L|XL|XXL)(?:\s*[,/-]\s*(?:XXS|XS|S|M|L|XL|XXL))*", valeur, re.I):
+            return
         trouves.setdefault(categorie, [])
         if valeur not in [item["nom"] for item in trouves[categorie]]:
             trouves[categorie].append({"nom": valeur, "source": source_url or "fiche"})
@@ -13270,15 +13275,17 @@ def composants_techniques_de_page(html_page, source_url=None):
             bloc_section,
             flags=re.I | re.S
         )
+        # Une fin de ligne, de paragraphe ou de bloc (marquée ¦) arrête toute valeur.
+        bloc_section = re.sub(r"</(?:li|p|div|tr|ul|ol|table|section|dd|dt)>|<br\s*/?>", " ¦ ", bloc_section, flags=re.I)
         texte_section = re.sub(r"<[^>]+>", " ", bloc_section)
         texte_section = re.sub(r"\s+", " ", html_lib.unescape(texte_section)).strip()[:1500]
         fin_valeur = (
             r"(?=\b(?:debattement|d[eé]battement|travel|type|capacite|capacité|capacity|taille|size|"
             r"syst[eè]me|position|puissance|couple|power|torque|marque|brand|poids|weight|nombre|"
-            r"mod[eè]le|model|dimensions?|voir plus)\b|$)"
+            r"mod[eè]le|model|dimensions?|voir plus)\b|¦|$)"
         )
-        modele = re.search(r"\b(?:modele|modèle|model)\s*[:：]?\s*(.+?)" + fin_valeur, texte_section, re.I | re.S)
-        marque = re.search(r"\b(?:marque|brand)\s*[:：]?\s*(.+?)" + fin_valeur, texte_section, re.I | re.S)
+        modele = re.search(r"\b(?:modele|modèle|model)[\s:：¦]*(.+?)" + fin_valeur, texte_section, re.I | re.S)
+        marque = re.search(r"\b(?:marque|brand)[\s:：¦]*(.+?)" + fin_valeur, texte_section, re.I | re.S)
         valeur_section = None
         if modele and modele.group(1).strip():
             valeur_section = modele.group(1).strip()
@@ -13390,6 +13397,13 @@ def composants_techniques_de_page(html_page, source_url=None):
                 "origine": "Compatibilité fabricant — Shimano BR-M6120"
             }
         ]
+
+    # Les pneus lus dans la section « Roues » ne sont pas une seconde pièce.
+    noms_pneus = {valeur["nom"] for valeur in trouves.get("pneus", [])}
+    if "roues" in trouves:
+        trouves["roues"] = [v for v in trouves["roues"] if v["nom"] not in noms_pneus]
+        if not trouves["roues"]:
+            del trouves["roues"]
 
     resultat = []
     for categorie, valeurs in trouves.items():
