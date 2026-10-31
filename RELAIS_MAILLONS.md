@@ -1,3 +1,10 @@
+# Mise à jour du relais — 31/10/2026 — test de Math après les PR #18 à #20
+
+- Retour de Math (31/10/2026, ~13h13) après son essai sur son appli avec le lien Roulez Jeunesse du Trek Fuel EXe 9.7 : « tout a l'air ok », il doit seulement faire le choix quand plusieurs versions sont proposées ; « c'est pas mal ». Il n'a pas détaillé les composants vus. Déploiement Render non vérifié par Claude (le retour de Math laisse penser qu'il était fait).
+- Rien d'ouvert côté code. Idées non demandées, à ne faire que si Math le veut : la recherche par nom du vélo dépend de DuckDuckGo/Bing, qui n'ont rien renvoyé une fois (« Aucune fiche trouvée ») ; le lien collé dans le champ marche.
+
+---
+
 # Mise à jour du relais — 31/10/2026 — PR #20 fusionnée (la fiche suit les composants trouvés)
 
 - Demande de Math (31/10/2026) : la fiche technique des autres vélos ne doit plus rester figée ; il a approuvé le principe (une carte par composant trouvé, rien d'affiché pour l'inconnu).
