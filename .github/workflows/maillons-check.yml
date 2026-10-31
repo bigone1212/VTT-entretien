@@ -128,6 +128,24 @@ jobs:
           assert ("amortisseur", "Fox Performance Float X") in extraits_sections, extraits_sections
           assert ("selle", "Bontrager Arvada, rails chromoly") in extraits_sections, extraits_sections
 
+          # Vitesse : une grosse page de boutique (beaucoup d'éléments « label » sans valeur voisine)
+          # ne doit pas bloquer la recherche. Avant la correction, 260 Ko prenaient 10 s et 530 Ko environ 40 s.
+          import time
+          bruit = "".join(
+              '<div class="product-label">Produit %d</div><div class="card"><span class="label">Nom %d</span><span class="other">x</span></div>' % (i, i)
+              for i in range(4000)
+          )
+          grosse_page = "<html><body>" + html_specs + bruit + "</body></html>"
+          assert len(grosse_page) > 400000, len(grosse_page)
+          depart = time.time()
+          pieces_grosse = main.composants_techniques_de_page(grosse_page, "https://example.test/grosse")
+          duree = time.time() - depart
+          assert duree < 3, "Extraction trop lente : %.1f s pour %d octets" % (duree, len(grosse_page))
+          extraits_grosse = {(p["categorie"], p["nom"]) for p in pieces_grosse if p.get("nom")}
+          assert ("fourche", "Fox Rhythm 36") in extraits_grosse, extraits_grosse
+          assert ("freins", "Shimano Deore M6120") in extraits_grosse, extraits_grosse
+          print("OK: extraction d'une page de %d octets en %.2f s." % (len(grosse_page), duree))
+
           main.verifier_auth = lambda _code: None
 
           patins = main.entretiens_du_type("route", "patins")
