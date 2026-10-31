@@ -1,4 +1,15 @@
-# Mise à jour du relais — 30/10/2026 — régression de la recherche de fiche (en cours)
+# Mise à jour du relais — 31/10/2026 — PR #15 fusionnée (recherche de fiche trop lente)
+
+- PR #15 « Réparer la recherche de fiche » : **fusionnée** avec l'accord explicite de Math le 31/10/2026. Commit de fusion sur `main` : `838cf07d57e68c166c1f0ad359bc0fc3c0f80c66`. Commit du correctif : `128e54cf704f69e630f7315cfd7bda5ab1389c9a`.
+- Cause mesurée en local (page de test synthétique) : le motif HTML libellé/valeur par classes, ajouté par les PR #13/#14, était quadratique (260 Ko = 10 s ; 530 Ko = 42 s) et la 1re page était analysée deux fois. Pas confirmé sur de vraies pages ni sur Render.
+- Correctif : motif borné (530 Ko = 0,03 s ; mêmes composants trouvés sur les pages de test) ; 1re page analysée une seule fois ; test de vitesse ajouté à `.github/workflows/maillons-check.yml`. Fichiers : `main.py`, workflow.
+- CI de la branche : succès (run `41174032219`). Aucune opération Neon, aucune donnée modifiée.
+- **Render : déploiement non vérifié, ne pas l'annoncer comme terminé avant statut `live`.**
+- Étape suivante : Math refait la recherche du Trek Fuel EXe 9.7 et dit quels composants (dont moteur et batterie) reviennent. Ne pas toucher aux altitudes, survols 3D, filtres.
+
+---
+
+# Mise à jour du relais — 30/10/2026 — régression de la recherche de fiche (diagnostic, voir PR #15 ci-dessus)
 
 - Retour de Math (30/10/2026, ~15h10) après le déploiement de la PR #14 : la recherche du Trek Fuel EXe 9.7 ne retrouve AUCUN composant, et il a PERDU le nom du moteur et la capacité de la batterie (champs qui étaient remplis avant).
 - Objectif : redonner une recherche qui répond, sans toucher à ce qui est validé (altitudes, survols 3D, filtres).
