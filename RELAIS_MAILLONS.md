@@ -1,3 +1,12 @@
+# Mise à jour du relais — 31/10/2026 — PR #21 fusionnée (vraie fiche Opticycles) ; projet « chercher avec mon IA »
+
+- Math a enregistré la vraie page Opticycles du Trek Fuel EXe 9.7 2025 depuis son ordinateur (Ctrl+S, HTML) et l'a envoyée. Premier test sur du vrai HTML (jusque-là, pages reconstituées).
+- Avant : seuls amortisseur, freins, moteur, batterie ressortaient, fourche mal lue, valeurs parasites (44,0mm, 410,0mm, 69,30°). PR #21 : **fusionnée** avec l'accord explicite de Math le 31/10/2026 (commit de fusion `4f0da060b2bd0c97ac99427b4e0e38b7ba717882`). Lecture des lignes libellé/valeur en `<span>` ; versions par taille séparées (« Taille M : … ») ; mesures et nombres seuls écartés ; mots répétés fusionnés (« TQ TQ ») ; transmission = groupe + vitesses ; libellés mémorisés (0,03 s sur la vraie page, 376 Ko). Test CI sur un extrait de la vraie page (fichiers : `main.py`, `.github/workflows/maillons-check.yml`). CI de la branche en succès.
+- Limites : le site Opticycles refuse le serveur Render (403) : l'appli ne peut pas lire cette page directement. La fourche y est écrite « Fox RockShox Rhythm 36 Lyrik Select+ » (données mélangées par le site, non résolu). **Déploiement Render non vérifié.** Aucune opération Neon.
+- Idée de Math (19h) : lien avec une IA (Claude/ChatGPT) pour trouver la fiche. Claude a expliqué : pas de connexion au compte d'abonnement ; deux voies (copier-coller gratuit, ou clé API payante à l'usage). **Math choisit la voie gratuite par copier-coller** (31/10/2026 19:56) : bouton qui copie une demande toute faite pour son IA, zone pour coller la réponse JSON, l'appli remplit la fiche (composants « à confirmer »). À faire sur une branche `reprise/…`, fusion seulement avec son accord.
+
+---
+
 # Mise à jour du relais — 31/10/2026 — test de Math après les PR #18 à #20
 
 - Retour de Math (31/10/2026, ~13h13) après son essai sur son appli avec le lien Roulez Jeunesse du Trek Fuel EXe 9.7 : « tout a l'air ok », il doit seulement faire le choix quand plusieurs versions sont proposées ; « c'est pas mal ». Il n'a pas détaillé les composants vus. Déploiement Render non vérifié par Claude (le retour de Math laisse penser qu'il était fait).
