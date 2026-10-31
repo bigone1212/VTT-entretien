@@ -3907,6 +3907,10 @@ def accueil():
                 </span>
                 <span class="ftv-chevron" aria-hidden="true"></span>
             </summary>
+            <div class="ftv-taille-ligne">
+                <label for="ficheAutreTailleChoix">Taille du cadre</label>
+                <select id="ficheAutreTailleChoix" aria-label="Taille du cadre"></select>
+            </div>
             <div class="ftv-grille">
                 <div class="ftv-item">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="12" cy="32" r="8"/><circle cx="36" cy="32" r="8"/><path d="M12 32l7-14h12l5 14M19 18l7 14M26 32h10M17 13h6M29 18l-2-5h-4"/></svg></span>
@@ -3939,10 +3943,6 @@ def accueil():
                 <div class="ftv-item">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="7" y="10" width="34" height="30" rx="4"/><path d="M7 19h34M16 6v8m16-8v8"/></svg></span>
                     <span><span class="ftv-libelle">Année</span><span class="ftv-valeur" id="ficheAutreAnnee">—</span></span>
-                </div>
-                <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M8 34L34 8l6 6L14 40z"/><path d="M16 26l4 4m2-10l4 4m2-10l4 4"/></svg></span>
-                    <span><span class="ftv-libelle">Taille du cadre</span><span class="ftv-valeur" id="ficheAutreTaille">—</span></span>
                 </div>
                 <div class="ftv-item" id="ficheAutreMoteurLigne">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M13 10h15l7 7v14l-7 7H13l-5-7V17z"/><path d="M17 16h9v16h-9z"/><path d="M20 12v4m4-4v4M20 32v4m4-4v4M8 21H4m4 8H4m31-8h5m-5 8h5"/></svg></span>
@@ -4890,7 +4890,6 @@ def accueil():
                 const ficheMarque = document.getElementById('ficheAutreMarque');
                 const ficheModele = document.getElementById('ficheAutreModele');
                 const ficheAnnee = document.getElementById('ficheAutreAnnee');
-                const ficheTaille = document.getElementById('ficheAutreTaille');
                 const ficheMoteur = document.getElementById('ficheAutreMoteur');
                 const ficheBatterie = document.getElementById('ficheAutreBatterie');
                 if (velo) {
@@ -4940,7 +4939,7 @@ def accueil():
                     const ficheTransmission = document.getElementById('ficheAutreTransmission');
                     if (ficheTransmission) ficheTransmission.textContent = velo.transmission === 'courroie' ? 'Courroie' : velo.transmission === 'chaine' ? 'Chaîne et dérailleur' : 'À confirmer';
                     if (ficheAnnee) ficheAnnee.textContent = velo.annee || 'Non renseignée';
-                    if (ficheTaille) ficheTaille.textContent = velo.taille || 'Non renseignée';
+                    afficherTailleFicheAutre();
                     if (ficheMoteur) ficheMoteur.textContent = velo.moteur || 'Non concerné ou non renseigné';
                     if (ficheBatterie) ficheBatterie.textContent = velo.batterie || 'Non renseignée';
                     const estElectriqueVelo = ['vtt_electrique', 'gravel_electrique', 'route_electrique', 'electrique'].includes(velo.type);
@@ -5091,13 +5090,13 @@ def accueil():
                             const choix = document.createElement('input');
                             choix.type = 'radio';
                             choix.name = 'composant-' + piece.categorie;
-                            choix.checked = piece.statut === 'recoupe';
+                            choix.checked = piece.statut !== 'choix';
                             choix.style.marginRight = '7px';
                             casesComposants.push({ piece: piece, choix: choix });
                             const nom = piece.categorie.replaceAll('_', ' ');
                             const statut = piece.statut === 'choix' ? ' · plusieurs versions trouvées, à choisir'
                                 : piece.statut === 'recoupe' ? ' · recoupé sur plusieurs sites'
-                                : ' · une seule source, à confirmer';
+                                : ' · une seule source';
                             libelle.appendChild(choix);
                             libelle.appendChild(document.createTextNode(nom + ' : ' + piece.nom + statut
                                 + (piece.origine && piece.origine !== 'Fiche consultée' ? ' · ' + piece.origine : '')));
@@ -5116,13 +5115,13 @@ def accueil():
                         });
                         zone.appendChild(liste);
                         const note = document.createElement('p');
-                        note.textContent = 'Une seule option peut être retenue par catégorie. Si les sites ne concordent pas, choisis la bonne version ou ne coche rien. Les composants non recoupés restent à confirmer.';
+                        note.textContent = 'Les composants cochés sont ajoutés à la fiche quand tu enregistres le vélo. Quand plusieurs versions sont proposées, choisis la bonne.';
                         zone.appendChild(note);
                         const enregistrer = document.createElement('button');
                         enregistrer.type = 'button';
                         enregistrer.textContent = 'Enregistrer ma sélection dans la fiche';
                         enregistrer.style.width = '100%';
-                        enregistrer.addEventListener('click', () => {
+                        const appliquerSelection = () => {
                             const champ = document.getElementById('nouveauVeloFicheComposants');
                             const propositions = casesComposants.filter(item => item.choix.checked).map(item => ({
                                 categorie: item.piece.categorie,
@@ -5135,7 +5134,13 @@ def accueil():
                                 validation: 'valide_par_utilisateur'
                             }));
                             champ.value = JSON.stringify(propositions);
-                            note.textContent = propositions.length + ' composants enregistrés comme validés par toi. Les autres restent à confirmer.';
+                            return propositions.length;
+                        };
+                        casesComposants.forEach(item => item.choix.addEventListener('change', appliquerSelection));
+                        appliquerSelection();
+                        enregistrer.addEventListener('click', () => {
+                            const nombre = appliquerSelection();
+                            note.textContent = nombre + ' composants enregistrés comme validés par toi. Les autres restent à confirmer.';
                             enregistrer.disabled = true;
                         });
                         zone.appendChild(enregistrer);
@@ -5513,7 +5518,33 @@ def accueil():
                 document.getElementById('mrDate').textContent = txt;
             }
 
+            function afficherTailleFicheAutre() {
+                const choix = document.getElementById('ficheAutreTailleChoix');
+                if (!choix) return;
+                let reglages = {};
+                try { reglages = mrValeurs || {}; } catch (e) { reglages = {}; }
+                const velo = velosDisponibles.find(v => Number(v.id) === veloActifId);
+                const actuelle = String(reglages.taille_cadre || (velo && velo.taille) || '').trim();
+                const tailles = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+                const valeur = tailles.includes(actuelle.toUpperCase()) ? actuelle.toUpperCase() : actuelle;
+                const liste = [['', 'Non renseignée']].concat(tailles.map(t => [t, t]));
+                if (valeur && !tailles.includes(valeur)) liste.push([valeur, valeur]);
+                choix.replaceChildren();
+                liste.forEach(([v, texte]) => {
+                    const option = document.createElement('option');
+                    option.value = v;
+                    option.textContent = texte;
+                    choix.appendChild(option);
+                });
+                choix.value = valeur;
+            }
+
+            document.getElementById('ficheAutreTailleChoix')?.addEventListener('change', e => {
+                enregistrerTailleDepuisFiche(e.target.value);
+            });
+
             function mettreAJourTailleRoues(tailleChoisie) {
+                afficherTailleFicheAutre();
                 const taille = tailleChoisie || mrValeurs.taille_cadre || 'M';
                 const roues = document.getElementById('ftvTailleRoues');
                 if (roues) roues.textContent = taille === 'S' ? '27,5 pouces' : '29 pouces';
@@ -5541,6 +5572,7 @@ def accueil():
                 } catch (e) {
                     alert("Impossible d'enregistrer la taille du cadre.");
                     mettreAJourTailleRoues(mrValeurs.taille_cadre || 'M');
+                    afficherTailleFicheAutre();
                 }
             }
 
