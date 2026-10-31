@@ -164,6 +164,22 @@ jobs:
               assert attendu in extraits_reels, (attendu, extraits_reels)
           print("OK: fiche réelle Trek Fuel EXe 9.7 (structure observée).")
 
+          # Valeurs parasites vues sur la vraie fiche Roulez Jeunesse le 31/10/2026 :
+          # cases cochées, tailles de cadre, pneus répétés dans « Roues ».
+          html_parasites = """
+          <ul><li><strong>Tailles :</strong> S,M,L,XL</li><li><strong>Cadre :</strong> Carbone</li>
+          <li><strong>Cadre suspendu :</strong> ✅</li><li><strong>Fourche avant suspendue :</strong> ✅</li></ul>
+          <h3>Roues</h3><h4>Pneus</h4><ul><li><strong>Marque :</strong> Bontrager</li><li><strong>Modèle :</strong> XR5 Team Issue</li></ul>
+          <p>Équipé d'une fourche FOX Rhythm 36, débattement de 150 mm.</p>
+          """
+          pieces_parasites = main.composants_techniques_de_page(html_parasites, "https://example.test/parasites")
+          extraits_parasites = {(p["categorie"], p["nom"]) for p in pieces_parasites if p.get("nom")}
+          assert not any(nom == "✅" or nom == "S,M,L,XL" for _, nom in extraits_parasites), extraits_parasites
+          assert ("fourche", "FOX Rhythm 36") in extraits_parasites, extraits_parasites
+          assert ("cadre", "Carbone") in extraits_parasites, extraits_parasites
+          assert not any(cat == "roues" for cat, _ in extraits_parasites), extraits_parasites
+          print("OK: cases cochées, tailles et doublons de roues écartés.")
+
           main.verifier_auth = lambda _code: None
 
           patins = main.entretiens_du_type("route", "patins")
