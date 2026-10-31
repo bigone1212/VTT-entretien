@@ -13257,7 +13257,7 @@ LIBELLES_COMPOSANTS_VELO = {
     "derailleur": ("derailleur", ("rear derailleur", "derailleur", "dérailleur", "d.arriere")),
     "cassette": ("cassette", ("cassette", "sprocket", "pignon")),
     "chaine": ("chaine", ("chain", "chaine", "chaîne")),
-    "plateau": ("plateau", ("chainring", "plateau")),
+    "plateau": ("plateau", ("chainring", "plateau", "plateaux")),
     "pedalier": ("pedalier", ("crankset", "crank", "pedalier", "pédalier")),
     "pedales": ("pedales", ("pedals", "pedal", "pedales", "pédales")),
     "manettes": ("manettes", ("shifter", "shifters", "manette", "manettes")),
@@ -13279,28 +13279,63 @@ def composants_techniques_de_page(html_page, source_url=None):
     """Extrait les couples libellé/valeur des tableaux et propriétés structurées."""
     trouves = {}
 
+    memoire_categories = {}
+    termes_normalises = []
+    for _categorie, (_nom, _synonymes) in LIBELLES_COMPOSANTS_VELO.items():
+        for _synonyme in _synonymes:
+            _terme = unicodedata.normalize("NFKD", _synonyme.lower())
+            _terme = "".join(c for c in _terme if not unicodedata.combining(c))
+            termes_normalises.append((_nom, re.sub(r"[^a-z0-9]+", " ", _terme).strip()))
+
     def categorie_pour(libelle):
+        # Mémorisé : une page peut répéter des milliers de libellés identiques.
+        cle_memoire = str(libelle or "")
+        if cle_memoire not in memoire_categories:
+            memoire_categories[cle_memoire] = categorie_pour_libelle(cle_memoire)
+        return memoire_categories[cle_memoire]
+
+    def categorie_pour_libelle(libelle):
         texte = html_lib.unescape(str(libelle or "")).lower()
         texte = unicodedata.normalize("NFKD", texte)
         texte = "".join(c for c in texte if not unicodedata.combining(c))
         cle = re.sub(r"[^a-z0-9]+", " ", texte).strip()
         correspondances = []
-        for categorie, (nom, synonymes) in LIBELLES_COMPOSANTS_VELO.items():
-            for synonyme in synonymes:
-                terme = unicodedata.normalize("NFKD", synonyme.lower())
-                terme = "".join(c for c in terme if not unicodedata.combining(c))
-                terme = re.sub(r"[^a-z0-9]+", " ", terme).strip()
-                if cle == terme or cle.startswith(terme + " ") or cle.endswith(" " + terme):
-                    correspondances.append((len(terme), nom))
+        for nom, terme in termes_normalises:
+            if cle == terme or cle.startswith(terme + " ") or cle.endswith(" " + terme):
+                correspondances.append((len(terme), nom))
         return max(correspondances)[1] if correspondances else None
 
     def ajouter(libelle, valeur):
         categorie = categorie_pour(libelle)
         valeur = re.sub(r"\s+", " ", html_lib.unescape(str(valeur or ""))).strip(" :;|")
         valeur = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", valeur)).strip()
-        if not categorie or not valeur or len(valeur) > 500:
+        if not categorie or not valeur:
+            return
+        # Fiches qui donnent une version par taille : « Size: S, M, Bontrager Arvada, ... ; Size: L, ... ».
+        # Chaque version devient un choix distinct, avec sa taille en clair.
+        if re.search(r"\bsize\s*:", valeur, re.I):
+            for morceau in valeur.split(";"):
+                morceau = morceau.strip()
+                taille = re.match(r"(?i)^size\s*:\s*((?:(?:XXS|XS|S|M|L|XL|XXL)\s*,\s*)*(?:XXS|XS|S|M|L|XL|XXL))\s*,\s*(.+)$", morceau)
+                if taille:
+                    morceau = "Taille " + taille.group(1).strip() + " : " + taille.group(2).strip()
+                ajouter_valeur(categorie, morceau)
+            return
+        ajouter_valeur(categorie, valeur)
+
+    def ajouter_valeur(categorie, valeur):
+        # Mots répétés à la suite (« TQ TQ ») : on n'en garde qu'un.
+        valeur = re.sub(r"\b(\w+)(\s+\1\b)+", r"\1", valeur, flags=re.I)
+        if len(valeur) > 500:
             return
         if valeur.lower() in ("n/a", "not applicable", "non applicable", "-", "—"):
+            return
+        # Une mesure seule (44,0mm, 69,30°...) vient d'un tableau de géométrie, pas d'un composant
+        # (sauf la taille des disques de frein).
+        if categorie != "disques" and re.fullmatch(r"[0-9][0-9\s.,]*\s*(?:mm|cm|m|°|kg|g|%|\"|”)", valeur, re.I):
+            return
+        # Un nombre seul (« 29 » pour la taille de roue) n'est pas un nom de composant.
+        if re.fullmatch(r"[0-9][0-9\s.,]*", valeur):
             return
         # Cases cochées (✅) et simples listes de tailles (S, M, L, XL) : pas des composants.
         if not re.search(r"[A-Za-z0-9]", valeur):
@@ -13343,7 +13378,7 @@ def composants_techniques_de_page(html_page, source_url=None):
         fin_valeur = (
             r"(?=\b(?:debattement|d[eé]battement|travel|type|capacite|capacité|capacity|taille|size|"
             r"syst[eè]me|position|puissance|couple|power|torque|marque|brand|poids|weight|nombre|"
-            r"mod[eè]le|model|dimensions?|voir plus)\b|¦|$)"
+            r"mod[eè]le|model|dimensions?|vitesses|plateaux?|cassette|jantes|pneus|autonomie|groupe|voir plus)\b|¦|$)"
         )
         modele = re.search(r"\b(?:modele|modèle|model)[\s:：¦]*(.+?)" + fin_valeur, texte_section, re.I | re.S)
         marque = re.search(r"\b(?:marque|brand)[\s:：¦]*(.+?)" + fin_valeur, texte_section, re.I | re.S)
@@ -13355,6 +13390,13 @@ def composants_techniques_de_page(html_page, source_url=None):
                 valeur_section = nom_marque + " " + valeur_section
         elif marque and categorie in ("moteur", "batterie") and len(marque.group(1).strip()) <= 40:
             valeur_section = marque.group(1).strip()
+        elif categorie == "transmission":
+            groupe = re.search(r"\bgroupe[\s:：¦]*(.+?)" + fin_valeur, texte_section, re.I | re.S)
+            if groupe and groupe.group(1).strip():
+                valeur_section = groupe.group(1).strip()
+                vitesses = re.search(r"\bvitesses[\s:：¦]*(.+?)" + fin_valeur, texte_section, re.I | re.S)
+                if vitesses and vitesses.group(1).strip():
+                    valeur_section += " (" + vitesses.group(1).strip() + ")"
         if categorie == "batterie":
             capacite = re.search(r"(?:capacit[eé]|capacity)?\s*[:：]?\s*([0-9][0-9 ,.]{1,6}\s?Wh)\b", texte_section, re.I)
             if capacite:
@@ -13394,6 +13436,14 @@ def composants_techniques_de_page(html_page, source_url=None):
     )
     for correspondance in re.finditer(modele_paires, html_page, re.I | re.S):
         ajouter(correspondance.group(2), correspondance.group(4))
+
+    # Deux <span> voisins : libellé puis valeur (lignes des fiches Opticycles). Motif borné, sans balises imbriquées.
+    for correspondance in re.finditer(
+        r"<span\b[^>]*>([^<]{1,80})</span>\s*<span\b[^>]*>([^<]{1,900})</span>",
+        html_page,
+        re.I
+    ):
+        ajouter(correspondance.group(1), correspondance.group(2))
 
     # Couples <dt>/<dd> fréquents dans les fiches sans tableau.
     definitions = re.findall(r"<dt\b[^>]*>(.*?)</dt>\s*<dd\b[^>]*>(.*?)</dd>", html_page, re.I | re.S)
