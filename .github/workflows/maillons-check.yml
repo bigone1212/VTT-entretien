@@ -240,6 +240,17 @@ jobs:
           assert fiche["tubeless"] == "chambre", fiche
           assert fiche["transmission"] == "chaine", fiche
 
+          # Un lien collé dans le champ « modèle ou lien » (envoyé comme texte de recherche)
+          # doit être lu comme un lien, sans passer par les moteurs de recherche.
+          main.telecharger_lien = lambda url, accepter: ("text/html", page.encode("utf-8"), url)
+          fiche_collee = main.recherche_fiche_velo(
+              main.RechercheFicheVeloRequest(recherche="https://example.com/edr"),
+              None
+          )
+          assert "candidats" not in fiche_collee, fiche_collee
+          assert fiche_collee["marque"] == "EDR", fiche_collee
+          print("OK: lien collé dans le champ de recherche traité comme un lien.")
+
           page = (
               "<html>" + ouverture + " type='application/ld+json'>" +
               json.dumps({"@type": "Product", "name": "Vélo test", "brand": "Test"}) +

@@ -13562,6 +13562,11 @@ def recherche_fiche_velo(data: RechercheFicheVeloRequest, x_code_acces: Optional
     verifier_auth(x_code_acces)
     recherche = (data.recherche or "").strip()
     lien = (data.url or "").strip()
+    # Le champ de la page s'appelle « Modèle du vélo ou lien constructeur » : un lien collé
+    # dedans arrive ici comme texte de recherche. On le traite comme un lien.
+    if not lien and re.match(r"^(?:https?://|www\.)\S+$", recherche, re.I):
+        lien = recherche
+        recherche = ""
     if not lien and not recherche:
         raise HTTPException(status_code=400, detail="Saisis un modèle ou un lien constructeur.")
     if not lien:
