@@ -1,3 +1,14 @@
+# Mise à jour du relais — 31/10/2026 — PR #22 fusionnée (chercher la fiche avec mon IA)
+
+- PR #22 : **fusionnée** avec l'accord explicite de Math le 31/10/2026 (commit de fusion `01f69796edb49316a4b4758d13f45da2679bc872`). Fichiers : `main.py`, `.github/workflows/maillons-check.yml`. Aucun changement serveur ni de données.
+- Contenu : panneau « Pas de résultat ? Chercher avec mon IA (Claude, ChatGPT…) » dans le formulaire de fiche d'un vélo. (1) « Copier la demande » : texte prêt (nom du vélo, format JSON attendu, valeurs permises, consigne de ne rien inventer et de donner la source) ; (2) zone « Réponse de l'IA » où coller la réponse ; (3) « Remplir la fiche » : champs + liste de composants via la fonction partagée `afficherResultatFiche` (extraite de `rechercherFicheVelo`). Réponse de l'IA traitée comme non fiable : valeurs reconnues seulement, affichage en texte, liens http/https seulement. Une version = cochée d'office, plusieurs = à choisir. Aucune clé API, aucun frais, aucun compte.
+- Explication donnée à Math : aucun compte Google ni profil n'est nécessaire ; l'appli ne se connecte à aucune IA, Math utilise son propre compte Claude/ChatGPT dans leur application.
+- Tests : CI de la branche en succès, dont un nouveau test navigateur (« Tester la recherche avec l'IA ») ; le test de la fiche technique relancé après le refactor. Après fusion, Claude a revérifié la syntaxe Python et JavaScript de `main` (le CI ne tourne pas sur `main`).
+- Limites : pas testé sur Render, téléphone, ni avec une vraie réponse de Claude/ChatGPT (le texte de la demande pourra demander des ajustements). **Déploiement Render non vérifié.** Aucune opération Neon.
+- Étape suivante : Math essaie le parcours (copier la demande, la coller dans son IA, coller la réponse, « Remplir la fiche ») et dit ce qui est à ajuster.
+
+---
+
 # Mise à jour du relais — 31/10/2026 — PR #21 fusionnée (vraie fiche Opticycles) ; projet « chercher avec mon IA »
 
 - Math a enregistré la vraie page Opticycles du Trek Fuel EXe 9.7 2025 depuis son ordinateur (Ctrl+S, HTML) et l'a envoyée. Premier test sur du vrai HTML (jusque-là, pages reconstituées).
