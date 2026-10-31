@@ -1862,12 +1862,17 @@ jobs:
               assert page.eval_on_selector("#ficheTechniqueAutre", "e => e.tagName + '.' + e.className") == "DETAILS.fiche-technique-velo"
               assert shown("#ficheTechniqueAutre") and not shown("#ficheTechniqueCube")
               assert txt("#ficheAutreNom") == "Gravel élec"
-              assert [txt("#ficheAutreType"), txt("#ficheAutreMarque"), txt("#ficheAutreModele"), txt("#ficheAutreAnnee"), txt("#ficheAutreMoteur"), txt("#ficheAutreBatterie")] == ["Gravel électrique", "Canyon", "Grail:ON", "2024", "Bosch SX", "400 Wh"]
+              assert [txt("#ficheAutreType"), txt("#ficheAutreMarque"), txt("#ficheAutreModele"), txt("#ficheAutreAnnee")] == ["Gravel électrique", "Canyon", "Grail:ON", "2024"]
               # Taille du cadre : choix S/M/L/XL comme pour le CUBE, valeur du vélo reprise
               assert page.eval_on_selector("#ficheAutreTailleChoix", "e => e.value") == "M"
               assert page.eval_on_selector_all("#ficheAutreTailleChoix option", "o => o.map(x => x.value)") == ["", "XS", "S", "M", "L", "XL", "XXL"]
-              assert shown("#ficheAutreMoteurLigne") and shown("#ficheAutreBatterieLigne")
-              assert "Fox Rhythm 36" in txt("#ficheComposantsTechniques") and "validé par toi" in txt("#ficheComposantsTechniques")
+              # La fiche suit ce qui est connu : une carte par composant, rien pour ce qui est inconnu
+              cartes = page.eval_on_selector_all("#ficheAutreEquipement .ftv-item", "els => els.map(e => Array.from(e.children[1].children).map(x => x.textContent.trim()).join(' '))")
+              assert any(c.startswith("Moteur Bosch SX") for c in cartes), cartes
+              assert any(c.startswith("Batterie 400 Wh") for c in cartes), cartes
+              assert any(c.startswith("Fourche Fox Rhythm 36") and "Validé par toi" in c for c in cartes), cartes
+              assert not any(c.startswith("Freins") or c.startswith("Transmission") for c in cartes), cartes
+              assert "À confirmer" not in txt("#ficheAutreEquipement"), txt("#ficheAutreEquipement")
               page.fill("#veloRechercheFiche", "https://exemple.test/fiche")
               page.click("#boutonRechercheFiche"); page.wait_for_timeout(300)
               cases = page.locator("#resultatsRechercheFiche input[type=radio]")
@@ -1906,7 +1911,8 @@ jobs:
                   page.locator("#ficheTechniqueAutre").screenshot(path=sys.argv[1] + "_gravel.png")
               # Vélo non électrique : moteur et batterie cachés, valeurs par défaut
               page.select_option("#selectVelo", "3"); page.wait_for_timeout(800)
-              assert not shown("#ficheAutreMoteurLigne") and not shown("#ficheAutreBatterieLigne")
+              assert "Aucun composant renseigné" in txt("#ficheAutreEquipement"), txt("#ficheAutreEquipement")
+              assert page.locator("#ficheAutreEquipement .ftv-item").count() == 0
               assert txt("#ficheAutreMarque") == "Non renseignée" and txt("#ficheAutreNom") == "Route simple"
               # Le bouton ouvre toujours le formulaire de modification (comportement inchangé)
               page.click("#btnModifierFicheVelo"); page.wait_for_timeout(500)
