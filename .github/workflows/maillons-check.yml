@@ -2167,6 +2167,84 @@ jobs:
           PY
           rm -f "$SQLITE_PATH"
           PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_fiche_design.py"
+      - name: Tester la recherche avec l'IA (copier-coller) dans un vrai navigateur
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-ia-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_recherche_ia.py" <<'PY'
+          import json, sys
+          from urllib.parse import urlparse
+          from playwright.sync_api import sync_playwright
+          import main
+          html = main.accueil()
+          V = [{"id": 1, "nom": "Mon CUBE", "type": "vtt_electrique", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0}]
+          REPONSE = """Voici ce que j'ai trouvé :
+          ```json
+          {"marque": "Trek", "modele": "Fuel EXe 9.7", "annee": 2025, "type": "vtt_electrique", "freins": "disque_hydraulique",
+           "suspension": "double", "tubeless": "tubeless", "transmission": "chaine", "moteur": "TQ HPR50", "batterie": "360 Wh",
+           "composants": [
+            {"categorie": "fourche", "nom": "Fox Rhythm 36", "source": "https://shop.roulezjeunesse.com/p"},
+            {"categorie": "tige_de_selle", "nom": "Taille M : TranzX JD-YSP39, 150 mm", "source": "https://opticycles.com/x"},
+            {"categorie": "tige_de_selle", "nom": "Taille L : TranzX JD-YSP39, 170 mm", "source": "https://opticycles.com/x"},
+            {"categorie": "selle", "nom": "<img src=x onerror=alert(1)>Bontrager Arvada", "source": "javascript:alert(1)"},
+            {"categorie": "ailes", "nom": "Catégorie inconnue", "source": "https://exemple.com"}
+           ]}
+          ```
+          Bonne chance !"""
+          erreurs, dialogues = [], []
+          with sync_playwright() as p:
+              nav = p.chromium.launch(); ctx = nav.new_context(viewport={"width": 390, "height": 900}, permissions=[])
+              def api(r):
+                  u = urlparse(r.request.url)
+                  corps = V if u.path == "/api/velos" else ({"km_total": 0, "composants": []} if u.path == "/api/etat" else ({"valeurs": {}, "maj_le": None} if u.path == "/api/mes-reglages" else ({"terrain_route": 1, "terrain_mixte": 1.2, "terrain_chemin": 1.5, "terrain_sentier": 2, "poids_denivele": 1} if u.path == "/api/reglages" else [])))
+                  r.fulfill(status=200, content_type="application/json", body=json.dumps(corps))
+              ctx.route("**/localhost/api/**", api); ctx.route(lambda u: not u.startswith("http://localhost/"), lambda r: r.abort())
+              ctx.add_init_script("sessionStorage.setItem('vtt_code','t'); window.__copie = null; Object.defineProperty(navigator, 'clipboard', {value: {writeText: async t => { window.__copie = t; }}, configurable: true});")
+              page = ctx.new_page(); page.on("pageerror", lambda e: erreurs.append(str(e)[:200])); page.on("dialog", lambda d: (dialogues.append(d.message), d.accept()))
+              page.route("http://localhost/", lambda r: r.fulfill(status=200, content_type="text/html", body=html))
+              page.goto("http://localhost/"); page.wait_for_timeout(1200)
+              js = lambda code: page.evaluate(code)
+              msg = lambda: page.eval_on_selector("#messageIA", "e => e.textContent.trim()")
+              # 1) sans nom de vélo
+              js("document.getElementById('boutonCopierDemandeIA').click()"); page.wait_for_timeout(200)
+              print("1)", msg()); assert "Écris d’abord" in msg()
+              # 2) copie de la demande
+              js("document.getElementById('veloRechercheFiche').value = 'Trek Fuel EXe 9.7 2025'; document.getElementById('boutonCopierDemandeIA').click()"); page.wait_for_timeout(300)
+              demande = js("window.__copie"); print("2)", msg())
+              assert demande and "Trek Fuel EXe 9.7 2025" in demande and "categorie des composants" in demande
+              exemple = json.loads(demande[demande.index("{", demande.index("Exemple de format")):demande.rindex("}") + 1])
+              assert exemple["moteur"] == "TQ HPR50" and exemple["composants"][0]["categorie"] == "fourche"
+              print("   demande :", len(demande), "caractères, exemple JSON lisible")
+              # 3) réponse de l'IA
+              js("document.getElementById('reponseIA').value = " + json.dumps(REPONSE) + "; document.getElementById('boutonRemplirFicheIA').click()"); page.wait_for_timeout(300)
+              print("3)", msg())
+              champs = js("({marque: nouveauVeloMarque.value, modele: nouveauVeloModele.value, annee: nouveauVeloAnnee.value, type: nouveauVeloType.value, freins: nouveauVeloFreins.value, moteur: nouveauVeloMoteur.value, batterie: nouveauVeloBatterie.value})")
+              print("   champs :", champs)
+              assert champs == {"marque": "Trek", "modele": "Fuel EXe 9.7", "annee": "2025", "type": "vtt_electrique", "freins": "disque_hydraulique", "moteur": "TQ HPR50", "batterie": "360 Wh"}, champs
+              radios = js("Array.from(document.querySelectorAll('#resultatsRechercheFiche input[type=radio]')).map(r => [r.name, r.checked])")
+              print("   cases :", radios)
+              assert ["composant-fourche", True] in radios and ["composant-selle", True] in radios
+              assert [r for r in radios if r[0] == "composant-tige_de_selle"] == [["composant-tige_de_selle", False]] * 2
+              assert not any(r[0] == "composant-ailes" for r in radios)
+              cache = json.loads(page.locator("#nouveauVeloFicheComposants").input_value()); print("   enregistré d'office :", [c["categorie"] for c in cache])
+              assert sorted(c["categorie"] for c in cache) == ["fourche", "selle"]
+              # 4) sécurité : pas de balise injectée, pas de lien javascript:
+              assert js("document.querySelectorAll('#resultatsRechercheFiche img').length") == 0
+              assert js("Array.from(document.querySelectorAll('#resultatsRechercheFiche a')).every(a => a.href.startsWith('https://'))")
+              assert "<img" in js("document.getElementById('resultatsRechercheFiche').textContent")
+              assert not dialogues, dialogues
+              # 5) texte illisible
+              js("document.getElementById('reponseIA').value = 'Je ne sais pas.'; document.getElementById('boutonRemplirFicheIA').click()"); page.wait_for_timeout(200)
+              print("5)", msg()); assert "bloc JSON" in msg()
+              js("document.getElementById('reponseIA').value = '{pas du json}'; document.getElementById('boutonRemplirFicheIA').click()"); page.wait_for_timeout(200)
+              print("6)", msg()); assert "pas lisible" in msg()
+              nav.close()
+          print("erreurs page :", erreurs); assert not erreurs
+          print("TOUT OK")
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_recherche_ia.py"
       - name: Vérifier le script de migration SQLite sur une base temporaire
         run: |
           python - <<'PY'
