@@ -5041,7 +5041,9 @@ def accueil():
                         data.candidats.forEach(candidat => {
                             const bouton = document.createElement('button');
                             bouton.type = 'button';
-                            bouton.textContent = candidat.titre;
+                            let siteCandidat = '';
+                            try { siteCandidat = new URL(candidat.url).hostname.replace('www.', ''); } catch (e) { siteCandidat = ''; }
+                            bouton.textContent = siteCandidat ? candidat.titre + ' (' + siteCandidat + ')' : candidat.titre;
                             bouton.style.width = '100%';
                             bouton.style.margin = '4px 0';
                             bouton.addEventListener('click', () => rechercherFicheVelo(candidat.url));
@@ -13269,14 +13271,28 @@ def composants_techniques_de_page(html_page, source_url=None):
             flags=re.I | re.S
         )
         texte_section = re.sub(r"<[^>]+>", " ", bloc_section)
-        texte_section = re.sub(r"\s+", " ", html_lib.unescape(texte_section)).strip()
-        modele = re.search(
-            r"\b(?:modele|modèle|model)\s*[:：]?\s*(.+?)(?=\b(?:debattement|d[eé]battement|travel|type|capacite|capacité|capacity|taille|size)\b|$)",
-            texte_section,
-            re.I | re.S
+        texte_section = re.sub(r"\s+", " ", html_lib.unescape(texte_section)).strip()[:1500]
+        fin_valeur = (
+            r"(?=\b(?:debattement|d[eé]battement|travel|type|capacite|capacité|capacity|taille|size|"
+            r"syst[eè]me|position|puissance|couple|power|torque|marque|brand|poids|weight|nombre|"
+            r"mod[eè]le|model|dimensions?|voir plus)\b|$)"
         )
-        if modele:
-            ajouter(entete.group(2), modele.group(1))
+        modele = re.search(r"\b(?:modele|modèle|model)\s*[:：]?\s*(.+?)" + fin_valeur, texte_section, re.I | re.S)
+        marque = re.search(r"\b(?:marque|brand)\s*[:：]?\s*(.+?)" + fin_valeur, texte_section, re.I | re.S)
+        valeur_section = None
+        if modele and modele.group(1).strip():
+            valeur_section = modele.group(1).strip()
+            nom_marque = marque.group(1).strip() if marque else ""
+            if nom_marque and len(nom_marque) <= 40 and nom_marque.lower() not in valeur_section.lower():
+                valeur_section = nom_marque + " " + valeur_section
+        elif marque and categorie in ("moteur", "batterie") and len(marque.group(1).strip()) <= 40:
+            valeur_section = marque.group(1).strip()
+        if categorie == "batterie":
+            capacite = re.search(r"(?:capacit[eé]|capacity)?\s*[:：]?\s*([0-9][0-9 ,.]{1,6}\s?Wh)\b", texte_section, re.I)
+            if capacite:
+                valeur_section = (valeur_section + " " if valeur_section else "") + capacite.group(1).strip()
+        if valeur_section:
+            ajouter(entete.group(2), valeur_section)
 
     # Tableaux : certaines fiches placent plusieurs couples libellé/valeur sur une ligne.
     for ligne in re.findall(r"<tr\b[^>]*>(.*?)</tr>", html_page, re.I | re.S):
@@ -13340,6 +13356,18 @@ def composants_techniques_de_page(html_page, source_url=None):
             parcourir(json.loads(bloc))
         except (ValueError, TypeError):
             continue
+
+    # Phrases : « fourche FOX Rhythm 36, ... » ou « amortisseur FOX Performance Float X ».
+    # Seulement pour les marques de suspension connues, et seulement si rien n'a été trouvé
+    # pour cette catégorie par une présentation plus fiable.
+    texte_phrases = texte_page_fiche(html_page)
+    for correspondance in re.finditer(
+        r"\b(fourche|fork|amortisseur|rear shock)\s+((?:FOX|RockShox|SR Suntour|Marzocchi|Manitou|DT Swiss|Öhlins|Formula)\b[^.;,()]{2,50}?)(?=\s+(?:et|and|avec|with|d'un|d'une)\b|[.;,()]|$)",
+        texte_phrases,
+        re.I
+    ):
+        if categorie_pour(correspondance.group(1)) not in trouves:
+            ajouter(correspondance.group(1), correspondance.group(2))
 
     # Compatibilité fabricant connue : Shimano BR-M6120.
     # Le fabricant indique D03S-RX comme garniture standard et D02S-MX comme option métal.
@@ -13681,8 +13709,15 @@ def recherche_fiche_velo(data: RechercheFicheVeloRequest, x_code_acces: Optional
         type_velo = "descente"
     elif re.search(r"\bvtt\b|\bmountain bike\b", bas):
         type_velo = "vtt"
-    moteur_match = re.search(r"(?:Bosch\s+(?:Performance Line|Performance|CX|SX|PX)[^.;,]{0,35}|Shimano\s+EP[0-9]{1,2}[^.;,]{0,25}|Yamaha\s+(?:PW|PW-X)[^.;,]{0,25}|Brose[^.;,]{0,25})", texte, re.I)
+    moteur_match = re.search(r"(?:Bosch\s+(?:Performance Line|Performance|CX|SX|PX|Active Line|Cargo Line)[^.;,]{0,35}|Shimano\s+EP[0-9]{1,2}[^.;,]{0,25}|Yamaha\s+(?:PW|PW-X)[^.;,]{0,25}|Brose[^.;,]{0,25}|TQ[\s-]*(?:HPR|HPR50|HPR120)[^.;,]{0,25}|Fazua[^.;,]{0,25}|Specialized\s+(?:SL|Turbo)[^.;,]{0,25}|Giant\s+SyncDrive[^.;,]{0,25}|DJI\s+Avinox[^.;,]{0,25}|Panasonic[^.;,]{0,25})", texte, re.I)
     batterie_match = re.search(r"(?:Bosch\s+Power(?:Tube|Pack)[^.;,]{0,30}|PowerTube\s*[0-9]{2,4}\s?Wh|[0-9]{2,4}\s?Wh(?:\s+battery|\s+batterie)?)", texte, re.I)
+    # Les valeurs lues sous les titres « Moteur » et « Batterie » de la fiche sont plus sûres
+    # que le premier motif trouvé n'importe où dans la page.
+    moteur_fiche = next((p["nom"] for p in composants_techniques if p["categorie"] == "moteur" and p.get("nom")), None)
+    batterie_fiche = next((p["nom"] for p in composants_techniques if p["categorie"] == "batterie" and p.get("nom")), None)
+    if not batterie_fiche:
+        proche = re.search(r"(?:batterie|battery|accu)[^0-9]{0,40}([0-9]{3,4}\s?Wh)", texte, re.I)
+        batterie_fiche = proche.group(1) if proche else None
     suspension_detectee = None
     if re.search(r"full suspension|suspension intégrale|double suspension|tout suspendu", bas):
         suspension_detectee = "double"
@@ -13709,8 +13744,8 @@ def recherche_fiche_velo(data: RechercheFicheVeloRequest, x_code_acces: Optional
         "suspension": suspension_detectee,
         "tubeless": tubeless_detecte,
         "transmission": transmission_detectee,
-        "moteur": moteur_match.group(0).strip()[:120] if moteur_match else None,
-        "batterie": batterie_match.group(0).strip()[:120] if batterie_match else None,
+        "moteur": (moteur_fiche or (moteur_match.group(0).strip() if moteur_match else None) or "")[:120] or None,
+        "batterie": (batterie_fiche or (batterie_match.group(0).strip() if batterie_match else None) or "")[:120] or None,
         "composants_techniques": composants_techniques,
         "sources_fiche": sources_fiche,
         "source": finale,

@@ -146,6 +146,24 @@ jobs:
           assert ("freins", "Shimano Deore M6120") in extraits_grosse, extraits_grosse
           print("OK: extraction d'une page de %d octets en %.2f s." % (len(grosse_page), duree))
 
+          # Fiches réelles du Trek Fuel EXe 9.7 (structure observée le 31/10/2026) :
+          # sous-titres Moteur/Batterie/Freins avec Marque, Modèle, Capacité sur des lignes séparées.
+          html_reelle = """
+          <h3>Freins</h3><ul><li><strong>Marque :</strong> Shimano</li><li><strong>Modèle :</strong> M6100</li><li><strong>Système :</strong> Disque Hydraulique</li></ul>
+          <h4>Pneus</h4><ul><li><strong>Marque :</strong> Bontrager</li><li><strong>Modèle :</strong> XR5 Team Issue</li><li><strong>Dimensions :</strong> 29x2.5</li></ul>
+          <h3>Moteur</h3><ul><li><strong>Marque :</strong> TQ</li><li><strong>Modèle :</strong> HPR50</li><li><strong>Puissance :</strong> 250 W</li></ul>
+          <h3>Batterie</h3><ul><li><strong>Capacité :</strong> 360 Wh</li></ul>
+          <p>Autre vélo : batterie 800 Wh en option.</p>
+          <p>Fourche Fox Rhythm 36 et amortisseur Fox Float X Performance.</p>
+          """
+          pieces_reelles = main.composants_techniques_de_page(html_reelle, "https://example.test/reelle")
+          extraits_reels = {(p["categorie"], p["nom"]) for p in pieces_reelles if p.get("nom")}
+          for attendu in (("moteur", "TQ HPR50"), ("batterie", "360 Wh"), ("freins", "Shimano M6100"),
+                          ("pneus", "Bontrager XR5 Team Issue"), ("fourche", "Fox Rhythm 36"),
+                          ("amortisseur", "Fox Float X Performance")):
+              assert attendu in extraits_reels, (attendu, extraits_reels)
+          print("OK: fiche réelle Trek Fuel EXe 9.7 (structure observée).")
+
           main.verifier_auth = lambda _code: None
 
           patins = main.entretiens_du_type("route", "patins")
