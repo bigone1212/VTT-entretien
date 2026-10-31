@@ -1,3 +1,13 @@
+# Mise à jour du relais — 31/10/2026 — PR #17 fusionnée (lien collé dans le champ de recherche)
+
+- Retour de Math après la PR #16 : « Aucune fiche trouvée » en tapant le nom du vélo. Le code de recherche DuckDuckGo/Bing n'a pas changé ; cause probable (NON vérifiée) : les moteurs ne rendent aucun résultat exploitable au serveur Render.
+- Défaut réel trouvé : le champ « Modèle du vélo ou lien constructeur » envoyait un lien collé comme texte de recherche (le serveur ne lisait un lien que dans le champ `url`).
+- PR #17 : **fusionnée** avec l'accord explicite de Math le 31/10/2026. Commit de fusion sur `main` : `0ac4e367fe8eadf55e5ae87269b6c525c21028a3`. Un lien (http, https ou www) collé dans le champ est maintenant lu directement. Fichiers : `main.py`, `.github/workflows/maillons-check.yml` (test ajouté). CI de la branche en succès (runs `41179779266`, `41179781866`).
+- **Render : déploiement non vérifié, ne pas l'annoncer comme terminé avant statut `live`.** Aucune opération Neon, aucune donnée modifiée.
+- Étape suivante : Math teste en collant le lien `https://shop.roulezjeunesse.com/products/trek-fuel-exe-9-7-2025` et dit ce qui s'affiche. Si la recherche par nom échoue toujours, envisager un autre moyen de trouver les fiches que DuckDuckGo/Bing.
+
+---
+
 # Mise à jour du relais — 31/10/2026 — PR #16 fusionnée (lecture des vraies fiches)
 
 - Retour de Math après la PR #15 : la recherche répond, mais seule la batterie ressort (« 800 W », au lieu de 360 Wh). Il clique sur les 2 premiers liens proposés, dont le titre ne lui dit rien.
