@@ -1,3 +1,15 @@
+# Mise à jour du relais — 31/10/2026 — PR #16 fusionnée (lecture des vraies fiches)
+
+- Retour de Math après la PR #15 : la recherche répond, mais seule la batterie ressort (« 800 W », au lieu de 360 Wh). Il clique sur les 2 premiers liens proposés, dont le titre ne lui dit rien.
+- PR #16 « Mieux lire les vraies fiches » : **fusionnée** avec l'accord explicite de Math le 31/10/2026. Commit de fusion sur `main` : `775bcc2738177d1cfa3e83c1769969dcc565e9c0`. Fichiers : `main.py`, `.github/workflows/maillons-check.yml`.
+- Constats (WebFetch sur Roulez Jeunesse et Culture Vélo, résumés, pas le HTML brut) : moteur TQ HPR50 inconnu du programme ; batterie lue au premier « Wh » de la page ; « Marque » et « Modèle » sur deux lignes sous des sous-titres ; fourche et amortisseur seulement dans une phrase.
+- Changements : moteurs TQ/Fazua/Specialized/Giant/DJI reconnus ; moteur et batterie lus sous leur titre en priorité ; Marque + Modèle assemblés ; phrases « fourche/amortisseur + marque connue » ; nom du site affiché à côté de chaque fiche proposée (seul changement d'apparence).
+- Tests : CI de la branche en succès (runs `41178710272`, `41178713251`). Les tests utilisent des pages RECONSTITUÉES d'après ces fiches ; le HTML réel est inaccessible depuis l'environnement de Claude (accès bloqué). Selle et tige de selle absentes de ces fiches.
+- **Render : déploiement non vérifié, ne pas l'annoncer comme terminé avant statut `live`.** Aucune opération Neon, aucune donnée modifiée.
+- Étape suivante : Math refait la recherche du Trek Fuel EXe 9.7 et dit quels champs sont corrects ou manquants. Si ça échoue encore, il faudra le HTML réel d'une page (enregistrée depuis son navigateur) pour tester sur la vraie structure.
+
+---
+
 # Mise à jour du relais — 31/10/2026 — PR #15 fusionnée (recherche de fiche trop lente)
 
 - PR #15 « Réparer la recherche de fiche » : **fusionnée** avec l'accord explicite de Math le 31/10/2026. Commit de fusion sur `main` : `838cf07d57e68c166c1f0ad359bc0fc3c0f80c66`. Commit du correctif : `128e54cf704f69e630f7315cfd7bda5ab1389c9a`.
