@@ -1,3 +1,14 @@
+# Mise à jour du relais — 31/10/2026 — PR #18 et #19 fusionnées
+
+- Retour de Math sur la vraie fiche Roulez Jeunesse (après PR #17) : moteur TQ HPR50, batterie 360 Wh, freins, pneus, amortisseur trouvés ; mais cadre « ✅ » et « S,M,L,XL », fourche « ✅ », roues en doublon des pneus.
+- PR #18 : **fusionnée** avec l'accord explicite de Math le 31/10/2026 (commit de fusion `23f70a46233ced62cf397a9e6604daa8dbaa4725`). Cases cochées et listes de tailles ignorées ; la fourche est alors cherchée dans les phrases ; pneus de la section « Roues » non répétés ; valeurs coupées en fin de ligne/paragraphe. Test ajouté au CI.
+- PR #19 : **fusionnée** avec l'accord explicite de Math le 31/10/2026 (commit de fusion `c70b8c11a34d8d0fdbe250bf99723631370a39bc`). (1) Une seule source suffit : composant coché d'office sauf quand plusieurs versions sont proposées, sélection placée dans le formulaire sans clic supplémentaire. (2) Fiche des autres vélos : liste « Taille du cadre » (XS à XXL) comme pour le CUBE, enregistrée dans « Mes réglages vélo » du vélo actif (`/api/mes-reglages`, `taille_cadre`). Pas de changement serveur. Test navigateur du CI mis à jour.
+- CI : succès sur les deux branches (runs `41180639107`, `41180636276`, `41181098486`, `41181095559`). Le CI ne tourne pas sur `main` : après fusion, Claude a seulement revérifié la syntaxe Python et JavaScript et les tests d'extraction sur pages reconstituées (le test navigateur n'a pas été relancé sur la fusion des deux PR).
+- Limites : pages testées reconstituées, le HTML réel est inaccessible depuis l'environnement de Claude ; Render et téléphone non testés. **Déploiement Render non vérifié : ne pas l'annoncer comme terminé avant statut `live`.** Aucune opération Neon, aucune donnée modifiée.
+- Étape suivante (demandée par Math, PAS commencée) : la fiche technique des autres vélos doit suivre ce qui est trouvé au lieu de lignes fixes. Proposition faite à Math : une carte par composant trouvé (même style que la fiche du CUBE), lignes sans information masquées au lieu de « À confirmer » ; attention : le test navigateur du CI dépend des ids `ficheAutreFreins`, `ficheAutreMoteurLigne`, `ficheComposantsTechniques`, etc. ; accord de Math sur le principe à confirmer avant de coder.
+
+---
+
 # Mise à jour du relais — 31/10/2026 — PR #17 fusionnée (lien collé dans le champ de recherche)
 
 - Retour de Math après la PR #16 : « Aucune fiche trouvée » en tapant le nom du vélo. Le code de recherche DuckDuckGo/Bing n'a pas changé ; cause probable (NON vérifiée) : les moteurs ne rendent aucun résultat exploitable au serveur Render.
