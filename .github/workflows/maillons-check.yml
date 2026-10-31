@@ -180,6 +180,244 @@ jobs:
           assert not any(cat == "roues" for cat, _ in extraits_parasites), extraits_parasites
           print("OK: cases cochées, tailles et doublons de roues écartés.")
 
+          # Extrait de la vraie page Opticycles du Trek Fuel EXe 9.7 2025 (enregistrée par Math le 31/10/2026) :
+          # titres de sections, lignes libellé/valeur en <span>, versions par taille (« Size: S, M... »),
+          # plus des lignes du tableau de géométrie qui ne sont pas des composants.
+          html_opticycles = r"""<h2 class="text-2xl font-bold mb-6 md:text-3xl text-gray-900">Spécifications complètes</h2>
+           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+           <div class="rounded-2xl border border-gray-300 bg-white shadow-sm px-4 py-6 sm:px-6 sm:py-8">
+           <div class="flex items-center gap-3 mb-6">
+           <div class="bg-blue-50 p-3 rounded-xl">
+           </div>
+           <h3 class="text-xl font-bold text-gray-900">Fourche</h3>
+           </div>
+           <div class="space-y-4">
+           <div class="flex justify-between items-baseline border-b border-gray-100 pb-3">
+           <span class="text-sm font-medium text-gray-600 flex-shrink-0">Modèle</span>
+           <span class="text-base font-semibold text-gray-900 text-right line-clamp-2 ml-4 max-w-[60%]">Fox
+          RockShox Rhythm 36
+          Lyrik Select+</span>
+           </div>
+           <div class="flex justify-between items-baseline">
+           <span class="text-sm font-medium text-gray-600 flex-shrink-0">Débattement</span>
+           <span class="text-base font-semibold text-gray-900 text-right line-clamp-2 ml-4 max-w-[60%]">150 mm</span>
+           </div>
+           </div>
+           </div>
+           <div class="rounded-2xl border border-gray-300 bg-white shadow-sm px-4 py-6 sm:px-6 sm:py-8">
+           <div class="flex items-center gap-3 mb-6">
+           <div class="bg-blue-50 p-3 rounded-xl">
+           </div>
+           <h3 class="text-xl font-bold text-gray-900">Suspension arrière</h3>
+           </div>
+           <div class="space-y-4">
+           <div class="flex justify-between items-baseline border-b border-gray-100 pb-3">
+           <span class="text-sm font-medium text-gray-600 flex-shrink-0">Modèle</span>
+           <span class="text-base font-semibold text-gray-900 text-right line-clamp-2 ml-4 max-w-[60%]">Fox Float X</span>
+           </div>
+           <div class="flex justify-between items-baseline">
+           <span class="text-sm font-medium text-gray-600 flex-shrink-0">Débattement</span>
+           <span class="text-base font-semibold text-gray-900 text-right line-clamp-2 ml-4 max-w-[60%]">140 mm</span>
+           </div>
+           </div>
+           </div>
+           <div class="rounded-2xl border border-gray-300 bg-white shadow-sm px-4 py-6 sm:px-6 sm:py-8">
+           <div class="flex items-center gap-3 mb-6">
+           <div class="bg-blue-50 p-3 rounded-xl">
+           </div>
+           <h3 class="text-xl font-bold text-gray-900">Batterie</h3>
+           </div>
+           <div class="space-y-4">
+           <div class="flex justify-between items-baseline border-b border-gray-100 pb-3">
+           <span class="text-sm font-medium text-gray-600 flex-shrink-0">Modèle</span>
+           <span class="text-base font-semibold text-gray-900 text-right line-clamp-2 ml-4 max-w-[60%]">TQ TQ</span>
+           </div>
+           <div class="flex justify-between items-baseline border-b border-gray-100 pb-3">
+           <span class="text-sm font-medium text-gray-600 flex-shrink-0">Capacité</span>
+           <span class="text-base font-semibold text-gray-900 text-right line-clamp-2 ml-4 max-w-[60%]">360Wh</span>
+           </div>
+           <div class="flex justify-between items-baseline">
+           <span class="text-sm font-medium text-gray-600 flex-shrink-0">Autonomie</span>
+           <span class="text-base font-semibold text-gray-900 text-right line-clamp-2 ml-4 max-w-[60%]">35km</span>
+           </div>
+           </div>
+           </div>
+           <div class="rounded-2xl border border-gray-300 bg-white shadow-sm px-4 py-6 sm:px-6 sm:py-8">
+           <div class="flex items-center gap-3 mb-6">
+           <div class="bg-blue-50 p-3 rounded-xl">
+           </div>
+           <h3 class="text-xl font-bold text-gray-900">Moteur</h3>
+           </div>
+           <div class="space-y-4">
+           <div class="flex justify-between items-baseline border-b border-gray-100 pb-3">
+           <span class="text-sm font-medium text-gray-600 flex-shrink-0">Modèle</span>
+           <span class="text-base font-semibold text-gray-900 text-right line-clamp-2 ml-4 max-w-[60%]">TQ TQ</span>
+           </div>
+           <div class="flex justify-between items-baseline">
+           <span class="text-sm font-medium text-gray-600 flex-shrink-0">Puissance</span>
+           <span class="text-base font-semibold text-gray-900 text-right line-clamp-2 ml-4 max-w-[60%]">360W</span>
+           </div>
+           </div>
+           </div>
+           <div class="rounded-2xl border border-gray-300 bg-white shadow-sm px-4 py-6 sm:px-6 sm:py-8">
+           <div class="flex items-center gap-3 mb-6">
+           <div class="bg-blue-50 p-3 rounded-xl">
+           </div>
+           <h3 class="text-xl font-bold text-gray-900">Transmission</h3>
+           </div>
+           <div class="space-y-4">
+           <div class="flex justify-between items-baseline border-b border-gray-100 pb-3">
+           <span class="text-sm font-medium text-gray-600 flex-shrink-0">Groupe</span>
+           <span class="text-base font-semibold text-gray-900 text-right line-clamp-2 ml-4 max-w-[60%]">XT, SLX</span>
+           </div>
+           <div class="flex justify-between items-baseline border-b border-gray-100 pb-3">
+           <span class="text-sm font-medium text-gray-600 flex-shrink-0">Vitesses</span>
+           <span class="text-base font-semibold text-gray-900 text-right line-clamp-2 ml-4 max-w-[60%]">1×12</span>
+           </div>
+           <div class="flex justify-between items-baseline border-b border-gray-100 pb-3">
+           <span class="text-sm font-medium text-gray-600 flex-shrink-0">Type</span>
+           <span class="text-base font-semibold text-gray-900 text-right line-clamp-2 ml-4 max-w-[60%]">Mécanique</span>
+           </div>
+           <div class="flex justify-between items-baseline border-b border-gray-100 pb-3">
+           <span class="text-sm font-medium text-gray-600 flex-shrink-0">Plateaux</span>
+           <span class="text-base font-semibold text-gray-900 text-right line-clamp-2 ml-4 max-w-[60%]">32T</span>
+           </div>
+           <div class="flex justify-between items-baseline">
+           <span class="text-sm font-medium text-gray-600 flex-shrink-0">Cassette</span>
+           <span class="text-base font-semibold text-gray-900 text-right line-clamp-2 ml-4 max-w-[60%]">10-51T</span>
+           </div>
+           </div>
+           </div>
+           <div class="rounded-2xl border border-gray-300 bg-white shadow-sm px-4 py-6 sm:px-6 sm:py-8">
+           <div class="flex items-center gap-3 mb-6">
+           <div class="bg-blue-50 p-3 rounded-xl">
+           </div>
+           <h3 class="text-xl font-bold text-gray-900">Freinage</h3>
+           </div>
+           <div class="space-y-4">
+           <div class="flex justify-between items-baseline border-b border-gray-100 pb-3">
+           <span class="text-sm font-medium text-gray-600 flex-shrink-0">Type</span>
+           <span class="text-base font-semibold text-gray-900 text-right line-clamp-2 ml-4 max-w-[60%]">Disque hydraulique</span>
+           </div>
+           <div class="flex justify-between items-baseline border-b border-gray-100 pb-3">
+           <span class="text-sm font-medium text-gray-600 flex-shrink-0">Modèle</span>
+           <span class="text-base font-semibold text-gray-900 text-right line-clamp-2 ml-4 max-w-[60%]">Shimano M6100</span>
+           </div>
+           <div class="flex justify-between items-baseline">
+           <span class="text-sm font-medium text-gray-600 flex-shrink-0">Disques</span>
+           <span class="text-base font-semibold text-gray-900 text-right line-clamp-2 ml-4 max-w-[60%]">203 mm</span>
+           </div>
+           </div>
+           </div>
+           <div class="rounded-2xl border border-gray-300 bg-white shadow-sm px-4 py-6 sm:px-6 sm:py-8">
+           <div class="flex items-center gap-3 mb-6">
+           <div class="bg-blue-50 p-3 rounded-xl">
+           </div>
+           <h3 class="text-xl font-bold text-gray-900">Roues</h3>
+           </div>
+           <div class="space-y-4">
+           <div class="flex justify-between items-baseline border-b border-gray-100 pb-3">
+           <span class="text-sm font-medium text-gray-600 flex-shrink-0">Jantes</span>
+           <span class="text-base font-semibold text-gray-900 text-right line-clamp-2 ml-4 max-w-[60%]">Aluminium</span>
+           </div>
+           <div class="flex justify-between items-baseline border-b border-gray-100 pb-3">
+           <span class="text-sm font-medium text-gray-600 flex-shrink-0">Pneus</span>
+           <span class="text-base font-semibold text-gray-900 text-right line-clamp-2 ml-4 max-w-[60%]">Bontrager XR5 Team Issue / Bontrager XR5</span>
+           </div>
+           <div class="flex justify-between items-baseline border-b border-gray-100 pb-3">
+           <span class="text-sm font-medium text-gray-600 flex-shrink-0">Type</span>
+           <span class="text-base font-semibold text-gray-900 text-right line-clamp-2 ml-4 max-w-[60%]">TLR</span>
+           </div>
+           <div class="flex justify-between items-baseline border-b border-gray-100 pb-3">
+           <span class="text-sm font-medium text-gray-600 flex-shrink-0">Largeur pneus</span>
+           <span class="text-base font-semibold text-gray-900 text-right line-clamp-2 ml-4 max-w-[60%]">2.5&quot;</span>
+           </div>
+           <div class="flex justify-between items-baseline border-b border-gray-100 pb-3">
+           <span class="text-sm font-medium text-gray-600 flex-shrink-0">Dégagement max</span>
+           <span class="text-base font-semibold text-gray-900 text-right line-clamp-2 ml-4 max-w-[60%]">2.6&quot;</span>
+           </div>
+           <div class="flex justify-between items-baseline">
+           <span class="text-sm font-medium text-gray-600 flex-shrink-0">Taille de roue</span>
+           <span class="text-base font-semibold text-gray-900 text-right line-clamp-2 ml-4 max-w-[60%]">29</span>
+           </div>
+           </div>
+           </div>
+           <div class="rounded-2xl border border-gray-300 bg-white shadow-sm px-4 py-6 sm:px-6 sm:py-8">
+           <div class="flex items-center gap-3 mb-6">
+           <div class="bg-blue-50 p-3 rounded-xl">
+           </div>
+           <h3 class="text-xl font-bold text-gray-900">Composants</h3>
+           </div>
+           <div class="space-y-4">
+           <div class="flex justify-between items-baseline border-b border-gray-100 pb-3">
+           <span class="text-sm font-medium text-gray-600 flex-shrink-0">Cintre</span>
+           <span class="text-base font-semibold text-gray-900 text-right line-clamp-2 ml-4 max-w-[60%]">Size: S, M, L, XL, Bontrager Line, alloy, 35 mm, 27.5 mm rise, 780 mm width; Size: S, M, L, XL, Bontrager Line Pro, OCLV Carbon, 35 mm, 27.5 mm rise, 780 mm width</span>
+           </div>
+           <div class="flex justify-between items-baseline border-b border-gray-100 pb-3">
+           <span class="text-sm font-medium text-gray-600 flex-shrink-0">Potence</span>
+           <span class="text-base font-semibold text-gray-900 text-right line-clamp-2 ml-4 max-w-[60%]">Bontrager Elite, 35 mm, 0-degree, 45 mm length</span>
+           </div>
+           <div class="flex justify-between items-baseline border-b border-gray-100 pb-3">
+           <span class="text-sm font-medium text-gray-600 flex-shrink-0">Selle</span>
+           <span class="text-base font-semibold text-gray-900 text-right line-clamp-2 ml-4 max-w-[60%]">Size: S, M, L, XL, Bontrager Arvada, hollow chromoly rails, 138 mm width; Size: S, M, L, XL, Bontrager Verse P3, chromoly rails</span>
+           </div>
+           <div class="flex justify-between items-baseline">
+           <span class="text-sm font-medium text-gray-600 flex-shrink-0">Tige de selle</span>
+           <span class="text-base font-semibold text-gray-900 text-right line-clamp-2 ml-4 max-w-[60%]">Size: S, TranzX JD-YSP39, 100 mm travel, internal routing, 34.9 mm; Size: S, Bontrager Line Dropper, 100mm travel, MaxFlow, internal routing, 34.9 mm, 310mm length; Size: M, TranzX JD-YSP39, 150 mm travel, internal routing, 34.9 mm; Size: M, Bontrager Line Dropper, 150mm travel, MaxFlow, internal routing, 34.9 mm, 410 mm length; Size: L, XL, TranzX JD-YSP39, 170 mm travel, internal routing, 34.9 mm; Size: L, XL, Bontrager Line Dropper, 170 mm travel, MaxFlow, internal routing, 34.9 mm, 450 mm length</span>
+           </div>
+           </div>
+           </div>
+           <div class="rounded-2xl border border-gray-300 bg-white shadow-sm px-4 py-6 sm:px-6 sm:py-8">
+           <div class="flex items-center gap-3 mb-6">
+           <div class="bg-blue-50 p-3 rounded-xl">
+           </div>
+           <h3 class="text-xl font-bold text-gray-900">Technologie</h3>
+           </div>
+           <div class="space-y-4">
+           <div class="flex justify-between items-baseline">
+           <span class="text-sm font-medium text-gray-600 flex-shrink-0">Fonctionnalités</span>
+           <span class="text-base font-semibold text-gray-900 text-right line-clamp-2 ml-4 max-w-[60%]">Tige de selle télescopique · UDH</span>
+           </div>
+           </div>
+           </div>
+           </div>
+           </div>
+           </section>
+           </div>
+           <div class="ad-container xl:hidden w-full flex flex-col items-center py-6 bg-gray-50">
+           <span class="ad-label text-[10px] text-gray-400 font-light mb-1">Publicité</span>
+           <ins class="adsbygoogle"
+           style="display:block;min-width:300px;max-width:336px;width:100%;height:250px"
+           data-ad-client="ca-pub-3868106060325515"
+           data-ad-slot="4465727419"
+           data-ad-format="rectangle"
+           data-full-width-responsive="false"></ins>
+           </div>
+           </div>
+           <section class="reviews-container max-w-[1000px] mx-auto px-4 py-8">
+           <div class="mb-6">
+
+          <table><tr class="geometry-row"><td class="a">Déport fourche</td><td class="b">44,0mm</td></tr>
+          <tr class="geometry-row"><td class="a">Tube de selle</td><td class="b">410,0mm</td></tr>
+          <tr class="geometry-row"><td class="a">Angle de selle</td><td class="b">69,30°</td></tr></table>"""
+          import time
+          depart = time.time()
+          pieces_opti = main.composants_techniques_de_page(html_opticycles, "https://opticycles.com/exemple")
+          assert time.time() - depart < 3, "lecture trop lente"
+          ex_opti = {(p["categorie"], p["nom"]) for p in pieces_opti if p.get("nom")}
+          for attendu in (("amortisseur", "Fox Float X"), ("moteur", "TQ"), ("batterie", "TQ 360Wh"), ("cassette", "10-51T"),
+                          ("freins", "Shimano M6100"), ("transmission", "XT, SLX (1×12)"), ("plateau", "32T"),
+                          ("pneus", "Bontrager XR5 Team Issue / Bontrager XR5"),
+                          ("tige_de_selle", "Taille M : TranzX JD-YSP39, 150 mm travel, internal routing, 34.9 mm")):
+              assert attendu in ex_opti, (attendu, ex_opti)
+          assert any(c == "fourche" and "Rhythm 36" in n for c, n in ex_opti), ex_opti
+          assert sum(1 for c, n in ex_opti if c == "tige_de_selle") == 6, ex_opti
+          assert sum(1 for c, n in ex_opti if c == "selle" and n.startswith("Taille S, M, L, XL : Bontrager")) == 2, ex_opti
+          for interdit in (("fourche", "44,0mm"), ("selle", "410,0mm"), ("selle", "69,30°"), ("pneus", '2.5"'), ("roues", "29")):
+              assert interdit not in ex_opti, (interdit, ex_opti)
+          print("OK: vraie fiche Opticycles du Trek Fuel EXe 9.7 lue correctement.")
+
+
           main.verifier_auth = lambda _code: None
 
           patins = main.entretiens_du_type("route", "patins")
