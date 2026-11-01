@@ -1644,7 +1644,7 @@ jobs:
               items = page.eval_on_selector_all("#veloMenuZone [role=menuitem]", "os => os.map(o => [o.textContent.trim(), o.disabled])")
               print("menu:", items)
               noms = [i[0] for i in items]
-              assert len(items) == 7 and noms[6] == "Supprimer « Gravel test »" and not items[6][1], items
+              assert len(items) == 8 and noms[0] == "Ajouter un vélo" and not items[0][1] and noms[7] == "Supprimer « Gravel test »" and not items[7][1], items
               page.click("#veloMenuZone [role=menuitem]:has-text('Supprimer «')")
               page.wait_for_timeout(1500)
               assert len(dialogues) == 1 and "7 pièce" in dialogues[0] and "3 sortie" in dialogues[0] and "Gravel test" in dialogues[0], dialogues
@@ -1655,7 +1655,7 @@ jobs:
               # CUBE affiché : suppression désactivée
               page.click(bouton)
               items = page.eval_on_selector_all("#veloMenuZone [role=menuitem]", "os => os.map(o => o.disabled)")
-              assert items == [True, False, False, True, True, True, True], items
+              assert items == [False, True, False, False, True, True, True, True], items
               assert not erreurs, erreurs
               nav.close()
           print("OK menu vélo : suppression confirmée, retour au CUBE, CUBE protégé")
@@ -2111,6 +2111,11 @@ jobs:
               assert any(c.startswith("Fourche Fox Rhythm 36") and "Validé par toi" in c for c in cartes), cartes
               assert not any(c.startswith("Freins") or c.startswith("Transmission") for c in cartes), cartes
               assert "À confirmer" not in txt("#ficheAutreEquipement"), txt("#ficheAutreEquipement")
+              # Le formulaire d'ajout est replié : il s'ouvre dans une fenêtre (menu trois points)
+              assert not page.is_visible("#formAjouterVelo") and not page.eval_on_selector("#fenetreVelo", "e => e.open")
+              page.click("#veloMenuZone button[aria-label='Actions du vélo']")
+              page.click("#veloMenuZone [role=menuitem]:has-text('Ajouter un vélo')"); page.wait_for_timeout(300)
+              assert page.eval_on_selector("#fenetreVelo", "e => e.open") and page.is_visible("#formAjouterVelo")
               page.fill("#veloRechercheFiche", "https://exemple.test/fiche")
               page.click("#boutonRechercheFiche"); page.wait_for_timeout(300)
               cases = page.locator("#resultatsRechercheFiche input[type=radio]")
@@ -2123,6 +2128,8 @@ jobs:
               assert selection[0]["categorie"] == "fourche"
               assert selection[1]["categorie"] == "tige_de_selle"
               assert all(piece["validation"] == "valide_par_utilisateur" for piece in selection)
+              page.keyboard.press("Escape"); page.wait_for_timeout(200)
+              assert not page.eval_on_selector("#fenetreVelo", "e => e.open") and page.input_value("#veloRechercheFiche") == ""
               page.click("#ficheTechniqueAutre summary"); page.wait_for_timeout(300)
               # Choisir une autre taille l'enregistre pour CE vélo (réglages du vélo 2), pas pour le CUBE
               with page.expect_request(lambda r: "/api/mes-reglages" in r.url and r.method == "POST") as demande_taille:
@@ -2132,12 +2139,14 @@ jobs:
               page.wait_for_timeout(300)
               assert page.eval_on_selector("#ficheAutreTailleChoix", "e => e.value") == "L"
               # Une seule source suffit : cochée d'office ; plusieurs versions : à choisir
+              page.evaluate("ouvrirCreationVelo()")
               page.fill("#veloRechercheFiche", "https://exemple.test/fiche")
               page.click("#boutonRechercheFiche"); page.wait_for_timeout(300)
               assert page.locator("#resultatsRechercheFiche input[type=radio]").nth(0).is_checked()
               # La sélection est déjà dans le formulaire, sans clic sur « Enregistrer ma sélection »
               auto = json.loads(page.locator("#nouveauVeloFicheComposants").input_value())
               assert [x["categorie"] for x in auto] == ["fourche"], auto
+              page.keyboard.press("Escape"); page.wait_for_timeout(200)
               page.click("#btnModifierFicheVelo"); page.wait_for_timeout(300)
               # L'édition recharge la nomenclature déjà enregistrée du vélo,
               # pas la sélection encore non enregistrée dans le formulaire.
@@ -2154,7 +2163,9 @@ jobs:
               assert txt("#ficheAutreMarque") == "Non renseignée" and txt("#ficheAutreNom") == "Route simple"
               # Le bouton ouvre toujours le formulaire de modification (comportement inchangé)
               page.click("#btnModifierFicheVelo"); page.wait_for_timeout(500)
-              assert txt("#titreFormVelo") == "Modifier la fiche du vélo"
+              assert txt("#titreFormVelo") == "Modifier la fiche du vélo" and page.eval_on_selector("#fenetreVelo", "e => e.open")
+              page.keyboard.press("Escape"); page.wait_for_timeout(200)
+              assert txt("#titreFormVelo") == "Ajouter un vélo"
               # CUBE : sa fiche d'origine revient, celle des autres disparaît
               page.select_option("#selectVelo", "1"); page.wait_for_timeout(800)
               assert shown("#ficheTechniqueCube") and not shown("#ficheTechniqueAutre")
