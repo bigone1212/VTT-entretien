@@ -1250,6 +1250,55 @@ def accueil():
                 border-color: var(--accent);
             }
 
+            dialog.fenetre-velo {
+                background: var(--card-bg);
+                color: var(--strong);
+                border: 1px solid var(--field-line);
+                border-radius: 18px;
+                padding: 16px;
+                width: min(92vw, 520px);
+                max-height: 88vh;
+                overflow-y: auto;
+                box-sizing: border-box;
+                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+            }
+
+            dialog.fenetre-velo::backdrop {
+                background: rgba(4, 12, 16, 0.62);
+            }
+
+            .fenetre-velo-entete {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+                position: sticky;
+                top: -16px;
+                z-index: 2;
+                background: var(--card-bg);
+                padding: 6px 0 10px;
+                margin: -6px 0 4px;
+            }
+
+            .fenetre-velo-fermer {
+                flex: none;
+                width: 36px;
+                height: 36px;
+                padding: 0;
+                border-radius: 50%;
+                border: 1px solid var(--field-line);
+                background: var(--field);
+                color: var(--strong);
+                font-size: 1rem;
+                line-height: 1;
+                cursor: pointer;
+            }
+
+            .fenetre-velo-fermer:focus-visible {
+                border-color: var(--accent);
+                outline: 2px solid var(--accent);
+            }
+
             #reponseIA {
                 display: block;
                 background: var(--field);
@@ -3660,8 +3709,19 @@ def accueil():
 
         <div class="page" id="page-reglages" style="display:none;">
         <section class="mes-reglages" id="blocAjouterVelo">
-            <div class="mr-titre"><strong id="titreFormVelo">Ajouter un vélo</strong><div id="veloMenuZone"></div></div>
-            <p class="form-help">Chaque vélo aura ses sorties, ses kilomètres et son carnet d'entretien séparés. La photo personnalisée sera ajoutée lors d'une étape ultérieure.</p>
+            <div class="mr-titre">
+                <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="16" r="3.5"/><circle cx="18" cy="16" r="3.5"/><path d="M6 16l4-7h5l3 7M10 9l3 7M9 6h3"/></svg><span>Mes vélos</span></strong>
+                <div id="veloMenuZone"></div>
+            </div>
+            <p class="form-help">Touche les trois points pour ajouter un vélo, modifier sa fiche, gérer sa photo ou le supprimer.</p>
+            <p class="form-help" id="messageMesVelos" aria-live="polite"></p>
+        </section>
+        <dialog id="fenetreVelo" class="fenetre-velo" aria-labelledby="titreFormVelo">
+            <div class="fenetre-velo-entete">
+                <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span id="titreFormVelo">Ajouter un vélo</span></strong>
+                <button type="button" class="fenetre-velo-fermer" id="boutonFermerFenetreVelo" aria-label="Fermer sans enregistrer">✕</button>
+            </div>
+            <p class="form-help">Chaque vélo a ses sorties, ses kilomètres et son carnet d'entretien séparés.</p>
             <form id="formAjouterVelo">
                 <label for="nouveauVeloNom">Nom du vélo</label>
                 <input id="nouveauVeloNom" name="nom" type="text" maxlength="80" placeholder="Ex. : Mon gravel" required>
@@ -3743,7 +3803,7 @@ def accueil():
                 <button type="button" id="btnAnnulerEditionFiche" style="display:none; width:100%; margin-top:8px;" onclick="annulerEditionFiche()">Annuler la modification</button>
                 <p class="form-help" id="nouveauVeloMessage"></p>
             </form>
-        </section>
+        </dialog>
         <section class="apparence mr-repliable" id="blocApparence" aria-label="Apparence">
             <div class="mr-titre">
                 <button type="button" class="mr-entete" aria-expanded="false" aria-controls="blocApparenceCorps">
@@ -4561,7 +4621,7 @@ def accueil():
 
             // Photo récupérée sur Internet : le serveur va la chercher, puis la page la réduit et l'enregistre.
             async function photoDepuisLien() {
-                const message = document.getElementById('nouveauVeloMessage');
+                const message = document.getElementById('messageMesVelos');
                 const lien = prompt("Colle ici le lien de la page du vélo (Décathlon, Opticycles...) ou d'une image :");
                 if (!lien || !lien.trim()) return;
                 try {
@@ -4729,7 +4789,7 @@ def accueil():
             }
 
             async function placerRepresAuto(guidonADroite, silencieux) {
-                const message = document.getElementById('nouveauVeloMessage');
+                const message = document.getElementById('messageMesVelos');
                 const id = veloActifId;
                 const velo = velosDisponibles.find(v => Number(v.id) === id);
                 try {
@@ -4769,7 +4829,7 @@ def accueil():
             }
 
             async function enregistrerPhotoVelo(fichier) {
-                const message = document.getElementById('nouveauVeloMessage');
+                const message = document.getElementById('messageMesVelos');
                 const id = veloActifId;
                 try {
                     message.textContent = 'Enregistrement de la photo…';
@@ -4795,7 +4855,7 @@ def accueil():
             }
 
             async function supprimerPhotoVelo() {
-                const message = document.getElementById('nouveauVeloMessage');
+                const message = document.getElementById('messageMesVelos');
                 const id = veloActifId;
                 const velo = velosDisponibles.find(v => Number(v.id) === id);
                 if (!velo || Number(velo.a_photo) !== 1) return;
@@ -4838,6 +4898,7 @@ def accueil():
                 const nom = velo ? String(velo.nom) : 'ce vélo';
                 const court = nom.length > 22 ? nom.slice(0, 21) + '…' : nom;
                 ajouterMenuPoints(zone, 'Actions du vélo', [
+                    { icone: 'plus', texte: 'Ajouter un vélo', action: ouvrirCreationVelo },
                     { icone: 'crayon', texte: 'Modifier la fiche de « ' + court + ' »', desactive: estCube, action: modifierFicheVelo },
                     { icone: 'appareil', texte: velo && Number(velo.a_photo) === 1 ? 'Changer la photo' : 'Ajouter une photo', action: choisirPhotoVelo },
                     { icone: 'lien', texte: 'Photo depuis un lien…', action: photoDepuisLien },
@@ -4851,7 +4912,7 @@ def accueil():
             async function supprimerVelo() {
                 const velo = velosDisponibles.find(v => Number(v.id) === veloActifId);
                 if (!velo || Number(velo.id) === 1) return;
-                const message = document.getElementById('nouveauVeloMessage');
+                const message = document.getElementById('messageMesVelos');
                 try {
                     const res = await fetch('/api/velos/' + velo.id + '/contenu', { headers: getHeaders() });
                     const contenu = await res.json();
@@ -5065,7 +5126,19 @@ def accueil():
                 document.getElementById('nouveauVeloMessage').textContent = '';
                 location.hash = 'reglages';
                 afficherPage();
-                document.getElementById('blocAjouterVelo').scrollIntoView({ behavior: 'smooth', block: 'start' });
+                ouvrirFenetreVelo();
+            }
+
+            function ouvrirFenetreVelo() {
+                const fenetre = document.getElementById('fenetreVelo');
+                if (!fenetre || fenetre.open) return;
+                if (typeof fenetre.showModal === 'function') fenetre.showModal();
+                else fenetre.setAttribute('open', '');
+            }
+
+            function ouvrirCreationVelo() {
+                annulerEditionFiche();
+                ouvrirFenetreVelo();
             }
 
             function annulerEditionFiche() {
@@ -5077,8 +5150,13 @@ def accueil():
                 document.getElementById('boutonCreerVelo').textContent = 'Créer le vélo';
                 document.getElementById('btnAnnulerEditionFiche').style.display = 'none';
                 document.getElementById('nouveauVeloMessage').textContent = '';
+                const fenetre = document.getElementById('fenetreVelo');
+                if (fenetre && fenetre.open) fenetre.close();
                 afficherNomVeloActif();
             }
+
+            document.getElementById('fenetreVelo').addEventListener('close', () => annulerEditionFiche());
+            document.getElementById('boutonFermerFenetreVelo').addEventListener('click', () => annulerEditionFiche());
 
             function afficherResultatFiche(data, zone) {
                     if (data.marque) document.getElementById('nouveauVeloMarque').value = data.marque;
@@ -5399,7 +5477,7 @@ def accueil():
                     if (data.velo_id) veloActifId = Number(data.velo_id);
                     sessionStorage.setItem('maillons_velo_id', String(veloActifId));
                     annulerEditionFiche();
-                    message.textContent = edition ? 'Fiche mise à jour.' : 'Vélo créé. Chargement de ses données…';
+                    document.getElementById('messageMesVelos').textContent = edition ? 'Fiche mise à jour.' : 'Vélo créé. Chargement de ses données…';
                     await chargerVelos();
                     await rechargerDonneesVelo();
                 } catch (e) {
