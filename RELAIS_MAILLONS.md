@@ -150,6 +150,11 @@
 ---
 
 
+## 2026-11-01 — PR 23 fusionnée : « Ajouter un vélo » dans une fenêtre
+- Sur GitHub (main) : le formulaire d'ajout est replié ; l'entrée « Ajouter un vélo » du menu trois points l'ouvre dans une fenêtre (recherche, panneau IA, champs inchangés). « Modifier la fiche » ouvre la même fenêtre. Fermeture : ✕ ou Échap, sans enregistrer. Présentation seulement.
+- Testé : navigateur local (téléphone) et tests automatiques GitHub de la PR, tous passés.
+- Non vérifié d'ici : le déploiement sur Render et l'aspect sur le vrai téléphone de Math.
+
 ## Tâche en cours
 
 AMÉLIORER LA RECHERCHE DES COMPOSANTS TECHNIQUES — PR #13 — 30/10/2026.
