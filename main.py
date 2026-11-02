@@ -3508,7 +3508,8 @@ def accueil():
             }
 
             .ftv-item { position: relative; }
-            .ftv-item > span:nth-child(2) { min-width: 0; padding-right: 22px; }
+            .ftv-item > span:nth-child(2) { min-width: 0; }
+            .ftv-item > span:nth-child(2) > .ftv-libelle:first-child { display: block; padding-right: 24px; }
             .ftv-item .menu-sortie-btn { top: 2px; right: 2px; width: 30px; height: 30px; }
             .ftv-item .menu-sortie-btn svg { width: 20px; height: 20px; }
             .ftv-item .menu-sortie { top: 34px; right: 0; min-width: 200px; }
