@@ -3907,23 +3907,23 @@ def accueil():
                     <span><span class="ftv-libelle">Batterie</span><span class="ftv-valeur">Bosch PowerTube</span><span class="ftv-libelle">Capacité 800 Wh</span></span>
                 </div>
                 <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M16 7h9l4 5-3 5-5 20-5 4-4-2 3-6 4-17-3-5z"/><path d="M29 12l6 5-4 5M13 39l-3 3m9-3 4 2"/></svg></span>
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M24 5v8M13 13h22M18 13v12M30 13v12"/><rect x="15" y="25" width="6" height="13" rx="2"/><rect x="27" y="25" width="6" height="13" rx="2"/><circle cx="18" cy="43" r="2"/><circle cx="30" cy="43" r="2"/></svg></span>
                     <span><span class="ftv-libelle">Fourche avant</span><span class="ftv-valeur">Fox 36 Float AWL</span><span class="ftv-libelle">Débattement 140 mm</span></span>
                 </div>
                 <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="11" cy="10" r="4"/><circle cx="37" cy="38" r="4"/><path d="M14 13l20 22"/><path d="M16 14l-4 5 5 4-4 5 5 4-3 4"/><path d="M24 9l7 7m-2-11 7 7"/></svg></span>
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="8" r="3"/><circle cx="24" cy="40" r="3"/><path d="M24 11v3M24 34v3M16 15l16 3-16 4 16 4-16 4 16 3"/></svg></span>
                     <span><span class="ftv-libelle">Amortisseur arrière</span><span class="ftv-valeur">Fox Float Rhythm RC</span><span class="ftv-libelle">Débattement arrière 140 mm</span></span>
                 </div>
                 <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="12" cy="34" r="8"/><circle cx="35" cy="13" r="6"/><circle cx="12" cy="34" r="2"/><circle cx="35" cy="13" r="1.5"/><path d="M17 29l13-12M12 26V15h9m5 19h9v-8"/></svg></span>
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="12" cy="32" r="7"/><circle cx="36" cy="32" r="7"/><path d="M12 32l8-17h9l7 17M20 15h9M24 15l-4-6"/></svg></span>
                     <span><span class="ftv-libelle">Transmission</span><span class="ftv-valeur">Shimano XT · 12 vitesses</span><span class="ftv-libelle">Cassette Deore 10–51 dents</span></span>
                 </div>
                 <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="16"/><circle cx="24" cy="24" r="4"/><path d="M24 8v5m0 22v5M8 24h5m22 0h5M13 13l4 4m14 14 4 4M35 13l-4 4M17 31l-4 4"/><path d="M24 20v-8"/></svg></span>
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="21" cy="25" r="15"/><circle cx="21" cy="25" r="4"/><path d="M21 14v4M21 32v4M10 25h4M28 25h4"/><path d="M34 12l8 4v14l-8 4z"/></svg></span>
                     <span><span class="ftv-libelle">Freinage</span><span class="ftv-valeur">Shimano XT hydrauliques</span><span class="ftv-libelle">Disques 203 mm avant et arrière</span></span>
                 </div>
                 <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="17"/><circle cx="24" cy="24" r="3"/><path d="M24 7v14m0 6v14M7 24h14m6 0h14M12 12l9 9m6 6 9 9M36 12l-9 9m-6 6-9 9"/></svg></span>
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="17"/><circle cx="24" cy="24" r="4"/><path d="M24 7v13m0 8v13M7 24h13m8 0h13M12 12l9 9m6 6l9 9M36 12l-9 9m-6 6l-9 9"/></svg></span>
                     <span><span class="ftv-libelle">Roues et pneus</span><span class="ftv-valeur">Schwalbe Nobby Nic</span><span class="ftv-libelle">Section 2,6 pouces · roues <strong id="ftvTailleRoues">29 pouces</strong></span></span>
                 </div>
                 <div class="ftv-item">
@@ -3931,27 +3931,27 @@ def accueil():
                     <span><span class="ftv-libelle">Commande et écran</span><span class="ftv-valeur">Bosch Purion 200</span><span class="ftv-libelle">Écran intégré</span></span>
                 </div>
                 <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M8 11h22l8 8v18H8z"/><path d="M13 16h15l5 5v11H13z"/><path d="M17 20h12m-12 5h12m-12 5h7"/></svg></span>
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M11 35l11-19h13l-9 19z"/><path d="M22 16l-2-6h-6M35 16l3-7h5M11 35h15"/><circle cx="11" cy="35" r="3"/></svg></span>
                     <span><span class="ftv-libelle">Cadre</span><span class="ftv-valeur">Aluminium Superlite</span><span class="ftv-libelle">Batterie intégrée · patte UDH</span></span>
                 </div>
                 <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="12" cy="35" r="7"/><circle cx="35" cy="13" r="5"/><path d="M17 30l13-12M12 28V15h10m4 19h9v-8M30 18l5 7"/></svg></span>
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M21 5h9l-3 12M27 17l-4 17"/><circle cx="27" cy="21" r="4"/><circle cx="22" cy="38" r="5"/></svg></span>
                     <span><span class="ftv-libelle">Dérailleur arrière</span><span class="ftv-valeur">Shimano XT RD-M8100-SGS</span><span class="ftv-libelle">12 vitesses · ShadowPlus</span></span>
                 </div>
                 <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M10 10h15v28H10z"/><path d="M25 15h9a5 5 0 0 1 5 5v8a5 5 0 0 1-5 5h-9"/><path d="M14 15h7m-7 6h7m-7 6h7m-7 6h7"/></svg></span>
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M5 12h38"/><rect x="17" y="12" width="14" height="10" rx="3"/><path d="M24 22l-6 14m6-14l7 12"/></svg></span>
                     <span><span class="ftv-libelle">Commandes de vitesses</span><span class="ftv-valeur">Shimano XT SL-M8100-IR</span><span class="ftv-libelle">Commande au guidon</span></span>
                 </div>
                 <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="15"/><circle cx="24" cy="24" r="5"/><path d="M24 9v10m0 10v10M9 24h10m10 0h10"/></svg></span>
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="6"/><path d="M24 18V10M24 30v8"/><rect x="18" y="4" width="12" height="6" rx="2"/><rect x="18" y="38" width="12" height="6" rx="2"/></svg></span>
                     <span><span class="ftv-libelle">Pédalier et plateau</span><span class="ftv-valeur">ACID MTB Hybrid Pro</span><span class="ftv-libelle">36 dents en 27,5″ · 34 dents en 29″</span></span>
                 </div>
                 <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="16"/><circle cx="24" cy="24" r="12"/><circle cx="24" cy="24" r="8"/><circle cx="24" cy="24" r="4"/></svg></span>
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="17"/><circle cx="24" cy="24" r="12"/><circle cx="24" cy="24" r="7"/><circle cx="24" cy="24" r="2"/></svg></span>
                     <span><span class="ftv-libelle">Cassette</span><span class="ftv-valeur">Shimano Deore CS-M6100</span><span class="ftv-libelle">12 pignons · 10–51 dents</span></span>
                 </div>
                 <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M8 15h8v8h-8zM20 15h8v8h-8zM32 15h8v8h-8zM14 27h8v8h-8zM26 27h8v8h-8z"/><path d="M16 19h4m8 0h4m-12 12h6"/></svg></span>
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="5" y="11" width="24" height="13" rx="6.5"/><rect x="19" y="24" width="24" height="13" rx="6.5"/></svg></span>
                     <span><span class="ftv-libelle">Chaîne</span><span class="ftv-valeur">KMC e12</span><span class="ftv-libelle">Chaîne 12 vitesses pour VAE</span></span>
                 </div>
                 <div class="ftv-item">
@@ -3959,31 +3959,31 @@ def accueil():
                     <span><span class="ftv-libelle">Guide-chaîne</span><span class="ftv-valeur">Reverse Flip-Guide E-Chain Guide</span><span class="ftv-libelle">Montage direct sur le cadre</span></span>
                 </div>
                 <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="17"/><circle cx="24" cy="24" r="3"/><path d="M24 7v14m0 6v14M7 24h14m6 0h14M12 12l9 9m6 6 9 9M36 12l-9 9m-6 6-9 9"/></svg></span>
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="17"/><circle cx="24" cy="24" r="4"/><path d="M24 7v13m0 8v13M7 24h13m8 0h13M12 12l9 9m6 6l9 9M36 12l-9 9m-6 6l-9 9"/></svg></span>
                     <span><span class="ftv-libelle">Jantes</span><span class="ftv-valeur">CUBE EX30</span><span class="ftv-libelle">Tubeless Ready · 32 trous</span></span>
                 </div>
                 <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="15"/><circle cx="24" cy="24" r="5"/><path d="M24 9v10m0 10v10M9 24h10m10 0h10"/></svg></span>
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="6"/><path d="M5 24h38M15 14v20M33 14v20"/></svg></span>
                     <span><span class="ftv-libelle">Moyeux</span><span class="ftv-valeur">CUBE by Newmen</span><span class="ftv-libelle">Avant 15 mm · arrière 12 mm Boost</span></span>
                 </div>
                 <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M18 7h12l-2 22h-8z"/><path d="M17 29h14l5 5v6H12v-6z"/><path d="M19 13h10m-10 5h10"/></svg></span>
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M7 13h34c0 5-7 8-17 8S7 18 7 13z"/><path d="M24 21v23M19 33h10"/></svg></span>
                     <span><span class="ftv-libelle">Tige de selle télescopique</span><span class="ftv-valeur">CUBE Dropper Post</span><span class="ftv-libelle">Diamètre 31,6 mm · commande au guidon</span></span>
                 </div>
                 <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M8 29c5-9 10-12 18-12h8l6 7-4 7H18l-6 4z"/><path d="M17 29h18"/></svg></span>
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M5 17c8-5 17-1 21 2l15-4c1 5-2 9-8 10l-14 1c-7 0-11-3-14-9z"/><path d="M15 29l-3 9m17-8l3 8"/></svg></span>
                     <span><span class="ftv-libelle">Selle</span><span class="ftv-valeur">ACID Venec EMTB Plus 145</span><span class="ftv-libelle">Largeur annoncée 145 mm</span></span>
                 </div>
                 <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M8 14h13l5 8-4 5H9zM27 25h12l3 8-4 4H25z"/><path d="M13 18h5m12 11h5"/></svg></span>
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="9" y="15" width="30" height="18" rx="4"/><path d="M15 15v18m6-18v18m6-18v18m6-18v18M4 24h5"/></svg></span>
                     <span><span class="ftv-libelle">Pédales</span><span class="ftv-valeur">ACID PP MTB</span><span class="ftv-libelle">Pédales plates d’origine</span></span>
                 </div>
                 <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="10" y="8" width="22" height="32" rx="3"/><path d="M32 17h6v14h-6M16 14h10m-10 6h10m-10 6h7"/><path d="M20 34l3-5 3 5"/></svg></span>
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M17 5v11m14-11v11M12 16h24v7a12 12 0 0 1-24 0z"/><path d="M24 35v9"/></svg></span>
                     <span><span class="ftv-libelle">Chargeur</span><span class="ftv-valeur">Bosch 2 A</span><span class="ftv-libelle">Pour batterie Bosch PowerTube 800</span></span>
                 </div>
                 <div class="ftv-item">
-                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M9 11h30v26H9z"/><path d="M15 17h18v14H15z"/><path d="M19 20l4 8 6-8"/></svg></span>
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="7" y="10" width="11" height="28" rx="3"/><rect x="30" y="10" width="11" height="28" rx="3"/><path d="M24 8v32"/></svg></span>
                     <span><span class="ftv-libelle">Plaquettes de frein</span><span class="ftv-valeur">Shimano compatibles BR-M8120</span><span class="ftv-libelle">Référence exacte à confirmer avant achat</span></span>
                 </div>
             </div>
