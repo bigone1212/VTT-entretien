@@ -4945,20 +4945,44 @@ def accueil():
 
             const ORDRE_EQUIPEMENT = ['moteur', 'batterie', 'cadre', 'fourche', 'amortisseur', 'suspension', 'freins', 'etriers', 'plaquettes', 'disques', 'transmission', 'derailleur', 'cassette', 'chaine', 'plateau', 'pedalier', 'pedales', 'manettes', 'roues', 'pneus', 'moyeux', 'jeu_direction', 'cintre', 'potence', 'poignees', 'tige_de_selle', 'selle', 'chargeur'];
             const LIBELLES_EQUIPEMENT = { etriers: 'Étriers', derailleur: 'Dérailleur', chaine: 'Chaîne', pedalier: 'Pédalier', pedales: 'Pédales', tige_de_selle: 'Tige de selle', jeu_direction: 'Jeu de direction', poignees: 'Poignées', suspension: 'Suspension' };
-            const ICONE_FREINS = '<svg viewBox="0 0 48 48"><circle cx="13" cy="24" r="9"/><circle cx="35" cy="24" r="9"/><path d="M13 24h22M24 13v22"/></svg>';
             const ICONE_SUSPENSION = '<svg viewBox="0 0 48 48"><path d="M14 6l-4 28m4-28l10 28m-10-28h7M10 34l-3 8m13-8l3 8M27 12h12m-12 7h12m-12 7h12"/></svg>';
             const ICONE_PNEUS = '<svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="16"/><circle cx="24" cy="24" r="7"/><path d="M24 8v9m16 7h-9M24 40v-9M8 24h9"/></svg>';
             const ICONE_TRANSMISSION = '<svg viewBox="0 0 48 48"><circle cx="12" cy="32" r="7"/><circle cx="36" cy="32" r="7"/><path d="M12 32l8-17h9l7 17M20 15h9M24 15l-4-6"/></svg>';
             const ICONE_MOTEUR = '<svg viewBox="0 0 48 48"><path d="M13 10h15l7 7v14l-7 7H13l-5-7V17z"/><path d="M17 16h9v16h-9z"/><path d="M20 12v4m4-4v4M20 32v4m4-4v4M8 21H4m4 8H4m31-8h5m-5 8h5"/></svg>';
             const ICONE_BATTERIE = '<svg viewBox="0 0 48 48"><rect x="10" y="10" width="27" height="29" rx="4"/><path d="M18 6h11v4M37 19h4v11h-4"/><path d="M24 15l-6 11h6l-2 8 9-13h-6l2-6"/></svg>';
             const ICONE_PIECE = '<svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="8"/><path d="M24 6v6m0 24v6M6 24h6m24 0h6M11 11l4 4m18 18l4 4M37 11l-4 4M15 33l-4 4"/></svg>';
+            const ICONE_CADRE = '<svg viewBox="0 0 48 48"><path d="M11 35l11-19h13l-9 19z"/><path d="M22 16l-2-6h-6M35 16l3-7h5M11 35h15"/><circle cx="11" cy="35" r="3"/></svg>';
+            const ICONE_FOURCHE = '<svg viewBox="0 0 48 48"><path d="M24 5v8M13 13h22M18 13v12M30 13v12"/><rect x="15" y="25" width="6" height="13" rx="2"/><rect x="27" y="25" width="6" height="13" rx="2"/><circle cx="18" cy="43" r="2"/><circle cx="30" cy="43" r="2"/></svg>';
+            const ICONE_AMORTISSEUR = '<svg viewBox="0 0 48 48"><circle cx="24" cy="8" r="3"/><circle cx="24" cy="40" r="3"/><path d="M24 11v3M24 34v3M16 15l16 3-16 4 16 4-16 4 16 3"/></svg>';
+            const ICONE_DISQUE = '<svg viewBox="0 0 48 48"><circle cx="21" cy="25" r="15"/><circle cx="21" cy="25" r="4"/><path d="M21 14v4M21 32v4M10 25h4M28 25h4"/><path d="M34 12l8 4v14l-8 4z"/></svg>';
+            const ICONE_ETRIERS = '<svg viewBox="0 0 48 48"><path d="M12 12h24v14a8 8 0 0 1-8 8h-8a8 8 0 0 1-8-8z"/><path d="M20 34v8m8-8v8M18 20h12"/></svg>';
+            const ICONE_PLAQUETTES = '<svg viewBox="0 0 48 48"><rect x="7" y="10" width="11" height="28" rx="3"/><rect x="30" y="10" width="11" height="28" rx="3"/><path d="M24 8v32"/></svg>';
+            const ICONE_CHAINE = '<svg viewBox="0 0 48 48"><rect x="5" y="11" width="24" height="13" rx="6.5"/><rect x="19" y="24" width="24" height="13" rx="6.5"/></svg>';
+            const ICONE_DERAILLEUR = '<svg viewBox="0 0 48 48"><path d="M21 5h9l-3 12M27 17l-4 17"/><circle cx="27" cy="21" r="4"/><circle cx="22" cy="38" r="5"/></svg>';
+            const ICONE_CASSETTE = '<svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="17"/><circle cx="24" cy="24" r="12"/><circle cx="24" cy="24" r="7"/><circle cx="24" cy="24" r="2"/></svg>';
+            const ICONE_PLATEAU = '<svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="12"/><circle cx="24" cy="24" r="4"/><path d="M24 5v7m0 24v7M5 24h7m24 0h7M11 11l5 5m16 16l5 5M37 11l-5 5M16 32l-5 5"/></svg>';
+            const ICONE_PEDALIER = '<svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="6"/><path d="M24 18V10M24 30v8"/><rect x="18" y="4" width="12" height="6" rx="2"/><rect x="18" y="38" width="12" height="6" rx="2"/></svg>';
+            const ICONE_PEDALES = '<svg viewBox="0 0 48 48"><rect x="9" y="15" width="30" height="18" rx="4"/><path d="M15 15v18m6-18v18m6-18v18m6-18v18M4 24h5"/></svg>';
+            const ICONE_MANETTES = '<svg viewBox="0 0 48 48"><path d="M5 12h38"/><rect x="17" y="12" width="14" height="10" rx="3"/><path d="M24 22l-6 14m6-14l7 12"/></svg>';
+            const ICONE_ROUES = '<svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="17"/><circle cx="24" cy="24" r="4"/><path d="M24 7v13m0 8v13M7 24h13m8 0h13M12 12l9 9m6 6l9 9M36 12l-9 9m-6 6l-9 9"/></svg>';
+            const ICONE_MOYEUX = '<svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="6"/><path d="M5 24h38M15 14v20M33 14v20"/></svg>';
+            const ICONE_JEU = '<svg viewBox="0 0 48 48"><path d="M24 4v40"/><rect x="16" y="9" width="16" height="7" rx="2"/><rect x="13" y="20" width="22" height="8" rx="2"/><rect x="16" y="32" width="16" height="7" rx="2"/></svg>';
+            const ICONE_CINTRE = '<svg viewBox="0 0 48 48"><path d="M5 15c5 0 7 3 9 9h20c2-6 4-9 9-9"/><circle cx="24" cy="24" r="3"/><path d="M5 12v6M43 12v6"/></svg>';
+            const ICONE_POTENCE = '<svg viewBox="0 0 48 48"><rect x="6" y="14" width="11" height="20" rx="2"/><path d="M17 20h19M17 28h19"/><rect x="36" y="12" width="6" height="24" rx="2"/></svg>';
+            const ICONE_POIGNEES = '<svg viewBox="0 0 48 48"><rect x="5" y="14" width="34" height="20" rx="9"/><path d="M14 14v20m6-20v20m6-20v20M39 20h4v8h-4"/></svg>';
+            const ICONE_TIGE = '<svg viewBox="0 0 48 48"><path d="M7 13h34c0 5-7 8-17 8S7 18 7 13z"/><path d="M24 21v23M19 33h10"/></svg>';
+            const ICONE_SELLE = '<svg viewBox="0 0 48 48"><path d="M5 17c8-5 17-1 21 2l15-4c1 5-2 9-8 10l-14 1c-7 0-11-3-14-9z"/><path d="M15 29l-3 9m17-8l3 8"/></svg>';
+            const ICONE_CHARGEUR = '<svg viewBox="0 0 48 48"><path d="M17 5v11m14-11v11M12 16h24v7a12 12 0 0 1-24 0z"/><path d="M24 35v9"/></svg>';
             const ICONES_EQUIPEMENT = {
-                moteur: ICONE_MOTEUR, batterie: ICONE_BATTERIE,
-                freins: ICONE_FREINS, etriers: ICONE_FREINS, plaquettes: ICONE_FREINS, disques: ICONE_FREINS,
-                fourche: ICONE_SUSPENSION, amortisseur: ICONE_SUSPENSION, suspension: ICONE_SUSPENSION,
-                pneus: ICONE_PNEUS, roues: ICONE_PNEUS,
-                transmission: ICONE_TRANSMISSION, chaine: ICONE_TRANSMISSION, cassette: ICONE_TRANSMISSION,
-                derailleur: ICONE_TRANSMISSION, plateau: ICONE_TRANSMISSION, pedalier: ICONE_TRANSMISSION
+                moteur: ICONE_MOTEUR, batterie: ICONE_BATTERIE, cadre: ICONE_CADRE,
+                freins: ICONE_DISQUE, disques: ICONE_DISQUE, etriers: ICONE_ETRIERS, plaquettes: ICONE_PLAQUETTES,
+                fourche: ICONE_FOURCHE, amortisseur: ICONE_AMORTISSEUR, suspension: ICONE_SUSPENSION,
+                pneus: ICONE_PNEUS, roues: ICONE_ROUES, moyeux: ICONE_MOYEUX,
+                transmission: ICONE_TRANSMISSION, chaine: ICONE_CHAINE, cassette: ICONE_CASSETTE,
+                derailleur: ICONE_DERAILLEUR, plateau: ICONE_PLATEAU, pedalier: ICONE_PEDALIER,
+                pedales: ICONE_PEDALES, manettes: ICONE_MANETTES, jeu_direction: ICONE_JEU,
+                cintre: ICONE_CINTRE, potence: ICONE_POTENCE, poignees: ICONE_POIGNEES,
+                tige_de_selle: ICONE_TIGE, selle: ICONE_SELLE, chargeur: ICONE_CHARGEUR
             };
 
             function libelleEquipement(categorie) {
