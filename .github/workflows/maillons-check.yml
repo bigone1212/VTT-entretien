@@ -2178,6 +2178,88 @@ jobs:
           PY
           rm -f "$SQLITE_PATH"
           PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_fiche_design.py"
+      - name: Tester le menu trois points des composants dans un vrai navigateur
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-composants-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_menu_composants.py" <<'PY'
+          import json
+          from urllib.parse import urlparse
+          from playwright.sync_api import sync_playwright
+          import main
+          html = main.accueil()
+          comp = [{"categorie": "pneus", "nom": "Maxxis Minion", "validation": "valide_par_utilisateur", "sources": ["https://shop.example/pneu"]},
+                  {"categorie": "fourche", "nom": "Fox 36", "sources": []}]
+          V = [{"id": 1, "nom": "Mon CUBE", "type": "vtt_electrique", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0, "moteur": "Bosch", "batterie": "800 Wh", "fiche_composants": None},
+               {"id": 2, "nom": "Trek", "type": "vtt_electrique", "marque": "Trek", "modele": "Fuel", "annee": 2025, "taille": "M", "date_achat": "2025-05-01", "fiche_composants": json.dumps(comp), "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0}]
+          puts = []; erreurs = []
+          with sync_playwright() as p:
+              nav = p.chromium.launch()
+              def ouvrir(velo_id):
+                  ctx = nav.new_context(viewport={"width": 390, "height": 900})
+                  def api(r):
+                      u = urlparse(r.request.url)
+                      if u.path.startswith("/api/velos/") and r.request.method == "PUT":
+                          corps = json.loads(r.request.post_data); puts.append((u.path, corps))
+                          for v in V:
+                              if v["id"] == int(u.path.split("/")[-1]): v["fiche_composants"] = corps["fiche_composants"]
+                          c = {"statut": "success"}
+                      elif u.path == "/api/velos": c = V
+                      elif u.path == "/api/etat": c = {"km_total": 0, "composants": []}
+                      elif u.path == "/api/mes-reglages": c = {"valeurs": {}, "maj_le": None}
+                      else: c = []
+                      r.fulfill(status=200, content_type="application/json", body=json.dumps(c))
+                  ctx.route("**/localhost/api/**", api); ctx.route(lambda u: not u.startswith("http://localhost/"), lambda r: r.abort())
+                  ctx.add_init_script("sessionStorage.setItem('vtt_code','t');sessionStorage.setItem('maillons_velo_id','%d');window.open=(u)=>{window.__ouvert=u}" % velo_id)
+                  pg = ctx.new_page(); pg.on("pageerror", lambda e: erreurs.append(str(e)))
+                  pg.route("http://localhost/", lambda r: r.fulfill(status=200, content_type="text/html", body=html))
+                  pg.goto("http://localhost/"); pg.wait_for_timeout(1200)
+                  pg.evaluate("location.hash = 'reglages'"); pg.wait_for_timeout(500)
+                  return pg
+              # Vélo ajouté : menu, liens, modification
+              pg = ouvrir(2)
+              pg.click("#ficheTechniqueAutre summary"); pg.wait_for_timeout(300)
+              carte = pg.locator("#ficheAutreEquipement .ftv-item", has_text="Pneus")
+              carte.locator(".menu-sortie-btn").click()
+              assert carte.locator("[role=menuitem]").all_inner_texts() == ["Fiche technique", "Chercher à l'achat", "Modifier ce composant"]
+              carte.get_by_text("Fiche technique").click()
+              assert pg.evaluate("window.__ouvert") == "https://shop.example/pneu"
+              carte.locator(".menu-sortie-btn").click(); carte.get_by_text("Chercher à l'achat").click()
+              assert pg.evaluate("window.__ouvert").startswith("https://www.google.com/search?tbm=shop&q=Maxxis")
+              fourche = pg.locator("#ficheAutreEquipement .ftv-item", has_text="Fourche")
+              fourche.locator(".menu-sortie-btn").click(); fourche.get_by_text("Fiche technique").click()
+              assert "fiche+technique" in pg.evaluate("window.__ouvert")
+              carte.locator(".menu-sortie-btn").click(); carte.get_by_text("Modifier ce composant").click(); pg.wait_for_timeout(300)
+              assert pg.evaluate("document.getElementById('fenetreComposant').open") and pg.input_value("#champComposantNom") == "Maxxis Minion"
+              pg.fill("#champComposantNom", "Schwalbe Nobby Nic 2,6"); pg.click("#boutonEnregistrerComposant"); pg.wait_for_timeout(800)
+              chemin, corps = puts[-1]
+              assert chemin == "/api/velos/2" and corps["nom"] == "Trek" and corps["modele"] == "Fuel" and corps["date_achat"] == "2025-05-01", puts[-1]
+              liste = json.loads(corps["fiche_composants"])
+              assert {"categorie": "pneus", "nom": "Schwalbe Nobby Nic 2,6", "validation": "valide_par_utilisateur", "sources": []} in liste and len(liste) == 2, liste
+              assert not pg.evaluate("document.getElementById('fenetreComposant').open")
+              assert "Schwalbe Nobby Nic 2,6" in pg.locator("#ficheAutreEquipement .ftv-item", has_text="Pneus").inner_text()
+              pg.close()
+              # CUBE : modification gardée à part, retour à la fiche d'origine
+              pg = ouvrir(1)
+              pg.click("#ficheTechniqueCube summary"); pg.wait_for_timeout(300)
+              c = pg.locator("#ficheTechniqueCube .ftv-item[data-cat=roues]")
+              c.locator(".menu-sortie-btn").click()
+              assert c.locator("[role=menuitem]").all_inner_texts() == ["Fiche technique", "Chercher à l'achat", "Modifier ce composant"]
+              c.get_by_text("Modifier ce composant").click(); pg.fill("#champComposantNom", "DT Swiss XM 481"); pg.click("#boutonEnregistrerComposant"); pg.wait_for_timeout(800)
+              assert puts[-1][0] == "/api/velos/1" and json.loads(puts[-1][1]["fiche_composants"])[0]["nom"] == "DT Swiss XM 481"
+              c = pg.locator("#ficheTechniqueCube .ftv-item[data-cat=roues]")
+              assert "DT Swiss XM 481" in c.inner_text() and "Modifié par toi" in c.inner_text()
+              c.locator(".menu-sortie-btn").click(); c.get_by_text("Revenir à la fiche d'origine").click(); pg.wait_for_timeout(800)
+              assert json.loads(puts[-1][1]["fiche_composants"]) == []
+              assert "Schwalbe Nobby Nic" in pg.locator("#ficheTechniqueCube .ftv-item[data-cat=roues]").inner_text()
+              pg.close()
+              nav.close()
+          assert not erreurs, erreurs
+          print("OK menu des composants : liens, achat, modification, retour à l'origine")
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_menu_composants.py"
       - name: Tester la recherche avec l'IA (copier-coller) dans un vrai navigateur
         env:
           SQLITE_PATH: ${{ runner.temp }}/maillons-ia-test.db
