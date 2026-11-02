@@ -150,6 +150,11 @@
 ---
 
 
+## 2026-11-02 — PR 25 fusionnée : icônes de la fiche du CUBE alignées
+- Sur GitHub (main) : 18 cartes de la fiche du CUBE reprennent les icônes dédiées de la PR 24 (« Commande et écran » et « Guide-chaîne » gardent la leur). Présentation seulement.
+- Testé : navigateur local et tests automatiques GitHub, passés.
+- Non vérifié d'ici : le déploiement sur Render.
+
 ## 2026-11-02 — PR 24 fusionnée : une icône par composant de la fiche
 - Sur GitHub (main) : 28 catégories de la fiche des vélos ont leur icône dessinée au trait de l'appli (inspirées des pictogrammes d'Opticycles, mais dessinées ici : les images du site n'ont pas pu être récupérées). La fiche du CUBE n'a pas changé. Présentation seulement.
 - Testé : navigateur local (toutes les cartes affichées) et tests automatiques GitHub, passés.
