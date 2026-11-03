@@ -150,6 +150,12 @@
 ---
 
 
+## 2026-11-03 — PR 26 fusionnée : menu trois points sur chaque carte de la fiche (étape 1)
+- Sur GitHub (main) : chaque carte de la fiche technique (CUBE et autres vélos) a un menu trois points : « Fiche technique » (lien trouvé ou recherche web), « Chercher à l'achat » (recherche web), « Modifier ce composant » (fenêtre ; enregistré dans la fiche du vélo, marqué « validé par toi »). Sur le CUBE : « Revenir à la fiche d'origine ». Les textes d'origine du CUBE restent dans la page.
+- Testé : navigateur local (CUBE et autre vélo) et tests automatiques GitHub, passés.
+- Non vérifié d'ici : le déploiement sur Render.
+- À faire (étape 2, pas commencée) : à l'onglet Entretien, bouton « Remplacer » → demander « même pièce ou une autre ? » et mettre la fiche à jour ; relier chaque ligne d'entretien à sa carte de la fiche.
+
 ## 2026-11-02 — PR 25 fusionnée : icônes de la fiche du CUBE alignées
 - Sur GitHub (main) : 18 cartes de la fiche du CUBE reprennent les icônes dédiées de la PR 24 (« Commande et écran » et « Guide-chaîne » gardent la leur). Présentation seulement.
 - Testé : navigateur local et tests automatiques GitHub, passés.
