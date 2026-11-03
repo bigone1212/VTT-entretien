@@ -2377,12 +2377,18 @@ jobs:
                   assert pg.evaluate("document.getElementById('fenetreRemplacement').open") and "Schwalbe Nobby Nic" in pg.inner_text("#aideFenetreRemplacement")
                   pg.click("#boutonValiderRemplacement"); pg.wait_for_timeout(500)
                   assert posts[-1] == ("/api/composants/11/remplacer", "Intervention standard") and not puts
+                  # La fiche sépare l'avant et l'arrière
+                  zone = "#ficheTechniqueCube" if vid == 1 else "#ficheAutreEquipement"
+                  pg.evaluate("() => { document.querySelectorAll('details.fiche-technique-velo').forEach(d => { d.open = true; }); }")
+                  libelles = pg.eval_on_selector_all(zone + " .ftv-item", "els => els.map(e => e.children[1].children[0].textContent.trim())")
+                  assert "Pneu avant" in libelles and "Pneu arrière" in libelles, libelles
+                  assert "Roues et pneus" not in libelles and "Pneus" not in libelles, libelles
                   # pièce : autre
                   pg.evaluate("remplacer(11,'Pneu arrière / tubeless','piece')"); pg.wait_for_timeout(300)
                   pg.check("#formRemplacement input[value=autre]"); pg.fill("#champNouvellePiece","Maxxis Minion DHR II"); pg.click("#boutonValiderRemplacement"); pg.wait_for_timeout(700)
-                  attendu = "roues" if vid == 1 else "pneus"
+                  attendu = "pneus_arriere"
                   assert posts[-1][1] == "Pièce remplacée par : Maxxis Minion DHR II", posts[-1]
-                  assert json.loads(puts[-1])[0]["categorie"] == attendu and json.loads(puts[-1])[0]["nom"] == "Maxxis Minion DHR II", puts[-1]
+                  assert any(x["categorie"] == attendu and x["nom"] == "Maxxis Minion DHR II" for x in json.loads(puts[-1])) and not any(x["categorie"] == "pneus_avant" for x in json.loads(puts[-1])), puts[-1]
                   assert not pg.evaluate("document.getElementById('fenetreRemplacement').open")
                   puts.clear()
                   # autre vide

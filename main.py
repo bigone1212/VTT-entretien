@@ -3952,9 +3952,13 @@ def accueil():
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="21" cy="25" r="15"/><circle cx="21" cy="25" r="4"/><path d="M21 14v4M21 32v4M10 25h4M28 25h4"/><path d="M34 12l8 4v14l-8 4z"/></svg></span>
                     <span><span class="ftv-libelle">Freinage</span><span class="ftv-valeur">Shimano XT hydrauliques</span><span class="ftv-libelle">Disques 203 mm avant et arrière</span></span>
                 </div>
-                <div class="ftv-item" data-cat="roues">
+                <div class="ftv-item" data-cat="pneus_avant">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="17"/><circle cx="24" cy="24" r="4"/><path d="M24 7v13m0 8v13M7 24h13m8 0h13M12 12l9 9m6 6l9 9M36 12l-9 9m-6 6l-9 9"/></svg></span>
-                    <span><span class="ftv-libelle">Roues et pneus</span><span class="ftv-valeur">Schwalbe Nobby Nic</span><span class="ftv-libelle">Section 2,6 pouces · roues <strong id="ftvTailleRoues">29 pouces</strong></span></span>
+                    <span><span class="ftv-libelle">Pneu avant</span><span class="ftv-valeur">Schwalbe Nobby Nic</span><span class="ftv-libelle">Section 2,6 pouces · roues <strong id="ftvTailleRoues">29 pouces</strong></span></span>
+                </div>
+                <div class="ftv-item" data-cat="pneus_arriere">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="17"/><circle cx="24" cy="24" r="4"/><path d="M24 7v13m0 8v13M7 24h13m8 0h13M12 12l9 9m6 6l9 9M36 12l-9 9m-6 6l-9 9"/></svg></span>
+                    <span><span class="ftv-libelle">Pneu arrière</span><span class="ftv-valeur">Schwalbe Nobby Nic</span><span class="ftv-libelle">Section 2,6 pouces</span></span>
                 </div>
                 <div class="ftv-item" data-cat="ecran">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="7" y="7" width="34" height="27" rx="5"/><path d="M17 41h14m-7-7v7M12 13h24M12 18h11"/><circle cx="32" cy="25" r="4"/></svg></span>
@@ -3988,13 +3992,21 @@ def accueil():
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M8 12h32v24H8z"/><path d="M13 17h22v14H13zM18 21v6m6-6v6m6-6v6"/></svg></span>
                     <span><span class="ftv-libelle">Guide-chaîne</span><span class="ftv-valeur">Reverse Flip-Guide E-Chain Guide</span><span class="ftv-libelle">Montage direct sur le cadre</span></span>
                 </div>
-                <div class="ftv-item" data-cat="jantes">
+                <div class="ftv-item" data-cat="jantes_avant">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="17"/><circle cx="24" cy="24" r="4"/><path d="M24 7v13m0 8v13M7 24h13m8 0h13M12 12l9 9m6 6l9 9M36 12l-9 9m-6 6l-9 9"/></svg></span>
-                    <span><span class="ftv-libelle">Jantes</span><span class="ftv-valeur">CUBE EX30</span><span class="ftv-libelle">Tubeless Ready · 32 trous</span></span>
+                    <span><span class="ftv-libelle">Jante avant</span><span class="ftv-valeur">CUBE EX30</span><span class="ftv-libelle">Tubeless Ready · 32 trous</span></span>
                 </div>
-                <div class="ftv-item" data-cat="moyeux">
+                <div class="ftv-item" data-cat="jantes_arriere">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="17"/><circle cx="24" cy="24" r="4"/><path d="M24 7v13m0 8v13M7 24h13m8 0h13M12 12l9 9m6 6l9 9M36 12l-9 9m-6 6l-9 9"/></svg></span>
+                    <span><span class="ftv-libelle">Jante arrière</span><span class="ftv-valeur">CUBE EX30</span><span class="ftv-libelle">Tubeless Ready · 32 trous</span></span>
+                </div>
+                <div class="ftv-item" data-cat="moyeux_avant">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="6"/><path d="M5 24h38M15 14v20M33 14v20"/></svg></span>
-                    <span><span class="ftv-libelle">Moyeux</span><span class="ftv-valeur">CUBE by Newmen</span><span class="ftv-libelle">Avant 15 mm · arrière 12 mm Boost</span></span>
+                    <span><span class="ftv-libelle">Moyeu avant</span><span class="ftv-valeur">CUBE by Newmen</span><span class="ftv-libelle">Axe avant 15 mm</span></span>
+                </div>
+                <div class="ftv-item" data-cat="moyeux_arriere">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="6"/><path d="M5 24h38M15 14v20M33 14v20"/></svg></span>
+                    <span><span class="ftv-libelle">Moyeu arrière</span><span class="ftv-valeur">CUBE by Newmen</span><span class="ftv-libelle">Axe arrière 12 mm Boost</span></span>
                 </div>
                 <div class="ftv-item" data-cat="tige_de_selle">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M7 13h34c0 5-7 8-17 8S7 18 7 13z"/><path d="M24 21v23M19 33h10"/></svg></span>
@@ -4012,9 +4024,13 @@ def accueil():
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M17 5v11m14-11v11M12 16h24v7a12 12 0 0 1-24 0z"/><path d="M24 35v9"/></svg></span>
                     <span><span class="ftv-libelle">Chargeur</span><span class="ftv-valeur">Bosch 2 A</span><span class="ftv-libelle">Pour batterie Bosch PowerTube 800</span></span>
                 </div>
-                <div class="ftv-item" data-cat="plaquettes">
+                <div class="ftv-item" data-cat="plaquettes_avant">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="7" y="10" width="11" height="28" rx="3"/><rect x="30" y="10" width="11" height="28" rx="3"/><path d="M24 8v32"/></svg></span>
-                    <span><span class="ftv-libelle">Plaquettes de frein</span><span class="ftv-valeur">Shimano compatibles BR-M8120</span><span class="ftv-libelle">Référence exacte à confirmer avant achat</span></span>
+                    <span><span class="ftv-libelle">Plaquettes avant</span><span class="ftv-valeur">Shimano compatibles BR-M8120</span><span class="ftv-libelle">Référence exacte à confirmer avant achat</span></span>
+                </div>
+                <div class="ftv-item" data-cat="plaquettes_arriere">
+                    <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="7" y="10" width="11" height="28" rx="3"/><rect x="30" y="10" width="11" height="28" rx="3"/><path d="M24 8v32"/></svg></span>
+                    <span><span class="ftv-libelle">Plaquettes arrière</span><span class="ftv-valeur">Shimano compatibles BR-M8120</span><span class="ftv-libelle">Référence exacte à confirmer avant achat</span></span>
                 </div>
             </div>
             <p class="ftv-note">Caractéristiques du modèle 2025. Les équipements peuvent varier selon la version et la taille du vélo.</p>
@@ -4991,8 +5007,8 @@ def accueil():
                 }
             }
 
-            const ORDRE_EQUIPEMENT = ['moteur', 'batterie', 'cadre', 'fourche', 'amortisseur', 'suspension', 'freins', 'etriers', 'plaquettes', 'disques', 'transmission', 'derailleur', 'cassette', 'chaine', 'plateau', 'pedalier', 'pedales', 'manettes', 'roues', 'pneus', 'moyeux', 'jeu_direction', 'cintre', 'potence', 'poignees', 'tige_de_selle', 'selle', 'chargeur'];
-            const LIBELLES_EQUIPEMENT = { etriers: 'Étriers', derailleur: 'Dérailleur', chaine: 'Chaîne', pedalier: 'Pédalier', pedales: 'Pédales', tige_de_selle: 'Tige de selle', jeu_direction: 'Jeu de direction', poignees: 'Poignées', suspension: 'Suspension' };
+            const ORDRE_EQUIPEMENT = ['moteur', 'batterie', 'cadre', 'fourche', 'amortisseur', 'suspension', 'freins', 'etriers', 'plaquettes', 'disques', 'transmission', 'derailleur', 'cassette', 'chaine', 'plateau', 'pedalier', 'pedales', 'manettes', 'roues', 'jantes', 'pneus', 'moyeux', 'jeu_direction', 'cintre', 'potence', 'poignees', 'tige_de_selle', 'selle', 'chargeur'];
+            const LIBELLES_EQUIPEMENT = { pneus_avant: 'Pneu avant', pneus_arriere: 'Pneu arrière', plaquettes_avant: 'Plaquettes avant', plaquettes_arriere: 'Plaquettes arrière', disques_avant: 'Disque avant', disques_arriere: 'Disque arrière', etriers_avant: 'Étrier avant', etriers_arriere: 'Étrier arrière', roues_avant: 'Roue avant', roues_arriere: 'Roue arrière', jantes_avant: 'Jante avant', jantes_arriere: 'Jante arrière', moyeux_avant: 'Moyeu avant', moyeux_arriere: 'Moyeu arrière', jantes: 'Jantes', etriers: 'Étriers', derailleur: 'Dérailleur', chaine: 'Chaîne', pedalier: 'Pédalier', pedales: 'Pédales', tige_de_selle: 'Tige de selle', jeu_direction: 'Jeu de direction', poignees: 'Poignées', suspension: 'Suspension' };
             const ICONE_SUSPENSION = '<svg viewBox="0 0 48 48"><path d="M14 6l-4 28m4-28l10 28m-10-28h7M10 34l-3 8m13-8l3 8M27 12h12m-12 7h12m-12 7h12"/></svg>';
             const ICONE_PNEUS = '<svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="16"/><circle cx="24" cy="24" r="7"/><path d="M24 8v9m16 7h-9M24 40v-9M8 24h9"/></svg>';
             const ICONE_TRANSMISSION = '<svg viewBox="0 0 48 48"><circle cx="12" cy="32" r="7"/><circle cx="36" cy="32" r="7"/><path d="M12 32l8-17h9l7 17M20 15h9M24 15l-4-6"/></svg>';
@@ -5025,7 +5041,7 @@ def accueil():
                 moteur: ICONE_MOTEUR, batterie: ICONE_BATTERIE, cadre: ICONE_CADRE,
                 freins: ICONE_DISQUE, disques: ICONE_DISQUE, etriers: ICONE_ETRIERS, plaquettes: ICONE_PLAQUETTES,
                 fourche: ICONE_FOURCHE, amortisseur: ICONE_AMORTISSEUR, suspension: ICONE_SUSPENSION,
-                pneus: ICONE_PNEUS, roues: ICONE_ROUES, moyeux: ICONE_MOYEUX,
+                pneus: ICONE_PNEUS, roues: ICONE_ROUES, jantes: ICONE_ROUES, moyeux: ICONE_MOYEUX,
                 transmission: ICONE_TRANSMISSION, chaine: ICONE_CHAINE, cassette: ICONE_CASSETTE,
                 derailleur: ICONE_DERAILLEUR, plateau: ICONE_PLATEAU, pedalier: ICONE_PEDALIER,
                 pedales: ICONE_PEDALES, manettes: ICONE_MANETTES, jeu_direction: ICONE_JEU,
@@ -5055,7 +5071,17 @@ def accueil():
                     valide: c.validation === 'valide_par_utilisateur',
                     sources: Array.isArray(c.sources) ? c.sources : (c.source ? [c.source] : [])
                 }));
-                const present = categorie => cartes.some(c => c.categorie === categorie);
+                const PAIRES = ['pneus', 'plaquettes', 'disques', 'etriers', 'roues', 'jantes', 'moyeux'];
+                PAIRES.forEach(base => {
+                    const general = cartes.findIndex(c => c.categorie === base);
+                    if (general < 0) return;
+                    const modele = cartes[general];
+                    cartes.splice(general, 1);
+                    ['avant', 'arriere'].forEach(cote => {
+                        if (!cartes.some(c => c.categorie === base + '_' + cote)) cartes.push({ ...modele, categorie: base + '_' + cote });
+                    });
+                });
+                const present = categorie => cartes.some(c => c.categorie === categorie || c.categorie === categorie + '_avant' || c.categorie === categorie + '_arriere');
                 const ajouterConnu = (categorie, nom) => cartes.push({ categorie: categorie, nom: nom, trouve: false, valide: false, sources: [] });
                 const electrique = ['vtt_electrique', 'gravel_electrique', 'route_electrique', 'electrique'].includes(velo.type);
                 if (electrique && velo.moteur && !present('moteur')) ajouterConnu('moteur', velo.moteur);
@@ -5068,7 +5094,7 @@ def accueil():
                 if (pneus && !present('pneus')) ajouterConnu('pneus', pneus);
                 const transmission = ({ courroie: 'Courroie', chaine: 'Chaîne et dérailleur' })[velo.transmission];
                 if (transmission && !present('transmission') && !present('chaine')) ajouterConnu('transmission', transmission);
-                const rang = categorie => { const i = ORDRE_EQUIPEMENT.indexOf(categorie); return i < 0 ? 999 : i; };
+                const rang = categorie => { const i = ORDRE_EQUIPEMENT.indexOf(String(categorie).replace(/_(avant|arriere)$/, '')); return (i < 0 ? 999 : i) + (String(categorie).endsWith('_arriere') ? 0.2 : (String(categorie).endsWith('_avant') ? 0.1 : 0)); };
                 cartes.sort((a, b) => rang(a.categorie) - rang(b.categorie));
                 if (!cartes.length) {
                     const vide = document.createElement('p');
@@ -5084,7 +5110,7 @@ def accueil():
                     const icone = document.createElement('span');
                     icone.className = 'ftv-icone';
                     icone.setAttribute('aria-hidden', 'true');
-                    icone.innerHTML = ICONES_EQUIPEMENT[carte.categorie] || ICONE_PIECE;
+                    icone.innerHTML = ICONES_EQUIPEMENT[carte.categorie] || ICONES_EQUIPEMENT[String(carte.categorie).replace(/_(avant|arriere)$/, '')] || ICONE_PIECE;
                     const corps = document.createElement('span');
                     const libelle = document.createElement('span');
                     libelle.className = 'ftv-libelle';
@@ -5188,7 +5214,8 @@ def accueil():
 
             async function retablirComposantOrigine(velo, categorie) {
                 try {
-                    await enregistrerComposantsVelo(velo, composantsDuVelo(velo).filter(c => c.categorie !== categorie));
+                    const ancienne = categorie.startsWith('pneus_') ? 'roues' : categorie.replace(/_(avant|arriere)$/, '');
+                    await enregistrerComposantsVelo(velo, composantsDuVelo(velo).filter(c => c.categorie !== categorie && c.categorie !== ancienne));
                 } catch (e) {
                     alert(e.message || "Impossible de revenir à la fiche d'origine.");
                 }
@@ -5222,7 +5249,8 @@ def accueil():
                     const valeur = corps.querySelector('.ftv-valeur');
                     const detail = corps.children[2];
                     if (item.dataset.origine === undefined) item.dataset.origine = valeur.textContent;
-                    const modif = modifs.find(c => c.categorie === item.dataset.cat && c.nom);
+                    const cleAncienne = item.dataset.cat.startsWith('pneus_') ? 'roues' : item.dataset.cat.replace(/_(avant|arriere)$/, '');
+                    const modif = modifs.find(c => c.categorie === item.dataset.cat && c.nom) || modifs.find(c => c.categorie === cleAncienne && c.nom && cleAncienne !== item.dataset.cat);
                     valeur.textContent = modif ? String(modif.nom) : item.dataset.origine;
                     if (detail) detail.style.display = modif ? 'none' : '';
                     const trace = corps.querySelector('.ftv-modifie');
@@ -8153,13 +8181,14 @@ def accueil():
             function carteFichePourEntretien(nom, categorie, estCube) {
                 if (categorie !== 'piece') return null;
                 const n = String(nom || '').toLocaleLowerCase('fr');
+                const cote = n.includes('avant') ? '_avant' : ((n.includes('arrière') || n.includes('arriere')) ? '_arriere' : '');
                 if (n.includes('courroie')) return estCube ? null : 'transmission';
                 if (n.includes('chaîne')) return 'chaine';
                 if (n.includes('cassette')) return 'cassette';
                 if (n.includes('plateau')) return estCube ? 'pedalier' : 'plateau';
-                if (n.includes('plaquettes') || n.includes('patins')) return 'plaquettes';
-                if (n.includes('disque')) return estCube ? null : 'disques';
-                if (n.includes('pneu')) return estCube ? 'roues' : 'pneus';
+                if (n.includes('plaquettes') || n.includes('patins')) return 'plaquettes' + cote;
+                if (n.includes('disque')) return estCube ? null : 'disques' + cote;
+                if (n.includes('pneu')) return 'pneus' + cote;
                 return null;
             }
 
@@ -8168,7 +8197,8 @@ def accueil():
             async function remplacer(id, nom, categorie) {
                 const velo = velosDisponibles.find(v => Number(v.id) === veloActifId);
                 const estCube = !velo || Number(velo.id) === 1;
-                const cible = velo ? carteFichePourEntretien(nom, categorie, estCube) : null;
+                let cible = velo ? carteFichePourEntretien(nom, categorie, estCube) : null;
+                if (cible && estCube && !document.querySelector('#ficheTechniqueCube .ftv-item[data-cat="' + cible + '"]')) cible = null;
                 if (!cible) {
                     if (!confirm(`Confirmer l'intervention pour : ${nom} ?`)) {
                         return;
@@ -8185,7 +8215,8 @@ def accueil():
                         libelle = carte.children[1].children[0].textContent.trim();
                     }
                 } else {
-                    const connue = composantsDuVelo(velo).find(c => c.categorie === cible && c.nom);
+                    const generale = cible.replace(/_(avant|arriere)$/, '');
+                    const connue = composantsDuVelo(velo).find(c => c.categorie === cible && c.nom) || composantsDuVelo(velo).find(c => c.categorie === generale && c.nom);
                     actuelle = connue ? String(connue.nom) : '';
                 }
                 remplacementEnCours = { id: id, nom: nom, veloId: Number(velo.id), categorie: cible, libelle: libelle };
