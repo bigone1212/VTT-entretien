@@ -3507,7 +3507,14 @@ def accueil():
                 stroke-linejoin: round;
             }
 
-            .ftv-item > span:last-child { min-width: 0; }
+            .ftv-item { position: relative; }
+            .ftv-item > span:nth-child(2) { min-width: 0; }
+            .ftv-item > span:nth-child(2) > .ftv-libelle:first-child { display: block; padding-right: 24px; }
+            .ftv-item .menu-sortie-btn { top: 2px; right: 2px; width: 30px; height: 30px; }
+            .ftv-item .menu-sortie-btn svg { width: 20px; height: 20px; }
+            .ftv-item .menu-sortie { top: 34px; right: 0; min-width: 200px; }
+            .ftv-item:nth-child(odd) .menu-sortie { left: 0; right: auto; }
+            .ftv-item .menu-sortie.vers-haut { top: auto; bottom: 34px; }
 
             .ftv-libelle {
                 display: block;
@@ -3804,6 +3811,19 @@ def accueil():
                 <p class="form-help" id="nouveauVeloMessage"></p>
             </form>
         </dialog>
+        <dialog id="fenetreComposant" class="fenetre-velo" aria-labelledby="titreFenetreComposant">
+            <div class="fenetre-velo-entete">
+                <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg><span id="titreFenetreComposant">Modifier le composant</span></strong>
+                <button type="button" class="fenetre-velo-fermer" id="boutonFermerFenetreComposant" aria-label="Fermer sans enregistrer">✕</button>
+            </div>
+            <p class="form-help" id="aideFenetreComposant"></p>
+            <form id="formComposant">
+                <label for="champComposantNom">Marque et modèle</label>
+                <input id="champComposantNom" type="text" maxlength="120" autocomplete="off" placeholder="Ex. : Maxxis Minion DHF 29 x 2,5" required>
+                <button class="btn-primary" id="boutonEnregistrerComposant" type="submit" style="width:100%; margin-top:8px;">Enregistrer</button>
+                <p class="form-help" id="messageComposant" aria-live="polite"></p>
+            </form>
+        </dialog>
         <section class="apparence mr-repliable" id="blocApparence" aria-label="Apparence">
             <div class="mr-titre">
                 <button type="button" class="mr-entete" aria-expanded="false" aria-controls="blocApparenceCorps">
@@ -3898,91 +3918,91 @@ def accueil():
                 </select>
             </div>
             <div class="ftv-grille">
-                <div class="ftv-item">
+                <div class="ftv-item" data-cat="moteur">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M13 10h15l7 7v14l-7 7H13l-5-7V17z"/><path d="M17 16h9v16h-9z"/><path d="M20 12v4m4-4v4M20 32v4m4-4v4M8 21H4m4 8H4m31-8h5m-5 8h5"/></svg></span>
                     <span><span class="ftv-libelle">Moteur</span><span class="ftv-valeur">Bosch Performance Line CX</span><span class="ftv-libelle">Couple maximal 85 Nm</span></span>
                 </div>
-                <div class="ftv-item">
+                <div class="ftv-item" data-cat="batterie">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="10" y="10" width="27" height="29" rx="4"/><path d="M18 6h11v4M37 19h4v11h-4"/><path d="M24 15l-6 11h6l-2 8 9-13h-6l2-6"/></svg></span>
                     <span><span class="ftv-libelle">Batterie</span><span class="ftv-valeur">Bosch PowerTube</span><span class="ftv-libelle">Capacité 800 Wh</span></span>
                 </div>
-                <div class="ftv-item">
+                <div class="ftv-item" data-cat="fourche">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M24 5v8M13 13h22M18 13v12M30 13v12"/><rect x="15" y="25" width="6" height="13" rx="2"/><rect x="27" y="25" width="6" height="13" rx="2"/><circle cx="18" cy="43" r="2"/><circle cx="30" cy="43" r="2"/></svg></span>
                     <span><span class="ftv-libelle">Fourche avant</span><span class="ftv-valeur">Fox 36 Float AWL</span><span class="ftv-libelle">Débattement 140 mm</span></span>
                 </div>
-                <div class="ftv-item">
+                <div class="ftv-item" data-cat="amortisseur">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="8" r="3"/><circle cx="24" cy="40" r="3"/><path d="M24 11v3M24 34v3M16 15l16 3-16 4 16 4-16 4 16 3"/></svg></span>
                     <span><span class="ftv-libelle">Amortisseur arrière</span><span class="ftv-valeur">Fox Float Rhythm RC</span><span class="ftv-libelle">Débattement arrière 140 mm</span></span>
                 </div>
-                <div class="ftv-item">
+                <div class="ftv-item" data-cat="transmission">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="12" cy="32" r="7"/><circle cx="36" cy="32" r="7"/><path d="M12 32l8-17h9l7 17M20 15h9M24 15l-4-6"/></svg></span>
                     <span><span class="ftv-libelle">Transmission</span><span class="ftv-valeur">Shimano XT · 12 vitesses</span><span class="ftv-libelle">Cassette Deore 10–51 dents</span></span>
                 </div>
-                <div class="ftv-item">
+                <div class="ftv-item" data-cat="freins">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="21" cy="25" r="15"/><circle cx="21" cy="25" r="4"/><path d="M21 14v4M21 32v4M10 25h4M28 25h4"/><path d="M34 12l8 4v14l-8 4z"/></svg></span>
                     <span><span class="ftv-libelle">Freinage</span><span class="ftv-valeur">Shimano XT hydrauliques</span><span class="ftv-libelle">Disques 203 mm avant et arrière</span></span>
                 </div>
-                <div class="ftv-item">
+                <div class="ftv-item" data-cat="roues">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="17"/><circle cx="24" cy="24" r="4"/><path d="M24 7v13m0 8v13M7 24h13m8 0h13M12 12l9 9m6 6l9 9M36 12l-9 9m-6 6l-9 9"/></svg></span>
                     <span><span class="ftv-libelle">Roues et pneus</span><span class="ftv-valeur">Schwalbe Nobby Nic</span><span class="ftv-libelle">Section 2,6 pouces · roues <strong id="ftvTailleRoues">29 pouces</strong></span></span>
                 </div>
-                <div class="ftv-item">
+                <div class="ftv-item" data-cat="ecran">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="7" y="7" width="34" height="27" rx="5"/><path d="M17 41h14m-7-7v7M12 13h24M12 18h11"/><circle cx="32" cy="25" r="4"/></svg></span>
                     <span><span class="ftv-libelle">Commande et écran</span><span class="ftv-valeur">Bosch Purion 200</span><span class="ftv-libelle">Écran intégré</span></span>
                 </div>
-                <div class="ftv-item">
+                <div class="ftv-item" data-cat="cadre">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M11 35l11-19h13l-9 19z"/><path d="M22 16l-2-6h-6M35 16l3-7h5M11 35h15"/><circle cx="11" cy="35" r="3"/></svg></span>
                     <span><span class="ftv-libelle">Cadre</span><span class="ftv-valeur">Aluminium Superlite</span><span class="ftv-libelle">Batterie intégrée · patte UDH</span></span>
                 </div>
-                <div class="ftv-item">
+                <div class="ftv-item" data-cat="derailleur">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M21 5h9l-3 12M27 17l-4 17"/><circle cx="27" cy="21" r="4"/><circle cx="22" cy="38" r="5"/></svg></span>
                     <span><span class="ftv-libelle">Dérailleur arrière</span><span class="ftv-valeur">Shimano XT RD-M8100-SGS</span><span class="ftv-libelle">12 vitesses · ShadowPlus</span></span>
                 </div>
-                <div class="ftv-item">
+                <div class="ftv-item" data-cat="manettes">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M5 12h38"/><rect x="17" y="12" width="14" height="10" rx="3"/><path d="M24 22l-6 14m6-14l7 12"/></svg></span>
                     <span><span class="ftv-libelle">Commandes de vitesses</span><span class="ftv-valeur">Shimano XT SL-M8100-IR</span><span class="ftv-libelle">Commande au guidon</span></span>
                 </div>
-                <div class="ftv-item">
+                <div class="ftv-item" data-cat="pedalier">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="6"/><path d="M24 18V10M24 30v8"/><rect x="18" y="4" width="12" height="6" rx="2"/><rect x="18" y="38" width="12" height="6" rx="2"/></svg></span>
                     <span><span class="ftv-libelle">Pédalier et plateau</span><span class="ftv-valeur">ACID MTB Hybrid Pro</span><span class="ftv-libelle">36 dents en 27,5″ · 34 dents en 29″</span></span>
                 </div>
-                <div class="ftv-item">
+                <div class="ftv-item" data-cat="cassette">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="17"/><circle cx="24" cy="24" r="12"/><circle cx="24" cy="24" r="7"/><circle cx="24" cy="24" r="2"/></svg></span>
                     <span><span class="ftv-libelle">Cassette</span><span class="ftv-valeur">Shimano Deore CS-M6100</span><span class="ftv-libelle">12 pignons · 10–51 dents</span></span>
                 </div>
-                <div class="ftv-item">
+                <div class="ftv-item" data-cat="chaine">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="5" y="11" width="24" height="13" rx="6.5"/><rect x="19" y="24" width="24" height="13" rx="6.5"/></svg></span>
                     <span><span class="ftv-libelle">Chaîne</span><span class="ftv-valeur">KMC e12</span><span class="ftv-libelle">Chaîne 12 vitesses pour VAE</span></span>
                 </div>
-                <div class="ftv-item">
+                <div class="ftv-item" data-cat="guide_chaine">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M8 12h32v24H8z"/><path d="M13 17h22v14H13zM18 21v6m6-6v6m6-6v6"/></svg></span>
                     <span><span class="ftv-libelle">Guide-chaîne</span><span class="ftv-valeur">Reverse Flip-Guide E-Chain Guide</span><span class="ftv-libelle">Montage direct sur le cadre</span></span>
                 </div>
-                <div class="ftv-item">
+                <div class="ftv-item" data-cat="jantes">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="17"/><circle cx="24" cy="24" r="4"/><path d="M24 7v13m0 8v13M7 24h13m8 0h13M12 12l9 9m6 6l9 9M36 12l-9 9m-6 6l-9 9"/></svg></span>
                     <span><span class="ftv-libelle">Jantes</span><span class="ftv-valeur">CUBE EX30</span><span class="ftv-libelle">Tubeless Ready · 32 trous</span></span>
                 </div>
-                <div class="ftv-item">
+                <div class="ftv-item" data-cat="moyeux">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="6"/><path d="M5 24h38M15 14v20M33 14v20"/></svg></span>
                     <span><span class="ftv-libelle">Moyeux</span><span class="ftv-valeur">CUBE by Newmen</span><span class="ftv-libelle">Avant 15 mm · arrière 12 mm Boost</span></span>
                 </div>
-                <div class="ftv-item">
+                <div class="ftv-item" data-cat="tige_de_selle">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M7 13h34c0 5-7 8-17 8S7 18 7 13z"/><path d="M24 21v23M19 33h10"/></svg></span>
                     <span><span class="ftv-libelle">Tige de selle télescopique</span><span class="ftv-valeur">CUBE Dropper Post</span><span class="ftv-libelle">Diamètre 31,6 mm · commande au guidon</span></span>
                 </div>
-                <div class="ftv-item">
+                <div class="ftv-item" data-cat="selle">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M5 17c8-5 17-1 21 2l15-4c1 5-2 9-8 10l-14 1c-7 0-11-3-14-9z"/><path d="M15 29l-3 9m17-8l3 8"/></svg></span>
                     <span><span class="ftv-libelle">Selle</span><span class="ftv-valeur">ACID Venec EMTB Plus 145</span><span class="ftv-libelle">Largeur annoncée 145 mm</span></span>
                 </div>
-                <div class="ftv-item">
+                <div class="ftv-item" data-cat="pedales">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="9" y="15" width="30" height="18" rx="4"/><path d="M15 15v18m6-18v18m6-18v18m6-18v18M4 24h5"/></svg></span>
                     <span><span class="ftv-libelle">Pédales</span><span class="ftv-valeur">ACID PP MTB</span><span class="ftv-libelle">Pédales plates d’origine</span></span>
                 </div>
-                <div class="ftv-item">
+                <div class="ftv-item" data-cat="chargeur">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M17 5v11m14-11v11M12 16h24v7a12 12 0 0 1-24 0z"/><path d="M24 35v9"/></svg></span>
                     <span><span class="ftv-libelle">Chargeur</span><span class="ftv-valeur">Bosch 2 A</span><span class="ftv-libelle">Pour batterie Bosch PowerTube 800</span></span>
                 </div>
-                <div class="ftv-item">
+                <div class="ftv-item" data-cat="plaquettes">
                     <span class="ftv-icone" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="7" y="10" width="11" height="28" rx="3"/><rect x="30" y="10" width="11" height="28" rx="3"/><path d="M24 8v32"/></svg></span>
                     <span><span class="ftv-libelle">Plaquettes de frein</span><span class="ftv-valeur">Shimano compatibles BR-M8120</span><span class="ftv-libelle">Référence exacte à confirmer avant achat</span></span>
                 </div>
@@ -5066,6 +5086,129 @@ def accueil():
                     item.appendChild(icone);
                     item.appendChild(corps);
                     zone.appendChild(item);
+                    monterMenuComposant(item, velo, carte.categorie, libelleEquipement(carte.categorie), carte.nom, carte.sources, false);
+                });
+            }
+
+            // ---- Menu trois points des cartes de la fiche : liens, achat, modification ----
+            function ouvrirAdresse(adresse) {
+                window.open(adresse, '_blank', 'noopener');
+            }
+
+            function composantsDuVelo(velo) {
+                let liste = [];
+                try { liste = JSON.parse(velo.fiche_composants || '[]'); } catch (e) { liste = []; }
+                return Array.isArray(liste) ? liste.filter(c => c && c.categorie) : [];
+            }
+
+            let composantEnEdition = null;
+
+            function monterMenuComposant(item, velo, categorie, libelle, nom, sources, modifie) {
+                item.querySelectorAll('.menu-sortie-btn, .menu-sortie').forEach(e => e.remove());
+                const requete = encodeURIComponent(nom + ' ' + libelle.toLocaleLowerCase('fr'));
+                const sourceSure = (sources || []).map(adresseWebSure).find(Boolean) || '';
+                const actions = [
+                    { icone: 'lien', texte: 'Fiche technique',
+                      action: () => ouvrirAdresse(sourceSure || 'https://www.google.com/search?q=' + requete + '+fiche+technique') },
+                    { icone: 'panier', texte: "Chercher à l'achat",
+                      action: () => ouvrirAdresse('https://www.google.com/search?tbm=shop&q=' + requete) },
+                    { icone: 'crayon', texte: 'Modifier ce composant',
+                      action: () => ouvrirModifComposant(velo, categorie, libelle, nom) }
+                ];
+                if (modifie) {
+                    actions.push({ icone: 'reinit', texte: "Revenir à la fiche d'origine",
+                      action: () => retablirComposantOrigine(velo, categorie) });
+                }
+                ajouterMenuPoints(item, 'Actions pour ' + libelle, actions);
+            }
+
+            function ouvrirModifComposant(velo, categorie, libelle, nom) {
+                composantEnEdition = { veloId: Number(velo.id), categorie: categorie, libelle: libelle };
+                document.getElementById('titreFenetreComposant').textContent = 'Modifier : ' + libelle;
+                document.getElementById('aideFenetreComposant').textContent = 'Écris ce qui est monté maintenant sur le vélo. Pièce actuelle : ' + nom + '.';
+                document.getElementById('champComposantNom').value = nom;
+                document.getElementById('messageComposant').textContent = '';
+                const fenetre = document.getElementById('fenetreComposant');
+                if (typeof fenetre.showModal === 'function') fenetre.showModal();
+                else fenetre.setAttribute('open', '');
+                document.getElementById('champComposantNom').select();
+            }
+
+            async function enregistrerComposantsVelo(velo, liste) {
+                const texte = JSON.stringify(liste);
+                if (texte.length > 30000) throw new Error('La fiche est trop longue pour être enregistrée.');
+                const corps = {
+                    nom: velo.nom,
+                    marque: velo.marque || null,
+                    modele: velo.modele || null,
+                    annee: velo.annee || null,
+                    taille: velo.taille || null,
+                    date_achat: velo.date_achat ? String(velo.date_achat).slice(0, 10) : null,
+                    moteur: velo.moteur || null,
+                    batterie: velo.batterie || null,
+                    fiche_composants: texte
+                };
+                const res = await fetch('/api/velos/' + velo.id, {
+                    method: 'PUT',
+                    headers: getHeaders(),
+                    body: JSON.stringify(corps)
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.detail || 'Enregistrement impossible.');
+                await chargerVelos();
+            }
+
+            async function retablirComposantOrigine(velo, categorie) {
+                try {
+                    await enregistrerComposantsVelo(velo, composantsDuVelo(velo).filter(c => c.categorie !== categorie));
+                } catch (e) {
+                    alert(e.message || "Impossible de revenir à la fiche d'origine.");
+                }
+            }
+
+            document.getElementById('formComposant').addEventListener('submit', async event => {
+                event.preventDefault();
+                const edition = composantEnEdition;
+                const message = document.getElementById('messageComposant');
+                const nom = document.getElementById('champComposantNom').value.trim();
+                const velo = edition && velosDisponibles.find(v => Number(v.id) === edition.veloId);
+                if (!velo) { message.textContent = 'Vélo introuvable.'; return; }
+                if (!nom) { message.textContent = 'Écris le nom du composant.'; return; }
+                const liste = composantsDuVelo(velo).filter(c => c.categorie !== edition.categorie);
+                liste.push({ categorie: edition.categorie, nom: nom, validation: 'valide_par_utilisateur', sources: [] });
+                try {
+                    await enregistrerComposantsVelo(velo, liste);
+                    document.getElementById('fenetreComposant').close();
+                } catch (e) {
+                    message.textContent = e.message || 'Enregistrement impossible.';
+                }
+            });
+            document.getElementById('boutonFermerFenetreComposant').addEventListener('click', () => document.getElementById('fenetreComposant').close());
+
+            // Fiche du CUBE : textes d'origine, remplacés par ce que Math a modifié.
+            function monterFicheCube(velo) {
+                const modifs = velo ? composantsDuVelo(velo) : [];
+                document.querySelectorAll('#ficheTechniqueCube .ftv-item[data-cat]').forEach(item => {
+                    const corps = item.children[1];
+                    const libelle = corps.children[0].textContent.trim();
+                    const valeur = corps.querySelector('.ftv-valeur');
+                    const detail = corps.children[2];
+                    if (item.dataset.origine === undefined) item.dataset.origine = valeur.textContent;
+                    const modif = modifs.find(c => c.categorie === item.dataset.cat && c.nom);
+                    valeur.textContent = modif ? String(modif.nom) : item.dataset.origine;
+                    if (detail) detail.style.display = modif ? 'none' : '';
+                    const trace = corps.querySelector('.ftv-modifie');
+                    if (trace) trace.remove();
+                    if (modif) {
+                        const note = document.createElement('span');
+                        note.className = 'ftv-libelle ftv-modifie';
+                        note.textContent = 'Modifié par toi';
+                        corps.appendChild(note);
+                    }
+                    if (velo) {
+                        monterMenuComposant(item, velo, item.dataset.cat, libelle, valeur.textContent,
+                            modif && Array.isArray(modif.sources) ? modif.sources : [], Boolean(modif));
+                    }
                 });
             }
 
@@ -5078,6 +5221,7 @@ def accueil():
                 const ficheCube = document.getElementById('ficheTechniqueCube');
                 const ficheGenerique = document.getElementById('ficheTechniqueAutre');
                 if (ficheCube) ficheCube.style.display = estCube ? '' : 'none';
+                if (estCube) monterFicheCube(velo || null);
                 if (ficheGenerique) ficheGenerique.style.display = estCube ? 'none' : 'block';
                 const boutonModifierFiche = document.getElementById('btnModifierFicheVelo');
                 if (boutonModifierFiche) boutonModifierFiche.style.display = estCube ? 'none' : 'block';
@@ -5580,6 +5724,7 @@ def accueil():
             }
 
             ICONES.points = '<circle cx="12" cy="5" r="1.9" fill="currentColor"/><circle cx="12" cy="12" r="1.9" fill="currentColor"/><circle cx="12" cy="19" r="1.9" fill="currentColor"/>';
+            ICONES.panier = '<circle cx="9" cy="20" r="1.6"/><circle cx="18" cy="20" r="1.6"/><path d="M3 4h3l2.4 11h10.2L21 8H7"/>';
             ICONES.lien = '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>';
             ICONES.appareil = '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>';
             ICONES.video = '<rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/>';
