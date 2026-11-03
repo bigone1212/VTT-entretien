@@ -1194,6 +1194,64 @@ def accueil():
                 font-weight: 600;
             }
 
+            .bouton-parametres {
+                flex: none;
+                display: grid;
+                place-items: center;
+                width: 38px;
+                height: 38px;
+                padding: 0;
+                border-radius: 50%;
+                color: var(--accent);
+                background: rgba(var(--ac-rgb),0.12);
+                border: 1px solid rgba(var(--ac-rgb),0.3);
+                cursor: pointer;
+            }
+
+            .bouton-parametres svg {
+                width: 22px;
+                height: 22px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 1.8;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+
+            .bouton-retour {
+                flex: none;
+                display: grid;
+                place-items: center;
+                width: 36px;
+                height: 36px;
+                padding: 0;
+                border-radius: 50%;
+                border: 1px solid var(--field-line);
+                background: var(--field);
+                color: var(--strong);
+                cursor: pointer;
+            }
+
+            .bouton-retour svg {
+                width: 20px;
+                height: 20px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 2;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+
+            .bouton-parametres.actif {
+                color: var(--on-accent);
+                background: var(--accent);
+            }
+
+            .bouton-parametres:focus-visible {
+                outline: 2px solid var(--accent);
+                outline-offset: 2px;
+            }
+
             .km-pill {
                 flex-shrink: 0;
                 font-size: 0.85rem;
@@ -3647,12 +3705,13 @@ def accueil():
                 <div class="select-velo-zone"><select id="selectVelo" aria-label="Choisir mon vélo"></select></div>
             </div>
             <span class="km-pill" id="veloInfo">… km</span>
+            <button type="button" class="bouton-parametres" id="boutonParametres" aria-label="Paramètres" title="Paramètres" onclick="location.hash='parametres'"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
         </header>
 
         <nav class="onglets" id="onglets" aria-label="Pages de l'application">
             <button type="button" class="onglet" id="onglet-entretien" onclick="location.hash='entretien'"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>Entretien</button>
             <button type="button" class="onglet" id="onglet-historique" onclick="location.hash='historique'"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Historique</button>
-            <button type="button" class="onglet" id="onglet-reglages" onclick="location.hash='reglages'"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>Réglages</button>
+            <button type="button" class="onglet" id="onglet-reglages" onclick="location.hash='reglages'"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="16" r="3.5"/><circle cx="18" cy="16" r="3.5"/><path d="M6 16l4-7h5l3 7M10 9l3 7M9 6h3"/></svg>Mon vélo</button>
             <button type="button" class="onglet" id="onglet-sorties" onclick="location.hash='sorties'"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h8a3 3 0 0 0 0-6H8a3 3 0 0 1 0-6h8"/></svg>Sorties</button>
         </nav>
 
@@ -3834,77 +3893,7 @@ def accueil():
                 <p class="form-help" id="messageComposant" aria-live="polite"></p>
             </form>
         </dialog>
-        <section class="apparence mr-repliable" id="blocApparence" aria-label="Apparence">
-            <div class="mr-titre">
-                <button type="button" class="mr-entete" aria-expanded="false" aria-controls="blocApparenceCorps">
-                    <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3v18"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg><span>Apparence</span></strong>
-                    <span class="mr-chevron"></span>
-                </button>
-            </div>
-            <div class="mr-corps" id="blocApparenceCorps">
-            <div class="segments" id="segmentsTheme">
-                <button type="button" data-theme-choix="auto"></button>
-                <button type="button" data-theme-choix="light"></button>
-                <button type="button" data-theme-choix="dark"></button>
-            </div>
-            <div class="palettes-titre">Couleurs de l'appli</div>
-            <div class="palettes" id="palettesChoix">
-                <button type="button" data-palette-choix="turquoise" title="Turquoise" aria-label="Turquoise" style="background-image: linear-gradient(135deg, #35e0c8, #0a8f9c)"></button>
-                <button type="button" data-palette-choix="bleu" title="Bleu" aria-label="Bleu" style="background-image: linear-gradient(135deg, #5ab4ff, #2a82e6)"></button>
-                <button type="button" data-palette-choix="vert" title="Vert" aria-label="Vert" style="background-image: linear-gradient(135deg, #6fdc6f, #2a8a3c)"></button>
-                <button type="button" data-palette-choix="orange" title="Orange" aria-label="Orange" style="background-image: linear-gradient(135deg, #ffae42, #c75a08)"></button>
-                <button type="button" data-palette-choix="rose" title="Rose" aria-label="Rose" style="background-image: linear-gradient(135deg, #ff7ab8, #d6337f)"></button>
-                <button type="button" data-palette-choix="violet" title="Violet" aria-label="Violet" style="background-image: linear-gradient(135deg, #b49bff, #7a5ae0)"></button>
-            </div>
-            </div>
-        </section>
 
-        <section class="apparence mr-repliable" id="blocUnites" aria-label="Unités">
-            <div class="mr-titre">
-                <button type="button" class="mr-entete" aria-expanded="false" aria-controls="blocUnitesCorps">
-                    <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="8" cy="7" r="2"/><circle cx="15" cy="17" r="2"/></svg><span>Unités</span></strong>
-                    <span class="mr-chevron"></span>
-                </button>
-            </div>
-            <div class="mr-corps" id="blocUnitesCorps">
-            <p class="form-help" style="margin:0 0 12px;">Choisis les unités utilisées pour afficher les sorties. Les données enregistrées restent inchangées.</p>
-            <div class="mr-ligne">
-                <label for="unitesDistance">Distance</label>
-                <select id="unitesDistance">
-                    <option value="km">Kilomètres (km)</option>
-                    <option value="mi">Miles (mi)</option>
-                </select>
-            </div>
-            <div class="mr-ligne">
-                <label for="unitesAltitude">Altitude et dénivelé</label>
-                <select id="unitesAltitude">
-                    <option value="m">Mètres (m)</option>
-                    <option value="ft">Pieds (ft)</option>
-                </select>
-            </div>
-            <div class="mr-ligne">
-                <label for="unitesVitesse">Vitesse</label>
-                <select id="unitesVitesse">
-                    <option value="kmh">Kilomètres par heure (km/h)</option>
-                    <option value="mph">Miles par heure (mph)</option>
-                </select>
-            </div>
-            <div class="mr-ligne">
-                <label for="unitesTemperature">Température</label>
-                <select id="unitesTemperature">
-                    <option value="c">Celsius (°C)</option>
-                    <option value="f">Fahrenheit (°F)</option>
-                </select>
-            </div>
-            <div class="mr-ligne">
-                <label for="unitesHeure">Heure</label>
-                <select id="unitesHeure">
-                    <option value="24">24 heures</option>
-                    <option value="12">12 heures (AM/PM)</option>
-                </select>
-            </div>
-            </div>
-        </section>
 
         <details class="fiche-technique-velo" id="ficheTechniqueCube">
             <summary class="ftv-resume">
@@ -4091,6 +4080,88 @@ def accueil():
                 </div>
             </div>
         </section>
+        </div>
+
+        <div class="page" id="page-parametres" style="display:none;">
+        <section class="mes-reglages">
+            <div class="mr-titre">
+                <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>Paramètres</span></strong>
+                <button type="button" id="boutonRetourParametres" class="bouton-retour" aria-label="Retour" onclick="quitterParametres()"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+            </div>
+            <p class="form-help">Couleurs de l'appli, unités de mesure et règles d'usure.</p>
+        </section>
+        <section class="apparence mr-repliable" id="blocApparence" aria-label="Apparence">
+            <div class="mr-titre">
+                <button type="button" class="mr-entete" aria-expanded="false" aria-controls="blocApparenceCorps">
+                    <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3v18"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg><span>Apparence</span></strong>
+                    <span class="mr-chevron"></span>
+                </button>
+            </div>
+            <div class="mr-corps" id="blocApparenceCorps">
+            <div class="segments" id="segmentsTheme">
+                <button type="button" data-theme-choix="auto"></button>
+                <button type="button" data-theme-choix="light"></button>
+                <button type="button" data-theme-choix="dark"></button>
+            </div>
+            <div class="palettes-titre">Couleurs de l'appli</div>
+            <div class="palettes" id="palettesChoix">
+                <button type="button" data-palette-choix="turquoise" title="Turquoise" aria-label="Turquoise" style="background-image: linear-gradient(135deg, #35e0c8, #0a8f9c)"></button>
+                <button type="button" data-palette-choix="bleu" title="Bleu" aria-label="Bleu" style="background-image: linear-gradient(135deg, #5ab4ff, #2a82e6)"></button>
+                <button type="button" data-palette-choix="vert" title="Vert" aria-label="Vert" style="background-image: linear-gradient(135deg, #6fdc6f, #2a8a3c)"></button>
+                <button type="button" data-palette-choix="orange" title="Orange" aria-label="Orange" style="background-image: linear-gradient(135deg, #ffae42, #c75a08)"></button>
+                <button type="button" data-palette-choix="rose" title="Rose" aria-label="Rose" style="background-image: linear-gradient(135deg, #ff7ab8, #d6337f)"></button>
+                <button type="button" data-palette-choix="violet" title="Violet" aria-label="Violet" style="background-image: linear-gradient(135deg, #b49bff, #7a5ae0)"></button>
+            </div>
+            </div>
+        </section>
+
+        <section class="apparence mr-repliable" id="blocUnites" aria-label="Unités">
+            <div class="mr-titre">
+                <button type="button" class="mr-entete" aria-expanded="false" aria-controls="blocUnitesCorps">
+                    <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="8" cy="7" r="2"/><circle cx="15" cy="17" r="2"/></svg><span>Unités</span></strong>
+                    <span class="mr-chevron"></span>
+                </button>
+            </div>
+            <div class="mr-corps" id="blocUnitesCorps">
+            <p class="form-help" style="margin:0 0 12px;">Choisis les unités utilisées pour afficher les sorties. Les données enregistrées restent inchangées.</p>
+            <div class="mr-ligne">
+                <label for="unitesDistance">Distance</label>
+                <select id="unitesDistance">
+                    <option value="km">Kilomètres (km)</option>
+                    <option value="mi">Miles (mi)</option>
+                </select>
+            </div>
+            <div class="mr-ligne">
+                <label for="unitesAltitude">Altitude et dénivelé</label>
+                <select id="unitesAltitude">
+                    <option value="m">Mètres (m)</option>
+                    <option value="ft">Pieds (ft)</option>
+                </select>
+            </div>
+            <div class="mr-ligne">
+                <label for="unitesVitesse">Vitesse</label>
+                <select id="unitesVitesse">
+                    <option value="kmh">Kilomètres par heure (km/h)</option>
+                    <option value="mph">Miles par heure (mph)</option>
+                </select>
+            </div>
+            <div class="mr-ligne">
+                <label for="unitesTemperature">Température</label>
+                <select id="unitesTemperature">
+                    <option value="c">Celsius (°C)</option>
+                    <option value="f">Fahrenheit (°F)</option>
+                </select>
+            </div>
+            <div class="mr-ligne">
+                <label for="unitesHeure">Heure</label>
+                <select id="unitesHeure">
+                    <option value="24">24 heures</option>
+                    <option value="12">12 heures (AM/PM)</option>
+                </select>
+            </div>
+            </div>
+        </section>
+
         <section class="mes-reglages mr-repliable" id="reglagesUsure" aria-label="Réglages de l'usure">
             <div class="mr-titre">
                 <button type="button" class="mr-entete" aria-expanded="false" aria-controls="reglagesUsureCorps">
@@ -4413,7 +4484,14 @@ def accueil():
         </dialog>
 
         <script>
-            const PAGES = ['entretien', 'historique', 'reglages', 'sorties'];
+            const PAGES = ['entretien', 'historique', 'reglages', 'sorties', 'parametres'];
+
+            // Bouton « retour » des paramètres : revient à la page d'avant (Entretien si on n'en connaît pas).
+            let pageAvantParametres = 'entretien';
+
+            function quitterParametres() {
+                location.hash = pageAvantParametres === 'parametres' ? 'entretien' : pageAvantParametres;
+            }
 
             function afficherPage() {
                 let nom = (location.hash || '').replace('#', '');
@@ -4422,11 +4500,13 @@ def accueil():
                     nom = 'entretien';
                 }
 
+                if (nom !== 'parametres') pageAvantParametres = nom;
                 PAGES.forEach(p => {
                     document.getElementById('page-' + p).style.display =
                         p === nom ? 'block' : 'none';
 
-                    const bouton = document.getElementById('onglet-' + p);
+                    const bouton = document.getElementById(p === 'parametres' ? 'boutonParametres' : 'onglet-' + p);
+                    if (!bouton) return;
                     bouton.classList.toggle('actif', p === nom);
 
                     if (p === nom) {
