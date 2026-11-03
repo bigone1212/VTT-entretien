@@ -2220,7 +2220,7 @@ jobs:
               # Vélo ajouté : menu, liens, modification
               pg = ouvrir(2)
               pg.click("#ficheTechniqueAutre summary"); pg.wait_for_timeout(300)
-              carte = pg.locator("#ficheAutreEquipement .ftv-item", has_text="Pneus")
+              carte = pg.locator("#ficheAutreEquipement .ftv-item", has_text="Pneu avant")
               carte.locator(".menu-sortie-btn").click()
               assert carte.locator("[role=menuitem]").all_inner_texts() == ["Fiche technique", "Chercher à l'achat", "Modifier ce composant"]
               carte.get_by_text("Fiche technique").click()
@@ -2236,23 +2236,23 @@ jobs:
               chemin, corps = puts[-1]
               assert chemin == "/api/velos/2" and corps["nom"] == "Trek" and corps["modele"] == "Fuel" and corps["date_achat"] == "2025-05-01", puts[-1]
               liste = json.loads(corps["fiche_composants"])
-              assert {"categorie": "pneus", "nom": "Schwalbe Nobby Nic 2,6", "validation": "valide_par_utilisateur", "sources": []} in liste and len(liste) == 2, liste
+              assert {"categorie": "pneus_avant", "nom": "Schwalbe Nobby Nic 2,6", "validation": "valide_par_utilisateur", "sources": []} in liste and len(liste) == 3, liste
               assert not pg.evaluate("document.getElementById('fenetreComposant').open")
-              assert "Schwalbe Nobby Nic 2,6" in pg.locator("#ficheAutreEquipement .ftv-item", has_text="Pneus").inner_text()
+              assert "Schwalbe Nobby Nic 2,6" in pg.locator("#ficheAutreEquipement .ftv-item", has_text="Pneu avant").inner_text()
               pg.close()
               # CUBE : modification gardée à part, retour à la fiche d'origine
               pg = ouvrir(1)
               pg.click("#ficheTechniqueCube summary"); pg.wait_for_timeout(300)
-              c = pg.locator("#ficheTechniqueCube .ftv-item[data-cat=roues]")
+              c = pg.locator("#ficheTechniqueCube .ftv-item[data-cat=pneus_avant]")
               c.locator(".menu-sortie-btn").click()
               assert c.locator("[role=menuitem]").all_inner_texts() == ["Fiche technique", "Chercher à l'achat", "Modifier ce composant"]
               c.get_by_text("Modifier ce composant").click(); pg.fill("#champComposantNom", "DT Swiss XM 481"); pg.click("#boutonEnregistrerComposant"); pg.wait_for_timeout(800)
               assert puts[-1][0] == "/api/velos/1" and json.loads(puts[-1][1]["fiche_composants"])[0]["nom"] == "DT Swiss XM 481"
-              c = pg.locator("#ficheTechniqueCube .ftv-item[data-cat=roues]")
+              c = pg.locator("#ficheTechniqueCube .ftv-item[data-cat=pneus_avant]")
               assert "DT Swiss XM 481" in c.inner_text() and "Modifié par toi" in c.inner_text()
               c.locator(".menu-sortie-btn").click(); c.get_by_text("Revenir à la fiche d'origine").click(); pg.wait_for_timeout(800)
               assert json.loads(puts[-1][1]["fiche_composants"]) == []
-              assert "Schwalbe Nobby Nic" in pg.locator("#ficheTechniqueCube .ftv-item[data-cat=roues]").inner_text()
+              assert "Schwalbe Nobby Nic" in pg.locator("#ficheTechniqueCube .ftv-item[data-cat=pneus_avant]").inner_text()
               pg.close()
               nav.close()
           assert not erreurs, erreurs
