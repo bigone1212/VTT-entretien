@@ -150,6 +150,13 @@
 ---
 
 
+## 2026-11-03 — PR 27 fusionnée : remplacer une pièce « même ou autre » + avant/arrière séparés (étape 2)
+- Sur GitHub (main) : à l'onglet Entretien, « Remplacer » sur une pièce d'usure reliée à la fiche (chaîne, cassette, plateau, plaquettes, disques, pneus, courroie) ouvre une fenêtre « même pièce / une autre ». L'autre est notée dans l'historique (« Pièce remplacée par : … ») et met à jour la carte de la fiche (« validé par toi »). Les autres lignes gardent la confirmation habituelle.
+- Avant et arrière séparés : pneus, plaquettes, disques, étriers, roues, jantes, moyeux (fiche du CUBE : Pneu/Jante/Moyeu/Plaquettes avant et arrière ; autres vélos : cartes dédoublées au besoin). Une ancienne modification générale « roues » du CUBE reste reprise pour les deux côtés.
+- Le CUBE n'a pas de carte disques ni courroie : la question n'y est pas posée pour ces pièces.
+- Testé : navigateur local (CUBE et autre vélo) et tests automatiques GitHub, passés.
+- Non vérifié d'ici : le déploiement sur Render.
+
 ## 2026-11-03 — PR 26 fusionnée : menu trois points sur chaque carte de la fiche (étape 1)
 - Sur GitHub (main) : chaque carte de la fiche technique (CUBE et autres vélos) a un menu trois points : « Fiche technique » (lien trouvé ou recherche web), « Chercher à l'achat » (recherche web), « Modifier ce composant » (fenêtre ; enregistré dans la fiche du vélo, marqué « validé par toi »). Sur le CUBE : « Revenir à la fiche d'origine ». Les textes d'origine du CUBE restent dans la page.
 - Testé : navigateur local (CUBE et autre vélo) et tests automatiques GitHub, passés.
