@@ -2338,6 +2338,66 @@ jobs:
           PY
           rm -f "$SQLITE_PATH"
           PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_recherche_ia.py"
+      - name: Tester le remplacement « même pièce ou autre » dans un vrai navigateur
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-remplacement-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_remplacement.py" <<'PY'
+          import json
+          from urllib.parse import urlparse
+          from playwright.sync_api import sync_playwright
+          import main
+          html = main.accueil()
+          V=[{"id":1,"nom":"Mon CUBE","type":"vtt_electrique","actif":1,"km_total":0,"km_frac":0,"a_photo":0,"sorties_a_verifier":0},
+          {"id":2,"nom":"Trek","type":"vtt_electrique","fiche_composants":json.dumps([{"categorie":"pneus","nom":"Schwalbe Nobby Nic","validation":"valide_par_utilisateur"}]),"actif":1,"km_total":0,"km_frac":0,"a_photo":0,"sorties_a_verifier":0}]
+          def comp(i,nom,cat): return {"id":i,"nom":nom,"categorie":cat,"pourcentage_usure":50,"pos_x":50,"pos_y":50,"numero":i,"km_restants":100,"seuil_km":1000,"verification":False}
+          ETAT={"km_total":0,"composants":[comp(11,"Pneu arrière / tubeless","piece"),comp(12,"Nettoyage & Lubrification chaîne","maintenance"),comp(13,"Cassette Shimano XT 12-speed","piece")]}
+          posts=[]; puts=[]; err=[]; dialogs=[]
+
+          def run(vid):
+              with sync_playwright() as p:
+                  nav=p.chromium.launch(); ctx=nav.new_context(viewport={"width":390,"height":900})
+                  def api(r):
+                      u=urlparse(r.request.url); m=r.request.method
+                      if u.path.endswith("/remplacer"): posts.append((u.path,json.loads(r.request.post_data)["notes"])); c={"statut":"success"}
+                      elif u.path.startswith("/api/velos/") and m=="PUT": puts.append(json.loads(r.request.post_data)["fiche_composants"]); c={"statut":"success"}
+                      else: c=V if u.path=="/api/velos" else ETAT if u.path=="/api/etat" else {"valeurs":{},"maj_le":None} if u.path=="/api/mes-reglages" else []
+                      r.fulfill(status=200,content_type="application/json",body=json.dumps(c))
+                  ctx.route("**/localhost/api/**",api); ctx.route(lambda u: not u.startswith("http://localhost/"),lambda r:r.abort())
+                  ctx.add_init_script("sessionStorage.setItem('vtt_code','t');sessionStorage.setItem('maillons_velo_id','%d')"%vid)
+                  pg=ctx.new_page(); pg.on("pageerror",lambda e:err.append(str(e))); pg.on("dialog",lambda d:(dialogs.append(d.message),d.accept()))
+                  pg.route("http://localhost/",lambda r:r.fulfill(status=200,content_type="text/html",body=html))
+                  pg.goto("http://localhost/"); pg.wait_for_timeout(1500)
+                  # maintenance : ancien comportement (confirm)
+                  pg.evaluate("remplacer(12,'Nettoyage & Lubrification chaîne','maintenance')"); pg.wait_for_timeout(400)
+                  assert dialogs and not pg.evaluate("document.getElementById('fenetreRemplacement').open") and posts[-1][1] == "Intervention standard", (dialogs, posts)
+                  # pièce : même
+                  pg.evaluate("remplacer(11,'Pneu arrière / tubeless','piece')"); pg.wait_for_timeout(300)
+                  assert pg.evaluate("document.getElementById('fenetreRemplacement').open") and "Schwalbe Nobby Nic" in pg.inner_text("#aideFenetreRemplacement")
+                  pg.click("#boutonValiderRemplacement"); pg.wait_for_timeout(500)
+                  assert posts[-1] == ("/api/composants/11/remplacer", "Intervention standard") and not puts
+                  # pièce : autre
+                  pg.evaluate("remplacer(11,'Pneu arrière / tubeless','piece')"); pg.wait_for_timeout(300)
+                  pg.check("#formRemplacement input[value=autre]"); pg.fill("#champNouvellePiece","Maxxis Minion DHR II"); pg.click("#boutonValiderRemplacement"); pg.wait_for_timeout(700)
+                  attendu = "roues" if vid == 1 else "pneus"
+                  assert posts[-1][1] == "Pièce remplacée par : Maxxis Minion DHR II", posts[-1]
+                  assert json.loads(puts[-1])[0]["categorie"] == attendu and json.loads(puts[-1])[0]["nom"] == "Maxxis Minion DHR II", puts[-1]
+                  assert not pg.evaluate("document.getElementById('fenetreRemplacement').open")
+                  puts.clear()
+                  # autre vide
+                  pg.evaluate("remplacer(13,'Cassette Shimano XT 12-speed','piece')"); pg.wait_for_timeout(300)
+                  pg.check("#formRemplacement input[value=autre]"); pg.fill("#champNouvellePiece",""); pg.click("#boutonValiderRemplacement"); pg.wait_for_timeout(300)
+                  n = len(posts)
+                  assert "Écris la marque" in pg.inner_text("#messageRemplacement") and len(posts) == n
+                  pg.click("#boutonFermerFenetreRemplacement")
+                  nav.close()
+          run(1); run(2)
+          assert not err, err
+          print("OK remplacement : même pièce ou autre, fiche mise à jour")
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_remplacement.py"
       - name: Vérifier le script de migration SQLite sur une base temporaire
         run: |
           python - <<'PY'

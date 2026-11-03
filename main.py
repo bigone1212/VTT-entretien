@@ -1299,6 +1299,16 @@ def accueil():
                 outline: 2px solid var(--accent);
             }
 
+            .choix-remplacement {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin: 8px 0;
+                color: var(--strong);
+            }
+
+            .choix-remplacement input { width: auto; margin: 0; accent-color: var(--accent); }
+
             #reponseIA {
                 display: block;
                 background: var(--field);
@@ -4368,6 +4378,24 @@ def accueil():
 
         </div>
 
+        <dialog id="fenetreRemplacement" class="fenetre-velo" aria-labelledby="titreFenetreRemplacement">
+            <div class="fenetre-velo-entete">
+                <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 0 1 14-5.3L20 9"/><path d="M20 4v5h-5"/><path d="M20 12a8 8 0 0 1-14 5.3L4 15"/><path d="M4 20v-5h5"/></svg><span id="titreFenetreRemplacement">Remplacer la pièce</span></strong>
+                <button type="button" class="fenetre-velo-fermer" id="boutonFermerFenetreRemplacement" aria-label="Fermer sans enregistrer">✕</button>
+            </div>
+            <p class="form-help" id="aideFenetreRemplacement"></p>
+            <form id="formRemplacement">
+                <label class="choix-remplacement"><input type="radio" name="choixRemplacement" value="meme" checked> La même pièce</label>
+                <label class="choix-remplacement"><input type="radio" name="choixRemplacement" value="autre"> Une autre pièce (autre marque ou autre type)</label>
+                <div id="zoneNouvellePiece" style="display:none;">
+                    <label for="champNouvellePiece">Marque et modèle de la nouvelle pièce</label>
+                    <input id="champNouvellePiece" type="text" maxlength="120" autocomplete="off" placeholder="Ex. : Maxxis Minion DHF 29 x 2,5">
+                </div>
+                <button class="btn-primary" id="boutonValiderRemplacement" type="submit" style="width:100%; margin-top:8px;">Enregistrer le remplacement</button>
+                <p class="form-help" id="messageRemplacement" aria-live="polite"></p>
+            </form>
+        </dialog>
+
         <script>
             const PAGES = ['entretien', 'historique', 'reglages', 'sorties'];
 
@@ -6860,7 +6888,7 @@ def accueil():
                                 });
                                 return;
                             }
-                            remplacer(c.id, c.nom);
+                            remplacer(c.id, c.nom, c.categorie);
                         });
 
                         hotspotsContainer.appendChild(hotspot);
@@ -6932,7 +6960,7 @@ def accueil():
                         button.className = 'btn-action';
                         remplirBouton(button, estMaintenance ? 'cle' : 'echange', btnLabel);
                         button.addEventListener('click', () => {
-                            remplacer(c.id, c.nom);
+                            remplacer(c.id, c.nom, c.categorie);
                         });
 
                         const chevron = document.createElement('span');
@@ -8092,19 +8120,15 @@ def accueil():
             }
 
 
-            async function remplacer(id, nom) {
-                if (!confirm(`Confirmer l'intervention pour : ${nom} ?`)) {
-                    return;
-                }
-
+            // Envoie l'intervention au serveur ; renvoie true si elle est bien enregistrée.
+            async function envoyerRemplacement(id, notes) {
                 const aujourdhui = new Date().toISOString().split('T')[0];
-
                 try {
                     const res = await fetch(`/api/composants/${id}/remplacer`, {
                         method: 'POST',
                         headers: getHeaders(),
                         body: JSON.stringify({
-                            notes: "Intervention standard",
+                            notes: notes,
                             cout: 0.0,
                             date_remplacement: aujourdhui
                         })
@@ -8112,16 +8136,110 @@ def accueil():
 
                     if (res.status === 401) {
                         document.getElementById('authScreen').style.display = 'flex';
-                        return;
+                        return false;
                     }
 
                     if (!res.ok) throw new Error();
                     await chargerEtat();
+                    return true;
 
                 } catch (e) {
                     alert("Impossible d'enregistrer l'intervention.");
+                    return false;
                 }
             }
+
+            // Carte de la fiche technique qui correspond à une pièce d'usure de l'entretien (ou null).
+            function carteFichePourEntretien(nom, categorie, estCube) {
+                if (categorie !== 'piece') return null;
+                const n = String(nom || '').toLocaleLowerCase('fr');
+                if (n.includes('courroie')) return estCube ? null : 'transmission';
+                if (n.includes('chaîne')) return 'chaine';
+                if (n.includes('cassette')) return 'cassette';
+                if (n.includes('plateau')) return estCube ? 'pedalier' : 'plateau';
+                if (n.includes('plaquettes') || n.includes('patins')) return 'plaquettes';
+                if (n.includes('disque')) return estCube ? null : 'disques';
+                if (n.includes('pneu')) return estCube ? 'roues' : 'pneus';
+                return null;
+            }
+
+            let remplacementEnCours = null;
+
+            async function remplacer(id, nom, categorie) {
+                const velo = velosDisponibles.find(v => Number(v.id) === veloActifId);
+                const estCube = !velo || Number(velo.id) === 1;
+                const cible = velo ? carteFichePourEntretien(nom, categorie, estCube) : null;
+                if (!cible) {
+                    if (!confirm(`Confirmer l'intervention pour : ${nom} ?`)) {
+                        return;
+                    }
+                    await envoyerRemplacement(id, "Intervention standard");
+                    return;
+                }
+                let actuelle = '';
+                let libelle = libelleEquipement(cible);
+                if (estCube) {
+                    const carte = document.querySelector('#ficheTechniqueCube .ftv-item[data-cat="' + cible + '"]');
+                    if (carte) {
+                        actuelle = carte.querySelector('.ftv-valeur').textContent.trim();
+                        libelle = carte.children[1].children[0].textContent.trim();
+                    }
+                } else {
+                    const connue = composantsDuVelo(velo).find(c => c.categorie === cible && c.nom);
+                    actuelle = connue ? String(connue.nom) : '';
+                }
+                remplacementEnCours = { id: id, nom: nom, veloId: Number(velo.id), categorie: cible, libelle: libelle };
+                document.getElementById('titreFenetreRemplacement').textContent = 'Remplacer : ' + nom;
+                document.getElementById('aideFenetreRemplacement').textContent = actuelle
+                    ? 'Dans la fiche du vélo, « ' + libelle + ' » est : ' + actuelle + '. Tu remets la même pièce ou une autre ?'
+                    : 'Tu remets la même pièce ou une autre ?';
+                document.querySelector('#formRemplacement input[value="meme"]').checked = true;
+                document.getElementById('zoneNouvellePiece').style.display = 'none';
+                document.getElementById('champNouvellePiece').value = actuelle;
+                document.getElementById('messageRemplacement').textContent = '';
+                const fenetre = document.getElementById('fenetreRemplacement');
+                if (typeof fenetre.showModal === 'function') fenetre.showModal();
+                else fenetre.setAttribute('open', '');
+            }
+
+            document.querySelectorAll('#formRemplacement input[name="choixRemplacement"]').forEach(radio => {
+                radio.addEventListener('change', () => {
+                    const autre = document.querySelector('#formRemplacement input[name="choixRemplacement"]:checked').value === 'autre';
+                    document.getElementById('zoneNouvellePiece').style.display = autre ? 'block' : 'none';
+                    if (autre) document.getElementById('champNouvellePiece').select();
+                });
+            });
+            document.getElementById('boutonFermerFenetreRemplacement').addEventListener('click', () => document.getElementById('fenetreRemplacement').close());
+
+            document.getElementById('formRemplacement').addEventListener('submit', async event => {
+                event.preventDefault();
+                const action = remplacementEnCours;
+                const message = document.getElementById('messageRemplacement');
+                if (!action) return;
+                const autre = document.querySelector('#formRemplacement input[name="choixRemplacement"]:checked').value === 'autre';
+                const nouvelle = document.getElementById('champNouvellePiece').value.trim();
+                if (autre && !nouvelle) { message.textContent = 'Écris la marque et le modèle de la nouvelle pièce.'; return; }
+                const bouton = document.getElementById('boutonValiderRemplacement');
+                bouton.disabled = true;
+                try {
+                    const enregistre = await envoyerRemplacement(action.id, autre ? 'Pièce remplacée par : ' + nouvelle : 'Intervention standard');
+                    if (!enregistre) return;
+                    document.getElementById('fenetreRemplacement').close();
+                    if (autre) {
+                        const velo = velosDisponibles.find(v => Number(v.id) === action.veloId);
+                        try {
+                            if (!velo) throw new Error();
+                            const liste = composantsDuVelo(velo).filter(c => c.categorie !== action.categorie);
+                            liste.push({ categorie: action.categorie, nom: nouvelle, validation: 'valide_par_utilisateur', sources: [] });
+                            await enregistrerComposantsVelo(velo, liste);
+                        } catch (e) {
+                            alert("Le remplacement est enregistré, mais la fiche technique n'a pas pu être mise à jour.");
+                        }
+                    }
+                } finally {
+                    bouton.disabled = false;
+                }
+            });
 
 
             const LIBELLES_TERRAIN = {
