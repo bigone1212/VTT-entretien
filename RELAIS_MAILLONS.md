@@ -150,6 +150,11 @@
 ---
 
 
+## 2026-11-03 — PR 28 fusionnée : onglet « Mon vélo » + page Paramètres (engrenage)
+- Sur GitHub (main) : l'onglet « Réglages » s'appelle « Mon vélo » (icône vélo ; le lien interne reste #reglages). Apparence, Unités et Réglages de l'usure sont dans une nouvelle page Paramètres (#parametres), ouverte par un engrenage en haut à droite de l'en-tête, avec un bouton retour. « Mes réglages vélo » reste dans Mon vélo. Présentation seulement.
+- Testé : navigateur local et tests automatiques GitHub (nouveau test inclus), passés.
+- Non vérifié d'ici : le déploiement sur Render.
+
 ## 2026-11-03 — PR 27 fusionnée : remplacer une pièce « même ou autre » + avant/arrière séparés (étape 2)
 - Sur GitHub (main) : à l'onglet Entretien, « Remplacer » sur une pièce d'usure reliée à la fiche (chaîne, cassette, plateau, plaquettes, disques, pneus, courroie) ouvre une fenêtre « même pièce / une autre ». L'autre est notée dans l'historique (« Pièce remplacée par : … ») et met à jour la carte de la fiche (« validé par toi »). Les autres lignes gardent la confirmation habituelle.
 - Avant et arrière séparés : pneus, plaquettes, disques, étriers, roues, jantes, moyeux (fiche du CUBE : Pneu/Jante/Moyeu/Plaquettes avant et arrière ; autres vélos : cartes dédoublées au besoin). Une ancienne modification générale « roues » du CUBE reste reprise pour les deux côtés.
