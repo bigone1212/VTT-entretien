@@ -150,6 +150,11 @@
 ---
 
 
+## 2026-11-04 — PR 29 fusionnée : plus de rond autour des trois points de « Mes vélos »
+- Sur GitHub (main) : dans Mon vélo > Mes vélos, les trois petits points n'ont plus de rond (repos, survol, menu ouvert). Les autres menus trois points ne changent pas. Présentation seulement.
+- Testé : navigateur local et tests automatiques GitHub, passés.
+- Non vérifié d'ici : le déploiement sur Render.
+
 ## 2026-11-03 — PR 28 fusionnée : onglet « Mon vélo » + page Paramètres (engrenage)
 - Sur GitHub (main) : l'onglet « Réglages » s'appelle « Mon vélo » (icône vélo ; le lien interne reste #reglages). Apparence, Unités et Réglages de l'usure sont dans une nouvelle page Paramètres (#parametres), ouverte par un engrenage en haut à droite de l'en-tête, avec un bouton retour. « Mes réglages vélo » reste dans Mon vélo. Présentation seulement.
 - Testé : navigateur local et tests automatiques GitHub (nouveau test inclus), passés.
