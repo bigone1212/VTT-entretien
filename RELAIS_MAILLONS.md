@@ -150,6 +150,15 @@
 ---
 
 
+## 2026-11-04 — Bouton « Trouver un réparateur près de moi » dans les fiches Atelier (poussé directement sur main, sans PR)
+- Demande de Math (04/11/2026) : un lien, dans l'onglet Entretien, vers une recherche de réparateurs de vélo des environs. Claude a proposé de le mettre dans chaque fiche « Comment faire » de difficulté Atelier plutôt qu'en lien général ; **Math a validé (« ok »)**.
+- Sur GitHub (main) : commit `f18bb88`. Fichier touché : `main.py` seulement (28 lignes ajoutées, aucune supprimée, aucun backslash ajouté). Dans `blocGuide`, pour les 15 fiches dont la difficulté est « Atelier », un bouton `.guide-reparateur` s'ajoute sous le bouton YouTube. Il ouvre Google Maps sur la recherche « réparateur vélo » (`https://www.google.com/maps/search/?api=1&query=` + texte encodé), autour de la position de l'appareil. Les fiches Facile et Moyen n'ont pas de bouton. Présentation seulement : aucun changement de données, de serveur ni de fonctionnement.
+- **Écart au protocole du 25/10/2026** : ce changement de code a été poussé directement sur `main`, sans branche `reprise/…` ni PR (Claude a suivi la consigne du projet « enregistrer directement dans le dépôt »). Les tests automatiques GitHub n'ont donc pas tourné (ils ne tournent pas sur `main`). À trancher avec Math pour la suite : branche + PR pour tout changement de code, ou enregistrement direct pour les petits changements d'apparence.
+- Testé par Claude : compilation Python ; syntaxe du JavaScript de la page (`node --check`) ; test du code du bouton avec un faux écran : 15 fiches Atelier avec bouton, 37 autres sans, bouton YouTube inchangé, lien et texte conformes.
+- **Non testé** : l'appli complète (FastAPI n'a pas pu être installé dans l'espace de travail de Claude, pypi.org inaccessible), le navigateur réel et le téléphone de Math, l'ouverture de Google Maps depuis le téléphone, l'apparence du bouton.
+- Non vérifié d'ici : le déploiement sur Render. Aucune opération Neon, aucun secret.
+- Suite : Math attend la mise à jour de Render, rouvre l'appli, ouvre une fiche Atelier (par exemple « Purge du liquide de frein »), « Comment faire », et dit si le bouton est bien là et s'il convient.
+
 ## 2026-11-04 — PR 29 fusionnée : plus de rond autour des trois points de « Mes vélos »
 - Sur GitHub (main) : dans Mon vélo > Mes vélos, les trois petits points n'ont plus de rond (repos, survol, menu ouvert). Les autres menus trois points ne changent pas. Présentation seulement.
 - Testé : navigateur local et tests automatiques GitHub, passés.
