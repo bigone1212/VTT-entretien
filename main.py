@@ -2007,6 +2007,15 @@ def accueil():
             #blocAjouterVelo { position: relative; }
             #blocAjouterVelo .mr-titre { padding-right: 44px; min-height: 36px; }
             #blocAjouterVelo .menu-sortie-btn { top: 8px; right: 8px; }
+            #blocAjouterVelo .mr-titre .menu-sortie-btn,
+            #blocAjouterVelo .mr-titre .menu-sortie-btn:hover,
+            #blocAjouterVelo .mr-titre .menu-sortie-btn[aria-expanded="true"] {
+                background: none;
+                border: none;
+                box-shadow: none;
+            }
+            #blocAjouterVelo .mr-titre .menu-sortie-btn:hover,
+            #blocAjouterVelo .mr-titre .menu-sortie-btn[aria-expanded="true"] { color: var(--accent); }
             #blocAjouterVelo .menu-sortie { top: 48px; right: 8px; }
             .hist-total { margin: 2px 0 8px; font-size: 0.82rem; color: var(--text-muted); }
             .hist-filtre-btn { right: 40px; }
