@@ -2895,6 +2895,22 @@ def accueil():
                 text-decoration: none;
             }
 
+            .guide-reparateur {
+                display: flex;
+                width: fit-content;
+                align-items: center;
+                gap: 8px;
+                margin: 2px 0 12px;
+                padding: 7px 14px;
+                font-size: 0.84rem;
+                font-weight: 700;
+                color: var(--accent);
+                background: transparent;
+                border: 1px solid var(--accent);
+                border-radius: 999px;
+                text-decoration: none;
+            }
+
             .verifs {
                 max-width: 600px;
                 margin: 0 auto 16px auto;
@@ -6576,6 +6592,18 @@ def accueil():
                 a.innerHTML = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor"/></svg><span></span>';
                 a.lastChild.textContent = 'Voir des vidéos sur YouTube';
                 det.appendChild(a);
+
+                // Rubrique d'atelier : lien vers une recherche de réparateurs de vélo autour de soi
+                if (g && g[0] === 'Atelier') {
+                    const r = document.createElement('a');
+                    r.className = 'guide-reparateur';
+                    r.href = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent('réparateur vélo');
+                    r.target = '_blank';
+                    r.rel = 'noopener noreferrer';
+                    r.innerHTML = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z" fill="currentColor"/></svg><span></span>';
+                    r.lastChild.textContent = 'Trouver un réparateur près de moi';
+                    det.appendChild(r);
+                }
                 return det;
             }
 
