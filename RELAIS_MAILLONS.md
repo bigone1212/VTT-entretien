@@ -151,7 +151,7 @@
 
 
 ## 2026-11-04 — NOUVELLE TÂCHE (pas commencée côté code) : plusieurs personnes, chacune avec son profil et ses vélos
-- **⚠ Voir l'entrée de 18h35 au-dessus : Math a depuis choisi « compte Google » au lieu du « code secret par personne » noté ici. Choix final en attente de confirmation de Math.**
+- **Confirmé par Math (04/11/2026, ~18h40) : c'est bien « un code secret par personne ».** L'entrée « compte Google » de 18h35 (juste en dessous) est annulée.
 - Demande de Math (04/11/2026, ~15h09) : faire profiter 5 à 6 personnes de l'appli, chacune avec son profil et ses vélos. **Choix de Math : un code secret par personne** (options proposées : code par personne, nom + mot de passe, lien personnel).
 - État constaté par Claude en lisant `main.py` et `db.py` : un seul code d'accès commun (`CODE_ACCES`, en-tête `X-Code-Acces`, vérifié par `verifier_auth`, appelée par une quarantaine de routes `/api/...`) ; les vélos sont dans la table `velos` mais sans propriétaire ; `composants` et `sorties` ont un `velo_id`, `historique` passe par `composant_id`, `mes_reglages_velo` par `velo_id` ; tables communes à tous : `reglages` et `mes_reglages` ; `sorties.debut` est UNIQUE pour toute la base (deux personnes ne pourraient pas importer la même sortie) ; `/api/sauvegarde` exporte tout ; les favoris sont gardés sur le téléphone.
 - Plan proposé, à valider **une étape à la fois** avec Math :
@@ -163,18 +163,10 @@
 - À confirmer avec Math : que son code actuel devienne le sien (et qu'il soit le seul à créer les autres personnes) ; que les favoris restent sur chaque téléphone.
 - Rien n'est commencé : aucune branche, aucun changement de code ni de données, aucune opération Neon.
 
-## 2026-11-04 — NOUVELLE TÂCHE : profils pour 5 à 6 personnes, connexion par compte Google (plan seulement, rien codé, rien enregistré côté code)
-- **⚠ CONTRADICTION À RÉSOUDRE AVANT TOUTE ÉTAPE** : l'entrée de 15h10 (plus bas, même tâche) note que Math avait choisi « un code secret par personne » ; à 18h30, dans une autre conversation, Math a choisi « compte Google ». Les deux plans diffèrent (connexion, étape 2 côté Google, nouvelles variables Render). Claude demande à Math de confirmer lequel est le bon. **Ne rien coder tant que ce n'est pas confirmé.** Les constats techniques de l'entrée de 15h10 (`sorties.debut` unique pour toute la base, sauvegarde qui exporte tout, imports GPX/Strava, favoris sur le téléphone) restent valables dans les deux cas.
-- Demande de Math (04/11/2026, ~18h30) : faire profiter 5 à 6 personnes de l'appli, chacune avec son profil et ses vélos. **Math choisit la connexion par compte Google** (options proposées : code secret personnel, identifiant + mot de passe, compte Google). Profils totalement séparés (personne ne voit les vélos ni les sorties des autres). Tout ce qui existe aujourd'hui devient le profil de Math.
-- État actuel du code (lu par Claude, 04/11/2026) : un seul code secret pour tout le monde (variable Render `CODE_ACCES`, envoyé dans l'en-tête `x-code-acces`, vérifié par la fonction centrale `verifier_auth`). 43 routes, 42 passent par ce contrôle (seule `GET /` est publique). Aucune table ne dépend d'une personne : `velos` n'a pas de propriétaire ; `composants`, `sorties`, `mes_reglages_velo` dépendent d'un `velo_id` ; `reglages` et `mes_reglages` sont globaux (clé seule).
-- Étapes prévues (une à la fois, code sur une branche `reprise/2026-11-04-profils`, fusion seulement avec l'accord explicite de Math, **aucun déploiement ni opération Neon sans son accord**) :
-  - [ ] 1. Base de données : table des personnes (adresse Google, nom, administrateur) ; chaque vélo rattaché à une personne. Les vélos actuels sont rattachés à Math à sa première connexion (rien n'est déplacé avant). Ajouts seulement, rien de supprimé.
-  - [ ] 2. Math : créer l'identifiant Google (guidé pas à pas par Claude, après vérification de la documentation Google à jour) et régler 3 variables dans Render (identifiant Google, clé de session, adresse Google de Math). Aucun secret dans ce fichier.
-  - [ ] 3. Connexion Google à la place du code secret ; liste des adresses autorisées ; écran « Personnes » réservé à Math pour ajouter ou retirer quelqu'un.
-  - [ ] 4. Cloisonnement : chaque route vérifie que le vélo appartient à la personne connectée ; réglages (usure, apparence, unités) par personne.
-  - [ ] 5. Tests automatiques GitHub sur la branche, test avec un deuxième compte, sauvegarde Neon faite par Math avant la mise en ligne, déploiement avec son accord.
-- Points à trancher plus tard : garder ou supprimer le code secret actuel après la bascule ; vérification du jeton Google (bibliothèque `google-auth`, nouvelle dépendance dans `requirements.txt`, à valider avec Math) ; si Math peut voir les données des autres (non, sauf demande) ; statut de l'écran de consentement Google à confirmer dans la documentation.
-- Limite à garder en tête : Claude ne peut pas lancer l'appli complète dans son espace de travail (FastAPI non installable) ; seuls les tests automatiques GitHub sur la branche peuvent la faire tourner. Aucune opération Neon par Claude.
+## 2026-11-04 — ANNULÉE : plan « connexion par compte Google » (entrée de 18h35, rien n'a été codé)
+- Math avait d'abord répondu « compte Google » (~18h30). Devant la contradiction avec son choix de 15h09, il a **confirmé « un code secret par personne » (~18h40)**. Le plan Google est abandonné. **Le plan de l'entrée de 15h10 (juste au-dessus, code par personne) fait foi.**
+- Constat technique de 18h35, toujours valable : 43 routes, 42 passent par le contrôle `verifier_auth` (seule `GET /` est publique).
+- Claude ne peut pas lancer l'appli complète dans son espace de travail (FastAPI non installable) ; seuls les tests automatiques GitHub sur une branche `reprise/…` peuvent la faire tourner. Aucune opération Neon par Claude.
 
 ## 2026-11-04 — Bouton « Trouver un réparateur près de moi » dans les fiches Atelier (poussé directement sur main, sans PR)
 - Demande de Math (04/11/2026) : un lien, dans l'onglet Entretien, vers une recherche de réparateurs de vélo des environs. Claude a proposé de le mettre dans chaque fiche « Comment faire » de difficulté Atelier plutôt qu'en lien général ; **Math a validé (« ok »)**.
