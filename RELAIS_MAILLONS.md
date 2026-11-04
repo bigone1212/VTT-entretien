@@ -157,7 +157,8 @@
 - Testé par Claude : compilation Python ; syntaxe du JavaScript de la page (`node --check`) ; test du code du bouton avec un faux écran : 15 fiches Atelier avec bouton, 37 autres sans, bouton YouTube inchangé, lien et texte conformes.
 - **Non testé** : l'appli complète (FastAPI n'a pas pu être installé dans l'espace de travail de Claude, pypi.org inaccessible), le navigateur réel et le téléphone de Math, l'ouverture de Google Maps depuis le téléphone, l'apparence du bouton.
 - Non vérifié d'ici : le déploiement sur Render. Aucune opération Neon, aucun secret.
-- Suite : Math attend la mise à jour de Render, rouvre l'appli, ouvre une fiche Atelier (par exemple « Purge du liquide de frein »), « Comment faire », et dit si le bouton est bien là et s'il convient.
+- **Retour de Math (04/11/2026, ~15h06)** : il a testé le bouton lui-même (« bien testé ») et dit que « pour le revendeur c'est bon ». C'est son constat, Claude n'a rien vérifié sur Render ni sur son téléphone. Il n'a pas détaillé ce qu'il a vu.
+- Reste à trancher avec Math (question posée, pas encore de réponse) : branche + PR pour tout changement de code, ou enregistrement direct pour les petits changements d'apparence. D'ici là, rester sur le protocole du 25/10 (branche `reprise/…`, fusion avec son accord).
 
 ## 2026-11-04 — PR 29 fusionnée : plus de rond autour des trois points de « Mes vélos »
 - Sur GitHub (main) : dans Mon vélo > Mes vélos, les trois petits points n'ont plus de rond (repos, survol, menu ouvert). Les autres menus trois points ne changent pas. Présentation seulement.
