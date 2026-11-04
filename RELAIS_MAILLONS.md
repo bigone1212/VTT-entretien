@@ -150,6 +150,18 @@
 ---
 
 
+## 2026-11-04 — NOUVELLE TÂCHE (pas commencée côté code) : plusieurs personnes, chacune avec son profil et ses vélos
+- Demande de Math (04/11/2026, ~15h09) : faire profiter 5 à 6 personnes de l'appli, chacune avec son profil et ses vélos. **Choix de Math : un code secret par personne** (options proposées : code par personne, nom + mot de passe, lien personnel).
+- État constaté par Claude en lisant `main.py` et `db.py` : un seul code d'accès commun (`CODE_ACCES`, en-tête `X-Code-Acces`, vérifié par `verifier_auth`, appelée par une quarantaine de routes `/api/...`) ; les vélos sont dans la table `velos` mais sans propriétaire ; `composants` et `sorties` ont un `velo_id`, `historique` passe par `composant_id`, `mes_reglages_velo` par `velo_id` ; tables communes à tous : `reglages` et `mes_reglages` ; `sorties.debut` est UNIQUE pour toute la base (deux personnes ne pourraient pas importer la même sortie) ; `/api/sauvegarde` exporte tout ; les favoris sont gardés sur le téléphone.
+- Plan proposé, à valider **une étape à la fois** avec Math :
+  1. Base de données : table des personnes (nom, code stocké sous forme chiffrée), propriétaire sur chaque vélo, tout l'existant rattaché à Math, `sorties.debut` unique par personne, réglages par personne.
+  2. Connexion : le code saisi identifie la personne ; le code actuel devient celui de Math.
+  3. Cloisonnement : chaque route ne lit et ne modifie que les vélos, composants, sorties, historique et photos de la personne connectée (sauvegarde, imports GPX/Strava inclus).
+  4. Écran pour Math (dans Paramètres) : ajouter une personne, créer ou changer son code.
+  5. Tests (dont un test où une personne ne voit jamais les données d'une autre), PR depuis une branche `reprise/2026-11-04-multi-utilisateurs`, accord de Math avant toute fusion. **Sauvegarde de la base Neon avant tout déploiement**, déploiement seulement avec son accord.
+- À confirmer avec Math : que son code actuel devienne le sien (et qu'il soit le seul à créer les autres personnes) ; que les favoris restent sur chaque téléphone.
+- Rien n'est commencé : aucune branche, aucun changement de code ni de données, aucune opération Neon.
+
 ## 2026-11-04 — Bouton « Trouver un réparateur près de moi » dans les fiches Atelier (poussé directement sur main, sans PR)
 - Demande de Math (04/11/2026) : un lien, dans l'onglet Entretien, vers une recherche de réparateurs de vélo des environs. Claude a proposé de le mettre dans chaque fiche « Comment faire » de difficulté Atelier plutôt qu'en lien général ; **Math a validé (« ok »)**.
 - Sur GitHub (main) : commit `f18bb88`. Fichier touché : `main.py` seulement (28 lignes ajoutées, aucune supprimée, aucun backslash ajouté). Dans `blocGuide`, pour les 15 fiches dont la difficulté est « Atelier », un bouton `.guide-reparateur` s'ajoute sous le bouton YouTube. Il ouvre Google Maps sur la recherche « réparateur vélo » (`https://www.google.com/maps/search/?api=1&query=` + texte encodé), autour de la position de l'appareil. Les fiches Facile et Moyen n'ont pas de bouton. Présentation seulement : aucun changement de données, de serveur ni de fonctionnement.
