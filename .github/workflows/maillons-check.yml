@@ -1656,6 +1656,15 @@ jobs:
           assert [v["id"] for v in main.obtenir_velos(CODE_2)] == [v_ami]
           assert len(main.lister_sorties(velo_id=v_ami, x_code_acces=CODE_2)) == 1
 
+          # Deux personnes importent la MÊME sortie (faite ensemble) : permis. Deux fois la même : refusé.
+          MEME = "2030-01-10T08:00:00Z"
+          importer(CODE_MATH, MEME, velo_id=1, nom="Sortie ensemble Math")
+          importer(CODE_2, MEME, nom="Sortie ensemble Ami")  # même heure de départ, autre personne
+          assert lire("SELECT COUNT(*) FROM sorties WHERE debut = ?", (MEME,))[0][0] == 2
+          assert sorted(r[0] for r in lire("SELECT velo_id FROM sorties WHERE debut = ?", (MEME,))) == sorted([1, v_ami])
+          refuse(409, "Cette sortie est déjà importée.", importer, CODE_MATH, MEME, 1, "bis")
+          refuse(409, "Cette sortie est déjà importée.", importer, CODE_2, MEME, None, "bis")
+
           # ---------------------------------------------------------------------------
           # E. Réglages d'usure : personnels. Math garde sa table d'origine.
           # ---------------------------------------------------------------------------
@@ -1725,6 +1734,182 @@ jobs:
               c.execute("CREATE DATABASE maillons_cloisonnement")
           PY2
           DATABASE_URL=postgresql://postgres:postgres@localhost:5432/maillons_cloisonnement PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_cloisonnement.py"
+      - name: Vérifier l'heure de départ unique par vélo et la mise à niveau de l'ancienne base (SQLite puis PostgreSQL)
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-unicite-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_unicite.py" <<'PY'
+          import os
+          import subprocess
+          import sys
+
+          import db
+
+
+          def demarrer():
+              # Un vrai démarrage de l'appli (l'import de main lance init_db).
+              r = subprocess.run([sys.executable, "-c", "import main"], capture_output=True, text=True)
+              if r.returncode != 0:
+                  print(r.stderr[-1500:])
+                  raise SystemExit("le démarrage de l'appli a échoué")
+
+
+          def lire(sql, p=()):
+              c = db.connect()
+              cur = c.cursor()
+              cur.execute(sql, p)
+              r = [tuple(x) for x in cur.fetchall()]
+              c.close()
+              return r
+
+
+          def ecrire(sql, p=()):
+              c = db.connect()
+              try:
+                  cur = c.cursor()
+                  cur.execute(sql, p)
+                  c.commit()
+              except Exception:
+                  c.rollback()
+                  raise
+              finally:
+                  c.close()
+
+
+          def echoue(sql, p=()):
+              try:
+                  ecrire(sql, p)
+              except Exception:
+                  return True
+              return False
+
+
+          def regle_unique_sur_debut():
+              """Y a-t-il une règle d'unicité sur « debut » seul ?"""
+              if db.USE_PG:
+                  return lire(
+                      "SELECT COUNT(*) FROM pg_index i JOIN pg_attribute a "
+                      "ON a.attrelid = i.indrelid AND a.attnum = i.indkey[0] "
+                      "WHERE i.indrelid = 'sorties'::regclass AND i.indisunique "
+                      "AND i.indnatts = 1 AND a.attname = 'debut'"
+                  )[0][0] > 0
+              for ligne in lire("PRAGMA index_list(sorties)"):
+                  if ligne[2]:
+                      colonnes = [c[2] for c in lire('PRAGMA index_info("' + ligne[1] + '")')]
+                      if colonnes == ["debut"]:
+                          return True
+              return False
+
+
+          def index_par_velo_present():
+              if db.USE_PG:
+                  return lire("SELECT COUNT(*) FROM pg_indexes WHERE indexname = 'sorties_velo_debut'")[0][0] == 1
+              return lire("SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'sorties_velo_debut'")[0][0] == 1
+
+
+          def colonnes_sorties():
+              if db.USE_PG:
+                  return [r[0] for r in lire(
+                      "SELECT column_name FROM information_schema.columns "
+                      "WHERE table_name = 'sorties' ORDER BY ordinal_position")]
+              return [r[1] for r in lire("PRAGMA table_info(sorties)")]
+
+
+          def revenir_a_l_ancienne_regle():
+              """Remet la base dans l'état d'avant l'étape 3c : UNIQUE sur « debut » seul."""
+              if db.USE_PG:
+                  ecrire("DROP INDEX IF EXISTS sorties_velo_debut")
+                  # Nom volontairement inhabituel : le code ne doit pas le deviner.
+                  ecrire("ALTER TABLE sorties ADD CONSTRAINT regle_debut_unique UNIQUE (debut)")
+              else:
+                  definition = lire("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'sorties'")[0][0]
+                  suite = lire("SELECT seq FROM sqlite_sequence WHERE name = 'sorties'")
+                  ancien = definition.replace("debut TEXT NOT NULL", "debut TEXT NOT NULL UNIQUE", 1)
+                  ancien = ancien.replace("CREATE TABLE sorties", "CREATE TABLE sorties_ancienne", 1)
+                  ecrire(ancien)
+                  ecrire("INSERT INTO sorties_ancienne SELECT * FROM sorties")
+                  ecrire("DROP TABLE sorties")
+                  ecrire("ALTER TABLE sorties_ancienne RENAME TO sorties")
+                  if suite:
+                      ecrire("UPDATE sqlite_sequence SET seq = ? WHERE name = 'sorties'", (suite[0][0],))
+
+
+          # 1. Base neuve : pas de règle sur « debut » seul, index par vélo présent.
+          demarrer()
+          assert not regle_unique_sur_debut(), "base neuve : debut ne doit plus être unique à lui seul"
+          assert index_par_velo_present(), "base neuve : index (velo_id, debut) absent"
+
+          # 2. De la vie : deux vélos, 5 sorties (dont de grosses données), la dernière supprimée
+          #    (le prochain numéro automatique doit rester 6, pas retomber à 5).
+          ecrire("INSERT INTO velos (nom, type) VALUES ('Gravel', 'gravel')")
+          v2 = lire("SELECT MAX(id) FROM velos")[0][0]
+          grosse_trace = "[" + ",".join('[44.%06d,2.%06d,500,%d]' % (i, i, i) for i in range(3000)) + "]"
+          for velo, debut, nom in (
+              (1, "2030-02-01T08:00:00Z", "Été à Millau"),
+              (1, "2030-02-02T08:00:00Z", "Sortie 2"),
+              (1, "2030-02-03T08:00:00Z", "Sortie 3"),
+              (v2, "2030-02-04T08:00:00Z", "Gravel 1"),
+              (v2, "2030-02-05T08:00:00Z", "À supprimer"),
+          ):
+              ecrire(
+                  "INSERT INTO sorties (velo_id, nom, debut, distance_km, denivele_pos, trace, notes, photos, a_verifier) "
+                  "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                  (velo, nom, debut, 25.5, 400, grosse_trace, "note é à ü", '["photo"]', 0),
+              )
+          ecrire("DELETE FROM sorties WHERE nom = 'À supprimer'")
+          assert [r[0] for r in lire("SELECT id FROM sorties ORDER BY id")] == [1, 2, 3, 4]
+
+          # 3. Retour à l'ancienne règle (comme la base de production avant l'étape 3c).
+          revenir_a_l_ancienne_regle()
+          assert regle_unique_sur_debut(), "simulation : l'ancienne règle doit être en place"
+          assert not index_par_velo_present()
+          assert echoue(
+              "INSERT INTO sorties (velo_id, nom, debut) VALUES (?, 'doublon', '2030-02-01T08:00:00Z')", (v2,)
+          ), "simulation : l'ancienne règle devait bloquer ce doublon"
+
+          avant = lire("SELECT * FROM sorties ORDER BY id")
+          colonnes_avant = colonnes_sorties()
+          assert len(avant) == 4
+
+          # 4. Mise à niveau : deux démarrages.
+          demarrer()
+          demarrer()
+
+          assert lire("SELECT * FROM sorties ORDER BY id") == avant, "les lignes ont changé"
+          assert colonnes_sorties() == colonnes_avant, "les colonnes ont changé"
+          assert not regle_unique_sur_debut(), "l'ancienne règle devait être retirée"
+          assert index_par_velo_present()
+          if db.USE_PG:
+              reste = lire("SELECT COUNT(*) FROM pg_constraint WHERE conname = 'regle_debut_unique'")[0][0]
+              assert reste == 0, "la règle, de nom inhabituel, devait être retirée"
+
+          # 5. Les numéros automatiques continuent (6, pas 5).
+          ecrire("INSERT INTO sorties (velo_id, nom, debut) VALUES (?, 'nouvelle', '2030-02-09T08:00:00Z')", (1,))
+          assert lire("SELECT MAX(id) FROM sorties")[0][0] == 6, "le numéro automatique a reculé"
+
+          # 6. La même heure de départ sur deux vélos : permise. Sur le même vélo : refusée.
+          ecrire("INSERT INTO sorties (velo_id, nom, debut) VALUES (?, 'même heure, autre vélo', '2030-02-01T08:00:00Z')", (v2,))
+          assert echoue("INSERT INTO sorties (velo_id, nom, debut) VALUES (?, 'doublon', '2030-02-01T08:00:00Z')", (v2,))
+          assert echoue("INSERT INTO sorties (velo_id, nom, debut) VALUES (?, 'doublon', '2030-02-01T08:00:00Z')", (1,))
+
+          # 7. Redémarrage de plus : rien ne bouge.
+          apres = lire("SELECT * FROM sorties ORDER BY id")
+          demarrer()
+          assert lire("SELECT * FROM sorties ORDER BY id") == apres
+          assert not regle_unique_sur_debut() and index_par_velo_present()
+
+          print("OK: heure de départ unique par vélo (" + ("PostgreSQL" if db.USE_PG else "SQLite") + ").")
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_unicite.py"
+          python - <<'PY2'
+          import psycopg
+          with psycopg.connect("postgresql://postgres:postgres@localhost:5432/maillons_test", autocommit=True) as c:
+              c.execute("DROP DATABASE IF EXISTS maillons_unicite")
+              c.execute("CREATE DATABASE maillons_unicite")
+          PY2
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/maillons_unicite PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_unicite.py"
       - name: Installer un vrai navigateur pour tester la page
         run: |
           pip install playwright

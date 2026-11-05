@@ -226,6 +226,84 @@ def lire_reglages(cursor, personne_id=1):
     return reglages
 
 
+def unicite_sorties_par_velo(cursor):
+    """Étape 3c : l'heure de départ d'une sortie n'est plus unique dans toute la
+    base, mais seulement pour un même vélo (deux personnes peuvent importer la
+    même sortie faite ensemble). Retire l'ancienne règle UNIQUE sur « debut » si
+    elle existe, puis crée l'index unique (velo_id, debut). Les lignes et leurs
+    numéros ne changent pas ; sans effet quand c'est déjà fait. Le doublon d'import
+    reste refusé par personne par la route d'import, l'index est un filet."""
+    if db.USE_PG:
+        # PostgreSQL : on retrouve le vrai nom de la règle, on ne le suppose pas.
+        cursor.execute("""
+            SELECT c.conname
+            FROM pg_constraint c
+            JOIN pg_attribute a
+              ON a.attrelid = c.conrelid AND a.attnum = c.conkey[1]
+            WHERE c.conrelid = 'sorties'::regclass
+              AND c.contype = 'u'
+              AND array_length(c.conkey, 1) = 1
+              AND a.attname = 'debut'
+        """)
+
+        for ligne in cursor.fetchall():
+            nom = ligne[0]
+
+            # Le nom vient de la base elle-même ; on le contrôle avant de l'écrire.
+            if re.fullmatch("[A-Za-z0-9_]+", nom):
+                cursor.execute('ALTER TABLE sorties DROP CONSTRAINT "' + nom + '"')
+    else:
+        # SQLite (développement et tests) : une règle UNIQUE ne se retire qu'en
+        # reconstruisant la table.
+        cursor.execute("PRAGMA index_list(sorties)")
+        ancienne_regle = False
+
+        for ligne in cursor.fetchall():
+            # (numéro, nom, unique, origine, partiel) ; origine « u » = règle UNIQUE de la table
+            if ligne[2] and ligne[3] == "u":
+                cursor.execute('PRAGMA index_info("' + ligne[1] + '")')
+
+                if [colonne[2] for colonne in cursor.fetchall()] == ["debut"]:
+                    ancienne_regle = True
+
+        if ancienne_regle:
+            cursor.execute(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'sorties'"
+            )
+            definition = cursor.fetchone()[0]
+
+            # SQLite écrit le nom entre guillemets une fois la table renommée.
+            entete = next(
+                (e for e in ("CREATE TABLE sorties", 'CREATE TABLE "sorties"')
+                 if definition.startswith(e)),
+                None
+            )
+
+            if entete and "debut TEXT NOT NULL UNIQUE" in definition:
+                nouvelle = definition.replace("debut TEXT NOT NULL UNIQUE", "debut TEXT NOT NULL", 1)
+                nouvelle = "CREATE TABLE sorties_nouv" + nouvelle[len(entete):]
+
+                cursor.execute("SELECT seq FROM sqlite_sequence WHERE name = 'sorties'")
+                suite = cursor.fetchone()
+
+                cursor.execute("DROP TABLE IF EXISTS sorties_nouv")
+                cursor.execute(nouvelle)
+                cursor.execute("INSERT INTO sorties_nouv SELECT * FROM sorties")
+                cursor.execute("DROP TABLE sorties")
+                cursor.execute("ALTER TABLE sorties_nouv RENAME TO sorties")
+
+                # La suite des numéros automatiques reprend là où elle en était.
+                if suite is not None:
+                    cursor.execute(
+                        "UPDATE sqlite_sequence SET seq = ? WHERE name = 'sorties'",
+                        (suite[0],)
+                    )
+
+    cursor.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS sorties_velo_debut ON sorties (velo_id, debut)"
+    )
+
+
 def famille_de(nom):
     """Famille d'une pièce, déduite de son nom."""
     nom = (nom or "").lower()
@@ -814,7 +892,7 @@ def init_db():
             id {db.AUTO_ID},
             velo_id INTEGER DEFAULT 1,
             nom TEXT,
-            debut TEXT NOT NULL UNIQUE,
+            debut TEXT NOT NULL,
             sport TEXT,
             distance_km DOUBLE PRECISION,
             denivele_pos INTEGER,
@@ -894,6 +972,9 @@ def init_db():
     ajouter_colonne(cursor, "sorties", "velo_id", "INTEGER DEFAULT 1")
     cursor.execute("UPDATE composants SET velo_id = 1 WHERE velo_id IS NULL")
     cursor.execute("UPDATE sorties SET velo_id = 1 WHERE velo_id IS NULL")
+
+    # Étape 3c : l'heure de départ est unique par vélo, plus dans toute la base.
+    unicite_sorties_par_velo(cursor)
 
     ajouter_colonne(cursor, "composants", "seuil_jours", "INTEGER DEFAULT 0")
     ajouter_colonne(cursor, "composants", "verification", "INTEGER DEFAULT 0")
