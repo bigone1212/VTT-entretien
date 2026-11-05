@@ -1426,7 +1426,7 @@ jobs:
               c.execute("CREATE DATABASE maillons_codes")
           PY2
           DATABASE_URL=postgresql://postgres:postgres@localhost:5432/maillons_codes PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_codes.py"
-      - name: Vérifier que chaque personne ne voit que ses vélos (SQLite puis PostgreSQL)
+      - name: Vérifier que chaque personne ne voit que ses vélos et ses réglages (SQLite puis PostgreSQL)
         env:
           SQLITE_PATH: ${{ runner.temp }}/maillons-cloisonnement-test.db
           CODE_ACCES: test
@@ -1503,8 +1503,8 @@ jobs:
               "creer_velo": "le propriétaire est la personne connectée",
               "recherche_fiche_velo": "recherche web, aucune donnée enregistrée",
               "photo_depuis_lien": "récupération d'une photo sur le web, aucune donnée enregistrée",
-              "obtenir_reglages": "réglages d'usure globaux : à rendre personnels à la sous-étape 3b",
-              "enregistrer_reglages": "réglages d'usure globaux : à rendre personnels à la sous-étape 3b",
+              "obtenir_reglages": "réglages d'usure de la personne connectée (sans vélo demandé)",
+              "enregistrer_reglages": "réglages d'usure de la personne connectée (sans vélo demandé)",
               "sauvegarde": "export filtré sur la personne connectée",
           }
 
@@ -1656,7 +1656,65 @@ jobs:
           assert [v["id"] for v in main.obtenir_velos(CODE_2)] == [v_ami]
           assert len(main.lister_sorties(velo_id=v_ami, x_code_acces=CODE_2)) == 1
 
-          print("OK: cloisonnement par vélo (" + ("PostgreSQL" if db.USE_PG else "SQLite") + "), %d routes contrôlées." % len(avec_controle))
+          # ---------------------------------------------------------------------------
+          # E. Réglages d'usure : personnels. Math garde sa table d'origine.
+          # ---------------------------------------------------------------------------
+          PAR_DEFAUT = dict(main.REGLAGES_PAR_DEFAUT)
+
+
+          def reglages(terrain_route=None, terrain_mixte=None, terrain_chemin=None, terrain_sentier=None, poids_denivele=None):
+              d = dict(PAR_DEFAUT)
+              for k, v in (("terrain_route", terrain_route), ("terrain_mixte", terrain_mixte),
+                           ("terrain_chemin", terrain_chemin), ("terrain_sentier", terrain_sentier),
+                           ("poids_denivele", poids_denivele)):
+                  if v is not None:
+                      d[k] = v
+              return d
+
+
+          assert main.obtenir_reglages(CODE_MATH) == PAR_DEFAUT
+          assert main.obtenir_reglages(CODE_2) == PAR_DEFAUT
+          assert main.obtenir_reglages(CODE_3) == PAR_DEFAUT
+          assert sorted(main.obtenir_reglages(CODE_2)) == sorted(PAR_DEFAUT), "aucun marqueur technique exposé"
+
+          coef_math_avant = main.lister_sorties(velo_id=1, x_code_acces=CODE_MATH)[0]["coef_usure"]
+          coef_ami_avant = main.lister_sorties(velo_id=v_ami, x_code_acces=CODE_2)[0]["coef_usure"]
+
+          # L'ami 2 règle SES coefficients : Math et l'ami 3 ne bougent pas.
+          main.enregistrer_reglages(main.ReglagesRequest(**reglages(3.0, 3.0, 3.0, 3.0, 2.0)), CODE_2)
+          assert main.obtenir_reglages(CODE_2) == reglages(3.0, 3.0, 3.0, 3.0, 2.0)
+          assert main.obtenir_reglages(CODE_MATH) == PAR_DEFAUT
+          assert main.obtenir_reglages(CODE_3) == PAR_DEFAUT
+          # La table d'origine de Math n'a pas été touchée par l'écriture de l'ami.
+          assert lire("SELECT cle, valeur FROM reglages WHERE cle IN ('terrain_sentier', 'poids_denivele') ORDER BY cle") == [
+              ("poids_denivele", 1.0), ("terrain_sentier", 1.6)]
+          assert lire("SELECT COUNT(*) FROM reglages_personne WHERE personne_id = 2")[0][0] == 5
+          assert lire("SELECT COUNT(*) FROM reglages_personne WHERE personne_id <> 2")[0][0] == 0
+
+          # Effet réel : le coefficient d'usure des sorties de l'ami change, celui de Math non.
+          coef_ami_apres = main.lister_sorties(velo_id=v_ami, x_code_acces=CODE_2)[0]["coef_usure"]
+          coef_math_apres = main.lister_sorties(velo_id=1, x_code_acces=CODE_MATH)[0]["coef_usure"]
+          assert coef_ami_apres != coef_ami_avant, (coef_ami_avant, coef_ami_apres)
+          assert coef_math_apres == coef_math_avant, (coef_math_avant, coef_math_apres)
+
+          # Math règle les siens : l'ami 2 garde les siens (réécriture idempotente, pas de doublon).
+          main.enregistrer_reglages(main.ReglagesRequest(**reglages(1.1, 1.2, 1.3, 1.4, 0.5)), CODE_MATH)
+          assert main.obtenir_reglages(CODE_MATH) == reglages(1.1, 1.2, 1.3, 1.4, 0.5)
+          assert main.obtenir_reglages(CODE_2) == reglages(3.0, 3.0, 3.0, 3.0, 2.0)
+          main.enregistrer_reglages(main.ReglagesRequest(**reglages(3.0, 3.0, 3.0, 3.0, 2.5)), CODE_2)
+          assert lire("SELECT COUNT(*) FROM reglages_personne WHERE personne_id = 2")[0][0] == 5
+          assert main.obtenir_reglages(CODE_2)["poids_denivele"] == 2.5
+
+          # Sauvegarde : chacun exporte ses réglages.
+          assert main.sauvegarde(CODE_2)["reglages"] == reglages(3.0, 3.0, 3.0, 3.0, 2.5)
+          assert main.sauvegarde(CODE_MATH)["reglages"] == reglages(1.1, 1.2, 1.3, 1.4, 0.5)
+          assert main.sauvegarde(CODE_3)["reglages"] == PAR_DEFAUT
+
+          # L'état des pièces se calcule avec les réglages de la personne (sans erreur pour chacun).
+          assert main.obtenir_etat(velo_id=1, x_code_acces=CODE_MATH) is not None
+          assert main.obtenir_etat(velo_id=v_ami, x_code_acces=CODE_2) is not None
+
+          print("OK: cloisonnement par vélo et réglages d'usure (" + ("PostgreSQL" if db.USE_PG else "SQLite") + "), %d routes contrôlées." % len(avec_controle))
           PY
           rm -f "$SQLITE_PATH"
           PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_cloisonnement.py"

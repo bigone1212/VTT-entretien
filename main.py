@@ -205,11 +205,19 @@ def photo_complete_de(photo):
     return photo if isinstance(photo, str) else ""
 
 
-def lire_reglages(cursor):
-    """Réglages d'usure : valeurs enregistrées, sinon valeurs par défaut."""
+def lire_reglages(cursor, personne_id=1):
+    """Réglages d'usure : valeurs enregistrées, sinon valeurs par défaut.
+    Math (personne 1) garde la table reglages d'origine ; les autres personnes
+    ont leurs propres valeurs dans reglages_personne."""
     reglages = dict(REGLAGES_PAR_DEFAUT)
 
-    cursor.execute("SELECT cle, valeur FROM reglages")
+    if personne_id == 1:
+        cursor.execute("SELECT cle, valeur FROM reglages")
+    else:
+        cursor.execute(
+            "SELECT cle, valeur FROM reglages_personne WHERE personne_id = ?",
+            (personne_id,)
+        )
 
     for ligne in cursor.fetchall():
         if ligne[0] in reglages and ligne[1] is not None:
@@ -844,6 +852,17 @@ def init_db():
             VALUES (?, ?)
             ON CONFLICT (cle) DO NOTHING
         """, (cle, valeur))
+
+    # Réglages d'usure des autres personnes (étape 3b). Math garde la table
+    # reglages ci-dessus, inchangée : rien n'est déplacé.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS reglages_personne (
+            personne_id INTEGER NOT NULL,
+            cle TEXT NOT NULL,
+            valeur DOUBLE PRECISION NOT NULL,
+            PRIMARY KEY (personne_id, cle)
+        )
+    """)
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS mes_reglages (
@@ -14794,7 +14813,7 @@ def obtenir_etat(
     velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
-    controle_acces(x_code_acces, velo_id)
+    personne_id = controle_acces(x_code_acces, velo_id)
     conn = db.connect()
     cursor = conn.cursor()
 
@@ -14850,7 +14869,7 @@ def obtenir_etat(
                 rows = [r for r in rows if "courroie (contrôle et remplacement)" not in str(r["nom"]).lower()]
 
 
-        reglages = lire_reglages(cursor)
+        reglages = lire_reglages(cursor, personne_id)
         aujourdhui = date.today()
 
         cursor.execute("""
@@ -16040,7 +16059,7 @@ def lister_sorties(
     velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
-    controle_acces(x_code_acces, velo_id)
+    personne_id = controle_acces(x_code_acces, velo_id)
     conn = db.connect()
     cursor = conn.cursor()
 
@@ -16050,7 +16069,7 @@ def lister_sorties(
             (velo_id,)
         )
         lignes_sorties = cursor.fetchall()
-        reglages_usure = lire_reglages(cursor)
+        reglages_usure = lire_reglages(cursor, personne_id)
 
         resultat = []
 
@@ -16173,12 +16192,12 @@ def changer_terrain(
 
 @app.get("/api/reglages")
 def obtenir_reglages(x_code_acces: Optional[str] = Header(default=None)):
-    verifier_auth(x_code_acces)
+    personne_id = verifier_auth(x_code_acces)
     conn = db.connect()
     cursor = conn.cursor()
 
     try:
-        return lire_reglages(cursor)
+        return lire_reglages(cursor, personne_id)
 
     finally:
         conn.close()
@@ -16186,17 +16205,24 @@ def obtenir_reglages(x_code_acces: Optional[str] = Header(default=None)):
 
 @app.post("/api/reglages")
 def enregistrer_reglages(data: ReglagesRequest, x_code_acces: Optional[str] = Header(default=None)):
-    verifier_auth(x_code_acces)
+    personne_id = verifier_auth(x_code_acces)
     conn = db.connect()
     cursor = conn.cursor()
 
     try:
         for cle, valeur in data.model_dump().items():
-            cursor.execute("""
-                INSERT INTO reglages (cle, valeur)
-                VALUES (?, ?)
-                ON CONFLICT (cle) DO UPDATE SET valeur = excluded.valeur
-            """, (cle, valeur))
+            if personne_id == 1:
+                cursor.execute("""
+                    INSERT INTO reglages (cle, valeur)
+                    VALUES (?, ?)
+                    ON CONFLICT (cle) DO UPDATE SET valeur = excluded.valeur
+                """, (cle, valeur))
+            else:
+                cursor.execute("""
+                    INSERT INTO reglages_personne (personne_id, cle, valeur)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT (personne_id, cle) DO UPDATE SET valeur = excluded.valeur
+                """, (personne_id, cle, valeur))
 
         conn.commit()
 
@@ -16680,7 +16706,7 @@ def sauvegarde(x_code_acces: Optional[str] = Header(default=None)):
             "composants": composants,
             "historique": historique,
             "sorties": sorties,
-            "reglages": lire_reglages(cursor)
+            "reglages": lire_reglages(cursor, personne_id)
         }
 
     finally:
