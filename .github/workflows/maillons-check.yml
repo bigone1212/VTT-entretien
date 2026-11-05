@@ -1295,6 +1295,137 @@ jobs:
               c.execute("CREATE DATABASE maillons_personnes")
           PY2
           DATABASE_URL=postgresql://postgres:postgres@localhost:5432/maillons_personnes PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_personnes.py"
+      - name: Vérifier que le code identifie la personne (SQLite puis PostgreSQL)
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-codes-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_codes.py" <<'PY'
+          import os
+          import subprocess
+          import sys
+
+          import db
+          import main
+          from fastapi import HTTPException
+
+          # Le code de Math (réglé dans Render). On le fixe long pour tester aussi
+          # « un code personnel ne peut pas être celui de Math ».
+          CODE_MATH = "code-de-math-123"
+          main.CODE_ACCES = CODE_MATH
+          os.environ["CODE_ACCES"] = CODE_MATH
+
+
+          def statut(code):
+              try:
+                  return main.verifier_auth(code)
+              except HTTPException as e:
+                  return e.status_code
+
+
+          def ecrire(sql, p=()):
+              c = db.connect()
+              cur = c.cursor()
+              cur.execute(sql, p)
+              c.commit()
+              c.close()
+
+
+          def lire(sql, p=()):
+              c = db.connect()
+              cur = c.cursor()
+              cur.execute(sql, p)
+              r = [tuple(x) for x in cur.fetchall()]
+              c.close()
+              return r
+
+
+          def definir(personne_id, code):
+              c = db.connect()
+              cur = c.cursor()
+              try:
+                  main.definir_code_personne(cur, personne_id, code)
+                  c.commit()
+                  return "ok"
+              except ValueError as e:
+                  c.rollback()
+                  return str(e)
+              finally:
+                  c.close()
+
+
+          # 1. Le code de Math fonctionne comme avant ; les mauvais codes sont refusés.
+          assert statut(CODE_MATH) == 1
+          assert statut("mauvais") == 401 and statut("") == 401 and statut(None) == 401
+          main.CODE_ACCES = ""
+          assert statut(CODE_MATH) == 503, "code non réglé sur le serveur : 503 comme avant"
+          main.CODE_ACCES = CODE_MATH
+
+          # 2. Deux personnes, chacune avec son code : le code identifie la personne.
+          ecrire("INSERT INTO personnes (nom) VALUES ('Ami 1')")
+          ecrire("INSERT INTO personnes (nom) VALUES ('Ami 2')")
+          assert [r[0] for r in lire("SELECT id FROM personnes ORDER BY id")] == [1, 2, 3]
+          assert definir(2, "abcd-1234-efgh") == "ok"
+          assert definir(3, "wxyz-5678-ijkl") == "ok"
+          assert statut("abcd-1234-efgh") == 2
+          assert statut("wxyz-5678-ijkl") == 3
+          assert statut(CODE_MATH) == 1
+          assert statut("abcd-1234-efgX") == 401 and statut("ABCD-1234-EFGH") == 401
+
+          # 3. Jamais de code en clair dans la base.
+          for sel, empreinte in lire("SELECT code_sel, code_hash FROM personnes WHERE id IN (2, 3)"):
+              assert len(empreinte) == 64 and len(sel) == 16
+              assert "abcd-1234-efgh" not in (sel + empreinte) and "wxyz-5678-ijkl" not in (sel + empreinte)
+          assert lire("SELECT code_sel, code_hash FROM personnes WHERE id = 1") == [(None, None)]
+          assert lire("SELECT code_hash FROM personnes WHERE id = 2") != lire("SELECT code_hash FROM personnes WHERE id = 3")
+
+          # 4. Refus : personne 1, trop court, code de Math, code déjà pris, personne inconnue.
+          assert "Render" in definir(1, "un-code-assez-long")
+          assert "trop court" in definir(2, "court")
+          assert "déjà utilisé" in definir(2, CODE_MATH)
+          assert "déjà utilisé" in definir(2, "wxyz-5678-ijkl")
+          assert "inconnue" in definir(99, "un-code-assez-long")
+          assert statut("abcd-1234-efgh") == 2, "un refus ne doit rien changer"
+          # Redéfinir son propre code est permis ; l'ancien code ne marche plus.
+          assert definir(2, "nouveau-code-2026") == "ok"
+          assert statut("nouveau-code-2026") == 2 and statut("abcd-1234-efgh") == 401
+
+          # 5. Personne désactivée : refusée ; réactivée : reconnue.
+          ecrire("UPDATE personnes SET actif = 0 WHERE id = 3")
+          assert statut("wxyz-5678-ijkl") == 401
+          ecrire("UPDATE personnes SET actif = 1 WHERE id = 3")
+          assert statut("wxyz-5678-ijkl") == 3
+
+          # 6. Une vraie route de l'appli : bon code accepté, mauvais refusé.
+          assert len(main.obtenir_velos(CODE_MATH)) >= 1
+          try:
+              main.obtenir_velos("mauvais")
+              raise AssertionError("la route aurait dû refuser")
+          except HTTPException as e:
+              assert e.status_code == 401
+
+          # 7. Redémarrage : les codes survivent ; base de l'étape 1 (sans les colonnes) : mise à niveau.
+          env = dict(os.environ)
+          subprocess.run([sys.executable, "-c", "import main"], check=True, env=env)
+          assert statut("nouveau-code-2026") == 2
+          ecrire("ALTER TABLE personnes DROP COLUMN code_sel")
+          ecrire("ALTER TABLE personnes DROP COLUMN code_hash")
+          subprocess.run([sys.executable, "-c", "import main"], check=True, env=env)
+          assert lire("SELECT code_sel, code_hash FROM personnes WHERE id = 1") == [(None, None)]
+          assert [r[0] for r in lire("SELECT id FROM personnes ORDER BY id")] == [1, 2, 3]
+          assert statut(CODE_MATH) == 1
+
+          print("OK: code personnel qui identifie la personne (" + ("PostgreSQL" if db.USE_PG else "SQLite") + ").")
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_codes.py"
+          python - <<'PY2'
+          import psycopg
+          with psycopg.connect("postgresql://postgres:postgres@localhost:5432/maillons_test", autocommit=True) as c:
+              c.execute("DROP DATABASE IF EXISTS maillons_codes")
+              c.execute("CREATE DATABASE maillons_codes")
+          PY2
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/maillons_codes PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_codes.py"
       - name: Installer un vrai navigateur pour tester la page
         run: |
           pip install playwright

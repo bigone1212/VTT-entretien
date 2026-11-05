@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 import base64
 import db
 import gpx_import
+import hashlib
 import hmac
 import ipaddress
 import json
@@ -11,6 +12,7 @@ import html as html_lib
 import math
 import os
 import re
+import secrets
 import socket
 import time
 import urllib.error
@@ -46,8 +48,87 @@ REGLAGES_PAR_DEFAUT = {
 }
 
 
+LONGUEUR_MINI_CODE = 8
+
+
+def empreinte_code(code, sel):
+    """Empreinte d'un code personnel : le code n'est jamais stocké en clair.
+    SHA-256 salé et non un calcul lent : le navigateur renvoie le code à chaque
+    requête, un calcul lent ralentirait toute l'appli. Les codes seront longs et
+    tirés au hasard par l'appli, ce qui suffit."""
+    return hashlib.sha256((sel + ":" + code).encode("utf-8")).hexdigest()
+
+
+def trouver_personne_par_code(code):
+    """Numéro de la personne active qui a ce code personnel, sinon None."""
+    if not code:
+        return None
+
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("""
+            SELECT id, code_sel, code_hash FROM personnes
+            WHERE actif = 1 AND code_hash IS NOT NULL AND code_sel IS NOT NULL
+            ORDER BY id
+        """)
+        trouve = None
+
+        # On regarde toutes les personnes, même après un succès : la durée de
+        # la réponse ne dit rien sur qui a été reconnu.
+        for ligne in cursor.fetchall():
+            if hmac.compare_digest(empreinte_code(code, ligne[1]), ligne[2]):
+                if trouve is None:
+                    trouve = ligne[0]
+
+        return trouve
+    finally:
+        conn.close()
+
+
+def definir_code_personne(cursor, personne_id, code):
+    """Enregistre, sous forme d'empreinte, le code personnel d'une personne.
+    Refuse : la personne 1 (son code est celui réglé dans Render), un code trop
+    court, le code de Math, ou un code déjà pris par quelqu'un d'autre."""
+    code = (code or "").strip()
+
+    if personne_id == 1:
+        raise ValueError("Le code de Math se règle dans Render (CODE_ACCES).")
+
+    if len(code) < LONGUEUR_MINI_CODE:
+        raise ValueError(
+            "Code trop court (%d caractères au minimum)." % LONGUEUR_MINI_CODE
+        )
+
+    if CODE_ACCES and hmac.compare_digest(code.encode("utf-8"), CODE_ACCES.encode("utf-8")):
+        raise ValueError("Ce code est déjà utilisé.")
+
+    cursor.execute("SELECT id FROM personnes WHERE id = ?", (personne_id,))
+
+    if cursor.fetchone() is None:
+        raise ValueError("Personne inconnue.")
+
+    cursor.execute("""
+        SELECT code_sel, code_hash FROM personnes
+        WHERE id <> ? AND code_hash IS NOT NULL AND code_sel IS NOT NULL
+    """, (personne_id,))
+
+    for sel, empreinte in cursor.fetchall():
+        if hmac.compare_digest(empreinte_code(code, sel), empreinte):
+            raise ValueError("Ce code est déjà utilisé.")
+
+    sel = secrets.token_hex(8)
+    cursor.execute(
+        "UPDATE personnes SET code_sel = ?, code_hash = ? WHERE id = ?",
+        (sel, empreinte_code(code, sel), personne_id)
+    )
+
+
 def verifier_auth(x_code_acces=None):
-    """Vérifie le code d'accès envoyé par l'en-tête HTTP."""
+    """Vérifie le code d'accès envoyé par l'en-tête HTTP et renvoie le numéro de
+    la personne : 1 (Math) avec le code réglé dans Render, ou celui d'une autre
+    personne avec son code personnel."""
     if not CODE_ACCES:
         raise HTTPException(
             status_code=503,
@@ -56,9 +137,16 @@ def verifier_auth(x_code_acces=None):
 
     envoye = (x_code_acces or "").encode("utf-8")
 
-    if not hmac.compare_digest(envoye, CODE_ACCES.encode("utf-8")):
-        time.sleep(0.5)
-        raise HTTPException(status_code=401, detail="Code d'accès incorrect.")
+    if hmac.compare_digest(envoye, CODE_ACCES.encode("utf-8")):
+        return 1
+
+    personne = trouver_personne_par_code(x_code_acces or "")
+
+    if personne is not None:
+        return personne
+
+    time.sleep(0.5)
+    raise HTTPException(status_code=401, detail="Code d'accès incorrect.")
 
 
 def verifier_photo(texte, max_chars):
@@ -614,6 +702,11 @@ def init_db():
             cree_le TEXT
         )
     """)
+
+    # Code personnel (étape 2) : seulement une empreinte salée, jamais le code.
+    # Vide pour Math, dont le code est celui réglé dans Render (CODE_ACCES).
+    ajouter_colonne(cursor, "personnes", "code_sel", "TEXT")
+    ajouter_colonne(cursor, "personnes", "code_hash", "TEXT")
 
     cursor.execute("""
         INSERT INTO personnes (id, nom, est_admin, actif, cree_le)
