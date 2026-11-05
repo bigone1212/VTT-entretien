@@ -6072,7 +6072,7 @@ def accueil():
                 sessionStorage.setItem('vtt_code', code);
                 
                 try {
-                    const res = await fetch('/api/etat', { headers: getHeaders() });
+                    const res = await fetch('/api/velos', { headers: getHeaders() });
                     if (res.ok) {
                         document.getElementById('authScreen').style.display = 'none';
                         await chargerVelos();
@@ -6096,7 +6096,7 @@ def accueil():
 
             // Vérifie si un code est déjà en mémoire
             if (sessionStorage.getItem('vtt_code')) {
-                fetch('/api/etat', { headers: getHeaders() }).then(async res => {
+                fetch('/api/velos', { headers: getHeaders() }).then(async res => {
                     if (res.ok) {
                         document.getElementById('authScreen').style.display = 'none';
                         await chargerVelos();
@@ -13910,6 +13910,16 @@ def supprimer_velo(velo_id: int, x_code_acces: Optional[str] = Header(default=No
             raise HTTPException(
                 status_code=400,
                 detail="Le vélo principal (CUBE) ne peut pas être supprimé."
+            )
+        cursor.execute(
+            "SELECT COUNT(*) FROM velos WHERE personne_id = "
+            "(SELECT personne_id FROM velos WHERE id = ?)",
+            (velo_id,)
+        )
+        if cursor.fetchone()[0] <= 1:
+            raise HTTPException(
+                status_code=400,
+                detail="C'est ton dernier vélo : il ne peut pas être supprimé. Ajoute-en un autre d'abord."
             )
 
         efface = compter_contenu_velo(cursor, velo_id)

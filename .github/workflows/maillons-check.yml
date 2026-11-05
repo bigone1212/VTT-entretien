@@ -1656,6 +1656,10 @@ jobs:
           assert [v["id"] for v in main.obtenir_velos(CODE_2)] == [v_ami]
           assert len(main.lister_sorties(velo_id=v_ami, x_code_acces=CODE_2)) == 1
 
+          # Une personne garde toujours au moins un vélo : son dernier ne se supprime pas.
+          refuse(400, "C'est ton dernier vélo : il ne peut pas être supprimé. Ajoute-en un autre d'abord.", main.supprimer_velo, v_ami, CODE_2)
+          assert [v["id"] for v in main.obtenir_velos(CODE_2)] == [v_ami]
+
           # Deux personnes importent la MÊME sortie (faite ensemble) : permis. Deux fois la même : refusé.
           MEME = "2030-01-10T08:00:00Z"
           importer(CODE_MATH, MEME, velo_id=1, nom="Sortie ensemble Math")
@@ -2968,6 +2972,91 @@ jobs:
           PY
           rm -f "$SQLITE_PATH"
           PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_menu_composants.py"
+      - name: Tester l'ouverture de l'appli par une autre personne que Math dans un vrai navigateur
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-autre-personne-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_autre_personne.py" <<'PY'
+          import json
+          from urllib.parse import urlparse, parse_qs
+          from playwright.sync_api import sync_playwright
+          import main
+          html = main.accueil()
+          CODE_AMI = "code-de-lami"
+          V_AMI = [{"id": 5, "nom": "Gravel de l'ami", "type": "gravel", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0}]
+          erreurs, appels = [], []
+          with sync_playwright() as p:
+              nav = p.chromium.launch()
+
+              def nouveau(code_en_memoire):
+                  ctx = nav.new_context(viewport={"width": 390, "height": 900})
+
+                  def api(r):
+                      u = urlparse(r.request.url)
+                      q = parse_qs(u.query)
+                      appels.append(u.path + ("?velo_id=" + q["velo_id"][0] if "velo_id" in q else ""))
+                      if r.request.headers.get("x-code-acces") != CODE_AMI:
+                          return r.fulfill(status=401, content_type="application/json", body='{"detail":"Code invalide."}')
+                      if u.path == "/api/velos":
+                          corps = V_AMI
+                      elif u.path == "/api/etat":
+                          # Comme le vrai serveur : un vélo qui n'est pas le sien est « introuvable ».
+                          if q.get("velo_id", [""])[0] != "5":
+                              return r.fulfill(status=404, content_type="application/json", body='{"detail":"Vélo introuvable."}')
+                          corps = {"km_total": 0, "composants": []}
+                      elif u.path == "/api/mes-reglages":
+                          corps = {"valeurs": {}, "maj_le": None}
+                      elif u.path == "/api/reglages":
+                          corps = {"terrain_route": 1, "terrain_mixte": 1.2, "terrain_chemin": 1.5, "terrain_sentier": 2, "poids_denivele": 1}
+                      else:
+                          corps = []
+                      r.fulfill(status=200, content_type="application/json", body=json.dumps(corps))
+
+                  ctx.route("**/localhost/api/**", api)
+                  ctx.route(lambda u: not u.startswith("http://localhost/"), lambda r: r.abort())
+                  if code_en_memoire:
+                      ctx.add_init_script("sessionStorage.setItem('vtt_code', '" + code_en_memoire + "');")
+                  pg = ctx.new_page()
+                  pg.on("pageerror", lambda e: erreurs.append(str(e)[:200]))
+                  pg.route("http://localhost/", lambda r: r.fulfill(status=200, content_type="text/html", body=html))
+                  return pg
+
+              # 1) Saisie du code d'une autre personne que Math (le vélo n° 1 n'est pas le sien).
+              pg = nouveau(None)
+              pg.goto("http://localhost/"); pg.wait_for_timeout(600)
+              pg.fill("#authInput", CODE_AMI); pg.click("#authScreen button"); pg.wait_for_timeout(1200)
+              assert pg.eval_on_selector("#authScreen", "e => getComputedStyle(e).display") == "none", "l'écran du code est resté"
+              assert pg.eval_on_selector("#authError", "e => e.textContent.trim()") == ""
+              assert pg.eval_on_selector("#headerVeloNom", "e => e.textContent.trim()") == "Gravel de l'ami"
+              assert pg.eval_on_selector("#selectVelo", "e => e.value") == "5"
+              assert "/api/etat?velo_id=5" in appels, appels
+              assert pg.evaluate("sessionStorage.getItem('maillons_velo_id')") == "5"
+              pg.close()
+
+              # 2) Réouverture avec le code déjà en mémoire (et un vélo n° 1 mémorisé par un ancien passage).
+              appels.clear()
+              pg = nouveau(CODE_AMI)
+              pg.add_init_script("sessionStorage.setItem('maillons_velo_id', '1');")
+              pg.goto("http://localhost/"); pg.wait_for_timeout(1200)
+              assert pg.eval_on_selector("#authScreen", "e => getComputedStyle(e).display") == "none"
+              assert pg.eval_on_selector("#headerVeloNom", "e => e.textContent.trim()") == "Gravel de l'ami"
+              assert "/api/etat?velo_id=5" in appels, appels
+              pg.close()
+
+              # 3) Mauvais code : refusé.
+              pg = nouveau(None)
+              pg.goto("http://localhost/"); pg.wait_for_timeout(600)
+              pg.fill("#authInput", "mauvais"); pg.click("#authScreen button"); pg.wait_for_timeout(800)
+              assert pg.eval_on_selector("#authError", "e => e.textContent.trim()") == "Code incorrect."
+              assert pg.eval_on_selector("#authScreen", "e => getComputedStyle(e).display") != "none"
+              pg.close()
+              nav.close()
+          print("erreurs page :", erreurs); assert not erreurs, erreurs
+          print("OK: une autre personne que Math entre avec son code et arrive sur son vélo")
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_autre_personne.py"
       - name: Tester la recherche avec l'IA (copier-coller) dans un vrai navigateur
         env:
           SQLITE_PATH: ${{ runner.temp }}/maillons-ia-test.db
