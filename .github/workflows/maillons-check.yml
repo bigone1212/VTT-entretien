@@ -1884,9 +1884,9 @@ jobs:
               reste = lire("SELECT COUNT(*) FROM pg_constraint WHERE conname = 'regle_debut_unique'")[0][0]
               assert reste == 0, "la règle, de nom inhabituel, devait être retirée"
 
-          # 5. Les numéros automatiques continuent (6, pas 5).
+          # 5. Les numéros automatiques ne reculent pas (au moins 6 ; PostgreSQL peut sauter un numéro après un refus).
           ecrire("INSERT INTO sorties (velo_id, nom, debut) VALUES (?, 'nouvelle', '2030-02-09T08:00:00Z')", (1,))
-          assert lire("SELECT MAX(id) FROM sorties")[0][0] == 6, "le numéro automatique a reculé"
+          assert lire("SELECT MAX(id) FROM sorties")[0][0] >= 6, "le numéro automatique a reculé"
 
           # 6. La même heure de départ sur deux vélos : permise. Sur le même vélo : refusée.
           ecrire("INSERT INTO sorties (velo_id, nom, debut) VALUES (?, 'même heure, autre vélo', '2030-02-01T08:00:00Z')", (v2,))
