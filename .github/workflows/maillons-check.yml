@@ -418,7 +418,7 @@ jobs:
           print("OK: vraie fiche Opticycles du Trek Fuel EXe 9.7 lue correctement.")
 
 
-          main.verifier_auth = lambda _code: None
+          main.verifier_auth = lambda _code: 1
 
           patins = main.entretiens_du_type("route", "patins")
           noms_patins = [ligne[0] for ligne in patins]
@@ -573,7 +573,7 @@ jobs:
           from fastapi.testclient import TestClient
 
           # L'authentification est neutralisée uniquement dans ce test isolé.
-          main.verifier_auth = lambda _code: None
+          main.verifier_auth = lambda _code: 1
 
           with TestClient(main.app) as client:
               with sqlite3.connect(path) as conn:
@@ -1426,6 +1426,247 @@ jobs:
               c.execute("CREATE DATABASE maillons_codes")
           PY2
           DATABASE_URL=postgresql://postgres:postgres@localhost:5432/maillons_codes PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_codes.py"
+      - name: Vérifier que chaque personne ne voit que ses vélos (SQLite puis PostgreSQL)
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-cloisonnement-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_cloisonnement.py" <<'PY'
+          import ast
+          import inspect
+          import os
+          from datetime import datetime, timedelta
+
+          import db
+          import main
+          from fastapi import HTTPException
+
+          # Code de Math (réglé dans Render) et codes personnels des autres.
+          CODE_MATH = "code-de-math-123"
+          CODE_2 = "code-ami-deux-456"
+          CODE_3 = "code-ami-trois-789"
+          main.CODE_ACCES = CODE_MATH
+          os.environ["CODE_ACCES"] = CODE_MATH
+
+
+          def ecrire(sql, p=()):
+              c = db.connect()
+              cur = c.cursor()
+              cur.execute(sql, p)
+              c.commit()
+              c.close()
+
+
+          def lire(sql, p=()):
+              c = db.connect()
+              cur = c.cursor()
+              cur.execute(sql, p)
+              r = [tuple(x) for x in cur.fetchall()]
+              c.close()
+              return r
+
+
+          def refuse(statut, detail, fonction, *a, **k):
+              try:
+                  fonction(*a, **k)
+              except HTTPException as e:
+                  assert e.status_code == statut and e.detail == detail, (fonction.__name__, e.status_code, e.detail)
+                  return
+              raise AssertionError("%s aurait dû répondre %s" % (fonction.__name__, statut))
+
+
+          def gpx(debut, km=10.0, nom="Sortie test"):
+              t0 = datetime.strptime(debut, "%Y-%m-%dT%H:%M:%SZ")
+              n = 120
+              pas_m = km * 1000 / (n - 1)
+              pts = []
+              for i in range(n):
+                  lat = 44.0 + (i * pas_m) / 111320.0
+                  t = (t0 + timedelta(seconds=20 * i)).strftime("%Y-%m-%dT%H:%M:%SZ")
+                  pts.append('<trkpt lat="%.6f" lon="2.500000"><ele>%d</ele><time>%s</time></trkpt>' % (lat, 500 + i % 10, t))
+              return ('<?xml version="1.0"?><gpx version="1.1" creator="test" xmlns="http://www.topografix.com/GPX/1/1">'
+                      '<trk><name>' + nom + '</name><trkseg>' + "".join(pts) + '</trkseg></trk></gpx>')
+
+
+          def importer(code, debut, velo_id=None, nom="Sortie"):
+              return main.importer_sortie(main.ImportGpxRequest(gpx=gpx(debut, 10.0, nom)), velo_id=velo_id, x_code_acces=code)
+
+
+          # ---------------------------------------------------------------------------
+          # A. Garde-fou : on lit main.py. Toute route doit contrôler le vélo demandé,
+          #    sauf celles d'une liste explicite (avec la raison). Une nouvelle route qui
+          #    oublie le contrôle fait échouer ce test.
+          # ---------------------------------------------------------------------------
+          SANS_CONTROLE_DE_VELO = {
+              "accueil": "page publique, aucune donnée",
+              "obtenir_velos": "liste filtrée sur la personne connectée",
+              "creer_velo": "le propriétaire est la personne connectée",
+              "recherche_fiche_velo": "recherche web, aucune donnée enregistrée",
+              "photo_depuis_lien": "récupération d'une photo sur le web, aucune donnée enregistrée",
+              "obtenir_reglages": "réglages d'usure globaux : à rendre personnels à la sous-étape 3b",
+              "enregistrer_reglages": "réglages d'usure globaux : à rendre personnels à la sous-étape 3b",
+              "sauvegarde": "export filtré sur la personne connectée",
+          }
+
+          arbre = ast.parse(open("main.py", encoding="utf-8").read())
+          routes = []
+          for noeud in arbre.body:
+              if not isinstance(noeud, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                  continue
+              est_route = any(
+                  isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute)
+                  and isinstance(d.func.value, ast.Name) and d.func.value.id == "app"
+                  for d in noeud.decorator_list
+              )
+              if est_route:
+                  appels = {
+                      n.func.id for n in ast.walk(noeud)
+                      if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                  }
+                  routes.append((noeud.name, appels))
+
+          assert len(routes) >= 40, "routes trouvées : %d" % len(routes)
+          avec_controle = []
+          for nom, appels in routes:
+              if "controle_acces" in appels:
+                  avec_controle.append(nom)
+                  continue
+              assert nom in SANS_CONTROLE_DE_VELO, (
+                  "La route %s ne contrôle pas le vélo demandé (controle_acces). "
+                  "Ajoute le contrôle, ou justifie-la dans SANS_CONTROLE_DE_VELO." % nom
+              )
+              if nom != "accueil":
+                  assert "verifier_auth" in appels, "La route %s n'a aucun contrôle d'accès" % nom
+          for nom in SANS_CONTROLE_DE_VELO:
+              assert nom in [r[0] for r in routes], "Liste d'exceptions périmée : %s n'est plus une route" % nom
+          assert len(avec_controle) >= 30, len(avec_controle)
+
+          # ---------------------------------------------------------------------------
+          # B. Mise en place : Math (personne 1), deux amis, chacun avec son code.
+          # ---------------------------------------------------------------------------
+          ecrire("INSERT INTO personnes (nom) VALUES ('Ami deux')")
+          ecrire("INSERT INTO personnes (nom) VALUES ('Ami trois')")
+          c = db.connect()
+          cur = c.cursor()
+          main.definir_code_personne(cur, 2, CODE_2)
+          main.definir_code_personne(cur, 3, CODE_3)
+          c.commit()
+          c.close()
+
+          v_math = main.creer_velo(main.NouveauVeloRequest(nom="Gravel", type="gravel"), CODE_MATH)["velo_id"]
+          v_ami = main.creer_velo(main.NouveauVeloRequest(nom="Gravel", type="gravel"), CODE_2)["velo_id"]  # même nom !
+          assert len({1, v_math, v_ami}) == 3
+          assert lire("SELECT personne_id FROM velos WHERE id = ?", (v_math,)) == [(1,)]
+          assert lire("SELECT personne_id FROM velos WHERE id = ?", (v_ami,)) == [(2,)]
+
+          ids_math = [v["id"] for v in main.obtenir_velos(CODE_MATH)]
+          ids_ami = [v["id"] for v in main.obtenir_velos(CODE_2)]
+          assert ids_math == [1, v_math], ids_math
+          assert ids_ami == [v_ami], ids_ami
+          assert main.obtenir_velos(CODE_3) == []
+
+          # ---------------------------------------------------------------------------
+          # C. Chaque route qui reçoit un vélo : l'ami 2 sur le vélo de Math = « introuvable ».
+          #    Contre-épreuve : Math sur son propre vélo n'est jamais refusé pour ce motif.
+          # ---------------------------------------------------------------------------
+          ID_BIDON = 999999
+
+
+          def arguments(fonction, code, velo_id):
+              args = {}
+              for nom, p in inspect.signature(fonction).parameters.items():
+                  ann = p.annotation
+                  if nom == "x_code_acces":
+                      args[nom] = code
+                  elif nom == "velo_id":
+                      args[nom] = velo_id
+                  elif isinstance(ann, type) and issubclass(ann, main.BaseModel):
+                      fabrique = getattr(ann, "model_construct", None) or ann.construct
+                      args[nom] = fabrique()
+                  elif ann is int:
+                      args[nom] = ID_BIDON
+                  else:
+                      raise AssertionError("paramètre inattendu %s de %s" % (nom, fonction.__name__))
+              return args
+
+
+          for nom in avec_controle:
+              f = getattr(main, nom)
+              # L'ami 2 vise le CUBE de Math (n° 1) et le 2e vélo de Math.
+              for cible in (1, v_math):
+                  refuse(404, "Vélo introuvable.", f, **arguments(f, CODE_2, cible))
+              # L'ami 3 (sans vélo) aussi.
+              refuse(404, "Vélo introuvable.", f, **arguments(f, CODE_3, 1))
+              # Math n'est pas refusé pour ce motif sur son propre vélo.
+              try:
+                  f(**arguments(f, CODE_MATH, 1))
+              except HTTPException as e:
+                  assert e.detail != "Vélo introuvable.", (nom, "Math refusé sur son propre vélo")
+              except Exception:
+                  pass  # autre erreur (données factices) : le contrôle d'accès, lui, est passé
+
+          # ---------------------------------------------------------------------------
+          # D. Des données réelles : chacun ne voit que les siennes.
+          # ---------------------------------------------------------------------------
+          importer(CODE_MATH, "2030-01-01T08:00:00Z", velo_id=1, nom="Sortie Math 1")
+          importer(CODE_MATH, "2030-01-03T08:00:00Z", nom="Sortie Math auto")       # automatique
+          importer(CODE_2, "2030-01-02T08:00:00Z", nom="Sortie Ami auto")           # automatique : SON vélo
+          assert lire("SELECT velo_id FROM sorties WHERE nom = 'Sortie Ami auto'") == [(v_ami,)]
+          assert lire("SELECT velo_id FROM sorties WHERE nom = 'Sortie Math auto'")[0][0] in (1, v_math)
+
+          noms_math = sorted(s["nom"] for v in (1, v_math) for s in main.lister_sorties(velo_id=v, x_code_acces=CODE_MATH))
+          noms_ami = sorted(s["nom"] for s in main.lister_sorties(velo_id=v_ami, x_code_acces=CODE_2))
+          assert noms_math == ["Sortie Math 1", "Sortie Math auto"], noms_math
+          assert noms_ami == ["Sortie Ami auto"], noms_ami
+
+          # Une personne sans vélo ne peut rien importer.
+          refuse(404, "Vélo introuvable.", importer, CODE_3, "2030-01-05T08:00:00Z")
+
+          # Déplacer une sortie vers le vélo de quelqu'un d'autre : refusé.
+          sortie_ami = main.lister_sorties(velo_id=v_ami, x_code_acces=CODE_2)[0]["id"]
+          refuse(
+              404, "Le vélo de destination est introuvable.",
+              main.affecter_sortie_a_un_autre_velo, sortie_ami,
+              main.AffecterSortieVeloRequest(nouveau_velo_id=1), velo_id=v_ami, x_code_acces=CODE_2,
+          )
+
+          # Sauvegarde : seulement les siennes.
+          s_ami = main.sauvegarde(CODE_2)
+          assert [v["id"] for v in s_ami["velos"]] == [v_ami]
+          assert {c["velo_id"] for c in s_ami["composants"]} == {v_ami}
+          assert [s["nom"] for s in s_ami["sorties"]] == ["Sortie Ami auto"]
+          assert all(h["velo_id"] == v_ami for h in s_ami["historique"])
+          s_math = main.sauvegarde(CODE_MATH)
+          assert [v["id"] for v in s_math["velos"]] == [1, v_math]
+          assert v_ami not in {c["velo_id"] for c in s_math["composants"]}
+          assert sorted(s["nom"] for s in s_math["sorties"]) == ["Sortie Math 1", "Sortie Math auto"]
+          s_vide = main.sauvegarde(CODE_3)
+          assert s_vide["velos"] == [] and s_vide["composants"] == [] and s_vide["sorties"] == [] and s_vide["historique"] == []
+
+          # Les pastilles « à vérifier » ne comptent que les vélos de la personne.
+          # (Un import automatique est marqué « à vérifier » : chacun en a une, la sienne.)
+          ecrire("UPDATE sorties SET a_verifier = 1 WHERE nom = 'Sortie Ami auto'")
+          assert {v["id"]: v["sorties_a_verifier"] for v in main.obtenir_velos(CODE_2)} == {v_ami: 1}
+          chez_math = lire("SELECT COUNT(*) FROM sorties WHERE a_verifier = 1 AND velo_id IN (1, ?)", (v_math,))[0][0]
+          assert chez_math == 1
+          assert sum(v["sorties_a_verifier"] for v in main.obtenir_velos(CODE_MATH)) == chez_math
+
+          # Math supprime son 2e vélo : celui de l'ami reste intact.
+          main.supprimer_velo(v_math, CODE_MATH)
+          assert [v["id"] for v in main.obtenir_velos(CODE_2)] == [v_ami]
+          assert len(main.lister_sorties(velo_id=v_ami, x_code_acces=CODE_2)) == 1
+
+          print("OK: cloisonnement par vélo (" + ("PostgreSQL" if db.USE_PG else "SQLite") + "), %d routes contrôlées." % len(avec_controle))
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_cloisonnement.py"
+          python - <<'PY2'
+          import psycopg
+          with psycopg.connect("postgresql://postgres:postgres@localhost:5432/maillons_test", autocommit=True) as c:
+              c.execute("DROP DATABASE IF EXISTS maillons_cloisonnement")
+              c.execute("CREATE DATABASE maillons_cloisonnement")
+          PY2
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/maillons_cloisonnement PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_cloisonnement.py"
       - name: Installer un vrai navigateur pour tester la page
         run: |
           pip install playwright
@@ -1583,7 +1824,7 @@ jobs:
           import main
           from fastapi.testclient import TestClient
 
-          main.verifier_auth = lambda _code: None
+          main.verifier_auth = lambda _code: 1
           import db
 
 
@@ -1641,7 +1882,7 @@ jobs:
           import main
           from fastapi.testclient import TestClient
 
-          main.verifier_auth = lambda _code: None
+          main.verifier_auth = lambda _code: 1
           img = "data:image/jpeg;base64," + base64.b64encode(b"\xff\xd8\xff" + b"A" * 300).decode()
 
           with TestClient(main.app) as client:
@@ -1977,7 +2218,7 @@ jobs:
           from http.server import BaseHTTPRequestHandler, HTTPServer
           import main
           from fastapi import HTTPException
-          main.verifier_auth = lambda _c: None
+          main.verifier_auth = lambda _c: 1
           JPEG = b"\xff\xd8\xff\xe0" + b"J" * 8000
           PNG = b"\x89PNG\r\n\x1a\n" + b"P" * 8000
 
@@ -2125,7 +2366,7 @@ jobs:
           cat > "$RUNNER_TEMP/test_positions_srv.py" <<'PY'
           import db, main
           from fastapi import HTTPException
-          main.verifier_auth = lambda _c: None
+          main.verifier_auth = lambda _c: 1
           C = "x"
           def refuse(code, f, *a, **k):
               try: f(*a, **k)
@@ -2817,7 +3058,7 @@ jobs:
           import main
           import db
 
-          main.verifier_auth = lambda _code: None
+          main.verifier_auth = lambda _code: 1
 
           types = (
               "vtt_electrique", "vtt", "enduro", "descente",
@@ -3083,7 +3324,7 @@ jobs:
           assert {url for url, _ in pages_bing} == {url_a, url_b}, pages_bing
           main.telecharger_lien = faux_telechargement
 
-          main.verifier_auth = lambda _code: None
+          main.verifier_auth = lambda _code: 1
           main.telecharger_lien = lambda url, accepte: (
               (_ for _ in ()).throw(ValueError("403")) if "opticycles.com" in url
               else faux_telechargement(url, accepte)
@@ -3112,7 +3353,7 @@ jobs:
           import main
           from fastapi import HTTPException
 
-          main.verifier_auth = lambda _code: None
+          main.verifier_auth = lambda _code: 1
           url_ddg = "https://constructeur.example/fiche-ddg"
           url_bing = "https://constructeur.example/fiche-bing"
           page_ddg = '<html><a class="result__a" href="' + url_ddg + '">Fiche constructeur</a></html>'
@@ -3195,7 +3436,7 @@ jobs:
           import main
           import db
 
-          main.verifier_auth = lambda _code: None
+          main.verifier_auth = lambda _code: 1
           contenu = json.dumps([
               {"categorie": "fourche", "nom": "Fox Rhythm 36", "statut": "trouve",
                "source": "https://exemple.test/fiche", "validation": "valide_par_utilisateur"}

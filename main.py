@@ -149,6 +149,30 @@ def verifier_auth(x_code_acces=None):
     raise HTTPException(status_code=401, detail="Code d'accès incorrect.")
 
 
+def controle_acces(x_code_acces, velo_id):
+    """Comme verifier_auth, et vérifie en plus que le vélo demandé appartient à
+    la personne connectée. Renvoie le numéro de la personne. Le vélo d'une autre
+    personne répond « introuvable » : on ne révèle pas qu'il existe.
+    Chaque route qui reçoit un velo_id doit l'appeler (un test le vérifie)."""
+    personne_id = verifier_auth(x_code_acces)
+
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            "SELECT id FROM velos WHERE id = ? AND personne_id = ?",
+            (velo_id, personne_id)
+        )
+
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Vélo introuvable.")
+    finally:
+        conn.close()
+
+    return personne_id
+
+
 def verifier_photo(texte, max_chars):
     """Vérifie qu'on reçoit bien une photo JPEG de taille raisonnable."""
     if not texte.startswith(PREFIXE_JPEG) or len(texte) > max_chars:
@@ -13411,24 +13435,26 @@ def accueil():
 
 @app.get("/api/velos")
 def obtenir_velos(x_code_acces: Optional[str] = Header(default=None)):
-    verifier_auth(x_code_acces)
+    personne_id = verifier_auth(x_code_acces)
     conn = db.connect()
     cursor = conn.cursor()
 
     try:
         cursor.execute("""
-            SELECT velo_id, COUNT(*) FROM sorties
-            WHERE a_verifier = 1 GROUP BY velo_id
-        """)
+            SELECT s.velo_id, COUNT(*) FROM sorties s
+            JOIN velos v ON v.id = s.velo_id
+            WHERE s.a_verifier = 1 AND v.personne_id = ?
+            GROUP BY s.velo_id
+        """, (personne_id,))
         a_verifier = {r[0]: r[1] for r in cursor.fetchall()}
         cursor.execute("""
             SELECT id, nom, type, marque, modele, annee, taille, actif,
                    km_total, km_frac, km_maj_le, date_achat, moteur, batterie, freins, suspension, tubeless, transmission, fiche_composants,
                    CASE WHEN photo IS NULL OR photo = '' THEN 0 ELSE 1 END AS a_photo
             FROM velos
-            WHERE actif = 1
+            WHERE actif = 1 AND personne_id = ?
             ORDER BY id
-        """)
+        """, (personne_id,))
         return [
             {
                 "sorties_a_verifier": a_verifier.get(row["id"], 0),
@@ -13601,7 +13627,7 @@ def modifier_fiche_velo(
     data: ModifierFicheVeloRequest,
     x_code_acces: Optional[str] = Header(default=None)
 ):
-    verifier_auth(x_code_acces)
+    controle_acces(x_code_acces, velo_id)
     nom = " ".join(data.nom.split())
     if not nom:
         raise HTTPException(status_code=400, detail="Donnez un nom au vélo.")
@@ -13665,7 +13691,7 @@ def creer_velo(
     data: NouveauVeloRequest,
     x_code_acces: Optional[str] = Header(default=None)
 ):
-    verifier_auth(x_code_acces)
+    personne_id = verifier_auth(x_code_acces)
     types_autorises = {
         "vtt_electrique", "vtt", "enduro", "descente",
         "gravel", "gravel_electrique", "route", "route_electrique"
@@ -13690,9 +13716,10 @@ def creer_velo(
         cursor.execute("""
             INSERT INTO velos (
                 nom, type, marque, modele, annee, taille, actif, km_total,
-                km_frac, km_maj_le, date_achat, suivi_depuis, moteur, batterie, freins, suspension, tubeless, transmission, fiche_composants
+                km_frac, km_maj_le, date_achat, suivi_depuis, moteur, batterie, freins, suspension, tubeless, transmission, fiche_composants,
+                personne_id
             )
-            VALUES (?, ?, ?, ?, ?, ?, 1, 0, 0, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, 1, 0, 0, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             nom, type_velo, (data.marque or "").strip() or None,
             (data.modele or "").strip() or None, data.annee,
@@ -13705,9 +13732,15 @@ def creer_velo(
             data.suspension if data.suspension in ("rigide", "avant", "double") else None,
             data.tubeless if data.tubeless in ("chambre", "tubeless") else None,
             data.transmission if data.transmission in ("chaine", "courroie") else None,
-            data.fiche_composants
+            data.fiche_composants,
+            personne_id
         ))
-        cursor.execute("SELECT id FROM velos WHERE nom = ? ORDER BY id DESC LIMIT 1", (nom,))
+        # Le vélo qu'on vient de créer : le plus récent de CETTE personne portant ce nom
+        # (sans la personne, deux personnes créant un vélo du même nom pourraient se confondre).
+        cursor.execute(
+            "SELECT id FROM velos WHERE nom = ? AND personne_id = ? ORDER BY id DESC LIMIT 1",
+            (nom, personne_id)
+        )
         velo_id = cursor.fetchone()[0]
 
         cursor.executemany("""
@@ -13735,7 +13768,7 @@ def creer_velo(
 @app.get("/api/velos/{velo_id}/contenu")
 def contenu_velo(velo_id: int, x_code_acces: Optional[str] = Header(default=None)):
     """Ce qui serait effacé avec ce vélo (affiché avant la confirmation)."""
-    verifier_auth(x_code_acces)
+    controle_acces(x_code_acces, velo_id)
     conn = db.connect()
     cursor = conn.cursor()
     try:
@@ -13765,7 +13798,7 @@ def compter_contenu_velo(cursor, velo_id):
 def supprimer_velo(velo_id: int, x_code_acces: Optional[str] = Header(default=None)):
     """Supprime pour de bon un vélo, ses pièces, son historique et ses sorties.
     Le vélo principal (CUBE, n° 1) ne peut jamais être supprimé."""
-    verifier_auth(x_code_acces)
+    controle_acces(x_code_acces, velo_id)
     conn = db.connect()
     cursor = conn.cursor()
     try:
@@ -13809,7 +13842,7 @@ PHOTO_DEBUTS = ("data:image/jpeg;base64,", "data:image/png;base64,", "data:image
 @app.get("/api/velos/{velo_id}/photo")
 def lire_photo_velo(velo_id: int, x_code_acces: Optional[str] = Header(default=None)):
     """Photo enregistrée du vélo (null s'il n'y en a pas)."""
-    verifier_auth(x_code_acces)
+    controle_acces(x_code_acces, velo_id)
     conn = db.connect()
     cursor = conn.cursor()
     try:
@@ -13825,7 +13858,7 @@ def lire_photo_velo(velo_id: int, x_code_acces: Optional[str] = Header(default=N
 @app.put("/api/velos/{velo_id}/photo")
 def enregistrer_photo_velo(velo_id: int, data: PhotoVeloRequest, x_code_acces: Optional[str] = Header(default=None)):
     """Enregistre (ou remplace) la photo du vélo, déjà réduite par le téléphone."""
-    verifier_auth(x_code_acces)
+    controle_acces(x_code_acces, velo_id)
     photo = data.photo.strip()
     debut = next((d for d in PHOTO_DEBUTS if photo.startswith(d)), None)
     if debut is None:
@@ -13853,7 +13886,7 @@ def enregistrer_photo_velo(velo_id: int, data: PhotoVeloRequest, x_code_acces: O
 @app.delete("/api/velos/{velo_id}/photo")
 def supprimer_photo_velo(velo_id: int, x_code_acces: Optional[str] = Header(default=None)):
     """Retire la photo enregistrée (le CUBE retrouve alors sa photo d'origine)."""
-    verifier_auth(x_code_acces)
+    controle_acces(x_code_acces, velo_id)
     conn = db.connect()
     cursor = conn.cursor()
     try:
@@ -13883,7 +13916,7 @@ class PositionsRequest(BaseModel):
 @app.post("/api/velos/{velo_id}/positions")
 def enregistrer_positions_velo(velo_id: int, data: PositionsRequest, x_code_acces: Optional[str] = Header(default=None)):
     """Déplace d'un coup les repères (pastilles) d'un vélo : tout ou rien."""
-    verifier_auth(x_code_acces)
+    controle_acces(x_code_acces, velo_id)
     conn = db.connect()
     cursor = conn.cursor()
     try:
@@ -14761,7 +14794,7 @@ def obtenir_etat(
     velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
-    verifier_auth(x_code_acces)
+    controle_acces(x_code_acces, velo_id)
     conn = db.connect()
     cursor = conn.cursor()
 
@@ -14940,7 +14973,7 @@ def obtenir_historique(
     velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
-    verifier_auth(x_code_acces)
+    controle_acces(x_code_acces, velo_id)
     conn = db.connect()
     cursor = conn.cursor()
 
@@ -14973,7 +15006,7 @@ def ajouter_historique(
     velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
-    verifier_auth(x_code_acces)
+    controle_acces(x_code_acces, velo_id)
     conn = db.connect()
     cursor = conn.cursor()
 
@@ -15137,7 +15170,7 @@ def supprimer_intervention(
     velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
-    verifier_auth(x_code_acces)
+    controle_acces(x_code_acces, velo_id)
     conn = db.connect()
     cursor = conn.cursor()
 
@@ -15173,7 +15206,7 @@ def supprimer_plusieurs_interventions(
     x_code_acces: Optional[str] = Header(default=None)
 ):
     """Supprime plusieurs interventions d'un coup (tout ou rien)."""
-    verifier_auth(x_code_acces)
+    controle_acces(x_code_acces, velo_id)
     conn = db.connect()
     cursor = conn.cursor()
 
@@ -15206,7 +15239,7 @@ def modifier_intervention(
     x_code_acces: Optional[str] = Header(default=None)
 ):
     """Modifie la date, le kilométrage, le coût et les notes d'une intervention."""
-    verifier_auth(x_code_acces)
+    controle_acces(x_code_acces, velo_id)
 
     try:
         date.fromisoformat(data.date_remplacement[:10])
@@ -15301,7 +15334,7 @@ def synchroniser_kilometrage(
     velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
-    verifier_auth(x_code_acces)
+    controle_acces(x_code_acces, velo_id)
     conn = db.connect()
     cursor = conn.cursor()
 
@@ -15342,7 +15375,7 @@ def remplacer_composant(
     velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
-    verifier_auth(x_code_acces)
+    controle_acces(x_code_acces, velo_id)
     conn = db.connect()
     cursor = conn.cursor()
 
@@ -15464,7 +15497,7 @@ def lire_mes_reglages(
     velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
-    verifier_auth(x_code_acces)
+    controle_acces(x_code_acces, velo_id)
     conn = db.connect()
     cursor = conn.cursor()
 
@@ -15500,7 +15533,7 @@ def enregistrer_mes_reglages(
     velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
-    verifier_auth(x_code_acces)
+    controle_acces(x_code_acces, velo_id)
 
     for cle, valeur in data.valeurs.items():
         if cle not in MES_REGLAGES_CLES:
@@ -15555,7 +15588,7 @@ def modifier_seuils(
     velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
-    verifier_auth(x_code_acces)
+    controle_acces(x_code_acces, velo_id)
 
     if data.seuil_alerte == 0 and data.seuil_jours == 0:
         raise HTTPException(
@@ -15598,7 +15631,7 @@ def enregistrer_coefs_pieces(
     x_code_acces: Optional[str] = Header(default=None)
 ):
     """Enregistre le coefficient d'usure de chaque élément d'entretien."""
-    verifier_auth(x_code_acces)
+    controle_acces(x_code_acces, velo_id)
 
     a_enregistrer = []
 
@@ -15655,7 +15688,7 @@ def deplacer_repere(
     velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
-    verifier_auth(x_code_acces)
+    controle_acces(x_code_acces, velo_id)
     conn = db.connect()
     cursor = conn.cursor()
 
@@ -15691,7 +15724,7 @@ def retirer_composant(
     x_code_acces: Optional[str] = Header(default=None)
 ):
     """Retire une pièce de la liste, avec son historique."""
-    verifier_auth(x_code_acces)
+    controle_acces(x_code_acces, velo_id)
     conn = db.connect()
     cursor = conn.cursor()
 
@@ -15730,7 +15763,10 @@ def importer_sortie(
     velo_id: Optional[int] = None,
     x_code_acces: Optional[str] = Header(default=None)
 ):
-    verifier_auth(x_code_acces)
+    if velo_id is None:
+        personne_id = verifier_auth(x_code_acces)
+    else:
+        personne_id = controle_acces(x_code_acces, velo_id)
 
     if not data.gpx and not data.fit:
         raise HTTPException(status_code=400, detail="Aucun fichier reçu.")
@@ -15782,25 +15818,43 @@ def importer_sortie(
         automatique = velo_id is None
 
         if automatique:
+            # Parmi les vélos de la personne seulement.
             cursor.execute("""
                 SELECT s.velo_id
                 FROM sorties s
-                JOIN velos v ON v.id = s.velo_id AND v.actif = 1
+                JOIN velos v ON v.id = s.velo_id AND v.actif = 1 AND v.personne_id = ?
                 ORDER BY s.debut DESC
                 LIMIT 1
-            """)
+            """, (personne_id,))
             derniere = cursor.fetchone()
-            velo_id = derniere[0] if derniere and derniere[0] else 1
 
-        cursor.execute("SELECT id FROM velos WHERE id = ? AND actif = 1", (velo_id,))
+            if derniere and derniere[0]:
+                velo_id = derniere[0]
+            else:
+                cursor.execute(
+                    "SELECT id FROM velos WHERE personne_id = ? AND actif = 1 ORDER BY id LIMIT 1",
+                    (personne_id,)
+                )
+                premier = cursor.fetchone()
+
+                if premier is None:
+                    raise HTTPException(status_code=404, detail="Vélo introuvable.")
+
+                velo_id = premier[0]
+
+        cursor.execute(
+            "SELECT id FROM velos WHERE id = ? AND actif = 1 AND personne_id = ?",
+            (velo_id, personne_id)
+        )
         if cursor.fetchone() is None:
             raise HTTPException(status_code=404, detail="Vélo introuvable.")
 
-        # L'heure de départ est unique dans toute la base, tous vélos confondus.
-        cursor.execute(
-            "SELECT id FROM sorties WHERE debut = ?",
-            (s["debut"],)
-        )
+        # L'heure de départ est unique pour une même personne, tous ses vélos confondus.
+        cursor.execute("""
+            SELECT s.id FROM sorties s
+            JOIN velos v ON v.id = s.velo_id
+            WHERE s.debut = ? AND v.personne_id = ?
+        """, (s["debut"], personne_id))
 
         if cursor.fetchone() is not None:
             raise HTTPException(
@@ -15812,13 +15866,16 @@ def importer_sortie(
         # l'heure de départ peut différer de quelques secondes ou minutes.
         depart = datetime.strptime(s["debut"], "%Y-%m-%dT%H:%M:%SZ")
         format_heure = "%Y-%m-%dT%H:%M:%SZ"
-        filtre_velo = "" if automatique else "velo_id = ? AND "
+        # Automatique : toutes les sorties de la personne ; sinon : le vélo choisi.
+        filtre_velo = (
+            "velo_id IN (SELECT id FROM velos WHERE personne_id = ?) AND "
+            if automatique else "velo_id = ? AND "
+        )
         parametres_proches = (
+            personne_id if automatique else velo_id,
             (depart - timedelta(minutes=10)).strftime(format_heure),
             (depart + timedelta(minutes=10)).strftime(format_heure),
         )
-        if not automatique:
-            parametres_proches = (velo_id,) + parametres_proches
         cursor.execute(
             "SELECT distance_km FROM sorties WHERE " + filtre_velo
             + "debut >= ? AND debut <= ?",
@@ -15891,7 +15948,7 @@ def confirmer_velo_sortie(
     x_code_acces: Optional[str] = Header(default=None)
 ):
     """Math confirme que le vélo de cette sortie est le bon."""
-    verifier_auth(x_code_acces)
+    controle_acces(x_code_acces, velo_id)
     conn = db.connect()
     cursor = conn.cursor()
     try:
@@ -15925,7 +15982,7 @@ def affecter_sortie_a_un_autre_velo(
     velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
-    verifier_auth(x_code_acces)
+    personne_id = controle_acces(x_code_acces, velo_id)
     nouveau_velo_id = data.nouveau_velo_id
     if nouveau_velo_id == velo_id:
         raise HTTPException(status_code=400, detail="Cette sortie est déjà affectée à ce vélo.")
@@ -15941,9 +15998,10 @@ def affecter_sortie_a_un_autre_velo(
         if sortie is None:
             raise HTTPException(status_code=404, detail="Sortie introuvable pour ce vélo.")
 
+        # Le vélo de destination doit être à la même personne.
         cursor.execute(
-            "SELECT id FROM velos WHERE id = ? AND actif = 1",
-            (nouveau_velo_id,)
+            "SELECT id FROM velos WHERE id = ? AND actif = 1 AND personne_id = ?",
+            (nouveau_velo_id, personne_id)
         )
         if cursor.fetchone() is None:
             raise HTTPException(status_code=404, detail="Le vélo de destination est introuvable.")
@@ -15982,7 +16040,7 @@ def lister_sorties(
     velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
-    verifier_auth(x_code_acces)
+    controle_acces(x_code_acces, velo_id)
     conn = db.connect()
     cursor = conn.cursor()
 
@@ -16039,7 +16097,7 @@ def supprimer_sortie(
     velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
-    verifier_auth(x_code_acces)
+    controle_acces(x_code_acces, velo_id)
     conn = db.connect()
     cursor = conn.cursor()
 
@@ -16079,7 +16137,7 @@ def changer_terrain(
     velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
-    verifier_auth(x_code_acces)
+    controle_acces(x_code_acces, velo_id)
     terrain = data.terrain.strip().lower()
 
     if terrain not in TERRAINS:
@@ -16186,7 +16244,7 @@ def modifier_sortie(
     x_code_acces: Optional[str] = Header(default=None)
 ):
     # Modifie les notes sans toucher au parcours ni au kilométrage.
-    verifier_auth(x_code_acces)
+    controle_acces(x_code_acces, velo_id)
     notes = (data.notes or "").strip()[:500] or None
     conn = db.connect()
     cursor = conn.cursor()
@@ -16222,7 +16280,7 @@ def renommer_sortie(
     x_code_acces: Optional[str] = Header(default=None)
 ):
     """Change le nom d'une sortie."""
-    verifier_auth(x_code_acces)
+    controle_acces(x_code_acces, velo_id)
     nom = " ".join(data.nom.split())
 
     if not nom:
@@ -16270,7 +16328,7 @@ def enregistrer_surfaces(
     x_code_acces: Optional[str] = Header(default=None)
 ):
     """Enregistre le type de chemin (route, sentier...) le long du tracé."""
-    verifier_auth(x_code_acces)
+    controle_acces(x_code_acces, velo_id)
 
     if any(c not in "rvcsu" for c in data.codes):
         raise HTTPException(status_code=400, detail="Codes non valides.")
@@ -16311,7 +16369,7 @@ def ajouter_video(
     x_code_acces: Optional[str] = Header(default=None)
 ):
     """Ajoute le lien d'une vidéo (YouTube, Google Photos...) à une sortie."""
-    verifier_auth(x_code_acces)
+    controle_acces(x_code_acces, velo_id)
 
     url = data.url.strip()
     titre = (data.titre or "").strip()
@@ -16371,7 +16429,7 @@ def retirer_video(
     velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
-    verifier_auth(x_code_acces)
+    controle_acces(x_code_acces, velo_id)
     conn = db.connect()
     cursor = conn.cursor()
 
@@ -16416,7 +16474,7 @@ def ajouter_photos(
     x_code_acces: Optional[str] = Header(default=None)
 ):
     """Joint des photos à une sortie déjà importée (8 au total maximum)."""
-    verifier_auth(x_code_acces)
+    controle_acces(x_code_acces, velo_id)
 
     if not data.photos:
         raise HTTPException(status_code=400, detail="Aucune photo reçue.")
@@ -16481,7 +16539,7 @@ def retirer_photo(
     x_code_acces: Optional[str] = Header(default=None)
 ):
     """Retire une seule photo d'une sortie (les autres restent)."""
-    verifier_auth(x_code_acces)
+    controle_acces(x_code_acces, velo_id)
     conn = db.connect()
     cursor = conn.cursor()
 
@@ -16528,7 +16586,7 @@ def obtenir_photo(
     velo_id: int = 1,
     x_code_acces: Optional[str] = Header(default=None)
 ):
-    verifier_auth(x_code_acces)
+    controle_acces(x_code_acces, velo_id)
     conn = db.connect()
     cursor = conn.cursor()
 
@@ -16558,33 +16616,60 @@ def obtenir_photo(
 
 @app.get("/api/sauvegarde")
 def sauvegarde(x_code_acces: Optional[str] = Header(default=None)):
-    verifier_auth(x_code_acces)
+    personne_id = verifier_auth(x_code_acces)
     conn = db.connect()
     cursor = conn.cursor()
 
     try:
-        # Le registre multi-vélos contient le kilométrage courant.
+        # Seulement les vélos de la personne connectée, et ce qui s'y rattache.
+        mes_velos = "(SELECT id FROM velos WHERE personne_id = ?)"
+
+        # Le registre multi-vélos contient le kilométrage courant (premier vélo
+        # de la personne ; pour Math c'est le CUBE, numéro 1).
         # Garder l'ancienne table comme repli pour les bases non migrées.
-        cursor.execute("SELECT km_total FROM velos WHERE id = 1")
+        cursor.execute(
+            "SELECT km_total FROM velos WHERE personne_id = ? ORDER BY id LIMIT 1",
+            (personne_id,)
+        )
         velo = cursor.fetchone()
 
-        if not velo or velo[0] is None:
+        if personne_id == 1 and (not velo or velo[0] is None):
             cursor.execute("SELECT km_total FROM velo WHERE id = 1")
             velo = cursor.fetchone()
 
-        cursor.execute("SELECT * FROM velos ORDER BY id")
+        cursor.execute(
+            "SELECT * FROM velos WHERE personne_id = ? ORDER BY id",
+            (personne_id,)
+        )
         velos = [dict(r) for r in cursor.fetchall()]
 
-        cursor.execute("SELECT * FROM mes_reglages_velo ORDER BY velo_id, cle")
+        cursor.execute(
+            "SELECT * FROM mes_reglages_velo WHERE velo_id IN " + mes_velos
+            + " ORDER BY velo_id, cle",
+            (personne_id,)
+        )
         reglages_personnels = [dict(r) for r in cursor.fetchall()]
 
-        cursor.execute("SELECT * FROM composants ORDER BY id")
+        cursor.execute(
+            "SELECT * FROM composants WHERE velo_id IN " + mes_velos + " ORDER BY id",
+            (personne_id,)
+        )
         composants = [dict(r) for r in cursor.fetchall()]
 
-        cursor.execute("SELECT * FROM historique ORDER BY id")
+        # Comme pour « ce qui serait effacé avec un vélo » : une ligne d'historique
+        # appartient au vélo par son propre velo_id OU par sa pièce.
+        cursor.execute(
+            "SELECT * FROM historique WHERE velo_id IN " + mes_velos
+            + " OR composant_id IN (SELECT id FROM composants WHERE velo_id IN "
+            + mes_velos + ") ORDER BY id",
+            (personne_id, personne_id)
+        )
         historique = [dict(r) for r in cursor.fetchall()]
 
-        cursor.execute("SELECT * FROM sorties ORDER BY debut")
+        cursor.execute(
+            "SELECT * FROM sorties WHERE velo_id IN " + mes_velos + " ORDER BY debut",
+            (personne_id,)
+        )
         sorties = [dict(r) for r in cursor.fetchall()]
 
         return {
