@@ -1202,6 +1202,99 @@ jobs:
           db.close()
           print("OK: kilomètres conservés après redémarrage, CUBE id 1, vélo suivant id 2.")
           PY
+      - name: Vérifier la table des personnes et le propriétaire des vélos (SQLite puis PostgreSQL)
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-personnes-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_personnes.py" <<'PY'
+          import os
+          import subprocess
+          import sys
+
+          import db
+
+
+          def demarrer():
+              # Un vrai démarrage de l'appli (l'import de main lance init_db).
+              subprocess.run([sys.executable, "-c", "import main"], check=True)
+
+
+          def lire(sql, p=()):
+              c = db.connect()
+              cur = c.cursor()
+              cur.execute(sql, p)
+              r = [tuple(x) for x in cur.fetchall()]
+              c.close()
+              return r
+
+
+          def ecrire(sql, p=()):
+              c = db.connect()
+              cur = c.cursor()
+              cur.execute(sql, p)
+              c.commit()
+              c.close()
+
+
+          TABLES = ("composants", "historique", "sorties", "reglages", "mes_reglages", "mes_reglages_velo")
+
+
+          def photo():
+              return {t: lire("SELECT * FROM " + t + " ORDER BY 1, 2") for t in TABLES}
+
+
+          # 1. Base neuve : Math est la personne 1, le CUBE lui appartient.
+          demarrer()
+          assert lire("SELECT id, nom, est_admin, actif, email FROM personnes") == [(1, "Math", 1, 1, None)]
+          assert lire("SELECT id, personne_id FROM velos") == [(1, 1)]
+
+          # 2. Un vélo créé sans propriétaire (comme le fait l'appli aujourd'hui) est à Math.
+          ecrire("INSERT INTO velos (nom, type) VALUES ('Gravel test', 'gravel')")
+          assert lire("SELECT personne_id FROM velos WHERE nom = 'Gravel test'") == [(1,)]
+          ecrire("INSERT INTO sorties (velo_id, debut, distance_km) VALUES (1, '2026-10-02T08:00:00Z', 25.5)")
+          demarrer()  # mise à niveau habituelle du 2e vélo, faite avant de comparer
+
+          # 3. Ancienne base : on retire ce que l'étape 1 ajoute, puis on redémarre deux fois.
+          ecrire("ALTER TABLE velos DROP COLUMN personne_id")
+          ecrire("DROP TABLE personnes")
+          avant = photo()
+          velos_avant = lire("SELECT id, nom, type, km_total FROM velos ORDER BY id")
+          demarrer()
+          demarrer()
+          assert photo() == avant, "une table existante a changé"
+          assert lire("SELECT id, nom, type, km_total FROM velos ORDER BY id") == velos_avant
+          assert lire("SELECT personne_id FROM velos ORDER BY id") == [(1,), (1,)]
+          assert lire("SELECT id, nom, est_admin FROM personnes") == [(1, "Math", 1)]
+
+          # 4. Redémarrages : rien ne se duplique, un nom modifié est conservé.
+          ecrire("UPDATE personnes SET nom = 'Math (admin)' WHERE id = 1")
+          demarrer()
+          assert lire("SELECT id, nom FROM personnes") == [(1, "Math (admin)")]
+
+          # 5. E-mail facultatif mais unique ; numéro automatique de la personne suivante.
+          ecrire("INSERT INTO personnes (nom) VALUES ('Ami sans mail 1')")
+          ecrire("INSERT INTO personnes (nom) VALUES ('Ami sans mail 2')")
+          ecrire("INSERT INTO personnes (nom, email) VALUES ('Ami A', 'a@exemple.fr')")
+          assert lire("SELECT id FROM personnes ORDER BY id") == [(1,), (2,), (3,), (4,)]
+          doublon = False
+          try:
+              ecrire("INSERT INTO personnes (nom, email) VALUES ('Ami B', 'a@exemple.fr')")
+          except Exception:
+              doublon = True
+          assert doublon, "deux personnes ne doivent pas partager le même e-mail"
+
+          print("OK: table des personnes et propriétaire des vélos (" + ("PostgreSQL" if db.USE_PG else "SQLite") + ").")
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_personnes.py"
+          python - <<'PY2'
+          import psycopg
+          with psycopg.connect("postgresql://postgres:postgres@localhost:5432/maillons_test", autocommit=True) as c:
+              c.execute("DROP DATABASE IF EXISTS maillons_personnes")
+              c.execute("CREATE DATABASE maillons_personnes")
+          PY2
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/maillons_personnes PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_personnes.py"
       - name: Installer un vrai navigateur pour tester la page
         run: |
           pip install playwright

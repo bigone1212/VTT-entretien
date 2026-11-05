@@ -599,6 +599,42 @@ def init_db():
             )
         """)
 
+    # Personnes qui utilisent Maillons (étape 1 des profils : ajouts seulement,
+    # rien ne change encore à l'écran ni dans les routes). La personne 1 est
+    # Math : tout ce qui existe déjà lui appartient. L'adresse e-mail est
+    # facultative : elle servira si une connexion par e-mail ou par compte
+    # Google est ajoutée plus tard.
+    cursor.execute(f"""
+        CREATE TABLE IF NOT EXISTS personnes (
+            id {db.AUTO_ID},
+            nom TEXT NOT NULL,
+            email TEXT UNIQUE,
+            est_admin INTEGER DEFAULT 0,
+            actif INTEGER DEFAULT 1,
+            cree_le TEXT
+        )
+    """)
+
+    cursor.execute("""
+        INSERT INTO personnes (id, nom, est_admin, actif, cree_le)
+        VALUES (1, 'Math', 1, 1, ?)
+        ON CONFLICT DO NOTHING
+    """, (maintenant_utc(),))
+
+    # PostgreSQL : même précaution que pour les vélos (numéro automatique).
+    if db.USE_PG:
+        cursor.execute("""
+            SELECT setval(
+                pg_get_serial_sequence('personnes', 'id'),
+                GREATEST((SELECT MAX(id) FROM personnes), 1)
+            )
+        """)
+
+    # Propriétaire de chaque vélo. Par défaut la personne 1 : les vélos déjà
+    # présents, et ceux que l'appli crée aujourd'hui, appartiennent à Math.
+    ajouter_colonne(cursor, "velos", "personne_id", "INTEGER DEFAULT 1")
+    cursor.execute("UPDATE velos SET personne_id = 1 WHERE personne_id IS NULL")
+
 
     cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS composants (
