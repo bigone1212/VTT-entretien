@@ -418,7 +418,7 @@ jobs:
           print("OK: vraie fiche Opticycles du Trek Fuel EXe 9.7 lue correctement.")
 
 
-          main.verifier_auth = lambda _code: None
+          main.verifier_auth = lambda _code: 1
 
           patins = main.entretiens_du_type("route", "patins")
           noms_patins = [ligne[0] for ligne in patins]
@@ -573,7 +573,7 @@ jobs:
           from fastapi.testclient import TestClient
 
           # L'authentification est neutralisée uniquement dans ce test isolé.
-          main.verifier_auth = lambda _code: None
+          main.verifier_auth = lambda _code: 1
 
           with TestClient(main.app) as client:
               with sqlite3.connect(path) as conn:
@@ -1202,6 +1202,962 @@ jobs:
           db.close()
           print("OK: kilomètres conservés après redémarrage, CUBE id 1, vélo suivant id 2.")
           PY
+      - name: Vérifier la table des personnes et le propriétaire des vélos (SQLite puis PostgreSQL)
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-personnes-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_personnes.py" <<'PY'
+          import os
+          import subprocess
+          import sys
+
+          import db
+
+
+          def demarrer():
+              # Un vrai démarrage de l'appli (l'import de main lance init_db).
+              subprocess.run([sys.executable, "-c", "import main"], check=True)
+
+
+          def lire(sql, p=()):
+              c = db.connect()
+              cur = c.cursor()
+              cur.execute(sql, p)
+              r = [tuple(x) for x in cur.fetchall()]
+              c.close()
+              return r
+
+
+          def ecrire(sql, p=()):
+              c = db.connect()
+              cur = c.cursor()
+              cur.execute(sql, p)
+              c.commit()
+              c.close()
+
+
+          TABLES = ("composants", "historique", "sorties", "reglages", "mes_reglages", "mes_reglages_velo")
+
+
+          def photo():
+              return {t: lire("SELECT * FROM " + t + " ORDER BY 1, 2") for t in TABLES}
+
+
+          # 1. Base neuve : Math est la personne 1, le CUBE lui appartient.
+          demarrer()
+          assert lire("SELECT id, nom, est_admin, actif, email FROM personnes") == [(1, "Math", 1, 1, None)]
+          assert lire("SELECT id, personne_id FROM velos") == [(1, 1)]
+
+          # 2. Un vélo créé sans propriétaire (comme le fait l'appli aujourd'hui) est à Math.
+          ecrire("INSERT INTO velos (nom, type) VALUES ('Gravel test', 'gravel')")
+          assert lire("SELECT personne_id FROM velos WHERE nom = 'Gravel test'") == [(1,)]
+          ecrire("INSERT INTO sorties (velo_id, debut, distance_km) VALUES (1, '2026-10-02T08:00:00Z', 25.5)")
+          demarrer()  # mise à niveau habituelle du 2e vélo, faite avant de comparer
+
+          # 3. Ancienne base : on retire ce que l'étape 1 ajoute, puis on redémarre deux fois.
+          ecrire("ALTER TABLE velos DROP COLUMN personne_id")
+          ecrire("DROP TABLE personnes")
+          avant = photo()
+          velos_avant = lire("SELECT id, nom, type, km_total FROM velos ORDER BY id")
+          demarrer()
+          demarrer()
+          assert photo() == avant, "une table existante a changé"
+          assert lire("SELECT id, nom, type, km_total FROM velos ORDER BY id") == velos_avant
+          assert lire("SELECT personne_id FROM velos ORDER BY id") == [(1,), (1,)]
+          assert lire("SELECT id, nom, est_admin FROM personnes") == [(1, "Math", 1)]
+
+          # 4. Redémarrages : rien ne se duplique, un nom modifié est conservé.
+          ecrire("UPDATE personnes SET nom = 'Math (admin)' WHERE id = 1")
+          demarrer()
+          assert lire("SELECT id, nom FROM personnes") == [(1, "Math (admin)")]
+
+          # 5. E-mail facultatif mais unique ; numéro automatique de la personne suivante.
+          ecrire("INSERT INTO personnes (nom) VALUES ('Ami sans mail 1')")
+          ecrire("INSERT INTO personnes (nom) VALUES ('Ami sans mail 2')")
+          ecrire("INSERT INTO personnes (nom, email) VALUES ('Ami A', 'a@exemple.fr')")
+          assert lire("SELECT id FROM personnes ORDER BY id") == [(1,), (2,), (3,), (4,)]
+          doublon = False
+          try:
+              ecrire("INSERT INTO personnes (nom, email) VALUES ('Ami B', 'a@exemple.fr')")
+          except Exception:
+              doublon = True
+          assert doublon, "deux personnes ne doivent pas partager le même e-mail"
+
+          print("OK: table des personnes et propriétaire des vélos (" + ("PostgreSQL" if db.USE_PG else "SQLite") + ").")
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_personnes.py"
+          python - <<'PY2'
+          import psycopg
+          with psycopg.connect("postgresql://postgres:postgres@localhost:5432/maillons_test", autocommit=True) as c:
+              c.execute("DROP DATABASE IF EXISTS maillons_personnes")
+              c.execute("CREATE DATABASE maillons_personnes")
+          PY2
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/maillons_personnes PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_personnes.py"
+      - name: Vérifier que le code identifie la personne (SQLite puis PostgreSQL)
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-codes-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_codes.py" <<'PY'
+          import os
+          import subprocess
+          import sys
+
+          import db
+          import main
+          from fastapi import HTTPException
+
+          # Le code de Math (réglé dans Render). On le fixe long pour tester aussi
+          # « un code personnel ne peut pas être celui de Math ».
+          CODE_MATH = "code-de-math-123"
+          main.CODE_ACCES = CODE_MATH
+          os.environ["CODE_ACCES"] = CODE_MATH
+
+
+          def statut(code):
+              try:
+                  return main.verifier_auth(code)
+              except HTTPException as e:
+                  return e.status_code
+
+
+          def ecrire(sql, p=()):
+              c = db.connect()
+              cur = c.cursor()
+              cur.execute(sql, p)
+              c.commit()
+              c.close()
+
+
+          def lire(sql, p=()):
+              c = db.connect()
+              cur = c.cursor()
+              cur.execute(sql, p)
+              r = [tuple(x) for x in cur.fetchall()]
+              c.close()
+              return r
+
+
+          def definir(personne_id, code):
+              c = db.connect()
+              cur = c.cursor()
+              try:
+                  main.definir_code_personne(cur, personne_id, code)
+                  c.commit()
+                  return "ok"
+              except ValueError as e:
+                  c.rollback()
+                  return str(e)
+              finally:
+                  c.close()
+
+
+          # 1. Le code de Math fonctionne comme avant ; les mauvais codes sont refusés.
+          assert statut(CODE_MATH) == 1
+          assert statut("mauvais") == 401 and statut("") == 401 and statut(None) == 401
+          main.CODE_ACCES = ""
+          assert statut(CODE_MATH) == 503, "code non réglé sur le serveur : 503 comme avant"
+          main.CODE_ACCES = CODE_MATH
+
+          # 2. Deux personnes, chacune avec son code : le code identifie la personne.
+          ecrire("INSERT INTO personnes (nom) VALUES ('Ami 1')")
+          ecrire("INSERT INTO personnes (nom) VALUES ('Ami 2')")
+          assert [r[0] for r in lire("SELECT id FROM personnes ORDER BY id")] == [1, 2, 3]
+          assert definir(2, "abcd-1234-efgh") == "ok"
+          assert definir(3, "wxyz-5678-ijkl") == "ok"
+          assert statut("abcd-1234-efgh") == 2
+          assert statut("wxyz-5678-ijkl") == 3
+          assert statut(CODE_MATH) == 1
+          assert statut("abcd-1234-efgX") == 401 and statut("ABCD-1234-EFGH") == 401
+
+          # 3. Jamais de code en clair dans la base.
+          for sel, empreinte in lire("SELECT code_sel, code_hash FROM personnes WHERE id IN (2, 3)"):
+              assert len(empreinte) == 64 and len(sel) == 16
+              assert "abcd-1234-efgh" not in (sel + empreinte) and "wxyz-5678-ijkl" not in (sel + empreinte)
+          assert lire("SELECT code_sel, code_hash FROM personnes WHERE id = 1") == [(None, None)]
+          assert lire("SELECT code_hash FROM personnes WHERE id = 2") != lire("SELECT code_hash FROM personnes WHERE id = 3")
+
+          # 4. Refus : personne 1, trop court, code de Math, code déjà pris, personne inconnue.
+          assert "Render" in definir(1, "un-code-assez-long")
+          assert "trop court" in definir(2, "court")
+          assert "déjà utilisé" in definir(2, CODE_MATH)
+          assert "déjà utilisé" in definir(2, "wxyz-5678-ijkl")
+          assert "inconnue" in definir(99, "un-code-assez-long")
+          assert statut("abcd-1234-efgh") == 2, "un refus ne doit rien changer"
+          # Redéfinir son propre code est permis ; l'ancien code ne marche plus.
+          assert definir(2, "nouveau-code-2026") == "ok"
+          assert statut("nouveau-code-2026") == 2 and statut("abcd-1234-efgh") == 401
+
+          # 5. Personne désactivée : refusée ; réactivée : reconnue.
+          ecrire("UPDATE personnes SET actif = 0 WHERE id = 3")
+          assert statut("wxyz-5678-ijkl") == 401
+          ecrire("UPDATE personnes SET actif = 1 WHERE id = 3")
+          assert statut("wxyz-5678-ijkl") == 3
+
+          # 6. Une vraie route de l'appli : bon code accepté, mauvais refusé.
+          assert len(main.obtenir_velos(CODE_MATH)) >= 1
+          try:
+              main.obtenir_velos("mauvais")
+              raise AssertionError("la route aurait dû refuser")
+          except HTTPException as e:
+              assert e.status_code == 401
+
+          # 7. Redémarrage : les codes survivent ; base de l'étape 1 (sans les colonnes) : mise à niveau.
+          env = dict(os.environ)
+          subprocess.run([sys.executable, "-c", "import main"], check=True, env=env)
+          assert statut("nouveau-code-2026") == 2
+          ecrire("ALTER TABLE personnes DROP COLUMN code_sel")
+          ecrire("ALTER TABLE personnes DROP COLUMN code_hash")
+          subprocess.run([sys.executable, "-c", "import main"], check=True, env=env)
+          assert lire("SELECT code_sel, code_hash FROM personnes WHERE id = 1") == [(None, None)]
+          assert [r[0] for r in lire("SELECT id FROM personnes ORDER BY id")] == [1, 2, 3]
+          assert statut(CODE_MATH) == 1
+
+          print("OK: code personnel qui identifie la personne (" + ("PostgreSQL" if db.USE_PG else "SQLite") + ").")
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_codes.py"
+          python - <<'PY2'
+          import psycopg
+          with psycopg.connect("postgresql://postgres:postgres@localhost:5432/maillons_test", autocommit=True) as c:
+              c.execute("DROP DATABASE IF EXISTS maillons_codes")
+              c.execute("CREATE DATABASE maillons_codes")
+          PY2
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/maillons_codes PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_codes.py"
+      - name: Vérifier que chaque personne ne voit que ses vélos et ses réglages (SQLite puis PostgreSQL)
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-cloisonnement-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_cloisonnement.py" <<'PY'
+          import ast
+          import inspect
+          import os
+          from datetime import datetime, timedelta
+
+          import db
+          import main
+          from fastapi import HTTPException
+
+          # Code de Math (réglé dans Render) et codes personnels des autres.
+          CODE_MATH = "code-de-math-123"
+          CODE_2 = "code-ami-deux-456"
+          CODE_3 = "code-ami-trois-789"
+          main.CODE_ACCES = CODE_MATH
+          os.environ["CODE_ACCES"] = CODE_MATH
+
+
+          def ecrire(sql, p=()):
+              c = db.connect()
+              cur = c.cursor()
+              cur.execute(sql, p)
+              c.commit()
+              c.close()
+
+
+          def lire(sql, p=()):
+              c = db.connect()
+              cur = c.cursor()
+              cur.execute(sql, p)
+              r = [tuple(x) for x in cur.fetchall()]
+              c.close()
+              return r
+
+
+          def refuse(statut, detail, fonction, *a, **k):
+              try:
+                  fonction(*a, **k)
+              except HTTPException as e:
+                  assert e.status_code == statut and e.detail == detail, (fonction.__name__, e.status_code, e.detail)
+                  return
+              raise AssertionError("%s aurait dû répondre %s" % (fonction.__name__, statut))
+
+
+          def gpx(debut, km=10.0, nom="Sortie test"):
+              t0 = datetime.strptime(debut, "%Y-%m-%dT%H:%M:%SZ")
+              n = 120
+              pas_m = km * 1000 / (n - 1)
+              pts = []
+              for i in range(n):
+                  lat = 44.0 + (i * pas_m) / 111320.0
+                  t = (t0 + timedelta(seconds=20 * i)).strftime("%Y-%m-%dT%H:%M:%SZ")
+                  pts.append('<trkpt lat="%.6f" lon="2.500000"><ele>%d</ele><time>%s</time></trkpt>' % (lat, 500 + i % 10, t))
+              return ('<?xml version="1.0"?><gpx version="1.1" creator="test" xmlns="http://www.topografix.com/GPX/1/1">'
+                      '<trk><name>' + nom + '</name><trkseg>' + "".join(pts) + '</trkseg></trk></gpx>')
+
+
+          def importer(code, debut, velo_id=None, nom="Sortie"):
+              return main.importer_sortie(main.ImportGpxRequest(gpx=gpx(debut, 10.0, nom)), velo_id=velo_id, x_code_acces=code)
+
+
+          # ---------------------------------------------------------------------------
+          # A. Garde-fou : on lit main.py. Toute route doit contrôler le vélo demandé,
+          #    sauf celles d'une liste explicite (avec la raison). Une nouvelle route qui
+          #    oublie le contrôle fait échouer ce test.
+          # ---------------------------------------------------------------------------
+          SANS_CONTROLE_DE_VELO = {
+              "accueil": "page publique, aucune donnée",
+              "obtenir_velos": "liste filtrée sur la personne connectée",
+              "creer_velo": "le propriétaire est la personne connectée",
+              "recherche_fiche_velo": "recherche web, aucune donnée enregistrée",
+              "photo_depuis_lien": "récupération d'une photo sur le web, aucune donnée enregistrée",
+              "obtenir_reglages": "réglages d'usure de la personne connectée (sans vélo demandé)",
+              "enregistrer_reglages": "réglages d'usure de la personne connectée (sans vélo demandé)",
+              "sauvegarde": "export filtré sur la personne connectée",
+              "qui_suis_je": "nom et statut de la personne connectée (sans vélo demandé)",
+              "lister_personnes": "administration : réservée à l'administrateur (exiger_admin)",
+              "ajouter_personne": "administration : réservée à l'administrateur (exiger_admin)",
+              "nouveau_code_personne": "administration : réservée à l'administrateur (exiger_admin)",
+              "activer_personne": "administration : réservée à l'administrateur (exiger_admin)",
+          }
+
+          arbre = ast.parse(open("main.py", encoding="utf-8").read())
+          routes = []
+          for noeud in arbre.body:
+              if not isinstance(noeud, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                  continue
+              est_route = any(
+                  isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute)
+                  and isinstance(d.func.value, ast.Name) and d.func.value.id == "app"
+                  for d in noeud.decorator_list
+              )
+              if est_route:
+                  appels = {
+                      n.func.id for n in ast.walk(noeud)
+                      if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                  }
+                  routes.append((noeud.name, appels))
+
+          assert len(routes) >= 40, "routes trouvées : %d" % len(routes)
+          avec_controle = []
+          for nom, appels in routes:
+              if "controle_acces" in appels:
+                  avec_controle.append(nom)
+                  continue
+              assert nom in SANS_CONTROLE_DE_VELO, (
+                  "La route %s ne contrôle pas le vélo demandé (controle_acces). "
+                  "Ajoute le contrôle, ou justifie-la dans SANS_CONTROLE_DE_VELO." % nom
+              )
+              if nom != "accueil":
+                  assert "verifier_auth" in appels or "exiger_admin" in appels, "La route %s n'a aucun contrôle d'accès" % nom
+          for nom in SANS_CONTROLE_DE_VELO:
+              assert nom in [r[0] for r in routes], "Liste d'exceptions périmée : %s n'est plus une route" % nom
+          assert len(avec_controle) >= 30, len(avec_controle)
+
+          # ---------------------------------------------------------------------------
+          # B. Mise en place : Math (personne 1), deux amis, chacun avec son code.
+          # ---------------------------------------------------------------------------
+          ecrire("INSERT INTO personnes (nom) VALUES ('Ami deux')")
+          ecrire("INSERT INTO personnes (nom) VALUES ('Ami trois')")
+          c = db.connect()
+          cur = c.cursor()
+          main.definir_code_personne(cur, 2, CODE_2)
+          main.definir_code_personne(cur, 3, CODE_3)
+          c.commit()
+          c.close()
+
+          v_math = main.creer_velo(main.NouveauVeloRequest(nom="Gravel", type="gravel"), CODE_MATH)["velo_id"]
+          v_ami = main.creer_velo(main.NouveauVeloRequest(nom="Gravel", type="gravel"), CODE_2)["velo_id"]  # même nom !
+          assert len({1, v_math, v_ami}) == 3
+          assert lire("SELECT personne_id FROM velos WHERE id = ?", (v_math,)) == [(1,)]
+          assert lire("SELECT personne_id FROM velos WHERE id = ?", (v_ami,)) == [(2,)]
+
+          ids_math = [v["id"] for v in main.obtenir_velos(CODE_MATH)]
+          ids_ami = [v["id"] for v in main.obtenir_velos(CODE_2)]
+          assert ids_math == [1, v_math], ids_math
+          assert ids_ami == [v_ami], ids_ami
+          assert main.obtenir_velos(CODE_3) == []
+
+          # ---------------------------------------------------------------------------
+          # C. Chaque route qui reçoit un vélo : l'ami 2 sur le vélo de Math = « introuvable ».
+          #    Contre-épreuve : Math sur son propre vélo n'est jamais refusé pour ce motif.
+          # ---------------------------------------------------------------------------
+          ID_BIDON = 999999
+
+
+          def arguments(fonction, code, velo_id):
+              args = {}
+              for nom, p in inspect.signature(fonction).parameters.items():
+                  ann = p.annotation
+                  if nom == "x_code_acces":
+                      args[nom] = code
+                  elif nom == "velo_id":
+                      args[nom] = velo_id
+                  elif isinstance(ann, type) and issubclass(ann, main.BaseModel):
+                      fabrique = getattr(ann, "model_construct", None) or ann.construct
+                      args[nom] = fabrique()
+                  elif ann is int:
+                      args[nom] = ID_BIDON
+                  else:
+                      raise AssertionError("paramètre inattendu %s de %s" % (nom, fonction.__name__))
+              return args
+
+
+          for nom in avec_controle:
+              f = getattr(main, nom)
+              # L'ami 2 vise le CUBE de Math (n° 1) et le 2e vélo de Math.
+              for cible in (1, v_math):
+                  refuse(404, "Vélo introuvable.", f, **arguments(f, CODE_2, cible))
+              # L'ami 3 (sans vélo) aussi.
+              refuse(404, "Vélo introuvable.", f, **arguments(f, CODE_3, 1))
+              # Math n'est pas refusé pour ce motif sur son propre vélo.
+              try:
+                  f(**arguments(f, CODE_MATH, 1))
+              except HTTPException as e:
+                  assert e.detail != "Vélo introuvable.", (nom, "Math refusé sur son propre vélo")
+              except Exception:
+                  pass  # autre erreur (données factices) : le contrôle d'accès, lui, est passé
+
+          # ---------------------------------------------------------------------------
+          # D. Des données réelles : chacun ne voit que les siennes.
+          # ---------------------------------------------------------------------------
+          importer(CODE_MATH, "2030-01-01T08:00:00Z", velo_id=1, nom="Sortie Math 1")
+          importer(CODE_MATH, "2030-01-03T08:00:00Z", nom="Sortie Math auto")       # automatique
+          importer(CODE_2, "2030-01-02T08:00:00Z", nom="Sortie Ami auto")           # automatique : SON vélo
+          assert lire("SELECT velo_id FROM sorties WHERE nom = 'Sortie Ami auto'") == [(v_ami,)]
+          assert lire("SELECT velo_id FROM sorties WHERE nom = 'Sortie Math auto'")[0][0] in (1, v_math)
+
+          noms_math = sorted(s["nom"] for v in (1, v_math) for s in main.lister_sorties(velo_id=v, x_code_acces=CODE_MATH))
+          noms_ami = sorted(s["nom"] for s in main.lister_sorties(velo_id=v_ami, x_code_acces=CODE_2))
+          assert noms_math == ["Sortie Math 1", "Sortie Math auto"], noms_math
+          assert noms_ami == ["Sortie Ami auto"], noms_ami
+
+          # Une personne sans vélo ne peut rien importer.
+          refuse(404, "Vélo introuvable.", importer, CODE_3, "2030-01-05T08:00:00Z")
+
+          # Déplacer une sortie vers le vélo de quelqu'un d'autre : refusé.
+          sortie_ami = main.lister_sorties(velo_id=v_ami, x_code_acces=CODE_2)[0]["id"]
+          refuse(
+              404, "Le vélo de destination est introuvable.",
+              main.affecter_sortie_a_un_autre_velo, sortie_ami,
+              main.AffecterSortieVeloRequest(nouveau_velo_id=1), velo_id=v_ami, x_code_acces=CODE_2,
+          )
+
+          # Sauvegarde : seulement les siennes.
+          s_ami = main.sauvegarde(CODE_2)
+          assert [v["id"] for v in s_ami["velos"]] == [v_ami]
+          assert {c["velo_id"] for c in s_ami["composants"]} == {v_ami}
+          assert [s["nom"] for s in s_ami["sorties"]] == ["Sortie Ami auto"]
+          assert all(h["velo_id"] == v_ami for h in s_ami["historique"])
+          s_math = main.sauvegarde(CODE_MATH)
+          assert [v["id"] for v in s_math["velos"]] == [1, v_math]
+          assert v_ami not in {c["velo_id"] for c in s_math["composants"]}
+          assert sorted(s["nom"] for s in s_math["sorties"]) == ["Sortie Math 1", "Sortie Math auto"]
+          s_vide = main.sauvegarde(CODE_3)
+          assert s_vide["velos"] == [] and s_vide["composants"] == [] and s_vide["sorties"] == [] and s_vide["historique"] == []
+
+          # Les pastilles « à vérifier » ne comptent que les vélos de la personne.
+          # (Un import automatique est marqué « à vérifier » : chacun en a une, la sienne.)
+          ecrire("UPDATE sorties SET a_verifier = 1 WHERE nom = 'Sortie Ami auto'")
+          assert {v["id"]: v["sorties_a_verifier"] for v in main.obtenir_velos(CODE_2)} == {v_ami: 1}
+          chez_math = lire("SELECT COUNT(*) FROM sorties WHERE a_verifier = 1 AND velo_id IN (1, ?)", (v_math,))[0][0]
+          assert chez_math == 1
+          assert sum(v["sorties_a_verifier"] for v in main.obtenir_velos(CODE_MATH)) == chez_math
+
+          # Math supprime son 2e vélo : celui de l'ami reste intact.
+          main.supprimer_velo(v_math, CODE_MATH)
+          assert [v["id"] for v in main.obtenir_velos(CODE_2)] == [v_ami]
+          assert len(main.lister_sorties(velo_id=v_ami, x_code_acces=CODE_2)) == 1
+
+          # Une personne garde toujours au moins un vélo : son dernier ne se supprime pas.
+          refuse(400, "C'est ton dernier vélo : il ne peut pas être supprimé. Ajoute-en un autre d'abord.", main.supprimer_velo, v_ami, CODE_2)
+          assert [v["id"] for v in main.obtenir_velos(CODE_2)] == [v_ami]
+
+          # Deux personnes importent la MÊME sortie (faite ensemble) : permis. Deux fois la même : refusé.
+          MEME = "2030-01-10T08:00:00Z"
+          importer(CODE_MATH, MEME, velo_id=1, nom="Sortie ensemble Math")
+          importer(CODE_2, MEME, nom="Sortie ensemble Ami")  # même heure de départ, autre personne
+          assert lire("SELECT COUNT(*) FROM sorties WHERE debut = ?", (MEME,))[0][0] == 2
+          assert sorted(r[0] for r in lire("SELECT velo_id FROM sorties WHERE debut = ?", (MEME,))) == sorted([1, v_ami])
+          refuse(409, "Cette sortie est déjà importée.", importer, CODE_MATH, MEME, 1, "bis")
+          refuse(409, "Cette sortie est déjà importée.", importer, CODE_2, MEME, None, "bis")
+
+          # ---------------------------------------------------------------------------
+          # E. Réglages d'usure : personnels. Math garde sa table d'origine.
+          # ---------------------------------------------------------------------------
+          PAR_DEFAUT = dict(main.REGLAGES_PAR_DEFAUT)
+
+
+          def reglages(terrain_route=None, terrain_mixte=None, terrain_chemin=None, terrain_sentier=None, poids_denivele=None):
+              d = dict(PAR_DEFAUT)
+              for k, v in (("terrain_route", terrain_route), ("terrain_mixte", terrain_mixte),
+                           ("terrain_chemin", terrain_chemin), ("terrain_sentier", terrain_sentier),
+                           ("poids_denivele", poids_denivele)):
+                  if v is not None:
+                      d[k] = v
+              return d
+
+
+          assert main.obtenir_reglages(CODE_MATH) == PAR_DEFAUT
+          assert main.obtenir_reglages(CODE_2) == PAR_DEFAUT
+          assert main.obtenir_reglages(CODE_3) == PAR_DEFAUT
+          assert sorted(main.obtenir_reglages(CODE_2)) == sorted(PAR_DEFAUT), "aucun marqueur technique exposé"
+
+          coef_math_avant = main.lister_sorties(velo_id=1, x_code_acces=CODE_MATH)[0]["coef_usure"]
+          coef_ami_avant = main.lister_sorties(velo_id=v_ami, x_code_acces=CODE_2)[0]["coef_usure"]
+
+          # L'ami 2 règle SES coefficients : Math et l'ami 3 ne bougent pas.
+          main.enregistrer_reglages(main.ReglagesRequest(**reglages(3.0, 3.0, 3.0, 3.0, 2.0)), CODE_2)
+          assert main.obtenir_reglages(CODE_2) == reglages(3.0, 3.0, 3.0, 3.0, 2.0)
+          assert main.obtenir_reglages(CODE_MATH) == PAR_DEFAUT
+          assert main.obtenir_reglages(CODE_3) == PAR_DEFAUT
+          # La table d'origine de Math n'a pas été touchée par l'écriture de l'ami.
+          assert lire("SELECT cle, valeur FROM reglages WHERE cle IN ('terrain_sentier', 'poids_denivele') ORDER BY cle") == [
+              ("poids_denivele", 1.0), ("terrain_sentier", 1.6)]
+          assert lire("SELECT COUNT(*) FROM reglages_personne WHERE personne_id = 2")[0][0] == 5
+          assert lire("SELECT COUNT(*) FROM reglages_personne WHERE personne_id <> 2")[0][0] == 0
+
+          # Effet réel : le coefficient d'usure des sorties de l'ami change, celui de Math non.
+          coef_ami_apres = main.lister_sorties(velo_id=v_ami, x_code_acces=CODE_2)[0]["coef_usure"]
+          coef_math_apres = main.lister_sorties(velo_id=1, x_code_acces=CODE_MATH)[0]["coef_usure"]
+          assert coef_ami_apres != coef_ami_avant, (coef_ami_avant, coef_ami_apres)
+          assert coef_math_apres == coef_math_avant, (coef_math_avant, coef_math_apres)
+
+          # Math règle les siens : l'ami 2 garde les siens (réécriture idempotente, pas de doublon).
+          main.enregistrer_reglages(main.ReglagesRequest(**reglages(1.1, 1.2, 1.3, 1.4, 0.5)), CODE_MATH)
+          assert main.obtenir_reglages(CODE_MATH) == reglages(1.1, 1.2, 1.3, 1.4, 0.5)
+          assert main.obtenir_reglages(CODE_2) == reglages(3.0, 3.0, 3.0, 3.0, 2.0)
+          main.enregistrer_reglages(main.ReglagesRequest(**reglages(3.0, 3.0, 3.0, 3.0, 2.5)), CODE_2)
+          assert lire("SELECT COUNT(*) FROM reglages_personne WHERE personne_id = 2")[0][0] == 5
+          assert main.obtenir_reglages(CODE_2)["poids_denivele"] == 2.5
+
+          # Sauvegarde : chacun exporte ses réglages.
+          assert main.sauvegarde(CODE_2)["reglages"] == reglages(3.0, 3.0, 3.0, 3.0, 2.5)
+          assert main.sauvegarde(CODE_MATH)["reglages"] == reglages(1.1, 1.2, 1.3, 1.4, 0.5)
+          assert main.sauvegarde(CODE_3)["reglages"] == PAR_DEFAUT
+
+          # L'état des pièces se calcule avec les réglages de la personne (sans erreur pour chacun).
+          assert main.obtenir_etat(velo_id=1, x_code_acces=CODE_MATH) is not None
+          assert main.obtenir_etat(velo_id=v_ami, x_code_acces=CODE_2) is not None
+
+          print("OK: cloisonnement par vélo et réglages d'usure (" + ("PostgreSQL" if db.USE_PG else "SQLite") + "), %d routes contrôlées." % len(avec_controle))
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_cloisonnement.py"
+          python - <<'PY2'
+          import psycopg
+          with psycopg.connect("postgresql://postgres:postgres@localhost:5432/maillons_test", autocommit=True) as c:
+              c.execute("DROP DATABASE IF EXISTS maillons_cloisonnement")
+              c.execute("CREATE DATABASE maillons_cloisonnement")
+          PY2
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/maillons_cloisonnement PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_cloisonnement.py"
+      - name: Vérifier l'administration des personnes (codes, premier vélo, désactivation ; SQLite puis PostgreSQL)
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-admin-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_admin.py" <<'PY'
+          import os
+          import re
+
+          import db
+          import main
+          from fastapi import HTTPException
+
+          CODE_MATH = "code-de-math-123"
+          main.CODE_ACCES = CODE_MATH
+          os.environ["CODE_ACCES"] = CODE_MATH
+
+
+          def lire(sql, p=()):
+              c = db.connect()
+              cur = c.cursor()
+              cur.execute(sql, p)
+              r = [tuple(x) for x in cur.fetchall()]
+              c.close()
+              return r
+
+
+          def refuse(statut, detail, fonction, *a, **k):
+              try:
+                  fonction(*a, **k)
+              except HTTPException as e:
+                  assert e.status_code == statut and e.detail == detail, (fonction.__name__, e.status_code, e.detail)
+                  return
+              raise AssertionError("%s aurait dû répondre %s" % (fonction.__name__, statut))
+
+
+          def refuse_statut(statut, fonction, *a, **k):
+              try:
+                  fonction(*a, **k)
+              except HTTPException as e:
+                  assert e.status_code == statut, (fonction.__name__, e.status_code, e.detail)
+                  return
+              raise AssertionError("%s aurait dû répondre %s" % (fonction.__name__, statut))
+
+
+          # 1. Math se reconnaît administrateur, la liste ne contient que lui.
+          moi = main.qui_suis_je(CODE_MATH)
+          assert moi == {"id": 1, "nom": "Math", "est_admin": True}, moi
+          assert [(p["id"], p["nom"], p["est_admin"], p["actif"], p["a_un_code"]) for p in main.lister_personnes(CODE_MATH)] == [(1, "Math", True, True, True)]
+
+          # 2. Ajouter une personne : un code lisible, un premier vélo à elle.
+          r = main.ajouter_personne(main.NouvellePersonneRequest(nom="  Julie   Martin "), CODE_MATH)
+          assert r["nom"] == "Julie Martin" and r["id"] == 2, r
+          code_julie = r["code"]
+          assert re.fullmatch("[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}", code_julie), code_julie
+          assert not any(c in code_julie for c in "01oli".replace("-", "")), code_julie
+          assert lire("SELECT personne_id, nom, type FROM velos WHERE id = ?", (r["velo_id"],)) == [(2, "Mon vélo", "vtt_electrique")]
+          assert lire("SELECT COUNT(*) FROM composants WHERE velo_id = ?", (r["velo_id"],))[0][0] > 0, "le premier vélo doit avoir ses entretiens"
+          # Le code n'est stocké que sous forme d'empreinte.
+          assert all(code_julie not in str(x) for ligne in lire("SELECT * FROM personnes") for x in ligne)
+          assert lire("SELECT code_hash IS NOT NULL, code_sel IS NOT NULL FROM personnes WHERE id = 2")[0] in ((1, 1), (True, True))
+
+          # 3. Le code marche tout de suite : Julie est reconnue, voit son vélo et pas ceux de Math.
+          assert main.verifier_auth(code_julie) == 2
+          assert main.qui_suis_je(code_julie) == {"id": 2, "nom": "Julie Martin", "est_admin": False}
+          assert [v["id"] for v in main.obtenir_velos(code_julie)] == [r["velo_id"]]
+          assert 1 in [v["id"] for v in main.obtenir_velos(CODE_MATH)]
+          refuse(404, "Vélo introuvable.", main.controle_acces, code_julie, 1)
+
+          # 4. Julie ne peut rien administrer.
+          for appel in (
+              lambda: main.lister_personnes(code_julie),
+              lambda: main.ajouter_personne(main.NouvellePersonneRequest(nom="Intrus"), code_julie),
+              lambda: main.nouveau_code_personne(1, code_julie),
+              lambda: main.activer_personne(2, main.PersonneActiveRequest(actif=False), code_julie),
+          ):
+              refuse(403, "Réservé à l'administrateur.", appel)
+          assert lire("SELECT COUNT(*) FROM personnes")[0][0] == 2
+          # Sans code ou avec un mauvais code : 401.
+          refuse_statut(401, main.lister_personnes, "mauvais")
+          refuse_statut(401, main.qui_suis_je, None)
+
+          # 5. Refus : nom en double (même en majuscules), nom vide, type inconnu ; rien n'est créé.
+          refuse(409, "Une personne porte déjà ce nom.", main.ajouter_personne, main.NouvellePersonneRequest(nom="JULIE martin"), CODE_MATH)
+          refuse(400, "Donne un prénom ou un nom à la personne.", main.ajouter_personne, main.NouvellePersonneRequest(nom="   "), CODE_MATH)
+          refuse(400, "Type de vélo inconnu.", main.ajouter_personne, main.NouvellePersonneRequest(nom="Paul", type_velo="trottinette"), CODE_MATH)
+          assert lire("SELECT COUNT(*) FROM personnes")[0][0] == 2
+          assert lire("SELECT COUNT(*) FROM velos")[0][0] == 2
+
+          # 6. Deuxième personne, avec son type de vélo et le nom du vélo ; les codes sont différents.
+          p = main.ajouter_personne(main.NouvellePersonneRequest(nom="Paul", nom_velo="Mon gravel", type_velo="gravel"), CODE_MATH)
+          assert p["id"] == 3 and p["code"] != code_julie
+          assert lire("SELECT nom, type, personne_id FROM velos WHERE id = ?", (p["velo_id"],)) == [("Mon gravel", "gravel", 3)]
+          assert main.verifier_auth(p["code"]) == 3 and main.verifier_auth(code_julie) == 2
+
+          # 7. Nouveau code : l'ancien cesse de marcher, le nouveau marche. Math (n° 1) refusé.
+          n = main.nouveau_code_personne(2, CODE_MATH)
+          assert n["code"] != code_julie
+          refuse_statut(401, main.verifier_auth, code_julie)
+          assert main.verifier_auth(n["code"]) == 2
+          refuse(400, "Ton code se règle dans Render (CODE_ACCES), pas ici.", main.nouveau_code_personne, 1, CODE_MATH)
+          refuse(404, "Personne introuvable.", main.nouveau_code_personne, 999, CODE_MATH)
+
+          # 8. Désactiver : le code cesse de marcher aussitôt, les données restent ; réactiver : ça remarche.
+          main.activer_personne(2, main.PersonneActiveRequest(actif=False), CODE_MATH)
+          refuse_statut(401, main.verifier_auth, n["code"])
+          assert lire("SELECT COUNT(*) FROM velos WHERE personne_id = 2")[0][0] == 1
+          assert {x["id"]: x["actif"] for x in main.lister_personnes(CODE_MATH)} == {1: True, 2: False, 3: True}
+          main.activer_personne(2, main.PersonneActiveRequest(actif=True), CODE_MATH)
+          assert main.verifier_auth(n["code"]) == 2
+          refuse(400, "Tu ne peux pas te désactiver toi-même.", main.activer_personne, 1, main.PersonneActiveRequest(actif=False), CODE_MATH)
+          refuse(404, "Personne introuvable.", main.activer_personne, 999, main.PersonneActiveRequest(actif=True), CODE_MATH)
+          assert main.verifier_auth(CODE_MATH) == 1
+
+          # 9. La liste : nombre de vélos et présence d'un code.
+          liste = {x["id"]: x for x in main.lister_personnes(CODE_MATH)}
+          assert liste[2]["nb_velos"] == 1 and liste[2]["a_un_code"] and liste[3]["nb_velos"] == 1
+          assert "code" not in liste[2] and "code_hash" not in liste[2]
+
+          # 10. Le code généré est bien aléatoire et lisible (50 codes tous différents, bon format).
+          codes = {main.generer_code_personnel() for _ in range(50)}
+          assert len(codes) == 50 and all(re.fullmatch("[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}", c) for c in codes)
+
+          # 11. Le premier vélo d'une personne est créé comme tout vélo : même création que « Ajouter un vélo ».
+          v = main.creer_velo(main.NouveauVeloRequest(nom="Route de Julie", type="route"), n["code"])
+          assert lire("SELECT personne_id FROM velos WHERE id = ?", (v["velo_id"],)) == [(2,)]
+          assert [x["id"] for x in main.obtenir_velos(n["code"])] == sorted([x["id"] for x in main.obtenir_velos(n["code"])])
+          assert len(main.obtenir_velos(n["code"])) == 2
+
+          print("OK: administration des personnes (" + ("PostgreSQL" if db.USE_PG else "SQLite") + ").")
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_admin.py"
+          python - <<'PY2'
+          import psycopg
+          with psycopg.connect("postgresql://postgres:postgres@localhost:5432/maillons_test", autocommit=True) as c:
+              c.execute("DROP DATABASE IF EXISTS maillons_admin")
+              c.execute("CREATE DATABASE maillons_admin")
+          PY2
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/maillons_admin PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_admin.py"
+      - name: Vérifier de bout en bout par le vrai serveur web (Math crée Julie, qui entre avec son code ; SQLite puis PostgreSQL)
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-http-test.db
+          CODE_ACCES: test
+        run: |
+          pip install httpx
+          cat > "$RUNNER_TEMP/test_http.py" <<'PY'
+          import os
+
+          import db
+          import main
+          from fastapi.testclient import TestClient
+
+          # Vrai serveur web (en mémoire), vrais en-têtes : rien n'est remplacé dans le code d'accès.
+          CODE_MATH = "code-math-de-bout-en-bout"
+          main.CODE_ACCES = CODE_MATH
+          os.environ["CODE_ACCES"] = CODE_MATH
+
+
+          def h(code):
+              return {"x-code-acces": code}
+
+
+          def sql(requete, p=()):
+              c = db.connect()
+              cur = c.cursor()
+              cur.execute(requete, p)
+              c.commit()
+              c.close()
+
+
+          with TestClient(main.app) as client:
+              sql("UPDATE velos SET nom = 'VELO-SECRET-DE-MATH' WHERE id = 1")
+
+              # Sans code, avec un mauvais code : refusé.
+              assert client.get("/api/velos").status_code == 401
+              assert client.get("/api/velos", headers=h("faux")).status_code == 401
+
+              # Math : administrateur, voit son vélo.
+              assert client.get("/api/moi", headers=h(CODE_MATH)).json() == {"id": 1, "nom": "Math", "est_admin": True}
+              assert 1 in [v["id"] for v in client.get("/api/velos", headers=h(CODE_MATH)).json()]
+
+              # Un nom vide est refusé avant tout (422), un nom correct crée la personne.
+              assert client.post("/api/personnes", json={"nom": ""}, headers=h(CODE_MATH)).status_code == 422
+              r = client.post("/api/personnes", json={"nom": "Julie", "type_velo": "gravel"}, headers=h(CODE_MATH))
+              assert r.status_code == 200, r.text
+              julie = r.json()
+              code_j = julie["code"]
+              assert client.post("/api/personnes", json={"nom": "julie"}, headers=h(CODE_MATH)).status_code == 409
+              assert [p["nom"] for p in client.get("/api/personnes", headers=h(CODE_MATH)).json()] == ["Math", "Julie"]
+
+              # Julie entre avec son code : elle voit son vélo, et lui seulement.
+              assert client.get("/api/moi", headers=h(code_j)).json() == {"id": julie["id"], "nom": "Julie", "est_admin": False}
+              vj = client.get("/api/velos", headers=h(code_j)).json()
+              assert [v["id"] for v in vj] == [julie["velo_id"]], vj
+              assert client.get("/api/etat?velo_id=%d" % julie["velo_id"], headers=h(code_j)).status_code == 200
+              for chemin in ("/api/etat", "/api/sorties", "/api/historique"):
+                  assert client.get(chemin + "?velo_id=1", headers=h(code_j)).status_code == 404, chemin
+              assert "VELO-SECRET-DE-MATH" not in client.get("/api/sauvegarde", headers=h(code_j)).text
+              assert "VELO-SECRET-DE-MATH" in client.get("/api/sauvegarde", headers=h(CODE_MATH)).text
+
+              # Julie ne peut rien administrer, ni supprimer son dernier vélo.
+              assert client.get("/api/personnes", headers=h(code_j)).status_code == 403
+              assert client.post("/api/personnes", json={"nom": "Intrus"}, headers=h(code_j)).status_code == 403
+              assert client.post("/api/personnes/1/nouveau-code", headers=h(code_j)).status_code == 403
+              assert client.post("/api/personnes/%d/actif" % julie["id"], json={"actif": False}, headers=h(code_j)).status_code == 403
+              assert client.post("/api/velos/%d/supprimer" % julie["velo_id"], headers=h(code_j)).status_code == 400
+
+              # Julie crée un deuxième vélo à elle ; Math ne le voit pas dans sa liste.
+              r = client.post("/api/velos", json={"nom": "Route de Julie", "type": "route"}, headers=h(code_j))
+              assert r.status_code == 200, r.text
+              assert r.json()["velo_id"] not in [v["id"] for v in client.get("/api/velos", headers=h(CODE_MATH)).json()]
+              assert len(client.get("/api/velos", headers=h(code_j)).json()) == 2
+
+              # Nouveau code : l'ancien ne marche plus. Désactivation : plus rien ne marche. Réactivation : ça remarche.
+              nouveau = client.post("/api/personnes/%d/nouveau-code" % julie["id"], headers=h(CODE_MATH)).json()["code"]
+              assert client.get("/api/velos", headers=h(code_j)).status_code == 401
+              assert client.get("/api/velos", headers=h(nouveau)).status_code == 200
+              assert client.post("/api/personnes/%d/actif" % julie["id"], json={"actif": False}, headers=h(CODE_MATH)).status_code == 200
+              assert client.get("/api/velos", headers=h(nouveau)).status_code == 401
+              assert client.post("/api/personnes/%d/actif" % julie["id"], json={"actif": True}, headers=h(CODE_MATH)).status_code == 200
+              assert len(client.get("/api/velos", headers=h(nouveau)).json()) == 2, "les vélos de Julie sont gardés"
+
+              # Math n'est pas touché par tout cela.
+              assert client.get("/api/etat?velo_id=1", headers=h(CODE_MATH)).status_code == 200
+              assert client.post("/api/personnes/1/actif", json={"actif": False}, headers=h(CODE_MATH)).status_code == 400
+              assert client.get("/api/velos", headers=h(CODE_MATH)).status_code == 200
+
+          print("OK: de bout en bout par le vrai serveur web (" + ("PostgreSQL" if db.USE_PG else "SQLite") + ") : création de Julie, ses accès, ses limites, nouveau code, désactivation.")
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_http.py"
+          python - <<'PY2'
+          import psycopg
+          with psycopg.connect("postgresql://postgres:postgres@localhost:5432/maillons_test", autocommit=True) as c:
+              c.execute("DROP DATABASE IF EXISTS maillons_http")
+              c.execute("CREATE DATABASE maillons_http")
+          PY2
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/maillons_http PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_http.py"
+      - name: Vérifier l'heure de départ unique par vélo et la mise à niveau de l'ancienne base (SQLite puis PostgreSQL)
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-unicite-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_unicite.py" <<'PY'
+          import os
+          import subprocess
+          import sys
+
+          import db
+
+
+          def demarrer():
+              # Un vrai démarrage de l'appli (l'import de main lance init_db).
+              r = subprocess.run([sys.executable, "-c", "import main"], capture_output=True, text=True)
+              if r.returncode != 0:
+                  print(r.stderr[-1500:])
+                  raise SystemExit("le démarrage de l'appli a échoué")
+
+
+          def lire(sql, p=()):
+              c = db.connect()
+              cur = c.cursor()
+              cur.execute(sql, p)
+              r = [tuple(x) for x in cur.fetchall()]
+              c.close()
+              return r
+
+
+          def ecrire(sql, p=()):
+              c = db.connect()
+              try:
+                  cur = c.cursor()
+                  cur.execute(sql, p)
+                  c.commit()
+              except Exception:
+                  c.rollback()
+                  raise
+              finally:
+                  c.close()
+
+
+          def echoue(sql, p=()):
+              try:
+                  ecrire(sql, p)
+              except Exception:
+                  return True
+              return False
+
+
+          def regle_unique_sur_debut():
+              """Y a-t-il une règle d'unicité sur « debut » seul ?"""
+              if db.USE_PG:
+                  return lire(
+                      "SELECT COUNT(*) FROM pg_index i JOIN pg_attribute a "
+                      "ON a.attrelid = i.indrelid AND a.attnum = i.indkey[0] "
+                      "WHERE i.indrelid = 'sorties'::regclass AND i.indisunique "
+                      "AND i.indnatts = 1 AND a.attname = 'debut'"
+                  )[0][0] > 0
+              for ligne in lire("PRAGMA index_list(sorties)"):
+                  if ligne[2]:
+                      colonnes = [c[2] for c in lire('PRAGMA index_info("' + ligne[1] + '")')]
+                      if colonnes == ["debut"]:
+                          return True
+              return False
+
+
+          def index_par_velo_present():
+              if db.USE_PG:
+                  return lire("SELECT COUNT(*) FROM pg_indexes WHERE indexname = 'sorties_velo_debut'")[0][0] == 1
+              return lire("SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'sorties_velo_debut'")[0][0] == 1
+
+
+          def colonnes_sorties():
+              if db.USE_PG:
+                  return [r[0] for r in lire(
+                      "SELECT column_name FROM information_schema.columns "
+                      "WHERE table_name = 'sorties' ORDER BY ordinal_position")]
+              return [r[1] for r in lire("PRAGMA table_info(sorties)")]
+
+
+          def revenir_a_l_ancienne_regle():
+              """Remet la base dans l'état d'avant l'étape 3c : UNIQUE sur « debut » seul."""
+              if db.USE_PG:
+                  ecrire("DROP INDEX IF EXISTS sorties_velo_debut")
+                  # Nom volontairement inhabituel : le code ne doit pas le deviner.
+                  ecrire("ALTER TABLE sorties ADD CONSTRAINT regle_debut_unique UNIQUE (debut)")
+              else:
+                  definition = lire("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'sorties'")[0][0]
+                  suite = lire("SELECT seq FROM sqlite_sequence WHERE name = 'sorties'")
+                  ancien = definition.replace("debut TEXT NOT NULL", "debut TEXT NOT NULL UNIQUE", 1)
+                  ancien = ancien.replace("CREATE TABLE sorties", "CREATE TABLE sorties_ancienne", 1)
+                  ecrire(ancien)
+                  ecrire("INSERT INTO sorties_ancienne SELECT * FROM sorties")
+                  ecrire("DROP TABLE sorties")
+                  ecrire("ALTER TABLE sorties_ancienne RENAME TO sorties")
+                  if suite:
+                      ecrire("UPDATE sqlite_sequence SET seq = ? WHERE name = 'sorties'", (suite[0][0],))
+
+
+          # 1. Base neuve : pas de règle sur « debut » seul, index par vélo présent.
+          demarrer()
+          assert not regle_unique_sur_debut(), "base neuve : debut ne doit plus être unique à lui seul"
+          assert index_par_velo_present(), "base neuve : index (velo_id, debut) absent"
+
+          # 2. De la vie : deux vélos, 5 sorties (dont de grosses données), la dernière supprimée
+          #    (le prochain numéro automatique doit rester 6, pas retomber à 5).
+          ecrire("INSERT INTO velos (nom, type) VALUES ('Gravel', 'gravel')")
+          v2 = lire("SELECT MAX(id) FROM velos")[0][0]
+          grosse_trace = "[" + ",".join('[44.%06d,2.%06d,500,%d]' % (i, i, i) for i in range(3000)) + "]"
+          for velo, debut, nom in (
+              (1, "2030-02-01T08:00:00Z", "Été à Millau"),
+              (1, "2030-02-02T08:00:00Z", "Sortie 2"),
+              (1, "2030-02-03T08:00:00Z", "Sortie 3"),
+              (v2, "2030-02-04T08:00:00Z", "Gravel 1"),
+              (v2, "2030-02-05T08:00:00Z", "À supprimer"),
+          ):
+              ecrire(
+                  "INSERT INTO sorties (velo_id, nom, debut, distance_km, denivele_pos, trace, notes, photos, a_verifier) "
+                  "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                  (velo, nom, debut, 25.5, 400, grosse_trace, "note é à ü", '["photo"]', 0),
+              )
+          ecrire("DELETE FROM sorties WHERE nom = 'À supprimer'")
+          assert [r[0] for r in lire("SELECT id FROM sorties ORDER BY id")] == [1, 2, 3, 4]
+
+          # 3. Retour à l'ancienne règle (comme la base de production avant l'étape 3c).
+          revenir_a_l_ancienne_regle()
+          assert regle_unique_sur_debut(), "simulation : l'ancienne règle doit être en place"
+          assert not index_par_velo_present()
+          assert echoue(
+              "INSERT INTO sorties (velo_id, nom, debut) VALUES (?, 'doublon', '2030-02-01T08:00:00Z')", (v2,)
+          ), "simulation : l'ancienne règle devait bloquer ce doublon"
+
+          avant = lire("SELECT * FROM sorties ORDER BY id")
+          colonnes_avant = colonnes_sorties()
+          assert len(avant) == 4
+
+          # 4. Mise à niveau : deux démarrages.
+          demarrer()
+          demarrer()
+
+          assert lire("SELECT * FROM sorties ORDER BY id") == avant, "les lignes ont changé"
+          assert colonnes_sorties() == colonnes_avant, "les colonnes ont changé"
+          assert not regle_unique_sur_debut(), "l'ancienne règle devait être retirée"
+          assert index_par_velo_present()
+          if db.USE_PG:
+              reste = lire("SELECT COUNT(*) FROM pg_constraint WHERE conname = 'regle_debut_unique'")[0][0]
+              assert reste == 0, "la règle, de nom inhabituel, devait être retirée"
+
+          # 5. Les numéros automatiques ne reculent pas (au moins 6 ; PostgreSQL peut sauter un numéro après un refus).
+          ecrire("INSERT INTO sorties (velo_id, nom, debut) VALUES (?, 'nouvelle', '2030-02-09T08:00:00Z')", (1,))
+          assert lire("SELECT MAX(id) FROM sorties")[0][0] >= 6, "le numéro automatique a reculé"
+
+          # 6. La même heure de départ sur deux vélos : permise. Sur le même vélo : refusée.
+          ecrire("INSERT INTO sorties (velo_id, nom, debut) VALUES (?, 'même heure, autre vélo', '2030-02-01T08:00:00Z')", (v2,))
+          assert echoue("INSERT INTO sorties (velo_id, nom, debut) VALUES (?, 'doublon', '2030-02-01T08:00:00Z')", (v2,))
+          assert echoue("INSERT INTO sorties (velo_id, nom, debut) VALUES (?, 'doublon', '2030-02-01T08:00:00Z')", (1,))
+
+          # 7. Redémarrage de plus : rien ne bouge.
+          apres = lire("SELECT * FROM sorties ORDER BY id")
+          demarrer()
+          assert lire("SELECT * FROM sorties ORDER BY id") == apres
+          assert not regle_unique_sur_debut() and index_par_velo_present()
+
+          print("OK: heure de départ unique par vélo (" + ("PostgreSQL" if db.USE_PG else "SQLite") + ").")
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_unicite.py"
+          python - <<'PY2'
+          import psycopg
+          with psycopg.connect("postgresql://postgres:postgres@localhost:5432/maillons_test", autocommit=True) as c:
+              c.execute("DROP DATABASE IF EXISTS maillons_unicite")
+              c.execute("CREATE DATABASE maillons_unicite")
+          PY2
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/maillons_unicite PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_unicite.py"
       - name: Installer un vrai navigateur pour tester la page
         run: |
           pip install playwright
@@ -1359,7 +2315,7 @@ jobs:
           import main
           from fastapi.testclient import TestClient
 
-          main.verifier_auth = lambda _code: None
+          main.verifier_auth = lambda _code: 1
           import db
 
 
@@ -1417,7 +2373,7 @@ jobs:
           import main
           from fastapi.testclient import TestClient
 
-          main.verifier_auth = lambda _code: None
+          main.verifier_auth = lambda _code: 1
           img = "data:image/jpeg;base64," + base64.b64encode(b"\xff\xd8\xff" + b"A" * 300).decode()
 
           with TestClient(main.app) as client:
@@ -1753,7 +2709,7 @@ jobs:
           from http.server import BaseHTTPRequestHandler, HTTPServer
           import main
           from fastapi import HTTPException
-          main.verifier_auth = lambda _c: None
+          main.verifier_auth = lambda _c: 1
           JPEG = b"\xff\xd8\xff\xe0" + b"J" * 8000
           PNG = b"\x89PNG\r\n\x1a\n" + b"P" * 8000
 
@@ -1901,7 +2857,7 @@ jobs:
           cat > "$RUNNER_TEMP/test_positions_srv.py" <<'PY'
           import db, main
           from fastapi import HTTPException
-          main.verifier_auth = lambda _c: None
+          main.verifier_auth = lambda _c: 1
           C = "x"
           def refuse(code, f, *a, **k):
               try: f(*a, **k)
@@ -2260,6 +3216,209 @@ jobs:
           PY
           rm -f "$SQLITE_PATH"
           PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_menu_composants.py"
+      - name: Tester l'ouverture de l'appli par une autre personne que Math dans un vrai navigateur
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-autre-personne-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_autre_personne.py" <<'PY'
+          import json
+          from urllib.parse import urlparse, parse_qs
+          from playwright.sync_api import sync_playwright
+          import main
+          html = main.accueil()
+          CODE_AMI = "code-de-lami"
+          V_AMI = [{"id": 5, "nom": "Gravel de l'ami", "type": "gravel", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0}]
+          erreurs, appels = [], []
+          with sync_playwright() as p:
+              nav = p.chromium.launch()
+
+              def nouveau(code_en_memoire):
+                  ctx = nav.new_context(viewport={"width": 390, "height": 900})
+
+                  def api(r):
+                      u = urlparse(r.request.url)
+                      q = parse_qs(u.query)
+                      appels.append(u.path + ("?velo_id=" + q["velo_id"][0] if "velo_id" in q else ""))
+                      if r.request.headers.get("x-code-acces") != CODE_AMI:
+                          return r.fulfill(status=401, content_type="application/json", body='{"detail":"Code invalide."}')
+                      if u.path == "/api/velos":
+                          corps = V_AMI
+                      elif u.path == "/api/etat":
+                          # Comme le vrai serveur : un vélo qui n'est pas le sien est « introuvable ».
+                          if q.get("velo_id", [""])[0] != "5":
+                              return r.fulfill(status=404, content_type="application/json", body='{"detail":"Vélo introuvable."}')
+                          corps = {"km_total": 0, "composants": []}
+                      elif u.path == "/api/mes-reglages":
+                          corps = {"valeurs": {}, "maj_le": None}
+                      elif u.path == "/api/reglages":
+                          corps = {"terrain_route": 1, "terrain_mixte": 1.2, "terrain_chemin": 1.5, "terrain_sentier": 2, "poids_denivele": 1}
+                      else:
+                          corps = []
+                      r.fulfill(status=200, content_type="application/json", body=json.dumps(corps))
+
+                  ctx.route("**/localhost/api/**", api)
+                  ctx.route(lambda u: not u.startswith("http://localhost/"), lambda r: r.abort())
+                  if code_en_memoire:
+                      ctx.add_init_script("sessionStorage.setItem('vtt_code', '" + code_en_memoire + "');")
+                  pg = ctx.new_page()
+                  pg.on("pageerror", lambda e: erreurs.append(str(e)[:200]))
+                  pg.route("http://localhost/", lambda r: r.fulfill(status=200, content_type="text/html", body=html))
+                  return pg
+
+              # 1) Saisie du code d'une autre personne que Math (le vélo n° 1 n'est pas le sien).
+              pg = nouveau(None)
+              pg.goto("http://localhost/"); pg.wait_for_timeout(600)
+              pg.fill("#authInput", CODE_AMI); pg.click("#authScreen button"); pg.wait_for_timeout(1200)
+              assert pg.eval_on_selector("#authScreen", "e => getComputedStyle(e).display") == "none", "l'écran du code est resté"
+              assert pg.eval_on_selector("#authError", "e => e.textContent.trim()") == ""
+              assert pg.eval_on_selector("#headerVeloNom", "e => e.textContent.trim()") == "Gravel de l'ami"
+              assert pg.eval_on_selector("#selectVelo", "e => e.value") == "5"
+              assert "/api/etat?velo_id=5" in appels, appels
+              assert pg.evaluate("sessionStorage.getItem('maillons_velo_id')") == "5"
+              pg.close()
+
+              # 2) Réouverture avec le code déjà en mémoire (et un vélo n° 1 mémorisé par un ancien passage).
+              appels.clear()
+              pg = nouveau(CODE_AMI)
+              pg.add_init_script("sessionStorage.setItem('maillons_velo_id', '1');")
+              pg.goto("http://localhost/"); pg.wait_for_timeout(1200)
+              assert pg.eval_on_selector("#authScreen", "e => getComputedStyle(e).display") == "none"
+              assert pg.eval_on_selector("#headerVeloNom", "e => e.textContent.trim()") == "Gravel de l'ami"
+              assert "/api/etat?velo_id=5" in appels, appels
+              pg.close()
+
+              # 3) Mauvais code : refusé.
+              pg = nouveau(None)
+              pg.goto("http://localhost/"); pg.wait_for_timeout(600)
+              pg.fill("#authInput", "mauvais"); pg.click("#authScreen button"); pg.wait_for_timeout(800)
+              assert pg.eval_on_selector("#authError", "e => e.textContent.trim()") == "Code incorrect."
+              assert pg.eval_on_selector("#authScreen", "e => getComputedStyle(e).display") != "none"
+              pg.close()
+              nav.close()
+          print("erreurs page :", erreurs); assert not erreurs, erreurs
+          print("OK: une autre personne que Math entre avec son code et arrive sur son vélo")
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_autre_personne.py"
+      - name: Tester l'écran Personnes (administration) dans un vrai navigateur
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-admin-nav-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_admin_navigateur.py" <<'PY'
+          import json
+          from urllib.parse import urlparse
+          from playwright.sync_api import sync_playwright
+          import main
+          html = main.accueil()
+          V = [{"id": 1, "nom": "Mon CUBE", "type": "vtt_electrique", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0}]
+          erreurs, appels, dialogues = [], [], []
+          with sync_playwright() as p:
+              nav = p.chromium.launch()
+
+              def ouvrir(admin):
+                  etat = {"personnes": [{"id": 1, "nom": "Math", "est_admin": True, "actif": True, "a_un_code": True, "nb_velos": 1}], "suivant": 1}
+                  ctx = nav.new_context(viewport={"width": 390, "height": 900})
+
+                  def api(r):
+                      u = urlparse(r.request.url)
+                      m = r.request.method
+                      corps = r.request.post_data
+                      appels.append((m, u.path, corps))
+
+                      def rep(statut, obj):
+                          r.fulfill(status=statut, content_type="application/json", body=json.dumps(obj))
+                      if u.path == "/api/velos":
+                          return rep(200, V)
+                      if u.path == "/api/moi":
+                          return rep(200, {"id": 1, "nom": "Math", "est_admin": admin})
+                      if u.path == "/api/personnes" and m == "GET":
+                          if not admin:
+                              return rep(403, {"detail": "Réservé à l'administrateur."})
+                          return rep(200, etat["personnes"])
+                      if u.path == "/api/personnes" and m == "POST":
+                          d = json.loads(corps)
+                          if d["nom"].strip().lower() == "math":
+                              return rep(409, {"detail": "Une personne porte déjà ce nom."})
+                          etat["suivant"] += 1
+                          etat["personnes"].append({"id": etat["suivant"], "nom": d["nom"], "est_admin": False, "actif": True, "a_un_code": True, "nb_velos": 1})
+                          return rep(200, {"statut": "success", "id": etat["suivant"], "nom": d["nom"], "code": "abcd-efgh-jkmn", "velo_id": 9})
+                      if u.path.endswith("/nouveau-code"):
+                          return rep(200, {"statut": "success", "id": 2, "code": "wxyz-pqrs-tuvk"})
+                      if u.path.endswith("/actif"):
+                          d = json.loads(corps)
+                          for x in etat["personnes"]:
+                              if str(x["id"]) == u.path.split("/")[3]:
+                                  x["actif"] = d["actif"]
+                          return rep(200, {"statut": "success", "actif": d["actif"]})
+                      if u.path == "/api/etat":
+                          return rep(200, {"km_total": 0, "composants": []})
+                      if u.path == "/api/mes-reglages":
+                          return rep(200, {"valeurs": {}, "maj_le": None})
+                      if u.path == "/api/reglages":
+                          return rep(200, {"terrain_route": 1, "terrain_mixte": 1.2, "terrain_chemin": 1.5, "terrain_sentier": 2, "poids_denivele": 1})
+                      return rep(200, [])
+
+                  ctx.route("**/localhost/api/**", api)
+                  ctx.route(lambda u: not u.startswith("http://localhost/"), lambda r: r.abort())
+                  ctx.add_init_script("sessionStorage.setItem('vtt_code','m');")
+                  pg = ctx.new_page()
+                  pg.on("pageerror", lambda e: erreurs.append(str(e)[:200]))
+                  pg.on("dialog", lambda d: (dialogues.append(d.message), d.accept()))
+                  pg.route("http://localhost/", lambda r: r.fulfill(status=200, content_type="text/html", body=html))
+                  pg.goto("http://localhost/#reglages"); pg.wait_for_timeout(1200)
+                  return pg
+
+              texte = lambda pg, sel: pg.eval_on_selector(sel, "e => e.textContent.trim()")
+              visible = lambda pg, sel: pg.eval_on_selector(sel, "e => getComputedStyle(e).display") != "none"
+
+              # 1) Math : le bloc est là, la liste aussi.
+              pg = ouvrir(True)
+              assert visible(pg, "#blocPersonnes") and visible(pg, "#page-reglages")
+              assert "Math (administrateur)" in texte(pg, "#listePersonnes") and "1 vélo" in texte(pg, "#listePersonnes")
+              assert not visible(pg, "#codeAffiche")
+              assert pg.locator("#listePersonnes button").count() == 0, "aucune action sur Math"
+
+              # 2) Ajouter Julie : code affiché une fois, liste mise à jour.
+              pg.fill("#personneNom", "Julie"); pg.select_option("#personneTypeVelo", "gravel"); pg.click("#formAjouterPersonne button[type=submit]"); pg.wait_for_timeout(600)
+              envoi = [a for a in appels if a[0] == "POST" and a[1] == "/api/personnes"][-1]
+              assert json.loads(envoi[2]) == {"nom": "Julie", "type_velo": "gravel"}, envoi
+              assert visible(pg, "#codeAffiche") and texte(pg, "#codeAfficheValeur") == "abcd-efgh-jkmn" and "Julie" in texte(pg, "#codeAfficheTitre")
+              assert "Julie" in texte(pg, "#listePersonnes") and pg.input_value("#personneNom") == ""
+              # 3) « J'ai noté le code » : le code disparaît de l'écran.
+              pg.click("#boutonCodeNote")
+              assert not visible(pg, "#codeAffiche") and texte(pg, "#codeAfficheValeur") == ""
+              # 4) Nouveau code (avec confirmation).
+              pg.locator("#listePersonnes .personne-ligne").nth(1).get_by_text("Nouveau code").click(); pg.wait_for_timeout(500)
+              assert any("Julie" in d and "ancien code" in d for d in dialogues), dialogues
+              assert visible(pg, "#codeAffiche") and texte(pg, "#codeAfficheValeur") == "wxyz-pqrs-tuvk"
+              pg.click("#boutonCodeNote")
+              # 5) Désactiver puis réactiver.
+              ligne = lambda: pg.locator("#listePersonnes .personne-ligne").nth(1)
+              ligne().get_by_text("Désactiver").click(); pg.wait_for_timeout(500)
+              assert json.loads([a for a in appels if a[1] == "/api/personnes/2/actif"][-1][2]) == {"actif": False}
+              assert "désactivée" in ligne().inner_text() and ligne().get_by_text("Réactiver").count() == 1
+              ligne().get_by_text("Réactiver").click(); pg.wait_for_timeout(500)
+              assert json.loads([a for a in appels if a[1] == "/api/personnes/2/actif"][-1][2]) == {"actif": True}
+              assert "désactivée" not in ligne().inner_text()
+              # 6) Nom déjà pris : message d'erreur, pas de code affiché.
+              pg.fill("#personneNom", "Math"); pg.click("#formAjouterPersonne button[type=submit]"); pg.wait_for_timeout(500)
+              assert texte(pg, "#messagePersonnes") == "Une personne porte déjà ce nom." and not visible(pg, "#codeAffiche")
+              pg.close()
+
+              # 7) Une personne qui n'est pas administratrice : aucun bloc, aucun appel d'administration.
+              appels.clear()
+              pg = ouvrir(False)
+              assert not visible(pg, "#blocPersonnes")
+              assert not any(a[1] == "/api/personnes" for a in appels), appels
+              pg.close()
+              nav.close()
+          print("erreurs page :", erreurs); assert not erreurs, erreurs
+          print("OK: écran Personnes (ajout, code affiché une fois, nouveau code, désactiver/réactiver, erreur, non-administrateur)")
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_admin_navigateur.py"
       - name: Tester la recherche avec l'IA (copier-coller) dans un vrai navigateur
         env:
           SQLITE_PATH: ${{ runner.temp }}/maillons-ia-test.db
@@ -2489,8 +3648,8 @@ jobs:
               'velo_id: int = 1',
               'def ajuster_km_total(cursor, delta_km, velo_id=1):',
               '@app.post("/api/sorties/import")',
-              # Doublons d'import : heure de départ unique tous vélos confondus (voir les tests réels).
-              'SELECT id FROM sorties WHERE debut = ?',
+              # Doublons d'import : heure de départ unique pour une même personne, tous ses vélos confondus (voir les tests réels).
+              'WHERE s.debut = ? AND v.personne_id = ?',
               'debut >= ? AND debut <= ?',
               'INSERT INTO sorties (',
               'SELECT km_maj_le FROM velos WHERE id = ?',
@@ -2593,7 +3752,7 @@ jobs:
           import main
           import db
 
-          main.verifier_auth = lambda _code: None
+          main.verifier_auth = lambda _code: 1
 
           types = (
               "vtt_electrique", "vtt", "enduro", "descente",
@@ -2859,7 +4018,7 @@ jobs:
           assert {url for url, _ in pages_bing} == {url_a, url_b}, pages_bing
           main.telecharger_lien = faux_telechargement
 
-          main.verifier_auth = lambda _code: None
+          main.verifier_auth = lambda _code: 1
           main.telecharger_lien = lambda url, accepte: (
               (_ for _ in ()).throw(ValueError("403")) if "opticycles.com" in url
               else faux_telechargement(url, accepte)
@@ -2888,7 +4047,7 @@ jobs:
           import main
           from fastapi import HTTPException
 
-          main.verifier_auth = lambda _code: None
+          main.verifier_auth = lambda _code: 1
           url_ddg = "https://constructeur.example/fiche-ddg"
           url_bing = "https://constructeur.example/fiche-bing"
           page_ddg = '<html><a class="result__a" href="' + url_ddg + '">Fiche constructeur</a></html>'
@@ -2971,7 +4130,7 @@ jobs:
           import main
           import db
 
-          main.verifier_auth = lambda _code: None
+          main.verifier_auth = lambda _code: 1
           contenu = json.dumps([
               {"categorie": "fourche", "nom": "Fox Rhythm 36", "statut": "trouve",
                "source": "https://exemple.test/fiche", "validation": "valide_par_utilisateur"}
