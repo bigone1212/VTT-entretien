@@ -1987,6 +1987,30 @@ def accueil():
                 margin: -4px 0 10px;
             }
 
+            #blocPersonnes .personne-ligne {
+                padding: 10px 0;
+                border-top: 1px solid var(--line);
+            }
+            #blocPersonnes .personne-ligne .form-help { margin: 2px 0 6px; }
+            #blocPersonnes .personne-nom { font-weight: 600; }
+            #blocPersonnes .personne-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+            #blocPersonnes .personne-actions button { flex: 1 1 120px; }
+            #blocPersonnes .code-affiche {
+                margin: 12px 0;
+                padding: 12px;
+                border: 2px solid var(--accent);
+                border-radius: 12px;
+                text-align: center;
+            }
+            #blocPersonnes .code-affiche-valeur {
+                display: block;
+                margin: 8px 0;
+                font-size: 1.6rem;
+                letter-spacing: 0.06em;
+                user-select: all;
+                word-break: break-all;
+            }
+
             input[type="file"] {
                 width: 100%;
                 margin-bottom: 10px;
@@ -4070,6 +4094,40 @@ def accueil():
             <p class="form-help">Touche les trois points pour ajouter un vélo, modifier sa fiche, gérer sa photo ou le supprimer.</p>
             <p class="form-help" id="messageMesVelos" aria-live="polite"></p>
         </section>
+
+        <section class="mes-reglages" id="blocPersonnes" style="display:none;">
+            <div class="mr-titre">
+                <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.4"/><path d="M16 14.2c2.9 0 5 2.2 5 5.2"/></svg><span>Personnes</span></strong>
+            </div>
+            <p class="form-help">Chaque personne a son code secret, ses vélos et ses réglages. Seul toi vois ce bloc.</p>
+            <div id="listePersonnes"></div>
+            <div class="code-affiche" id="codeAffiche" style="display:none;">
+                <div id="codeAfficheTitre"></div>
+                <strong class="code-affiche-valeur" id="codeAfficheValeur"></strong>
+                <div class="form-help">Ce code ne sera plus jamais affiché : note-le ou envoie-le maintenant à la personne.</div>
+                <div class="personne-actions">
+                    <button type="button" id="boutonCopierCode">Copier le code</button>
+                    <button type="button" id="boutonCodeNote">J’ai noté le code</button>
+                </div>
+            </div>
+            <form id="formAjouterPersonne">
+                <label for="personneNom">Prénom de la nouvelle personne</label>
+                <input id="personneNom" type="text" maxlength="60" placeholder="Ex. : Julie" required>
+                <label for="personneTypeVelo">Type de son premier vélo</label>
+                <select id="personneTypeVelo">
+                    <option value="vtt_electrique">VTT électrique</option>
+                    <option value="vtt">VTT sans moteur</option>
+                    <option value="enduro">Enduro</option>
+                    <option value="descente">Descente</option>
+                    <option value="gravel">Gravel</option>
+                    <option value="gravel_electrique">Gravel électrique</option>
+                    <option value="route">Route</option>
+                    <option value="route_electrique">Route électrique</option>
+                </select>
+                <button type="submit" class="btn-primary" style="width:100%; margin-top:8px;">Ajouter cette personne</button>
+            </form>
+            <p class="form-help" id="messagePersonnes" aria-live="polite"></p>
+        </section>
         <dialog id="fenetreVelo" class="fenetre-velo" aria-labelledby="titreFormVelo">
             <div class="fenetre-velo-entete">
                 <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span id="titreFormVelo">Ajouter un vélo</span></strong>
@@ -6077,6 +6135,7 @@ def accueil():
                         document.getElementById('authScreen').style.display = 'none';
                         await chargerVelos();
                         chargerEtat();
+                        chargerMoi();
                     } else {
                         document.getElementById('authError').textContent =
                             res.status === 503
@@ -6101,9 +6160,152 @@ def accueil():
                         document.getElementById('authScreen').style.display = 'none';
                         await chargerVelos();
                         await chargerEtat();
+                        chargerMoi();
                     }
                 });
             }
+
+            // ----- Administration des personnes (bloc visible seulement pour Math) -----
+            function messagePersonnes(texte) {
+                const m = document.getElementById('messagePersonnes');
+                if (m) m.textContent = texte || '';
+            }
+
+            function texteErreur(data, defaut) {
+                return data && typeof data.detail === 'string' ? data.detail : defaut;
+            }
+
+            function montrerCode(titre, code) {
+                document.getElementById('codeAfficheTitre').textContent = titre;
+                document.getElementById('codeAfficheValeur').textContent = code;
+                document.getElementById('codeAffiche').style.display = 'block';
+            }
+
+            function cacherCode() {
+                document.getElementById('codeAfficheValeur').textContent = '';
+                document.getElementById('codeAffiche').style.display = 'none';
+            }
+
+            document.getElementById('boutonCodeNote').addEventListener('click', cacherCode);
+            document.getElementById('boutonCopierCode').addEventListener('click', async () => {
+                const code = document.getElementById('codeAfficheValeur').textContent;
+                try {
+                    await navigator.clipboard.writeText(code);
+                    messagePersonnes('Code copié.');
+                } catch (e) {
+                    messagePersonnes('Copie impossible : recopie le code à la main.');
+                }
+            });
+
+            async function chargerMoi() {
+                let admin = false;
+                try {
+                    const res = await fetch('/api/moi', { headers: getHeaders() });
+                    const moi = res.ok ? await res.json() : null;
+                    admin = !!(moi && moi.est_admin === true);
+                } catch (e) {
+                    admin = false;
+                }
+                const bloc = document.getElementById('blocPersonnes');
+                if (bloc) bloc.style.display = admin ? '' : 'none';
+                if (admin) await chargerPersonnes();
+            }
+
+            function boutonPersonne(texte, action) {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.textContent = texte;
+                b.addEventListener('click', action);
+                return b;
+            }
+
+            async function chargerPersonnes() {
+                const zone = document.getElementById('listePersonnes');
+                try {
+                    const res = await fetch('/api/personnes', { headers: getHeaders() });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(texteErreur(data, 'Lecture impossible.'));
+                    zone.replaceChildren();
+                    data.forEach(p => {
+                        const ligne = document.createElement('div');
+                        ligne.className = 'personne-ligne';
+                        const nom = document.createElement('div');
+                        nom.className = 'personne-nom';
+                        nom.textContent = p.nom + (p.est_admin ? ' (administrateur)' : '') + (p.actif ? '' : ' · désactivée');
+                        const detail = document.createElement('div');
+                        detail.className = 'form-help';
+                        detail.textContent = p.nb_velos + (p.nb_velos > 1 ? ' vélos' : ' vélo');
+                        ligne.append(nom, detail);
+                        if (!p.est_admin) {
+                            const actions = document.createElement('div');
+                            actions.className = 'personne-actions';
+                            actions.append(
+                                boutonPersonne('Nouveau code', () => nouveauCodePersonne(p)),
+                                boutonPersonne(p.actif ? 'Désactiver' : 'Réactiver', () => activerPersonne(p, !p.actif))
+                            );
+                            ligne.append(actions);
+                        }
+                        zone.appendChild(ligne);
+                    });
+                } catch (e) {
+                    messagePersonnes(e.message || 'Lecture impossible.');
+                }
+            }
+
+            async function nouveauCodePersonne(p) {
+                if (!confirm('Donner un nouveau code à ' + p.nom + ' ? Son ancien code ne marchera plus.')) return;
+                messagePersonnes('');
+                try {
+                    const res = await fetch('/api/personnes/' + p.id + '/nouveau-code', { method: 'POST', headers: getHeaders() });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(texteErreur(data, 'Changement impossible.'));
+                    montrerCode('Nouveau code de ' + p.nom + ' :', data.code);
+                } catch (e) {
+                    messagePersonnes(e.message || 'Changement impossible.');
+                }
+            }
+
+            async function activerPersonne(p, actif) {
+                const question = actif
+                    ? 'Réactiver ' + p.nom + ' ? Son code refonctionnera.'
+                    : 'Désactiver ' + p.nom + ' ? Son code ne marchera plus, ses données sont gardées.';
+                if (!confirm(question)) return;
+                messagePersonnes('');
+                try {
+                    const res = await fetch('/api/personnes/' + p.id + '/actif', {
+                        method: 'POST',
+                        headers: getHeaders(),
+                        body: JSON.stringify({ actif: actif })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(texteErreur(data, 'Changement impossible.'));
+                    await chargerPersonnes();
+                } catch (e) {
+                    messagePersonnes(e.message || 'Changement impossible.');
+                }
+            }
+
+            document.getElementById('formAjouterPersonne').addEventListener('submit', async (event) => {
+                event.preventDefault();
+                messagePersonnes('');
+                try {
+                    const res = await fetch('/api/personnes', {
+                        method: 'POST',
+                        headers: getHeaders(),
+                        body: JSON.stringify({
+                            nom: document.getElementById('personneNom').value,
+                            type_velo: document.getElementById('personneTypeVelo').value
+                        })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(texteErreur(data, 'Ajout impossible.'));
+                    document.getElementById('personneNom').value = '';
+                    montrerCode('Code de ' + data.nom + ' :', data.code);
+                    await chargerPersonnes();
+                } catch (e) {
+                    messagePersonnes(e.message || 'Ajout impossible.');
+                }
+            });
 
             const MR_GROUPES = [
                 { titre: '🚲 Mon vélo', champs: [
@@ -13786,6 +13988,56 @@ def modifier_fiche_velo(
         conn.close()
 
 
+def inserer_velo(cursor, personne_id, type_velo, nom, data, date_achat):
+    """Crée un vélo (et la liste de ses entretiens) pour une personne ; renvoie son numéro.
+    Utilisé par la création d'un vélo et par l'ajout d'une personne (premier vélo)."""
+    electrique = type_velo in {"vtt_electrique", "gravel_electrique", "route_electrique"}
+    cursor.execute("""
+        INSERT INTO velos (
+            nom, type, marque, modele, annee, taille, actif, km_total,
+            km_frac, km_maj_le, date_achat, suivi_depuis, moteur, batterie, freins, suspension, tubeless, transmission, fiche_composants,
+            personne_id
+        )
+        VALUES (?, ?, ?, ?, ?, ?, 1, 0, 0, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        nom, type_velo, (data.marque or "").strip() or None,
+        (data.modele or "").strip() or None, data.annee,
+        (data.taille or "").strip() or None,
+        date_achat or date.today().isoformat(),
+        date.today().isoformat(),
+        ((data.moteur or "").strip() or None) if electrique else None,
+        ((data.batterie or "").strip() or None) if electrique else None,
+        data.freins if data.freins in ("disque", "disque_hydraulique", "disque_mecanique", "patins") else None,
+        data.suspension if data.suspension in ("rigide", "avant", "double") else None,
+        data.tubeless if data.tubeless in ("chambre", "tubeless") else None,
+        data.transmission if data.transmission in ("chaine", "courroie") else None,
+        data.fiche_composants,
+        personne_id
+    ))
+    # Le vélo qu'on vient de créer : le plus récent de CETTE personne portant ce nom
+    # (sans la personne, deux personnes créant un vélo du même nom pourraient se confondre).
+    cursor.execute(
+        "SELECT id FROM velos WHERE nom = ? AND personne_id = ? ORDER BY id DESC LIMIT 1",
+        (nom, personne_id)
+    )
+    velo_id = cursor.fetchone()[0]
+
+    cursor.executemany("""
+        INSERT INTO composants (
+            velo_id, nom, km_depart, seuil_alerte, seuil_jours,
+            categorie, pos_x, pos_y, verification, coef_usure
+        )
+        VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, 1)
+    """, [
+        (velo_id, nom_comp, km, jours, categorie, x, y, verification)
+        for nom_comp, km, jours, categorie, x, y, verification
+        in entretiens_du_type(type_velo, data.freins, data.suspension, data.tubeless, data.transmission)
+    ])
+    # Ce vélo a déjà sa liste complète : le démarrage ne la retouchera pas.
+    poser_marqueur_entretiens(cursor, velo_id)
+    return velo_id
+
+
 @app.post("/api/velos")
 def creer_velo(
     data: NouveauVeloRequest,
@@ -13809,55 +14061,182 @@ def creer_velo(
         except ValueError:
             raise HTTPException(status_code=400, detail="Date d'achat non valide.")
 
-    electrique = type_velo in {"vtt_electrique", "gravel_electrique", "route_electrique"}
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        velo_id = inserer_velo(cursor, personne_id, type_velo, nom, data, date_achat)
+        conn.commit()
+        return {"statut": "success", "velo_id": velo_id, "nom": nom, "type": type_velo}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Administration des personnes (réservée à Math, l'administrateur)
+# ---------------------------------------------------------------------------
+
+ALPHABET_CODE = "abcdefghjkmnpqrstuvwxyz23456789"  # sans 0/o, 1/l/i : facile à recopier
+
+
+def generer_code_personnel():
+    """Code aléatoire lisible, par exemple k7m2-9xqa-t4wd (12 caractères, 3 groupes)."""
+    signes = "".join(secrets.choice(ALPHABET_CODE) for _ in range(12))
+    return signes[0:4] + "-" + signes[4:8] + "-" + signes[8:12]
+
+
+def exiger_admin(x_code_acces):
+    """Numéro de la personne connectée, si c'est un administrateur ; sinon erreur 403."""
+    personne_id = verifier_auth(x_code_acces)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT est_admin FROM personnes WHERE id = ?", (personne_id,))
+        ligne = cursor.fetchone()
+    finally:
+        conn.close()
+    if ligne is None or not ligne[0]:
+        raise HTTPException(status_code=403, detail="Réservé à l'administrateur.")
+    return personne_id
+
+
+def donner_un_code_libre(cursor, personne_id):
+    """Génère un code personnel, l'enregistre (empreinte) et le renvoie."""
+    for _ in range(20):
+        code = generer_code_personnel()
+        try:
+            definir_code_personne(cursor, personne_id, code)
+            return code
+        except ValueError as e:
+            if str(e) != "Ce code est déjà utilisé.":
+                raise
+    raise HTTPException(status_code=500, detail="Impossible de générer un code. Réessaie.")
+
+
+class NouvellePersonneRequest(BaseModel):
+    nom: str = Field(min_length=1, max_length=60)
+    nom_velo: Optional[str] = Field(default=None, max_length=80)
+    type_velo: Optional[str] = Field(default="vtt_electrique", max_length=40)
+
+
+class PersonneActiveRequest(BaseModel):
+    actif: bool
+
+
+@app.get("/api/moi")
+def qui_suis_je(x_code_acces: Optional[str] = Header(default=None)):
+    """Nom de la personne connectée et si elle est administratrice."""
+    personne_id = verifier_auth(x_code_acces)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT nom, est_admin FROM personnes WHERE id = ?", (personne_id,))
+        ligne = cursor.fetchone()
+        return {"id": personne_id, "nom": ligne[0], "est_admin": bool(ligne[1])}
+    finally:
+        conn.close()
+
+
+@app.get("/api/personnes")
+def lister_personnes(x_code_acces: Optional[str] = Header(default=None)):
+    exiger_admin(x_code_acces)
     conn = db.connect()
     cursor = conn.cursor()
     try:
         cursor.execute("""
-            INSERT INTO velos (
-                nom, type, marque, modele, annee, taille, actif, km_total,
-                km_frac, km_maj_le, date_achat, suivi_depuis, moteur, batterie, freins, suspension, tubeless, transmission, fiche_composants,
-                personne_id
-            )
-            VALUES (?, ?, ?, ?, ?, ?, 1, 0, 0, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            nom, type_velo, (data.marque or "").strip() or None,
-            (data.modele or "").strip() or None, data.annee,
-            (data.taille or "").strip() or None,
-            date_achat or date.today().isoformat(),
-            date.today().isoformat(),
-            ((data.moteur or "").strip() or None) if electrique else None,
-            ((data.batterie or "").strip() or None) if electrique else None,
-            data.freins if data.freins in ("disque", "disque_hydraulique", "disque_mecanique", "patins") else None,
-            data.suspension if data.suspension in ("rigide", "avant", "double") else None,
-            data.tubeless if data.tubeless in ("chambre", "tubeless") else None,
-            data.transmission if data.transmission in ("chaine", "courroie") else None,
-            data.fiche_composants,
-            personne_id
-        ))
-        # Le vélo qu'on vient de créer : le plus récent de CETTE personne portant ce nom
-        # (sans la personne, deux personnes créant un vélo du même nom pourraient se confondre).
-        cursor.execute(
-            "SELECT id FROM velos WHERE nom = ? AND personne_id = ? ORDER BY id DESC LIMIT 1",
-            (nom, personne_id)
-        )
-        velo_id = cursor.fetchone()[0]
+            SELECT p.id, p.nom, p.est_admin, p.actif,
+                   CASE WHEN p.code_hash IS NULL THEN 0 ELSE 1 END,
+                   (SELECT COUNT(*) FROM velos v WHERE v.personne_id = p.id)
+            FROM personnes p ORDER BY p.id
+        """)
+        return [
+            {"id": r[0], "nom": r[1], "est_admin": bool(r[2]), "actif": bool(r[3]),
+             "a_un_code": r[0] == 1 or bool(r[4]), "nb_velos": r[5]}
+            for r in cursor.fetchall()
+        ]
+    finally:
+        conn.close()
 
-        cursor.executemany("""
-            INSERT INTO composants (
-                velo_id, nom, km_depart, seuil_alerte, seuil_jours,
-                categorie, pos_x, pos_y, verification, coef_usure
-            )
-            VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, 1)
-        """, [
-            (velo_id, nom_comp, km, jours, categorie, x, y, verification)
-            for nom_comp, km, jours, categorie, x, y, verification
-            in entretiens_du_type(type_velo, data.freins, data.suspension, data.tubeless, data.transmission)
-        ])
-        # Ce vélo a déjà sa liste complète : le démarrage ne la retouchera pas.
-        poser_marqueur_entretiens(cursor, velo_id)
+
+@app.post("/api/personnes")
+def ajouter_personne(data: NouvellePersonneRequest, x_code_acces: Optional[str] = Header(default=None)):
+    """Ajoute une personne avec son premier vélo et un code personnel.
+    Le code n'est renvoyé qu'ici, une seule fois : seule son empreinte est gardée."""
+    exiger_admin(x_code_acces)
+    nom = " ".join(data.nom.split())
+    if not nom:
+        raise HTTPException(status_code=400, detail="Donne un prénom ou un nom à la personne.")
+    type_velo = (data.type_velo or "vtt_electrique").strip().lower()
+    if type_velo not in {"vtt_electrique", "vtt", "enduro", "descente", "gravel",
+                         "gravel_electrique", "route", "route_electrique"}:
+        raise HTTPException(status_code=400, detail="Type de vélo inconnu.")
+    nom_velo = " ".join((data.nom_velo or "").split()) or "Mon vélo"
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT id FROM personnes WHERE LOWER(nom) = LOWER(?)", (nom,))
+        if cursor.fetchone() is not None:
+            raise HTTPException(status_code=409, detail="Une personne porte déjà ce nom.")
+        cursor.execute(
+            "INSERT INTO personnes (nom, est_admin, actif, cree_le) VALUES (?, 0, 1, ?)",
+            (nom, maintenant_utc())
+        )
+        cursor.execute("SELECT id FROM personnes WHERE nom = ? ORDER BY id DESC LIMIT 1", (nom,))
+        personne_id = cursor.fetchone()[0]
+        code = donner_un_code_libre(cursor, personne_id)
+        velo_id = inserer_velo(
+            cursor, personne_id, type_velo, nom_velo,
+            NouveauVeloRequest(nom=nom_velo, type=type_velo), None
+        )
         conn.commit()
-        return {"statut": "success", "velo_id": velo_id, "nom": nom, "type": type_velo}
+        return {"statut": "success", "id": personne_id, "nom": nom, "code": code, "velo_id": velo_id}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+@app.post("/api/personnes/{personne_id}/nouveau-code")
+def nouveau_code_personne(personne_id: int, x_code_acces: Optional[str] = Header(default=None)):
+    """Remplace le code d'une personne (l'ancien cesse de marcher). Renvoyé une seule fois."""
+    exiger_admin(x_code_acces)
+    if personne_id == 1:
+        raise HTTPException(status_code=400, detail="Ton code se règle dans Render (CODE_ACCES), pas ici.")
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT id FROM personnes WHERE id = ?", (personne_id,))
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Personne introuvable.")
+        code = donner_un_code_libre(cursor, personne_id)
+        conn.commit()
+        return {"statut": "success", "id": personne_id, "code": code}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+@app.post("/api/personnes/{personne_id}/actif")
+def activer_personne(personne_id: int, data: PersonneActiveRequest,
+                     x_code_acces: Optional[str] = Header(default=None)):
+    """Désactive ou réactive une personne : son code cesse de marcher aussitôt, ses données sont gardées."""
+    exiger_admin(x_code_acces)
+    if personne_id == 1:
+        raise HTTPException(status_code=400, detail="Tu ne peux pas te désactiver toi-même.")
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT id FROM personnes WHERE id = ?", (personne_id,))
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Personne introuvable.")
+        cursor.execute("UPDATE personnes SET actif = ? WHERE id = ?", (1 if data.actif else 0, personne_id))
+        conn.commit()
+        return {"statut": "success", "id": personne_id, "actif": data.actif}
     except Exception:
         conn.rollback()
         raise
