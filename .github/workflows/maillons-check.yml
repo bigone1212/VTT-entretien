@@ -1883,6 +1883,105 @@ jobs:
               c.execute("CREATE DATABASE maillons_admin")
           PY2
           DATABASE_URL=postgresql://postgres:postgres@localhost:5432/maillons_admin PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_admin.py"
+      - name: Vérifier de bout en bout par le vrai serveur web (Math crée Julie, qui entre avec son code ; SQLite puis PostgreSQL)
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-http-test.db
+          CODE_ACCES: test
+        run: |
+          pip install httpx
+          cat > "$RUNNER_TEMP/test_http.py" <<'PY'
+          import os
+
+          import db
+          import main
+          from fastapi.testclient import TestClient
+
+          # Vrai serveur web (en mémoire), vrais en-têtes : rien n'est remplacé dans le code d'accès.
+          CODE_MATH = "code-math-de-bout-en-bout"
+          main.CODE_ACCES = CODE_MATH
+          os.environ["CODE_ACCES"] = CODE_MATH
+
+
+          def h(code):
+              return {"x-code-acces": code}
+
+
+          def sql(requete, p=()):
+              c = db.connect()
+              cur = c.cursor()
+              cur.execute(requete, p)
+              c.commit()
+              c.close()
+
+
+          with TestClient(main.app) as client:
+              sql("UPDATE velos SET nom = 'VELO-SECRET-DE-MATH' WHERE id = 1")
+
+              # Sans code, avec un mauvais code : refusé.
+              assert client.get("/api/velos").status_code == 401
+              assert client.get("/api/velos", headers=h("faux")).status_code == 401
+
+              # Math : administrateur, voit son vélo.
+              assert client.get("/api/moi", headers=h(CODE_MATH)).json() == {"id": 1, "nom": "Math", "est_admin": True}
+              assert 1 in [v["id"] for v in client.get("/api/velos", headers=h(CODE_MATH)).json()]
+
+              # Un nom vide est refusé avant tout (422), un nom correct crée la personne.
+              assert client.post("/api/personnes", json={"nom": ""}, headers=h(CODE_MATH)).status_code == 422
+              r = client.post("/api/personnes", json={"nom": "Julie", "type_velo": "gravel"}, headers=h(CODE_MATH))
+              assert r.status_code == 200, r.text
+              julie = r.json()
+              code_j = julie["code"]
+              assert client.post("/api/personnes", json={"nom": "julie"}, headers=h(CODE_MATH)).status_code == 409
+              assert [p["nom"] for p in client.get("/api/personnes", headers=h(CODE_MATH)).json()] == ["Math", "Julie"]
+
+              # Julie entre avec son code : elle voit son vélo, et lui seulement.
+              assert client.get("/api/moi", headers=h(code_j)).json() == {"id": julie["id"], "nom": "Julie", "est_admin": False}
+              vj = client.get("/api/velos", headers=h(code_j)).json()
+              assert [v["id"] for v in vj] == [julie["velo_id"]], vj
+              assert client.get("/api/etat?velo_id=%d" % julie["velo_id"], headers=h(code_j)).status_code == 200
+              for chemin in ("/api/etat", "/api/sorties", "/api/historique"):
+                  assert client.get(chemin + "?velo_id=1", headers=h(code_j)).status_code == 404, chemin
+              assert "VELO-SECRET-DE-MATH" not in client.get("/api/sauvegarde", headers=h(code_j)).text
+              assert "VELO-SECRET-DE-MATH" in client.get("/api/sauvegarde", headers=h(CODE_MATH)).text
+
+              # Julie ne peut rien administrer, ni supprimer son dernier vélo.
+              assert client.get("/api/personnes", headers=h(code_j)).status_code == 403
+              assert client.post("/api/personnes", json={"nom": "Intrus"}, headers=h(code_j)).status_code == 403
+              assert client.post("/api/personnes/1/nouveau-code", headers=h(code_j)).status_code == 403
+              assert client.post("/api/personnes/%d/actif" % julie["id"], json={"actif": False}, headers=h(code_j)).status_code == 403
+              assert client.post("/api/velos/%d/supprimer" % julie["velo_id"], headers=h(code_j)).status_code == 400
+
+              # Julie crée un deuxième vélo à elle ; Math ne le voit pas dans sa liste.
+              r = client.post("/api/velos", json={"nom": "Route de Julie", "type": "route"}, headers=h(code_j))
+              assert r.status_code == 200, r.text
+              assert r.json()["velo_id"] not in [v["id"] for v in client.get("/api/velos", headers=h(CODE_MATH)).json()]
+              assert len(client.get("/api/velos", headers=h(code_j)).json()) == 2
+
+              # Nouveau code : l'ancien ne marche plus. Désactivation : plus rien ne marche. Réactivation : ça remarche.
+              nouveau = client.post("/api/personnes/%d/nouveau-code" % julie["id"], headers=h(CODE_MATH)).json()["code"]
+              assert client.get("/api/velos", headers=h(code_j)).status_code == 401
+              assert client.get("/api/velos", headers=h(nouveau)).status_code == 200
+              assert client.post("/api/personnes/%d/actif" % julie["id"], json={"actif": False}, headers=h(CODE_MATH)).status_code == 200
+              assert client.get("/api/velos", headers=h(nouveau)).status_code == 401
+              assert client.post("/api/personnes/%d/actif" % julie["id"], json={"actif": True}, headers=h(CODE_MATH)).status_code == 200
+              assert len(client.get("/api/velos", headers=h(nouveau)).json()) == 2, "les vélos de Julie sont gardés"
+
+              # Math n'est pas touché par tout cela.
+              assert client.get("/api/etat?velo_id=1", headers=h(CODE_MATH)).status_code == 200
+              assert client.post("/api/personnes/1/actif", json={"actif": False}, headers=h(CODE_MATH)).status_code == 400
+              assert client.get("/api/velos", headers=h(CODE_MATH)).status_code == 200
+
+          print("OK: de bout en bout par le vrai serveur web (" + ("PostgreSQL" if db.USE_PG else "SQLite") + ") : création de Julie, ses accès, ses limites, nouveau code, désactivation.")
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_http.py"
+          python - <<'PY2'
+          import psycopg
+          with psycopg.connect("postgresql://postgres:postgres@localhost:5432/maillons_test", autocommit=True) as c:
+              c.execute("DROP DATABASE IF EXISTS maillons_http")
+              c.execute("CREATE DATABASE maillons_http")
+          PY2
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/maillons_http PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_http.py"
       - name: Vérifier l'heure de départ unique par vélo et la mise à niveau de l'ancienne base (SQLite puis PostgreSQL)
         env:
           SQLITE_PATH: ${{ runner.temp }}/maillons-unicite-test.db
