@@ -6236,16 +6236,17 @@ def accueil():
                         detail.className = 'form-help';
                         detail.textContent = p.nb_velos + (p.nb_velos > 1 ? ' vélos' : ' vélo');
                         ligne.append(nom, detail);
+                        const actions = document.createElement('div');
+                        actions.className = 'personne-actions';
+                        actions.append(boutonPersonne('Renommer', () => renommerPersonne(p)));
                         if (!p.est_admin) {
-                            const actions = document.createElement('div');
-                            actions.className = 'personne-actions';
                             actions.append(
                                 boutonPersonne('Nouveau code', () => nouveauCodePersonne(p)),
                                 boutonPersonne(p.actif ? 'Désactiver' : 'Réactiver', () => activerPersonne(p, !p.actif)),
                                 boutonPersonne('Supprimer', () => supprimerPersonne(p))
                             );
-                            ligne.append(actions);
                         }
+                        ligne.append(actions);
                         zone.appendChild(ligne);
                     });
                 } catch (e) {
@@ -6281,6 +6282,27 @@ def accueil():
                     const data = await res.json();
                     if (!res.ok) throw new Error(texteErreur(data, 'Changement impossible.'));
                     await chargerPersonnes();
+                } catch (e) {
+                    messagePersonnes(e.message || 'Changement impossible.');
+                }
+            }
+
+            async function renommerPersonne(p) {
+                const reponse = prompt('Nouveau nom pour ' + p.nom + ' :', p.nom);
+                if (reponse === null) return;
+                const nom = reponse.trim();
+                if (!nom || nom === p.nom) return;
+                messagePersonnes('');
+                try {
+                    const res = await fetch('/api/personnes/' + p.id + '/renommer', {
+                        method: 'POST',
+                        headers: getHeaders(),
+                        body: JSON.stringify({ nom: nom })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(texteErreur(data, 'Changement impossible.'));
+                    await chargerPersonnes();
+                    messagePersonnes('Nom changé : ' + data.nom + '.');
                 } catch (e) {
                     messagePersonnes(e.message || 'Changement impossible.');
                 }
@@ -14142,6 +14164,10 @@ class PersonneActiveRequest(BaseModel):
     actif: bool
 
 
+class RenommerPersonneRequest(BaseModel):
+    nom: str = Field(min_length=1, max_length=60)
+
+
 @app.get("/api/moi")
 def qui_suis_je(x_code_acces: Optional[str] = Header(default=None)):
     """Nom de la personne connectée et si elle est administratrice."""
@@ -14254,6 +14280,33 @@ def activer_personne(personne_id: int, data: PersonneActiveRequest,
         cursor.execute("UPDATE personnes SET actif = ? WHERE id = ?", (1 if data.actif else 0, personne_id))
         conn.commit()
         return {"statut": "success", "id": personne_id, "actif": data.actif}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+@app.post("/api/personnes/{personne_id}/renommer")
+def renommer_personne(personne_id: int, data: RenommerPersonneRequest,
+                      x_code_acces: Optional[str] = Header(default=None)):
+    """Change seulement le nom d'une personne (son code, ses vélos et ses données ne bougent pas)."""
+    exiger_admin(x_code_acces)
+    nom = " ".join(data.nom.split())
+    if not nom:
+        raise HTTPException(status_code=400, detail="Donne un prénom ou un nom à la personne.")
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT id FROM personnes WHERE id = ?", (personne_id,))
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Personne introuvable.")
+        cursor.execute("SELECT id FROM personnes WHERE LOWER(nom) = LOWER(?) AND id <> ?", (nom, personne_id))
+        if cursor.fetchone() is not None:
+            raise HTTPException(status_code=409, detail="Une personne porte déjà ce nom.")
+        cursor.execute("UPDATE personnes SET nom = ? WHERE id = ?", (nom, personne_id))
+        conn.commit()
+        return {"statut": "success", "id": personne_id, "nom": nom}
     except Exception:
         conn.rollback()
         raise
