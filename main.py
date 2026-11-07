@@ -6241,7 +6241,8 @@ def accueil():
                             actions.className = 'personne-actions';
                             actions.append(
                                 boutonPersonne('Nouveau code', () => nouveauCodePersonne(p)),
-                                boutonPersonne(p.actif ? 'Désactiver' : 'Réactiver', () => activerPersonne(p, !p.actif))
+                                boutonPersonne(p.actif ? 'Désactiver' : 'Réactiver', () => activerPersonne(p, !p.actif)),
+                                boutonPersonne('Supprimer', () => supprimerPersonne(p))
                             );
                             ligne.append(actions);
                         }
@@ -6282,6 +6283,22 @@ def accueil():
                     await chargerPersonnes();
                 } catch (e) {
                     messagePersonnes(e.message || 'Changement impossible.');
+                }
+            }
+
+            async function supprimerPersonne(p) {
+                const question = 'Supprimer ' + p.nom + ' pour de bon ? Ses vélos, ses sorties, son historique et ses réglages seront effacés, sans retour possible.';
+                if (!confirm(question)) return;
+                messagePersonnes('');
+                try {
+                    const res = await fetch('/api/personnes/' + p.id + '/supprimer', { method: 'POST', headers: getHeaders() });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(texteErreur(data, 'Suppression impossible.'));
+                    cacherCode();
+                    await chargerPersonnes();
+                    messagePersonnes(p.nom + ' a été supprimée.');
+                } catch (e) {
+                    messagePersonnes(e.message || 'Suppression impossible.');
                 }
             }
 
@@ -14244,6 +14261,40 @@ def activer_personne(personne_id: int, data: PersonneActiveRequest,
         conn.close()
 
 
+@app.post("/api/personnes/{personne_id}/supprimer")
+def supprimer_personne(personne_id: int, x_code_acces: Optional[str] = Header(default=None)):
+    """Supprime pour de bon une personne : son code, ses vélos et tout ce qui va avec
+    (pièces, historique, sorties, réglages). Math (n° 1) ne peut pas être supprimé."""
+    exiger_admin(x_code_acces)
+    if personne_id == 1:
+        raise HTTPException(status_code=400, detail="Tu ne peux pas supprimer ton propre compte.")
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT id, nom, est_admin FROM personnes WHERE id = ?", (personne_id,))
+        personne = cursor.fetchone()
+        if personne is None:
+            raise HTTPException(status_code=404, detail="Personne introuvable.")
+        if personne[2]:
+            raise HTTPException(status_code=400, detail="Un administrateur ne peut pas être supprimé ici.")
+        cursor.execute("SELECT id, legacy_velo_id FROM velos WHERE personne_id = ? ORDER BY id", (personne_id,))
+        velos = cursor.fetchall()
+        # Filet de sécurité : jamais le vélo principal (CUBE).
+        if any(v[0] == 1 or v[1] is not None for v in velos):
+            raise HTTPException(status_code=400, detail="Cette personne possède le vélo principal : suppression refusée.")
+        for velo in velos:
+            effacer_donnees_velo(cursor, velo[0])
+        cursor.execute("DELETE FROM reglages_personne WHERE personne_id = ?", (personne_id,))
+        cursor.execute("DELETE FROM personnes WHERE id = ?", (personne_id,))
+        conn.commit()
+        return {"statut": "success", "id": personne_id, "nom": personne[1], "velos_effaces": len(velos)}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 @app.get("/api/velos/{velo_id}/contenu")
 def contenu_velo(velo_id: int, x_code_acces: Optional[str] = Header(default=None)):
     """Ce qui serait effacé avec ce vélo (affiché avant la confirmation)."""
@@ -14271,6 +14322,21 @@ def compter_contenu_velo(cursor, velo_id):
     cursor.execute("SELECT COUNT(*) FROM sorties WHERE velo_id = ?", (velo_id,))
     sorties = cursor.fetchone()[0]
     return {"composants": composants, "historique": historique, "sorties": sorties}
+
+
+def effacer_donnees_velo(cursor, velo_id):
+    """Efface un vélo avec ses pièces, son historique, ses sorties et ses réglages.
+    Utilisé par la suppression d'un vélo et par la suppression d'une personne."""
+    # Dans cet ordre : l'historique dépend des pièces, les pièces dépendent du vélo.
+    cursor.execute(
+        "DELETE FROM historique WHERE velo_id = ? "
+        "OR composant_id IN (SELECT id FROM composants WHERE velo_id = ?)",
+        (velo_id, velo_id)
+    )
+    cursor.execute("DELETE FROM composants WHERE velo_id = ?", (velo_id,))
+    cursor.execute("DELETE FROM sorties WHERE velo_id = ?", (velo_id,))
+    cursor.execute("DELETE FROM mes_reglages_velo WHERE velo_id = ?", (velo_id,))
+    cursor.execute("DELETE FROM velos WHERE id = ?", (velo_id,))
 
 
 @app.post("/api/velos/{velo_id}/supprimer")
@@ -14302,16 +14368,7 @@ def supprimer_velo(velo_id: int, x_code_acces: Optional[str] = Header(default=No
             )
 
         efface = compter_contenu_velo(cursor, velo_id)
-        # Dans cet ordre : l'historique dépend des pièces, les pièces dépendent du vélo.
-        cursor.execute(
-            "DELETE FROM historique WHERE velo_id = ? "
-            "OR composant_id IN (SELECT id FROM composants WHERE velo_id = ?)",
-            (velo_id, velo_id)
-        )
-        cursor.execute("DELETE FROM composants WHERE velo_id = ?", (velo_id,))
-        cursor.execute("DELETE FROM sorties WHERE velo_id = ?", (velo_id,))
-        cursor.execute("DELETE FROM mes_reglages_velo WHERE velo_id = ?", (velo_id,))
-        cursor.execute("DELETE FROM velos WHERE id = ?", (velo_id,))
+        effacer_donnees_velo(cursor, velo_id)
         conn.commit()
         return {"statut": "success", "velo_id": velo_id, "efface": efface}
     except Exception:

@@ -1511,6 +1511,7 @@ jobs:
               "ajouter_personne": "administration : réservée à l'administrateur (exiger_admin)",
               "nouveau_code_personne": "administration : réservée à l'administrateur (exiger_admin)",
               "activer_personne": "administration : réservée à l'administrateur (exiger_admin)",
+              "supprimer_personne": "administration : réservée à l'administrateur (exiger_admin)",
           }
 
           arbre = ast.parse(open("main.py", encoding="utf-8").read())
@@ -1872,6 +1873,80 @@ jobs:
           assert [x["id"] for x in main.obtenir_velos(n["code"])] == sorted([x["id"] for x in main.obtenir_velos(n["code"])])
           assert len(main.obtenir_velos(n["code"])) == 2
 
+          # 12. Suppression d'une personne : tout ce qui est à elle disparaît, rien d'autre ne bouge.
+          def ecrire(requete, p=()):
+              c = db.connect()
+              cur = c.cursor()
+              cur.execute(requete, p)
+              c.commit()
+              c.close()
+
+
+          def empreinte(personne_id):
+              """Tout ce qui appartient à une personne, pour comparer avant / après."""
+              velos = [r[0] for r in lire("SELECT id FROM velos WHERE personne_id = ? ORDER BY id", (personne_id,))]
+              marques = ",".join("?" * len(velos)) if velos else "NULL"
+              return {
+                  "velos": lire("SELECT * FROM velos WHERE personne_id = ? ORDER BY id", (personne_id,)),
+                  "composants": lire("SELECT COUNT(*) FROM composants WHERE velo_id IN (" + marques + ")", tuple(velos)),
+                  "sorties": lire("SELECT COUNT(*) FROM sorties WHERE velo_id IN (" + marques + ")", tuple(velos)),
+                  "historique": lire("SELECT COUNT(*) FROM historique WHERE velo_id IN (" + marques + ")", tuple(velos)),
+                  "mes_reglages_velo": lire("SELECT COUNT(*) FROM mes_reglages_velo WHERE velo_id IN (" + marques + ")", tuple(velos)),
+                  "reglages_personne": lire("SELECT COUNT(*) FROM reglages_personne WHERE personne_id = ?", (personne_id,)),
+              }
+
+
+          velos_julie = [x["id"] for x in main.obtenir_velos(n["code"])]
+          assert len(velos_julie) == 2
+          for i, vj in enumerate(velos_julie):
+              ecrire("INSERT INTO sorties (velo_id, debut, distance_km) VALUES (?, ?, ?)", (vj, "2031-01-0%dT08:00:00Z" % (i + 1), 12.5))
+              comp = lire("SELECT id FROM composants WHERE velo_id = ? LIMIT 1", (vj,))[0][0]
+              ecrire("INSERT INTO historique (composant_id, velo_id) VALUES (?, ?)", (comp, vj))
+              ecrire(
+                  "INSERT INTO mes_reglages_velo (velo_id, cle, valeur, maj_le) VALUES (?, 'x', 'y', 'z')", (vj,))
+          ecrire("INSERT INTO reglages_personne (personne_id, cle, valeur) VALUES (2, 'terrain_route', 1.1)")
+          ecrire("INSERT INTO sorties (velo_id, debut, distance_km) VALUES (1, '2031-02-01T08:00:00Z', 30)")
+          ecrire("INSERT INTO sorties (velo_id, debut, distance_km) VALUES (?, '2031-02-02T08:00:00Z', 31)", (p["velo_id"],))
+          ecrire("INSERT INTO reglages_personne (personne_id, cle, valeur) VALUES (3, 'terrain_route', 1.3)")
+          avant_julie = empreinte(2)
+          assert avant_julie["sorties"] == [(2,)] and avant_julie["historique"] == [(2,)] and avant_julie["reglages_personne"] == [(1,)]
+          avant_math, avant_paul = empreinte(1), empreinte(3)
+
+          # Refus : non-administrateur (403), soi-même (400), inconnu (404), administrateur (400), rien n'est effacé.
+          refuse(403, "Réservé à l'administrateur.", main.supprimer_personne, 3, n["code"])
+          refuse(400, "Tu ne peux pas supprimer ton propre compte.", main.supprimer_personne, 1, CODE_MATH)
+          refuse(404, "Personne introuvable.", main.supprimer_personne, 999, CODE_MATH)
+          ecrire("INSERT INTO personnes (nom, est_admin, actif) VALUES ('Admin bis', 1, 1)")
+          admin_bis = lire("SELECT id FROM personnes WHERE nom = 'Admin bis'")[0][0]
+          refuse(400, "Un administrateur ne peut pas être supprimé ici.", main.supprimer_personne, admin_bis, CODE_MATH)
+          ecrire("DELETE FROM personnes WHERE id = ?", (admin_bis,))
+          refuse_statut(401, main.supprimer_personne, 2, "mauvais")
+          assert empreinte(2) == avant_julie, "un refus ne doit rien effacer"
+
+          # La vraie suppression (Julie est ici désactivée : on doit pouvoir supprimer aussi une personne désactivée).
+          main.activer_personne(2, main.PersonneActiveRequest(actif=False), CODE_MATH)
+          r = main.supprimer_personne(2, CODE_MATH)
+          assert r["statut"] == "success" and r["nom"] == "Julie Martin" and r["velos_effaces"] == 2, r
+          assert lire("SELECT COUNT(*) FROM personnes WHERE id = 2")[0][0] == 0
+          vide = empreinte(2)
+          assert vide["velos"] == [] and all(v == [(0,)] for k, v in vide.items() if k != "velos"), vide
+          for vj in velos_julie:
+              for table in ("composants", "sorties", "historique", "mes_reglages_velo"):
+                  assert lire("SELECT COUNT(*) FROM " + table + " WHERE velo_id = ?", (vj,))[0][0] == 0, (table, vj)
+          assert lire("SELECT COUNT(*) FROM historique WHERE composant_id NOT IN (SELECT id FROM composants)")[0][0] == 0, "historique orphelin"
+          # Math et Paul n'ont rien perdu, rien gagné.
+          assert empreinte(1) == avant_math and empreinte(3) == avant_paul
+          assert main.verifier_auth(CODE_MATH) == 1 and main.verifier_auth(p["code"]) == 3
+          refuse_statut(401, main.verifier_auth, n["code"])
+          assert [x["id"] for x in main.lister_personnes(CODE_MATH)] == [1, 3]
+          refuse(404, "Personne introuvable.", main.supprimer_personne, 2, CODE_MATH)
+
+          # Le prénom est de nouveau libre : on peut recréer « Julie Martin », avec un autre numéro et un autre code.
+          r2 = main.ajouter_personne(main.NouvellePersonneRequest(nom="Julie Martin"), CODE_MATH)
+          assert r2["id"] not in (1, 3) and r2["code"] != n["code"] and main.verifier_auth(r2["code"]) == r2["id"]
+          assert [x["id"] for x in main.obtenir_velos(r2["code"])] == [r2["velo_id"]]
+          assert empreinte(r2["id"])["sorties"] == [(0,)], "la nouvelle personne ne doit rien hériter de l'ancienne"
+
           print("OK: administration des personnes (" + ("PostgreSQL" if db.USE_PG else "SQLite") + ").")
           PY
           rm -f "$SQLITE_PATH"
@@ -1966,12 +2041,28 @@ jobs:
               assert client.post("/api/personnes/%d/actif" % julie["id"], json={"actif": True}, headers=h(CODE_MATH)).status_code == 200
               assert len(client.get("/api/velos", headers=h(nouveau)).json()) == 2, "les vélos de Julie sont gardés"
 
+              # Suppression d'une personne : réservée à Math ; tout ce qui est à Julie disparaît, Math garde tout.
+              id_j = julie["id"]
+              vel_j = [v["id"] for v in client.get("/api/velos", headers=h(nouveau)).json()]
+              assert client.post("/api/personnes/%d/supprimer" % id_j, headers=h(nouveau)).status_code == 403
+              assert client.post("/api/personnes/%d/supprimer" % id_j).status_code == 401
+              assert client.post("/api/personnes/1/supprimer", headers=h(CODE_MATH)).status_code == 400
+              assert client.post("/api/personnes/9999/supprimer", headers=h(CODE_MATH)).status_code == 404
+              assert len(client.get("/api/velos", headers=h(nouveau)).json()) == 2, "les refus n'effacent rien"
+              r = client.post("/api/personnes/%d/supprimer" % id_j, headers=h(CODE_MATH))
+              assert r.status_code == 200 and r.json()["velos_effaces"] == 2 and r.json()["nom"] == "Julie", r.text
+              assert client.get("/api/velos", headers=h(nouveau)).status_code == 401
+              assert [p["nom"] for p in client.get("/api/personnes", headers=h(CODE_MATH)).json()] == ["Math"]
+              assert not set(vel_j) & {v["id"] for v in client.get("/api/velos", headers=h(CODE_MATH)).json()}
+              assert client.post("/api/personnes/%d/supprimer" % id_j, headers=h(CODE_MATH)).status_code == 404
+              assert client.post("/api/personnes", json={"nom": "Julie"}, headers=h(CODE_MATH)).status_code == 200, "le prénom est de nouveau libre"
+
               # Math n'est pas touché par tout cela.
               assert client.get("/api/etat?velo_id=1", headers=h(CODE_MATH)).status_code == 200
               assert client.post("/api/personnes/1/actif", json={"actif": False}, headers=h(CODE_MATH)).status_code == 400
               assert client.get("/api/velos", headers=h(CODE_MATH)).status_code == 200
 
-          print("OK: de bout en bout par le vrai serveur web (" + ("PostgreSQL" if db.USE_PG else "SQLite") + ") : création de Julie, ses accès, ses limites, nouveau code, désactivation.")
+          print("OK: de bout en bout par le vrai serveur web (" + ("PostgreSQL" if db.USE_PG else "SQLite") + ") : création de Julie, ses accès, ses limites, nouveau code, désactivation, suppression.")
           PY
           rm -f "$SQLITE_PATH"
           PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_http.py"
@@ -3314,6 +3405,7 @@ jobs:
           html = main.accueil()
           V = [{"id": 1, "nom": "Mon CUBE", "type": "vtt_electrique", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0}]
           erreurs, appels, dialogues = [], [], []
+          refuser = {"oui": False}
           with sync_playwright() as p:
               nav = p.chromium.launch()
 
@@ -3346,6 +3438,10 @@ jobs:
                           return rep(200, {"statut": "success", "id": etat["suivant"], "nom": d["nom"], "code": "abcd-efgh-jkmn", "velo_id": 9})
                       if u.path.endswith("/nouveau-code"):
                           return rep(200, {"statut": "success", "id": 2, "code": "wxyz-pqrs-tuvk"})
+                      if u.path.endswith("/supprimer"):
+                          ident = u.path.split("/")[3]
+                          etat["personnes"] = [x for x in etat["personnes"] if str(x["id"]) != ident]
+                          return rep(200, {"statut": "success", "id": 2, "nom": "Julie", "velos_effaces": 1})
                       if u.path.endswith("/actif"):
                           d = json.loads(corps)
                           for x in etat["personnes"]:
@@ -3365,7 +3461,7 @@ jobs:
                   ctx.add_init_script("sessionStorage.setItem('vtt_code','m');")
                   pg = ctx.new_page()
                   pg.on("pageerror", lambda e: erreurs.append(str(e)[:200]))
-                  pg.on("dialog", lambda d: (dialogues.append(d.message), d.accept()))
+                  pg.on("dialog", lambda d: (dialogues.append(d.message), d.dismiss() if refuser["oui"] else d.accept()))
                   pg.route("http://localhost/", lambda r: r.fulfill(status=200, content_type="text/html", body=html))
                   pg.goto("http://localhost/#reglages"); pg.wait_for_timeout(1200)
                   return pg
@@ -3402,6 +3498,21 @@ jobs:
               ligne().get_by_text("Réactiver").click(); pg.wait_for_timeout(500)
               assert json.loads([a for a in appels if a[1] == "/api/personnes/2/actif"][-1][2]) == {"actif": True}
               assert "désactivée" not in ligne().inner_text()
+              # 5b) Supprimer : confirmation d'abord, puis la personne disparaît de la liste.
+              ligne().get_by_text("Supprimer").click(); pg.wait_for_timeout(500)
+              assert any("Julie" in d and "pour de bon" in d and "sans retour" in d for d in dialogues), dialogues
+              suppr = [a for a in appels if a[0] == "POST" and a[1] == "/api/personnes/2/supprimer"]
+              assert len(suppr) == 1, appels
+              assert "Julie" not in texte(pg, "#listePersonnes") and pg.locator("#listePersonnes .personne-ligne").count() == 1
+              assert texte(pg, "#messagePersonnes") == "Julie a été supprimée."
+              # Si on refuse la confirmation, rien n'est envoyé.
+              pg.fill("#personneNom", "Paul"); pg.click("#formAjouterPersonne button[type=submit]"); pg.wait_for_timeout(500)
+              pg.click("#boutonCodeNote")
+              refuser["oui"] = True
+              pg.locator("#listePersonnes .personne-ligne").nth(1).get_by_text("Supprimer").click(); pg.wait_for_timeout(400)
+              assert len([a for a in appels if a[0] == "POST" and a[1].endswith("/supprimer")]) == 1, "refus : rien ne doit partir"
+              assert "Paul" in texte(pg, "#listePersonnes")
+              refuser["oui"] = False
               # 6) Nom déjà pris : message d'erreur, pas de code affiché.
               pg.fill("#personneNom", "Math"); pg.click("#formAjouterPersonne button[type=submit]"); pg.wait_for_timeout(500)
               assert texte(pg, "#messagePersonnes") == "Une personne porte déjà ce nom." and not visible(pg, "#codeAffiche")
@@ -3415,7 +3526,7 @@ jobs:
               pg.close()
               nav.close()
           print("erreurs page :", erreurs); assert not erreurs, erreurs
-          print("OK: écran Personnes (ajout, code affiché une fois, nouveau code, désactiver/réactiver, erreur, non-administrateur)")
+          print("OK: écran Personnes (ajout, code affiché une fois, nouveau code, désactiver/réactiver, supprimer avec confirmation, erreur, non-administrateur)")
           PY
           rm -f "$SQLITE_PATH"
           PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_admin_navigateur.py"
