@@ -3368,11 +3368,12 @@ jobs:
           CODE_AMI = "code-de-lami"
           V_AMI = [{"id": 5, "nom": "Gravel de l'ami", "type": "gravel", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0}]
           erreurs, appels = [], []
+          NOM = {"valeur": "Julie"}
           with sync_playwright() as p:
               nav = p.chromium.launch()
 
-              def nouveau(code_en_memoire):
-                  ctx = nav.new_context(viewport={"width": 390, "height": 900})
+              def nouveau(code_en_memoire, largeur=390):
+                  ctx = nav.new_context(viewport={"width": largeur, "height": 900})
 
                   def api(r):
                       u = urlparse(r.request.url)
@@ -3387,6 +3388,8 @@ jobs:
                           if q.get("velo_id", [""])[0] != "5":
                               return r.fulfill(status=404, content_type="application/json", body='{"detail":"Vélo introuvable."}')
                           corps = {"km_total": 0, "composants": []}
+                      elif u.path == "/api/moi":
+                          corps = {"id": 2, "nom": NOM["valeur"], "est_admin": False}
                       elif u.path == "/api/mes-reglages":
                           corps = {"valeurs": {}, "maj_le": None}
                       elif u.path == "/api/reglages":
@@ -3414,6 +3417,9 @@ jobs:
               assert pg.eval_on_selector("#selectVelo", "e => e.value") == "5"
               assert "/api/etat?velo_id=5" in appels, appels
               assert pg.evaluate("sessionStorage.getItem('maillons_velo_id')") == "5"
+              # Message de bienvenue avec le nom de la personne, sous le titre.
+              assert pg.eval_on_selector("#headerBienvenue", "e => !e.hidden && getComputedStyle(e).display !== 'none'")
+              assert pg.eval_on_selector("#headerBienvenue", "e => e.textContent") == "Bienvenue Julie"
               pg.close()
 
               # 2) Réouverture avec le code déjà en mémoire (et un vélo n° 1 mémorisé par un ancien passage).
@@ -3424,7 +3430,20 @@ jobs:
               assert pg.eval_on_selector("#authScreen", "e => getComputedStyle(e).display") == "none"
               assert pg.eval_on_selector("#headerVeloNom", "e => e.textContent.trim()") == "Gravel de l'ami"
               assert "/api/etat?velo_id=5" in appels, appels
+              assert pg.eval_on_selector("#headerBienvenue", "e => e.textContent") == "Bienvenue Julie"
               pg.close()
+
+              # 2b) Nom très long et nom contenant du HTML, sur un petit écran : texte brut, coupé par « … », rien ne déborde.
+              NOM["valeur"] = "<b>Marie-Charlotte</b> de la Fontaine-Beauregard"
+              pg = nouveau(CODE_AMI, 320)
+              pg.goto("http://localhost/"); pg.wait_for_timeout(1200)
+              assert pg.eval_on_selector("#headerBienvenue", "e => e.textContent") == "Bienvenue <b>Marie-Charlotte</b> de la Fontaine-Beauregard"
+              assert pg.eval_on_selector("#headerBienvenue", "e => e.children.length") == 0, "le nom ne doit jamais être lu comme du HTML"
+              assert pg.eval_on_selector("#headerBienvenue", "e => e.scrollWidth > e.clientWidth"), "le nom long doit être coupé"
+              assert pg.eval_on_selector("#headerBienvenue", "e => { const s = getComputedStyle(e); return [s.textOverflow, s.overflow, s.whiteSpace].join(' '); }") == "ellipsis hidden nowrap", "coupure par « … » sur une seule ligne"
+              assert pg.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), "la page ne doit pas déborder"
+              pg.close()
+              NOM["valeur"] = "Julie"
 
               # 3) Mauvais code : refusé.
               pg = nouveau(None)
@@ -3432,10 +3451,11 @@ jobs:
               pg.fill("#authInput", "mauvais"); pg.click("#authScreen button"); pg.wait_for_timeout(800)
               assert pg.eval_on_selector("#authError", "e => e.textContent.trim()") == "Code incorrect."
               assert pg.eval_on_selector("#authScreen", "e => getComputedStyle(e).display") != "none"
+              assert pg.eval_on_selector("#headerBienvenue", "e => e.hidden"), "pas de bienvenue sans connexion"
               pg.close()
               nav.close()
           print("erreurs page :", erreurs); assert not erreurs, erreurs
-          print("OK: une autre personne que Math entre avec son code et arrive sur son vélo")
+          print("OK: une autre personne que Math entre avec son code et arrive sur son vélo, avec son message de bienvenue")
           PY
           rm -f "$SQLITE_PATH"
           PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_autre_personne.py"
@@ -3538,6 +3558,7 @@ jobs:
               # 1) Math : le bloc est là, la liste aussi.
               pg = ouvrir(True)
               assert visible(pg, "#blocPersonnes") and visible(pg, "#page-reglages")
+              assert texte(pg, "#headerBienvenue") == "Bienvenue Math" and visible(pg, "#headerBienvenue")
               assert "Math (administrateur)" in texte(pg, "#listePersonnes") and "1 vélo" in texte(pg, "#listePersonnes")
               assert not visible(pg, "#codeAffiche")
               assert pg.locator("#listePersonnes button").count() == 1 and pg.locator("#listePersonnes button").first.inner_text() == "Renommer", "Math : seulement Renommer"
@@ -3575,9 +3596,10 @@ jobs:
               reponse["texte"] = "Mathieu"
               pg.locator("#listePersonnes .personne-ligne").nth(0).get_by_text("Renommer").click(); pg.wait_for_timeout(500)
               assert "Mathieu (administrateur)" in texte(pg, "#listePersonnes")
+              assert texte(pg, "#headerBienvenue") == "Bienvenue Mathieu", "le message suit le nouveau nom tout de suite"
               reponse["texte"] = "Math"
               pg.locator("#listePersonnes .personne-ligne").nth(0).get_by_text("Renommer").click(); pg.wait_for_timeout(500)
-              assert "Math (administrateur)" in texte(pg, "#listePersonnes")
+              assert "Math (administrateur)" in texte(pg, "#listePersonnes") and texte(pg, "#headerBienvenue") == "Bienvenue Math"
               reponse["texte"] = None
               # 4) Nouveau code (avec confirmation).
               pg.locator("#listePersonnes .personne-ligne").nth(1).get_by_text("Nouveau code").click(); pg.wait_for_timeout(500)

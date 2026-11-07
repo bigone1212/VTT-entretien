@@ -1385,6 +1385,20 @@ def accueil():
                 color: var(--strong);
             }
 
+            .header-bienvenue {
+                font-size: 0.8rem;
+                font-weight: 700;
+                color: var(--accent);
+                margin: 3px 0 0 0;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            .header-bienvenue[hidden] {
+                display: none;
+            }
+
             .header-velo {
                 font-size: 0.78rem;
                 color: var(--text-muted);
@@ -4003,6 +4017,7 @@ def accueil():
             <svg class="logo" role="img" aria-label="Maillons"><use href="#logo-maillon"/></svg>
             <div class="header-titres">
                 <h1>Maillons</h1>
+                <p class="header-bienvenue" id="headerBienvenue" hidden></p>
                 <p class="header-velo" id="headerVeloNom">Mon CUBE</p>
                 <div class="select-velo-zone"><select id="selectVelo" aria-label="Choisir mon vélo"></select></div>
             </div>
@@ -6197,14 +6212,27 @@ def accueil():
                 }
             });
 
+            let moiId = null;
+
+            function afficherBienvenue(nom) {
+                const zone = document.getElementById('headerBienvenue');
+                if (!zone) return;
+                const propre = typeof nom === 'string' ? nom.trim() : '';
+                zone.textContent = propre ? 'Bienvenue ' + propre : '';
+                zone.hidden = !propre;
+            }
+
             async function chargerMoi() {
                 let admin = false;
                 try {
                     const res = await fetch('/api/moi', { headers: getHeaders() });
                     const moi = res.ok ? await res.json() : null;
                     admin = !!(moi && moi.est_admin === true);
+                    moiId = moi && typeof moi.id === 'number' ? moi.id : null;
+                    afficherBienvenue(moi ? moi.nom : '');
                 } catch (e) {
                     admin = false;
+                    afficherBienvenue('');
                 }
                 const bloc = document.getElementById('blocPersonnes');
                 if (bloc) bloc.style.display = admin ? '' : 'none';
@@ -6301,6 +6329,7 @@ def accueil():
                     });
                     const data = await res.json();
                     if (!res.ok) throw new Error(texteErreur(data, 'Changement impossible.'));
+                    if (p.id === moiId) afficherBienvenue(data.nom);
                     await chargerPersonnes();
                     messagePersonnes('Nom changé : ' + data.nom + '.');
                 } catch (e) {
