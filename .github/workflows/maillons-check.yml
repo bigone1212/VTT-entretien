@@ -4163,6 +4163,185 @@ jobs:
           print("OK: écran d'accès (inscription, connexion, code d'accès, mot de passe, déconnexion) dans un vrai navigateur")
           PY
           PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_ecran_acces.py"
+      - name: Tester les invitations et les mots de passe provisoires (administration) dans un vrai navigateur
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-invitations-nav-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_admin_invitations.py" <<'PY'
+          import json
+          from urllib.parse import urlparse
+
+          from playwright.sync_api import sync_playwright
+
+          import main
+
+          html = main.accueil()
+          MATH = "code-de-math"
+          VELOS = [{"id": 1, "nom": "Mon CUBE", "type": "vtt_electrique", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0}]
+          personnes = [
+              {"id": 1, "nom": "Math", "est_admin": True, "actif": 1, "nb_velos": 1, "email": None, "a_un_code": False, "a_un_mot_de_passe": False, "mot_de_passe_provisoire": False},
+              {"id": 2, "nom": "Julie", "est_admin": False, "actif": 1, "nb_velos": 2, "email": "julie@exemple.fr", "a_un_code": False, "a_un_mot_de_passe": True, "mot_de_passe_provisoire": False},
+              {"id": 3, "nom": "Ami", "est_admin": False, "actif": 1, "nb_velos": 1, "email": None, "a_un_code": True, "a_un_mot_de_passe": False, "mot_de_passe_provisoire": False},
+          ]
+          invitations = [
+              {"id": 4, "pour": "Paul", "cree_le": "2026-11-08T08:00:00Z", "expire_le": "2026-11-15T08:00:00Z", "etat": "en_attente", "utilisee_par": None},
+              {"id": 3, "pour": None, "cree_le": "2026-11-01T08:00:00Z", "expire_le": "2026-11-08T08:00:00Z", "etat": "utilisee", "utilisee_par": "Julie"},
+              {"id": 2, "pour": "Zoé", "cree_le": "2026-10-01T08:00:00Z", "expire_le": "2026-10-08T08:00:00Z", "etat": "expiree", "utilisee_par": None},
+              {"id": 1, "pour": "Luc", "cree_le": "2026-10-01T08:00:00Z", "expire_le": "2026-10-08T08:00:00Z", "etat": "annulee", "utilisee_par": None},
+          ]
+          requetes, erreurs, dialogues = [], [], []
+          admin = {"oui": True}
+
+
+          def api(r):
+              u = urlparse(r.request.url)
+              corps = r.request.post_data
+              requetes.append((u.path, r.request.method, json.loads(corps) if corps else None))
+
+              def rep(statut, c):
+                  r.fulfill(status=statut, content_type="application/json", body=json.dumps(c))
+
+              if r.request.headers.get("x-code-acces") != MATH:
+                  return rep(401, {"detail": "Code d'accès incorrect."})
+              if u.path == "/api/velos":
+                  return rep(200, VELOS)
+              if u.path == "/api/moi":
+                  return rep(200, {"id": 1, "nom": "Math", "est_admin": admin["oui"]})
+              if u.path == "/api/personnes":
+                  return rep(200, personnes)
+              if u.path == "/api/invitations" and r.request.method == "GET":
+                  return rep(200, invitations)
+              if u.path == "/api/invitations" and r.request.method == "POST":
+                  d = json.loads(corps)
+                  invitations.insert(0, {"id": 5, "pour": d.get("pour"), "cree_le": "2026-11-08T17:00:00Z", "expire_le": "2026-11-15T17:00:00Z", "etat": "en_attente", "utilisee_par": None})
+                  return rep(200, {"statut": "success", "id": 5, "code": "abcd-efgh-jkmn-pqrs", "pour": d.get("pour"), "expire_le": "2026-11-15T17:00:00Z"})
+              if u.path == "/api/invitations/4/annuler":
+                  [i for i in invitations if i["id"] == 4][0]["etat"] = "annulee"
+                  return rep(200, {"statut": "success"})
+              if u.path == "/api/personnes/2/reinitialiser-mot-de-passe":
+                  return rep(200, {"statut": "success", "id": 2, "mot_de_passe_provisoire": "abcd-efgh-jkmn"})
+              if u.path == "/api/etat":
+                  return rep(200, {"km_total": 0, "composants": []})
+              if u.path == "/api/mes-reglages":
+                  return rep(200, {"valeurs": {}, "maj_le": None})
+              if u.path == "/api/reglages":
+                  return rep(200, {"terrain_route": 1, "terrain_mixte": 1.2, "terrain_chemin": 1.5, "terrain_sentier": 2, "poids_denivele": 1})
+              return rep(200, [])
+
+
+          def texte(pg, sel):
+              return pg.eval_on_selector(sel, "e => e.textContent.trim()")
+
+
+          def visible(pg, sel):
+              return pg.eval_on_selector(sel, "e => getComputedStyle(e).display !== 'none'")
+
+
+          def noms_boutons(pg, sel):
+              return pg.eval_on_selector_all(sel, "els => els.map(e => e.textContent.trim())")
+
+
+          with sync_playwright() as p:
+              nav = p.chromium.launch()
+              ctx = nav.new_context(viewport={"width": 390, "height": 900})
+              ctx.route("**/localhost/api/**", api)
+              ctx.route(lambda u: not u.startswith("http://localhost/"), lambda r: r.abort())
+              ctx.add_init_script("sessionStorage.setItem('vtt_code', '" + MATH + "'); window.__copie = null;"
+                                  "Object.defineProperty(navigator, 'clipboard', {value: {writeText: async t => { window.__copie = t; }}, configurable: true});")
+              pg = ctx.new_page()
+              pg.on("pageerror", lambda e: erreurs.append(str(e)[:200]))
+              reponse = {"ok": True}
+
+              def dialogue(d):
+                  dialogues.append(d.message)
+                  d.accept() if reponse["ok"] else d.dismiss()
+
+              pg.on("dialog", dialogue)
+              pg.route("http://localhost/", lambda r: r.fulfill(status=200, content_type="text/html", body=html))
+              pg.goto("http://localhost/#reglages"); pg.wait_for_timeout(900)
+
+              # 1) Les personnes : e-mail visible ; mot de passe provisoire pour Julie, nouveau code pour l'ami.
+              lignes = pg.query_selector_all("#listePersonnes .personne-ligne")
+              assert len(lignes) == 3
+              assert "julie@exemple.fr" in lignes[1].inner_text() and "2 vélos" in lignes[1].inner_text()
+              assert noms_boutons(pg, "#listePersonnes .personne-ligne:nth-child(1) button") == ["Renommer"]
+              assert "Mot de passe provisoire" in noms_boutons(pg, "#listePersonnes .personne-ligne:nth-child(2) button")
+              assert "Nouveau code" not in noms_boutons(pg, "#listePersonnes .personne-ligne:nth-child(2) button")
+              assert "Nouveau code" in noms_boutons(pg, "#listePersonnes .personne-ligne:nth-child(3) button")
+              assert "Mot de passe provisoire" not in noms_boutons(pg, "#listePersonnes .personne-ligne:nth-child(3) button")
+
+              # 2) La liste des invitations : un état par ligne, « Annuler » seulement pour celle en attente.
+              inv = pg.query_selector_all("#listeInvitations .invitation-ligne")
+              assert len(inv) == 4
+              t = [x.inner_text() for x in inv]
+              assert "Pour Paul" in t[0] and "En attente, expire le 15/11/2026" in t[0]
+              assert "Invitation n° 3" in t[1] and "Utilisée par Julie" in t[1]
+              assert "Expirée" in t[2] and "Annulée" in t[3]
+              assert noms_boutons(pg, "#listeInvitations button") == ["Annuler"]
+
+              # 3) Créer une invitation : le code s'affiche une fois, avec un message prêt à envoyer.
+              requetes.clear()
+              pg.fill("#invitationPour", "Léa")
+              pg.click("#formInviter button"); pg.wait_for_timeout(700)
+              assert [x for x in requetes if x[0] == "/api/invitations" and x[1] == "POST"][0][2] == {"pour": "Léa"}
+              assert visible(pg, "#codeAffiche") and texte(pg, "#codeAfficheValeur") == "abcd-efgh-jkmn-pqrs"
+              assert texte(pg, "#codeAfficheTitre") == "Invitation pour Léa :" and visible(pg, "#boutonCopierInvitation")
+              assert pg.input_value("#invitationPour") == ""
+              assert len(pg.query_selector_all("#listeInvitations .invitation-ligne")) == 5, "la liste est rechargée"
+              pg.click("#boutonCopierInvitation"); pg.wait_for_timeout(200)
+              copie = pg.evaluate("window.__copie")
+              assert "abcd-efgh-jkmn-pqrs" in copie and "http://localhost" in copie and "S'inscrire" in copie and "7 jours" in copie, copie
+              assert "Message copié" in texte(pg, "#messagePersonnes")
+              pg.click("#boutonCodeNote")
+              assert not visible(pg, "#codeAffiche") and texte(pg, "#codeAfficheValeur") == "" and not visible(pg, "#boutonCopierInvitation")
+              # Sans nom : l'invitation est créée quand même.
+              requetes.clear()
+              pg.click("#formInviter button"); pg.wait_for_timeout(600)
+              assert [x for x in requetes if x[0] == "/api/invitations" and x[1] == "POST"][0][2] == {}
+              assert texte(pg, "#codeAfficheTitre") == "Invitation :"
+              pg.click("#boutonCodeNote")
+
+              # 4) Annuler : refusé = rien n'est envoyé ; accepté = envoyé et liste rechargée.
+              requetes.clear(); reponse["ok"] = False
+              pg.click("#listeInvitations .invitation-ligne:has-text('Pour Paul') button"); pg.wait_for_timeout(300)
+              assert not [x for x in requetes if "annuler" in x[0]]
+              reponse["ok"] = True
+              pg.click("#listeInvitations .invitation-ligne:has-text('Pour Paul') button"); pg.wait_for_timeout(600)
+              assert [x for x in requetes if "annuler" in x[0]][0][:2] == ("/api/invitations/4/annuler", "POST")
+              assert texte(pg, "#messagePersonnes") == "Invitation annulée."
+              paul = pg.query_selector("#listeInvitations .invitation-ligne:has-text('Pour Paul')")
+              assert "Annulée" in paul.inner_text() and not paul.query_selector("button")
+
+              # 5) Mot de passe provisoire : confirmation, affichage une fois, message à envoyer.
+              requetes.clear(); reponse["ok"] = False
+              pg.click("#listePersonnes .personne-ligne:nth-child(2) button:has-text('Mot de passe provisoire')"); pg.wait_for_timeout(300)
+              assert not [x for x in requetes if "reinitialiser" in x[0]]
+              reponse["ok"] = True
+              pg.click("#listePersonnes .personne-ligne:nth-child(2) button:has-text('Mot de passe provisoire')"); pg.wait_for_timeout(600)
+              assert [x for x in requetes if "reinitialiser" in x[0]][0][:2] == ("/api/personnes/2/reinitialiser-mot-de-passe", "POST")
+              assert "Julie" in dialogues[-1] and "appareils seront déconnectés" in dialogues[-1]
+              assert texte(pg, "#codeAfficheTitre") == "Mot de passe provisoire de Julie :" and texte(pg, "#codeAfficheValeur") == "abcd-efgh-jkmn"
+              pg.click("#boutonCopierInvitation"); pg.wait_for_timeout(200)
+              copie = pg.evaluate("window.__copie")
+              assert "abcd-efgh-jkmn" in copie and "Julie" in copie and "choisis-en un nouveau" in copie, copie
+              pg.close()
+
+              # 6) Une personne qui n'est pas administratrice ne voit rien de tout cela et ne charge pas les invitations.
+              admin["oui"] = False
+              requetes.clear()
+              pg = ctx.new_page()
+              pg.on("pageerror", lambda e: erreurs.append(str(e)[:200]))
+              pg.route("http://localhost/", lambda r: r.fulfill(status=200, content_type="text/html", body=html))
+              pg.goto("http://localhost/#reglages"); pg.wait_for_timeout(900)
+              assert not visible(pg, "#blocPersonnes")
+              assert not [x for x in requetes if x[0] in ("/api/invitations", "/api/personnes")], requetes
+              nav.close()
+
+          assert not erreurs, erreurs
+          print("OK: administration des invitations et des mots de passe provisoires dans un vrai navigateur")
+          PY
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_admin_invitations.py"
       - name: Tester la recherche avec l'IA (copier-coller) dans un vrai navigateur
         env:
           SQLITE_PATH: ${{ runner.temp }}/maillons-ia-test.db

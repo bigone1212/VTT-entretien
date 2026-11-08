@@ -2099,6 +2099,10 @@ def accueil():
             #blocPersonnes .personne-nom { font-weight: 600; }
             #blocPersonnes .personne-actions { display: flex; gap: 8px; flex-wrap: wrap; }
             #blocPersonnes .personne-actions button { flex: 1 1 120px; }
+            #blocPersonnes .invitations-bloc { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); }
+            #blocPersonnes .invitation-ligne { padding: 8px 0; border-top: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+            #blocPersonnes .invitation-ligne:first-child { border-top: none; }
+            #blocPersonnes .invitation-ligne button { flex: 0 0 auto; }
             #blocPersonnes .code-affiche {
                 margin: 12px 0;
                 padding: 12px;
@@ -4277,6 +4281,7 @@ def accueil():
                 <div class="form-help">Ce code ne sera plus jamais affiché : note-le ou envoie-le maintenant à la personne.</div>
                 <div class="personne-actions">
                     <button type="button" id="boutonCopierCode">Copier le code</button>
+                    <button type="button" id="boutonCopierInvitation" style="display:none;">Copier le message à envoyer</button>
                     <button type="button" id="boutonCodeNote">J’ai noté le code</button>
                 </div>
             </div>
@@ -4296,6 +4301,16 @@ def accueil():
                 </select>
                 <button type="submit" class="btn-primary" style="width:100%; margin-top:8px;">Ajouter cette personne</button>
             </form>
+            <div class="invitations-bloc">
+                <strong>Inviter quelqu'un</strong>
+                <p class="form-help">Crée un code d'invitation à usage unique (valable 7 jours). La personne s'inscrit toute seule avec son e-mail et son mot de passe.</p>
+                <form id="formInviter">
+                    <label for="invitationPour">Pour qui ? (facultatif, pour t'y retrouver)</label>
+                    <input id="invitationPour" type="text" maxlength="60" placeholder="Ex. : Julie">
+                    <button type="submit" class="btn-primary" style="width:100%; margin-top:8px;">Créer une invitation</button>
+                </form>
+                <div id="listeInvitations"></div>
+            </div>
             <p class="form-help" id="messagePersonnes" aria-live="polite"></p>
         </section>
         <dialog id="fenetreVelo" class="fenetre-velo" aria-labelledby="titreFormVelo">
@@ -6534,16 +6549,33 @@ def accueil():
                 return data && typeof data.detail === 'string' ? data.detail : defaut;
             }
 
-            function montrerCode(titre, code) {
+            let messageACopier = '';
+
+            function montrerCode(titre, code, message) {
                 document.getElementById('codeAfficheTitre').textContent = titre;
                 document.getElementById('codeAfficheValeur').textContent = code;
-                document.getElementById('codeAffiche').style.display = 'block';
+                messageACopier = message || '';
+                document.getElementById('boutonCopierInvitation').style.display = messageACopier ? '' : 'none';
+                const boite = document.getElementById('codeAffiche');
+                boite.style.display = 'block';
+                boite.scrollIntoView({ block: 'center' });
             }
 
             function cacherCode() {
                 document.getElementById('codeAfficheValeur').textContent = '';
+                messageACopier = '';
+                document.getElementById('boutonCopierInvitation').style.display = 'none';
                 document.getElementById('codeAffiche').style.display = 'none';
             }
+
+            document.getElementById('boutonCopierInvitation').addEventListener('click', async () => {
+                try {
+                    await navigator.clipboard.writeText(messageACopier);
+                    messagePersonnes('Message copié : colle-le dans ta messagerie.');
+                } catch (e) {
+                    messagePersonnes('Copie impossible : recopie le code à la main.');
+                }
+            });
 
             document.getElementById('boutonCodeNote').addEventListener('click', cacherCode);
             document.getElementById('boutonCopierCode').addEventListener('click', async () => {
@@ -6582,7 +6614,10 @@ def accueil():
                 }
                 const bloc = document.getElementById('blocPersonnes');
                 if (bloc) bloc.style.display = admin ? '' : 'none';
-                if (admin) await chargerPersonnes();
+                if (admin) {
+                    await chargerPersonnes();
+                    await chargerInvitations();
+                }
             }
 
             function boutonPersonne(texte, action) {
@@ -6608,14 +6643,16 @@ def accueil():
                         nom.textContent = p.nom + (p.est_admin ? ' (administrateur)' : '') + (p.actif ? '' : ' · désactivée');
                         const detail = document.createElement('div');
                         detail.className = 'form-help';
-                        detail.textContent = p.nb_velos + (p.nb_velos > 1 ? ' vélos' : ' vélo');
+                        detail.textContent = p.nb_velos + (p.nb_velos > 1 ? ' vélos' : ' vélo') + (p.email ? ' · ' + p.email : '');
                         ligne.append(nom, detail);
                         const actions = document.createElement('div');
                         actions.className = 'personne-actions';
                         actions.append(boutonPersonne('Renommer', () => renommerPersonne(p)));
                         if (!p.est_admin) {
                             actions.append(
-                                boutonPersonne('Nouveau code', () => nouveauCodePersonne(p)),
+                                p.a_un_mot_de_passe
+                                    ? boutonPersonne('Mot de passe provisoire', () => motDePasseProvisoire(p))
+                                    : boutonPersonne('Nouveau code', () => nouveauCodePersonne(p)),
                                 boutonPersonne(p.actif ? 'Désactiver' : 'Réactiver', () => activerPersonne(p, !p.actif)),
                                 boutonPersonne('Supprimer', () => supprimerPersonne(p))
                             );
@@ -6625,6 +6662,22 @@ def accueil():
                     });
                 } catch (e) {
                     messagePersonnes(e.message || 'Lecture impossible.');
+                }
+            }
+
+            async function motDePasseProvisoire(p) {
+                if (!confirm('Donner un mot de passe provisoire à ' + p.nom + ' ? Son mot de passe actuel ne marchera plus et ses appareils seront déconnectés.')) return;
+                messagePersonnes('');
+                try {
+                    const res = await fetch('/api/personnes/' + p.id + '/reinitialiser-mot-de-passe', { method: 'POST', headers: getHeaders() });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(texteErreur(data, 'Changement impossible.'));
+                    const message = 'Salut ' + p.nom + ' ! Voici ton mot de passe provisoire pour Maillons : ' + data.mot_de_passe_provisoire
+                        + ' . Ouvre ' + location.origin + ' , connecte-toi avec ton e-mail et ce mot de passe, puis choisis-en un nouveau.';
+                    montrerCode('Mot de passe provisoire de ' + p.nom + ' :', data.mot_de_passe_provisoire, message);
+                    await chargerPersonnes();
+                } catch (e) {
+                    messagePersonnes(e.message || 'Changement impossible.');
                 }
             }
 
@@ -6698,6 +6751,84 @@ def accueil():
                     messagePersonnes(e.message || 'Suppression impossible.');
                 }
             }
+
+            function dateCourte(iso) {
+                const d = new Date(iso);
+                return isNaN(d.getTime()) ? '' : d.toLocaleDateString('fr-FR');
+            }
+
+            async function chargerInvitations() {
+                const zone = document.getElementById('listeInvitations');
+                try {
+                    const res = await fetch('/api/invitations', { headers: getHeaders() });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(texteErreur(data, 'Lecture impossible.'));
+                    zone.replaceChildren();
+                    data.forEach(inv => {
+                        const ligne = document.createElement('div');
+                        ligne.className = 'invitation-ligne';
+                        const texte = document.createElement('div');
+                        const etats = {
+                            en_attente: 'En attente, expire le ' + dateCourte(inv.expire_le),
+                            utilisee: 'Utilisée par ' + (inv.utilisee_par || 'une personne'),
+                            expiree: 'Expirée',
+                            annulee: 'Annulée'
+                        };
+                        const titre = document.createElement('div');
+                        titre.className = 'personne-nom';
+                        titre.textContent = inv.pour ? 'Pour ' + inv.pour : 'Invitation n° ' + inv.id;
+                        const detail = document.createElement('div');
+                        detail.className = 'form-help';
+                        detail.style.margin = '2px 0 0';
+                        detail.textContent = etats[inv.etat] || inv.etat;
+                        texte.append(titre, detail);
+                        ligne.append(texte);
+                        if (inv.etat === 'en_attente') {
+                            ligne.append(boutonPersonne('Annuler', () => annulerInvitation(inv)));
+                        }
+                        zone.appendChild(ligne);
+                    });
+                } catch (e) {
+                    messagePersonnes(e.message || 'Lecture impossible.');
+                }
+            }
+
+            async function annulerInvitation(inv) {
+                if (!confirm("Annuler cette invitation ? Son code ne marchera plus.")) return;
+                messagePersonnes('');
+                try {
+                    const res = await fetch('/api/invitations/' + inv.id + '/annuler', { method: 'POST', headers: getHeaders() });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(texteErreur(data, 'Annulation impossible.'));
+                    await chargerInvitations();
+                    messagePersonnes('Invitation annulée.');
+                } catch (e) {
+                    messagePersonnes(e.message || 'Annulation impossible.');
+                }
+            }
+
+            document.getElementById('formInviter').addEventListener('submit', async (event) => {
+                event.preventDefault();
+                const formulaire = event.currentTarget;
+                messagePersonnes('');
+                const pour = document.getElementById('invitationPour').value.trim();
+                try {
+                    const res = await fetch('/api/invitations', {
+                        method: 'POST',
+                        headers: getHeaders(),
+                        body: JSON.stringify(pour ? { pour: pour } : {})
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(texteErreur(data, 'Création impossible.'));
+                    formulaire.reset();
+                    const message = 'Bienvenue sur Maillons ! Ouvre ' + location.origin + " , touche S'inscrire et entre ce code d'invitation : "
+                        + data.code + " . Il marche une seule fois, pendant 7 jours.";
+                    montrerCode('Invitation' + (data.pour ? ' pour ' + data.pour : '') + ' :', data.code, message);
+                    await chargerInvitations();
+                } catch (e) {
+                    messagePersonnes(e.message || 'Création impossible.');
+                }
+            });
 
             document.getElementById('formAjouterPersonne').addEventListener('submit', async (event) => {
                 event.preventDefault();
