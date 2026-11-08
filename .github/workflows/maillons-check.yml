@@ -2430,6 +2430,284 @@ jobs:
               c.execute("CREATE DATABASE maillons_http")
           PY2
           DATABASE_URL=postgresql://postgres:postgres@localhost:5432/maillons_http PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_http.py"
+      - name: Vérifier de bout en bout l'inscription, la connexion et la déconnexion par le vrai serveur web (SQLite puis PostgreSQL)
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-http-inscription-test.db
+          CODE_ACCES: test
+        run: |
+          pip install httpx
+          cat > "$RUNNER_TEMP/test_http_inscription.py" <<'PY'
+          import os
+
+          import db
+          import main
+          from fastapi.testclient import TestClient
+
+          # Vrai serveur web (en mémoire), vrais en-têtes, vraies erreurs HTTP.
+          main.time.sleep = lambda secondes: None
+          CODE_MATH = "code-math-inscription-http"
+          main.CODE_ACCES = CODE_MATH
+          os.environ["CODE_ACCES"] = CODE_MATH
+          MDP = "velo-de-julie-2026"
+
+
+          def h(code):
+              return {"x-code-acces": code}
+
+
+          def sql(requete, p=()):
+              c = db.connect()
+              cur = c.cursor()
+              cur.execute(requete, p)
+              c.commit()
+              c.close()
+
+
+          def formulaire(code, **autres):
+              d = {"code_invitation": code, "nom": "Julie", "email": "Julie@Exemple.fr", "mot_de_passe": MDP, "confirmation": MDP,
+                   "type_velo": "gravel", "nom_velo": "Mon gravel", "date_achat": "2024-05-17"}
+              d.update(autres)
+              return d
+
+
+          with TestClient(main.app) as client:
+              sql("UPDATE velos SET nom = 'VELO-SECRET-DE-MATH' WHERE id = 1")
+
+              # La page d'accueil (publique) propose bien l'inscription et la connexion.
+              page = client.get("/")
+              assert page.status_code == 200 and "authPanneauInscription" in page.text and "authPanneauConnexion" in page.text
+
+              # Les invitations sont réservées à Math.
+              assert client.post("/api/invitations", json={"pour": "Julie"}).status_code == 401
+              assert client.post("/api/invitations", json={"pour": "Julie"}, headers=h("faux")).status_code == 401
+              ami = client.post("/api/personnes", json={"nom": "Ami"}, headers=h(CODE_MATH)).json()
+              assert client.post("/api/invitations", json={"pour": "Julie"}, headers=h(ami["code"])).status_code == 403
+              assert client.get("/api/invitations", headers=h(ami["code"])).status_code == 403
+              r = client.post("/api/invitations", json={"pour": "Julie"}, headers=h(CODE_MATH))
+              assert r.status_code == 200, r.text
+              inv = r.json()
+              assert [x["etat"] for x in client.get("/api/invitations", headers=h(CODE_MATH)).json()] == ["en_attente"]
+
+              # L'inscription est publique (aucun en-tête) mais exige l'invitation.
+              assert client.post("/api/inscription", json={"nom": "Julie"}).status_code == 422
+              r = client.post("/api/inscription", json=formulaire("zzzz-zzzz-zzzz-zzzz"))
+              assert r.status_code == 403 and r.json()["detail"] == "Code d'invitation invalide ou expiré."
+              assert client.post("/api/inscription", json=formulaire(inv["code"], confirmation="autre-chose-123")).status_code == 400
+              assert client.post("/api/inscription", json=formulaire(inv["code"], email="pas-un-mail")).status_code == 400
+              r = client.post("/api/inscription", json=formulaire(inv["code"]))
+              assert r.status_code == 200, r.text
+              julie = r.json()
+              jeton = julie["token"]
+              assert jeton.startswith("ses_") and julie["nom"] == "Julie"
+              assert client.post("/api/inscription", json=formulaire(inv["code"], nom="Autre", email="autre@exemple.fr")).status_code == 403, "invitation à usage unique"
+              assert client.post("/api/inscription", json=formulaire(client.post("/api/invitations", json={}, headers=h(CODE_MATH)).json()["code"])).status_code == 409, "e-mail déjà pris"
+
+              # Avec son jeton, Julie voit ce qui est à elle, et seulement cela.
+              assert client.get("/api/moi", headers=h(jeton)).json() == {"id": julie["id"], "nom": "Julie", "est_admin": False}
+              vj = client.get("/api/velos", headers=h(jeton)).json()
+              assert [v["id"] for v in vj] == [julie["velo_id"]] and vj[0]["nom"] == "Mon gravel", vj
+              assert client.get("/api/etat?velo_id=%d" % julie["velo_id"], headers=h(jeton)).status_code == 200
+              for chemin in ("/api/etat", "/api/sorties", "/api/historique"):
+                  assert client.get(chemin + "?velo_id=1", headers=h(jeton)).status_code == 404, chemin
+              assert "VELO-SECRET-DE-MATH" not in client.get("/api/sauvegarde", headers=h(jeton)).text
+              for reponse in (client.get("/api/personnes", headers=h(jeton)), client.get("/api/invitations", headers=h(jeton)),
+                              client.post("/api/invitations", json={}, headers=h(jeton)),
+                              client.post("/api/personnes/1/reinitialiser-mot-de-passe", headers=h(jeton))):
+                  assert reponse.status_code == 403
+              # Le jeton n'est pas un code d'accès : on ne peut pas s'en servir pour en fabriquer un, ni le deviner.
+              assert client.get("/api/velos", headers=h("ses_" + "a" * 43)).status_code == 401
+              assert client.get("/api/velos", headers=h(jeton[:-1])).status_code == 401
+
+              # Connexion par e-mail : mauvais mot de passe, e-mail inconnu, puis le bon (autre appareil = autre jeton).
+              assert client.post("/api/connexion", json={"email": "julie@exemple.fr", "mot_de_passe": "mauvais-mot-de-passe"}).status_code == 401
+              assert client.post("/api/connexion", json={"email": "inconnu@exemple.fr", "mot_de_passe": MDP}).status_code == 401
+              r = client.post("/api/connexion", json={"email": "  JULIE@exemple.fr ", "mot_de_passe": MDP})
+              assert r.status_code == 200, r.text
+              jeton2 = r.json()["token"]
+              assert jeton2 != jeton and r.json()["mot_de_passe_provisoire"] is False and r.json()["est_admin"] is False
+              assert client.get("/api/velos", headers=h(jeton2)).status_code == 200 and client.get("/api/velos", headers=h(jeton)).status_code == 200
+
+              # Blocage après 5 mauvais essais (même le bon mot de passe est alors refusé), sans gêner les autres.
+              for _ in range(5):
+                  assert client.post("/api/connexion", json={"email": "julie@exemple.fr", "mot_de_passe": "mauvais-mot-de-passe"}).status_code == 401
+              assert client.post("/api/connexion", json={"email": "julie@exemple.fr", "mot_de_passe": MDP}).status_code == 429
+              assert client.get("/api/velos", headers=h(jeton)).status_code == 200, "une session déjà ouverte n'est pas coupée"
+              assert client.get("/api/velos", headers=h(CODE_MATH)).status_code == 200 and client.get("/api/velos", headers=h(ami["code"])).status_code == 200
+              sql("UPDATE personnes SET bloque_jusqua = NULL, echecs_connexion = 0 WHERE id = ?", (julie["id"],))
+
+              # Déconnexion d'un appareil : l'autre reste ouvert.
+              assert client.post("/api/deconnexion", headers=h(jeton2)).json() == {"statut": "success"}
+              assert client.get("/api/velos", headers=h(jeton2)).status_code == 401 and client.get("/api/velos", headers=h(jeton)).status_code == 200
+              assert client.post("/api/deconnexion").status_code == 401
+
+              # Changer son mot de passe : l'autre appareil est déconnecté, l'ancien mot de passe ne marche plus.
+              r = client.post("/api/connexion", json={"email": "julie@exemple.fr", "mot_de_passe": MDP})
+              jeton3 = r.json()["token"]
+              nouveau = "nouveau-solide-9876"
+              assert client.post("/api/mot-de-passe", json={"ancien": "pas-le-bon", "nouveau": nouveau, "confirmation": nouveau}, headers=h(jeton3)).status_code == 403
+              assert client.post("/api/mot-de-passe", json={"ancien": MDP, "nouveau": nouveau, "confirmation": nouveau}, headers=h(jeton3)).status_code == 200
+              assert client.get("/api/velos", headers=h(jeton3)).status_code == 200 and client.get("/api/velos", headers=h(jeton)).status_code == 401
+              assert client.post("/api/connexion", json={"email": "julie@exemple.fr", "mot_de_passe": MDP}).status_code == 401
+              assert client.post("/api/connexion", json={"email": "julie@exemple.fr", "mot_de_passe": nouveau}).status_code == 200
+
+              # Math voit l'e-mail dans la liste, annule une invitation, et donne un mot de passe provisoire.
+              liste = {p["id"]: p for p in client.get("/api/personnes", headers=h(CODE_MATH)).json()}
+              assert liste[julie["id"]]["email"] == "julie@exemple.fr" and liste[julie["id"]]["a_un_mot_de_passe"] is True
+              assert "mot_de_passe" not in liste[julie["id"]] and "code_hash" not in liste[julie["id"]]
+              attente = client.post("/api/invitations", json={"pour": "Paul"}, headers=h(CODE_MATH)).json()
+              assert client.post("/api/invitations/%d/annuler" % attente["id"], headers=h(CODE_MATH)).status_code == 200
+              assert client.post("/api/inscription", json=formulaire(attente["code"], nom="Paul", email="paul@exemple.fr")).status_code == 403
+              assert client.post("/api/invitations/%d/annuler" % inv["id"], headers=h(CODE_MATH)).status_code == 400, "déjà utilisée"
+              r = client.post("/api/personnes/%d/reinitialiser-mot-de-passe" % julie["id"], headers=h(CODE_MATH))
+              assert r.status_code == 200, r.text
+              provisoire = r.json()["mot_de_passe_provisoire"]
+              assert client.get("/api/velos", headers=h(jeton3)).status_code == 401, "ses appareils sont déconnectés"
+              r = client.post("/api/connexion", json={"email": "julie@exemple.fr", "mot_de_passe": provisoire})
+              assert r.status_code == 200 and r.json()["mot_de_passe_provisoire"] is True
+              assert client.post("/api/personnes/1/reinitialiser-mot-de-passe", headers=h(CODE_MATH)).status_code == 400
+              assert client.post("/api/personnes/%d/reinitialiser-mot-de-passe" % ami["id"], headers=h(CODE_MATH)).status_code == 400, "l'ami se connecte par code"
+
+              # Désactivée : le jeton ne marche plus ; supprimée : tout disparaît et l'e-mail est de nouveau libre.
+              jeton4 = r.json()["token"]
+              assert client.post("/api/personnes/%d/actif" % julie["id"], json={"actif": False}, headers=h(CODE_MATH)).status_code == 200
+              assert client.get("/api/velos", headers=h(jeton4)).status_code == 401
+              assert client.post("/api/connexion", json={"email": "julie@exemple.fr", "mot_de_passe": provisoire}).status_code == 403
+              assert client.post("/api/personnes/%d/actif" % julie["id"], json={"actif": True}, headers=h(CODE_MATH)).status_code == 200
+              assert client.get("/api/velos", headers=h(jeton4)).status_code == 200
+              assert client.post("/api/personnes/%d/supprimer" % julie["id"], headers=h(CODE_MATH)).status_code == 200
+              assert client.get("/api/velos", headers=h(jeton4)).status_code == 401
+              assert client.post("/api/connexion", json={"email": "julie@exemple.fr", "mot_de_passe": provisoire}).status_code == 401
+              neuve = client.post("/api/invitations", json={"pour": "Julie"}, headers=h(CODE_MATH)).json()
+              r = client.post("/api/inscription", json=formulaire(neuve["code"]))
+              assert r.status_code == 200 and r.json()["id"] != julie["id"], "l'e-mail est de nouveau libre"
+              assert len(client.get("/api/velos", headers=h(r.json()["token"])).json()) == 1, "la nouvelle Julie n'hérite de rien"
+
+              # Math et l'ami n'ont jamais été gênés : leurs codes marchent comme avant.
+              assert client.get("/api/moi", headers=h(CODE_MATH)).json() == {"id": 1, "nom": "Math", "est_admin": True}
+              assert client.get("/api/etat?velo_id=1", headers=h(CODE_MATH)).status_code == 200
+              assert client.get("/api/moi", headers=h(ami["code"])).json()["nom"] == "Ami"
+              assert client.post("/api/connexion", json={"email": "math@exemple.fr", "mot_de_passe": CODE_MATH}).status_code == 401
+
+          print("OK: inscription sur invitation, connexion, déconnexion, mot de passe et administration de bout en bout (" + ("PostgreSQL" if db.USE_PG else "SQLite") + ").")
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_http_inscription.py"
+          python - <<'PY2'
+          import psycopg
+          with psycopg.connect("postgresql://postgres:postgres@localhost:5432/maillons_test", autocommit=True) as c:
+              c.execute("DROP DATABASE IF EXISTS maillons_http_inscription")
+              c.execute("CREATE DATABASE maillons_http_inscription")
+          PY2
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/maillons_http_inscription PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_http_inscription.py"
+      - name: Vérifier la mise à niveau d'une base en ligne faite par l'ancien code (SQLite puis PostgreSQL)
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-niveau-test.db
+          CODE_ACCES: test
+        run: |
+          git fetch --depth=1 origin main
+          mkdir -p "$RUNNER_TEMP/ancien"
+          git show FETCH_HEAD:main.py > "$RUNNER_TEMP/ancien/main.py"
+          cp db.py gpx_import.py "$RUNNER_TEMP/ancien/"
+          cat > "$RUNNER_TEMP/test_mise_a_niveau.py" <<'PY'
+          import json
+          import os
+          import sys
+
+          import db
+          import main
+          from fastapi import HTTPException
+
+          phase, fichier = sys.argv[1], sys.argv[2]
+          CODE_MATH = "code-de-math-mise-a-niveau"
+          main.CODE_ACCES = CODE_MATH
+          os.environ["CODE_ACCES"] = CODE_MATH
+          TABLES = ("personnes", "velos", "composants", "historique")
+
+
+          def lire(sql, p=()):
+              c = db.connect()
+              cur = c.cursor()
+              cur.execute(sql, p)
+              r = [tuple(x) for x in cur.fetchall()]
+              c.close()
+              return r
+
+
+          def ecrire(sql, p=()):
+              c = db.connect()
+              cur = c.cursor()
+              cur.execute(sql, p)
+              c.commit()
+              c.close()
+
+
+          def compter():
+              return {t: lire("SELECT COUNT(*) FROM " + t)[0][0] for t in TABLES}
+
+
+          if phase == "ancien":
+              # La base telle qu'elle est en ligne aujourd'hui : l'ancien code, ses personnes, ses vélos.
+              ami = main.ajouter_personne(main.NouvellePersonneRequest(nom="Ami", type_velo="gravel"), CODE_MATH)
+              ecrire("UPDATE velos SET nom = 'VELO-ANCIEN-DE-MATH' WHERE id = 1")
+              assert lire("SELECT COUNT(*) FROM composants")[0][0] > 0
+              anciennes = {x[0] for x in lire("SELECT name FROM sqlite_master WHERE type = 'table'")} if not db.USE_PG else set()
+              assert "sessions" not in anciennes and "invitations" not in anciennes, "l'ancienne base ne connaît pas les sessions"
+              with open(fichier, "w", encoding="utf-8") as f:
+                  json.dump({"ami": ami, "compte": compter()}, f)
+              print("OK: ancienne base préparée (" + ("PostgreSQL" if db.USE_PG else "SQLite") + ") : " + json.dumps(compter()))
+          else:
+              # Le nouveau code démarre (init_db a tourné à l'import) sur la base de l'ancien.
+              avant = json.load(open(fichier, encoding="utf-8"))
+              ami = avant["ami"]
+              assert compter() == avant["compte"], (compter(), avant["compte"])
+              assert lire("SELECT nom FROM velos WHERE id = 1") == [("VELO-ANCIEN-DE-MATH",)]
+              ligne = lire("SELECT mot_de_passe, mdp_provisoire, echecs_connexion, bloque_jusqua, email FROM personnes WHERE id = ?", (ami["id"],))[0]
+              assert ligne[0] is None and ligne[1] in (0, None) and ligne[2] in (0, None) and ligne[3] is None, ligne
+              assert lire("SELECT COUNT(*) FROM sessions")[0][0] == 0 and lire("SELECT COUNT(*) FROM invitations")[0][0] == 0
+              # Les anciens accès marchent comme avant.
+              assert main.verifier_auth(CODE_MATH) == 1
+              assert main.verifier_auth(ami["code"]) == ami["id"]
+              assert [v["id"] for v in main.obtenir_velos(ami["code"])] == [ami["velo_id"]]
+              assert 1 in [v["id"] for v in main.obtenir_velos(CODE_MATH)]
+              try:
+                  main.controle_acces(ami["code"], 1)
+                  raise AssertionError("l'ami ne doit pas voir le vélo de Math")
+              except HTTPException as e:
+                  assert e.status_code == 404
+              liste = {x["id"]: x for x in main.lister_personnes(CODE_MATH)}
+              assert liste[ami["id"]]["a_un_code"] and not liste[ami["id"]]["a_un_mot_de_passe"] and liste[ami["id"]]["nb_velos"] == 1
+              # Une personne ancienne ne peut pas se connecter par e-mail (elle n'a pas de mot de passe).
+              try:
+                  main.connexion(main.ConnexionRequest(email="ami@exemple.fr", mot_de_passe="n-importe-quoi-123"))
+                  raise AssertionError("pas de connexion par e-mail sans mot de passe")
+              except HTTPException as e:
+                  assert e.status_code == 401
+              # Le nouveau parcours marche sur cette base mise à niveau.
+              main.time.sleep = lambda s: None
+              inv = main.creer_invitation(main.NouvelleInvitationRequest(pour="Julie"), CODE_MATH)
+              r = main.inscription(main.InscriptionRequest(code_invitation=inv["code"], nom="Julie", email="julie@exemple.fr",
+                                                           mot_de_passe="velo-de-julie-2026", confirmation="velo-de-julie-2026", type_velo="route"))
+              assert main.verifier_auth(r["token"]) == r["id"] and r["id"] not in (1, ami["id"])
+              assert [v["id"] for v in main.obtenir_velos(r["token"])] == [r["velo_id"]]
+              # Un second démarrage (redéploiement) ne change rien et ne perd rien.
+              main.init_db()
+              main.init_db()
+              assert compter() == {"personnes": avant["compte"]["personnes"] + 1, "velos": avant["compte"]["velos"] + 1,
+                                   "composants": compter()["composants"], "historique": avant["compte"]["historique"]}
+              assert main.verifier_auth(r["token"]) == r["id"] and main.verifier_auth(ami["code"]) == ami["id"]
+              print("OK: mise à niveau de la base en ligne vers les comptes e-mail (" + ("PostgreSQL" if db.USE_PG else "SQLite") + ").")
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$RUNNER_TEMP/ancien" python "$RUNNER_TEMP/test_mise_a_niveau.py" ancien "$RUNNER_TEMP/etat-sqlite.json"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_mise_a_niveau.py" nouveau "$RUNNER_TEMP/etat-sqlite.json"
+          python - <<'PY2'
+          import psycopg
+          with psycopg.connect("postgresql://postgres:postgres@localhost:5432/maillons_test", autocommit=True) as c:
+              c.execute("DROP DATABASE IF EXISTS maillons_niveau")
+              c.execute("CREATE DATABASE maillons_niveau")
+          PY2
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/maillons_niveau PYTHONPATH="$RUNNER_TEMP/ancien" python "$RUNNER_TEMP/test_mise_a_niveau.py" ancien "$RUNNER_TEMP/etat-pg.json"
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/maillons_niveau PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_mise_a_niveau.py" nouveau "$RUNNER_TEMP/etat-pg.json"
       - name: Vérifier l'heure de départ unique par vélo et la mise à niveau de l'ancienne base (SQLite puis PostgreSQL)
         env:
           SQLITE_PATH: ${{ runner.temp }}/maillons-unicite-test.db
