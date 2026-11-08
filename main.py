@@ -1370,12 +1370,15 @@ def accueil():
                 display: flex;
                 flex-direction: column;
                 align-items: center;
-                justify-content: center;
+                justify-content: flex-start;
                 z-index: 9999;
                 padding: 20px;
+                overflow-y: auto;
+                box-sizing: border-box;
             }
 
             .auth-card {
+                margin: auto;
                 background: var(--card-bg);
                 padding: 24px;
                 border-radius: 14px;
@@ -1390,6 +1393,50 @@ def accueil():
                 margin-top: 0;
                 font-size: 1.2rem;
                 color: var(--strong);
+            }
+
+            .auth-card h3 {
+                margin: 4px 0 4px;
+                font-size: 1.05rem;
+                color: var(--strong);
+            }
+
+            .auth-panneau {
+                text-align: left;
+                margin-top: 12px;
+            }
+
+            .auth-panneau[hidden] {
+                display: none;
+            }
+
+            .auth-panneau label {
+                display: block;
+                font-size: 0.75rem;
+                color: var(--text-muted);
+                margin: 0 0 4px;
+            }
+
+            .auth-liens {
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+                margin-top: 14px;
+            }
+
+            button.auth-lien {
+                background: none;
+                border: none;
+                color: var(--accent);
+                font-size: 0.85rem;
+                cursor: pointer;
+                padding: 6px;
+                text-decoration: underline;
+            }
+
+            button.auth-lien.discret {
+                color: var(--text-muted);
+                font-size: 0.75rem;
             }
 
             .header {
@@ -1596,6 +1643,7 @@ def accueil():
 
             input[type="number"],
             input[type="text"],
+            input[type="email"],
             input[type="date"],
             input[type="password"],
             select {
@@ -3982,10 +4030,56 @@ def accueil():
             <div class="auth-card">
                 <svg class="logo" style="width:64px;height:64px;border-radius:18px;margin-bottom:12px" role="img" aria-label="Maillons"><use href="#logo-maillon"/></svg>
                 <h2>Maillons</h2>
-                <p class="form-help">Entrez votre code d'accès</p>
-                <input type="password" id="authInput" placeholder="Code secret" style="margin-bottom: 12px;">
-                <button class="btn-primary" style="width: 100%;" onclick="tenterConnexion()">Valider</button>
+                <h3 id="authTitrePanneau"></h3>
+                <p class="form-help" id="authAccroche"></p>
+
+                <form id="authPanneauConnexion" class="auth-panneau">
+                    <label for="authEmail">Adresse e-mail</label>
+                    <input type="email" id="authEmail" autocomplete="username" maxlength="200" required>
+                    <label for="authMdp">Mot de passe</label>
+                    <input type="password" id="authMdp" autocomplete="current-password" maxlength="200" required>
+                    <button type="submit" class="btn-primary" style="width: 100%;">Se connecter</button>
+                </form>
+
+                <form id="authPanneauInscription" class="auth-panneau" hidden>
+                    <label for="inscCode">Code d'invitation</label>
+                    <input type="text" id="inscCode" autocomplete="off" maxlength="60" placeholder="xxxx-xxxx-xxxx-xxxx" required>
+                    <label for="inscNom">Prénom</label>
+                    <input type="text" id="inscNom" autocomplete="given-name" maxlength="60" required>
+                    <label for="inscEmail">Adresse e-mail</label>
+                    <input type="email" id="inscEmail" autocomplete="username" maxlength="200" required>
+                    <label for="inscMdp">Mot de passe (8 caractères au moins)</label>
+                    <input type="password" id="inscMdp" autocomplete="new-password" maxlength="200" required>
+                    <label for="inscMdp2">Confirmation du mot de passe</label>
+                    <input type="password" id="inscMdp2" autocomplete="new-password" maxlength="200" required>
+                    <label for="inscType">Type de vélo</label>
+                    <select id="inscType">
+                    <option value="vtt_electrique">VTT électrique</option>
+                    <option value="vtt">VTT sans moteur</option>
+                    <option value="enduro">Enduro</option>
+                    <option value="descente">Descente</option>
+                    <option value="gravel">Gravel</option>
+                    <option value="gravel_electrique">Gravel électrique</option>
+                    <option value="route">Route</option>
+                    <option value="route_electrique">Route électrique</option>
+                    </select>
+                    <label for="inscNomVelo">Nom du vélo</label>
+                    <input type="text" id="inscNomVelo" maxlength="80" placeholder="Ex. : Mon gravel">
+                    <label for="inscDate">Date d'achat du vélo</label>
+                    <input type="date" id="inscDate">
+                    <button type="submit" class="btn-primary" style="width: 100%;">Créer mon profil</button>
+                </form>
+
+                <div id="authPanneauCode" class="auth-panneau" hidden>
+                    <input type="password" id="authInput" placeholder="Code secret" style="margin-bottom: 12px;">
+                    <button class="btn-primary" id="authValiderCode" style="width: 100%;" onclick="tenterConnexion()">Valider</button>
+                </div>
+
                 <p id="authError" style="color: var(--danger); font-size: 0.8rem; margin-top: 10px;"></p>
+                <div class="auth-liens">
+                    <button type="button" class="auth-lien" id="authLienAutre"></button>
+                    <button type="button" class="auth-lien discret" id="authLienCode">Se connecter avec un code d'accès</button>
+                </div>
             </div>
         </div>
 
@@ -4150,6 +4244,25 @@ def accueil():
             </div>
             <p class="form-help">Touche les trois points pour ajouter un vélo, modifier sa fiche, gérer sa photo ou le supprimer.</p>
             <p class="form-help" id="messageMesVelos" aria-live="polite"></p>
+        </section>
+
+        <section class="mes-reglages" id="blocCompte">
+            <div class="mr-titre">
+                <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c0-4 3.4-7 7.5-7s7.5 3 7.5 7"/></svg><span>Mon compte</span></strong>
+            </div>
+            <p class="form-help" id="compteIdentite"></p>
+            <p class="form-help" id="compteProvisoire" style="display:none; color: var(--danger);">Ton mot de passe est provisoire : choisis-en un nouveau ci-dessous.</p>
+            <form id="formMotDePasse" style="display:none;">
+                <label for="mdpAncien">Mot de passe actuel</label>
+                <input id="mdpAncien" type="password" autocomplete="current-password" maxlength="200" required>
+                <label for="mdpNouveau">Nouveau mot de passe (8 caractères au moins)</label>
+                <input id="mdpNouveau" type="password" autocomplete="new-password" maxlength="200" required>
+                <label for="mdpNouveau2">Confirmation du nouveau mot de passe</label>
+                <input id="mdpNouveau2" type="password" autocomplete="new-password" maxlength="200" required>
+                <button type="submit" class="btn-primary" style="width:100%; margin-top:8px;">Changer mon mot de passe</button>
+            </form>
+            <p class="form-help" id="messageCompte" aria-live="polite"></p>
+            <button type="button" id="boutonDeconnexion" class="btn-primary" style="width:100%; margin-top:8px;">Se déconnecter</button>
         </section>
 
         <section class="mes-reglages" id="blocPersonnes" style="display:none;">
@@ -5024,7 +5137,7 @@ def accueil():
             window.fetch = function (url, options) {
                 let cible = url;
                 if (typeof url === 'string' && url.startsWith('/api/')) {
-                    const globales = ['/api/velos', '/api/sauvegarde', '/api/reglages'];
+                    const globales = ['/api/velos', '/api/sauvegarde', '/api/reglages', '/api/connexion', '/api/inscription', '/api/deconnexion', '/api/mot-de-passe'];
                     if (!globales.some(p => url === p || url.startsWith(p + '?'))) {
                         const separateur = url.includes('?') ? '&' : '?';
                         cible = url + separateur + 'velo_id=' + encodeURIComponent(veloActifId);
@@ -6182,6 +6295,137 @@ def accueil():
                 }
             });
 
+            // ----- Écran d'accès : S'inscrire / Se connecter / code d'accès -----
+            const CLE_INSCRIT = 'maillons_deja_inscrit';
+            const CLE_SESSION = 'maillons_session';
+
+            function dejaInscrit() {
+                try { return localStorage.getItem(CLE_INSCRIT) === '1'; } catch (e) { return false; }
+            }
+
+            function noterInscrit() {
+                try { localStorage.setItem(CLE_INSCRIT, '1'); } catch (e) { /* mémoire du téléphone indisponible */ }
+            }
+
+            function sessionMemorisee() {
+                try { return localStorage.getItem(CLE_SESSION) || ''; } catch (e) { return ''; }
+            }
+
+            function memoriserSession(jeton) {
+                try {
+                    if (jeton) localStorage.setItem(CLE_SESSION, jeton);
+                    else localStorage.removeItem(CLE_SESSION);
+                } catch (e) { /* mémoire du téléphone indisponible */ }
+            }
+
+            function oublierSession() {
+                sessionStorage.removeItem('vtt_code');
+                sessionStorage.removeItem('maillons_velo_id');
+                sessionStorage.removeItem('maillons_mdp_provisoire');
+                memoriserSession('');
+            }
+
+            const PANNEAUX_ACCES = {
+                connexion: 'authPanneauConnexion',
+                inscription: 'authPanneauInscription',
+                code: 'authPanneauCode'
+            };
+
+            function montrerPanneau(nom) {
+                Object.keys(PANNEAUX_ACCES).forEach(cle => {
+                    document.getElementById(PANNEAUX_ACCES[cle]).hidden = cle !== nom;
+                });
+                const titres = { connexion: 'Se connecter', inscription: "S'inscrire", code: "Code d'accès" };
+                const accroches = {
+                    connexion: dejaInscrit() ? 'Content de te revoir !' : 'Entre ton e-mail et ton mot de passe.',
+                    inscription: "Crée ton profil avec le code d'invitation que Math t'a donné.",
+                    code: "Entre le code d'accès qu'on t'a donné."
+                };
+                const autres = {
+                    connexion: { texte: "Pas encore de compte ? S'inscrire", vers: 'inscription' },
+                    inscription: { texte: 'Déjà un compte ? Se connecter', vers: 'connexion' },
+                    code: { texte: 'Retour à la connexion par e-mail', vers: 'connexion' }
+                };
+                document.getElementById('authTitrePanneau').textContent = titres[nom];
+                document.getElementById('authAccroche').textContent = accroches[nom];
+                const lien = document.getElementById('authLienAutre');
+                lien.textContent = autres[nom].texte;
+                lien.dataset.vers = autres[nom].vers;
+                document.getElementById('authLienCode').hidden = nom === 'code';
+                document.getElementById('authError').textContent = '';
+            }
+
+            document.getElementById('authLienAutre').addEventListener('click', event => {
+                montrerPanneau(event.currentTarget.dataset.vers);
+            });
+            document.getElementById('authLienCode').addEventListener('click', () => montrerPanneau('code'));
+            montrerPanneau(dejaInscrit() ? 'connexion' : 'inscription');
+
+            function messageErreurServeur(data, defaut) {
+                return data && typeof data.detail === 'string' ? data.detail : defaut;
+            }
+
+            // Envoie le formulaire ; en cas de succès, mémorise la session et recharge la page
+            // (état propre, surtout si deux personnes se servent du même téléphone).
+            async function envoyerAcces(adresse, corps, bouton) {
+                const erreur = document.getElementById('authError');
+                erreur.textContent = '';
+                bouton.disabled = true;
+                try {
+                    const res = await fetch(adresse, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(corps)
+                    });
+                    let data = null;
+                    try { data = await res.json(); } catch (e) { data = null; }
+                    if (!res.ok || !data || !data.token) {
+                        erreur.textContent = messageErreurServeur(data, 'Impossible de continuer. Réessaie dans un instant.');
+                        return;
+                    }
+                    sessionStorage.removeItem('maillons_velo_id');
+                    sessionStorage.setItem('vtt_code', data.token);
+                    if (data.mot_de_passe_provisoire) sessionStorage.setItem('maillons_mdp_provisoire', '1');
+                    else sessionStorage.removeItem('maillons_mdp_provisoire');
+                    memoriserSession(data.token);
+                    noterInscrit();
+                    location.reload();
+                } catch (e) {
+                    erreur.textContent = 'Erreur de connexion.';
+                } finally {
+                    bouton.disabled = false;
+                }
+            }
+
+            document.getElementById('authPanneauConnexion').addEventListener('submit', event => {
+                event.preventDefault();
+                envoyerAcces('/api/connexion', {
+                    email: document.getElementById('authEmail').value.trim(),
+                    mot_de_passe: document.getElementById('authMdp').value
+                }, event.currentTarget.querySelector('button[type="submit"]'));
+            });
+
+            document.getElementById('authPanneauInscription').addEventListener('submit', event => {
+                event.preventDefault();
+                const mdp = document.getElementById('inscMdp').value;
+                if (mdp !== document.getElementById('inscMdp2').value) {
+                    document.getElementById('authError').textContent = 'Les deux mots de passe ne sont pas identiques.';
+                    return;
+                }
+                const corps = {
+                    code_invitation: document.getElementById('inscCode').value.trim(),
+                    nom: document.getElementById('inscNom').value.trim(),
+                    email: document.getElementById('inscEmail').value.trim(),
+                    mot_de_passe: mdp,
+                    confirmation: mdp,
+                    type_velo: document.getElementById('inscType').value,
+                    nom_velo: document.getElementById('inscNomVelo').value.trim()
+                };
+                const date = document.getElementById('inscDate').value;
+                if (date) corps.date_achat = date;
+                envoyerAcces('/api/inscription', corps, event.currentTarget.querySelector('button[type="submit"]'));
+            });
+
             async function tenterConnexion() {
                 const code = document.getElementById('authInput').value;
                 sessionStorage.setItem('vtt_code', code);
@@ -6189,6 +6433,8 @@ def accueil():
                 try {
                     const res = await fetch('/api/velos', { headers: getHeaders() });
                     if (res.ok) {
+                        noterInscrit();
+                        memoriserSession('');
                         document.getElementById('authScreen').style.display = 'none';
                         await chargerVelos();
                         chargerEtat();
@@ -6210,7 +6456,11 @@ def accueil():
                 }
             });
 
-            // Vérifie si un code est déjà en mémoire
+            // Retrouve la session gardée sur ce téléphone (connexion par e-mail), puis vérifie qu'elle est valable.
+            if (!sessionStorage.getItem('vtt_code')) {
+                const gardee = sessionMemorisee();
+                if (gardee) sessionStorage.setItem('vtt_code', gardee);
+            }
             if (sessionStorage.getItem('vtt_code')) {
                 fetch('/api/velos', { headers: getHeaders() }).then(async res => {
                     if (res.ok) {
@@ -6218,9 +6468,61 @@ def accueil():
                         await chargerVelos();
                         await chargerEtat();
                         chargerMoi();
+                    } else if (res.status === 401) {
+                        oublierSession();
                     }
                 });
             }
+
+            // ----- Mon compte : changer le mot de passe, se déconnecter -----
+            function majBlocCompte(nom) {
+                const aSession = (sessionStorage.getItem('vtt_code') || '').startsWith('ses_');
+                document.getElementById('compteIdentite').textContent = nom ? 'Connecté : ' + nom : '';
+                document.getElementById('formMotDePasse').style.display = aSession ? '' : 'none';
+                const provisoire = aSession && sessionStorage.getItem('maillons_mdp_provisoire') === '1';
+                document.getElementById('compteProvisoire').style.display = provisoire ? '' : 'none';
+                if (provisoire && location.hash !== '#reglages') location.hash = '#reglages';
+            }
+
+            document.getElementById('formMotDePasse').addEventListener('submit', async event => {
+                event.preventDefault();
+                const formulaire = event.currentTarget;
+                const message = document.getElementById('messageCompte');
+                message.textContent = '';
+                const nouveau = document.getElementById('mdpNouveau').value;
+                try {
+                    const res = await fetch('/api/mot-de-passe', {
+                        method: 'POST',
+                        headers: getHeaders(),
+                        body: JSON.stringify({
+                            ancien: document.getElementById('mdpAncien').value,
+                            nouveau: nouveau,
+                            confirmation: document.getElementById('mdpNouveau2').value
+                        })
+                    });
+                    let data = null;
+                    try { data = await res.json(); } catch (e) { data = null; }
+                    if (!res.ok) {
+                        message.textContent = messageErreurServeur(data, 'Changement impossible.');
+                        return;
+                    }
+                    formulaire.reset();
+                    sessionStorage.removeItem('maillons_mdp_provisoire');
+                    document.getElementById('compteProvisoire').style.display = 'none';
+                    message.textContent = 'Mot de passe changé. Tes autres appareils devront se reconnecter.';
+                } catch (e) {
+                    message.textContent = 'Erreur de connexion.';
+                }
+            });
+
+            document.getElementById('boutonDeconnexion').addEventListener('click', async () => {
+                try {
+                    await fetch('/api/deconnexion', { method: 'POST', headers: getHeaders() });
+                } catch (e) { /* hors ligne : on se déconnecte quand même sur ce téléphone */ }
+                oublierSession();
+                location.hash = '';
+                location.reload();
+            });
 
             // ----- Administration des personnes (bloc visible seulement pour Math) -----
             function messagePersonnes(texte) {
@@ -6272,9 +6574,11 @@ def accueil():
                     admin = !!(moi && moi.est_admin === true);
                     moiId = moi && typeof moi.id === 'number' ? moi.id : null;
                     afficherBienvenue(moi ? moi.nom : '');
+                    majBlocCompte(moi ? moi.nom : '');
                 } catch (e) {
                     admin = false;
                     afficherBienvenue('');
+                    majBlocCompte('');
                 }
                 const bloc = document.getElementById('blocPersonnes');
                 if (bloc) bloc.style.display = admin ? '' : 'none';

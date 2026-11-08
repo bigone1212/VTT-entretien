@@ -3720,7 +3720,7 @@ jobs:
               # 1) Saisie du code d'une autre personne que Math (le vélo n° 1 n'est pas le sien).
               pg = nouveau(None)
               pg.goto("http://localhost/"); pg.wait_for_timeout(600)
-              pg.fill("#authInput", CODE_AMI); pg.click("#authScreen button"); pg.wait_for_timeout(1200)
+              pg.click("#authLienCode"); pg.fill("#authInput", CODE_AMI); pg.click("#authValiderCode"); pg.wait_for_timeout(1200)
               assert pg.eval_on_selector("#authScreen", "e => getComputedStyle(e).display") == "none", "l'écran du code est resté"
               assert pg.eval_on_selector("#authError", "e => e.textContent.trim()") == ""
               assert pg.eval_on_selector("#headerVeloNom", "e => e.textContent.trim()") == "Gravel de l'ami"
@@ -3758,7 +3758,7 @@ jobs:
               # 3) Mauvais code : refusé.
               pg = nouveau(None)
               pg.goto("http://localhost/"); pg.wait_for_timeout(600)
-              pg.fill("#authInput", "mauvais"); pg.click("#authScreen button"); pg.wait_for_timeout(800)
+              pg.click("#authLienCode"); pg.fill("#authInput", "mauvais"); pg.click("#authValiderCode"); pg.wait_for_timeout(800)
               assert pg.eval_on_selector("#authError", "e => e.textContent.trim()") == "Code incorrect."
               assert pg.eval_on_selector("#authScreen", "e => getComputedStyle(e).display") != "none"
               assert pg.eval_on_selector("#headerBienvenue", "e => e.hidden"), "pas de bienvenue sans connexion"
@@ -3955,6 +3955,214 @@ jobs:
           PY
           rm -f "$SQLITE_PATH"
           PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_admin_navigateur.py"
+      - name: Tester l'écran S'inscrire / Se connecter, la déconnexion et le mot de passe dans un vrai navigateur
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-acces-nav-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_ecran_acces.py" <<'PY'
+          import json
+          from urllib.parse import urlparse
+
+          from playwright.sync_api import sync_playwright
+
+          import main
+
+          html = main.accueil()
+          JETON = "ses_jeton-de-julie"
+          VELO = [{"id": 7, "nom": "Mon gravel", "type": "gravel", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0}]
+          erreurs, requetes = [], []
+          etat = {"provisoire": False, "mdp_ok": True, "mdp_change": None}
+
+
+          def api(r):
+              u = urlparse(r.request.url)
+              corps_requete = r.request.post_data
+              requetes.append((u.path, r.request.method, r.request.headers.get("x-code-acces"), json.loads(corps_requete) if corps_requete else None))
+
+              def rep(statut, corps):
+                  r.fulfill(status=statut, content_type="application/json", body=json.dumps(corps))
+
+              if u.path == "/api/inscription":
+                  d = json.loads(corps_requete)
+                  if d["code_invitation"] != "bonne-invitation":
+                      return rep(403, {"detail": "Code d'invitation invalide ou expiré."})
+                  return rep(200, {"statut": "success", "token": JETON, "id": 9, "nom": d["nom"], "velo_id": 7})
+              if u.path == "/api/connexion":
+                  d = json.loads(corps_requete)
+                  if d["mot_de_passe"] != "bon-mot-de-passe":
+                      return rep(401, {"detail": "E-mail ou mot de passe incorrect."})
+                  return rep(200, {"statut": "success", "token": JETON, "id": 9, "nom": "Julie", "est_admin": False, "mot_de_passe_provisoire": etat["provisoire"]})
+              if u.path == "/api/deconnexion":
+                  return rep(200, {"statut": "success"})
+              if u.path == "/api/mot-de-passe":
+                  d = json.loads(corps_requete)
+                  etat["mdp_change"] = d
+                  if d["ancien"] != "bon-mot-de-passe":
+                      return rep(403, {"detail": "L'ancien mot de passe est incorrect."})
+                  return rep(200, {"statut": "success"})
+              if r.request.headers.get("x-code-acces") not in (JETON, "code-de-math"):
+                  return rep(401, {"detail": "Code d'accès incorrect."})
+              if u.path == "/api/velos":
+                  return rep(200, VELO)
+              if u.path == "/api/moi":
+                  if r.request.headers.get("x-code-acces") == "code-de-math":
+                      return rep(200, {"id": 1, "nom": "Math", "est_admin": True})
+                  return rep(200, {"id": 9, "nom": "Julie", "est_admin": False})
+              if u.path == "/api/etat":
+                  return rep(200, {"km_total": 0, "composants": []})
+              if u.path == "/api/mes-reglages":
+                  return rep(200, {"valeurs": {}, "maj_le": None})
+              if u.path == "/api/reglages":
+                  return rep(200, {"terrain_route": 1, "terrain_mixte": 1.2, "terrain_chemin": 1.5, "terrain_sentier": 2, "poids_denivele": 1})
+              return rep(200, [])
+
+
+          def visible(pg, sel):
+              return pg.eval_on_selector(sel, "e => !e.hidden && getComputedStyle(e).display !== 'none'")
+
+
+          def texte(pg, sel):
+              return pg.eval_on_selector(sel, "e => e.textContent.trim()")
+
+
+          with sync_playwright() as p:
+              nav = p.chromium.launch()
+
+              def ouvrir(stockage_local="", stockage_session=""):
+                  ctx = nav.new_context(viewport={"width": 390, "height": 800})
+                  ctx.route("**/localhost/api/**", api)
+                  ctx.route(lambda u: not u.startswith("http://localhost/"), lambda r: r.abort())
+                  # Ne s'applique qu'à la toute première ouverture : un rechargement ne doit pas tout remettre à zéro.
+                  ctx.add_init_script("if (!sessionStorage.getItem('__init')) { sessionStorage.setItem('__init', '1');" + stockage_session + stockage_local + " }")
+                  pg = ctx.new_page()
+                  pg.on("pageerror", lambda e: erreurs.append(str(e)[:200]))
+                  pg.route("http://localhost/", lambda r: r.fulfill(status=200, content_type="text/html", body=html))
+                  pg.goto("http://localhost/")
+                  pg.wait_for_timeout(700)
+                  return pg
+
+              # 1) Première visite : « S'inscrire », formulaire complet, lien discret vers le code d'accès.
+              pg = ouvrir()
+              assert texte(pg, "#authTitrePanneau") == "S'inscrire"
+              assert visible(pg, "#authPanneauInscription") and not visible(pg, "#authPanneauConnexion") and not visible(pg, "#authPanneauCode")
+              for champ in ("inscCode", "inscNom", "inscEmail", "inscMdp", "inscMdp2", "inscType", "inscNomVelo", "inscDate"):
+                  assert visible(pg, "#" + champ), champ
+              assert pg.eval_on_selector("#inscMdp", "e => e.type") == "password" and pg.eval_on_selector("#inscEmail", "e => e.type") == "email"
+              assert visible(pg, "#authLienCode") and texte(pg, "#authLienCode") == "Se connecter avec un code d'accès"
+              assert pg.eval_on_selector("#authScreen", "e => getComputedStyle(e).display") == "flex"
+              # Le formulaire tient dans un petit téléphone : on peut faire défiler jusqu'au bouton.
+              pg.eval_on_selector("#authPanneauInscription button", "e => e.scrollIntoView()")
+              box = pg.eval_on_selector("#authPanneauInscription button", "e => { const r = e.getBoundingClientRect(); return [r.top, r.bottom] }")
+              assert 0 <= box[0] and box[1] <= 800, box
+
+              # Deux mots de passe différents : refus sur place, rien n'est envoyé.
+              requetes.clear()
+              pg.fill("#inscCode", "bonne-invitation"); pg.fill("#inscNom", "Julie"); pg.fill("#inscEmail", "julie@exemple.fr")
+              pg.fill("#inscMdp", "velo-de-julie-2026"); pg.fill("#inscMdp2", "autre-chose-12345")
+              pg.select_option("#inscType", "gravel"); pg.fill("#inscNomVelo", "Mon gravel"); pg.fill("#inscDate", "2024-05-17")
+              pg.click("#authPanneauInscription button"); pg.wait_for_timeout(300)
+              assert texte(pg, "#authError") == "Les deux mots de passe ne sont pas identiques."
+              assert not [x for x in requetes if x[0] == "/api/inscription"]
+              # Mauvaise invitation : le message du serveur s'affiche, on reste sur l'écran.
+              pg.fill("#inscMdp2", "velo-de-julie-2026"); pg.fill("#inscCode", "mauvaise")
+              pg.click("#authPanneauInscription button"); pg.wait_for_timeout(500)
+              assert texte(pg, "#authError") == "Code d'invitation invalide ou expiré."
+              assert visible(pg, "#authPanneauInscription") and pg.evaluate("sessionStorage.getItem('vtt_code')") is None
+              # Bonne invitation : inscription, mémorisation, rechargement, arrivée sur son vélo.
+              pg.fill("#inscCode", "bonne-invitation")
+              requetes.clear()
+              pg.click("#authPanneauInscription button"); pg.wait_for_timeout(1800)
+              envoi = [x for x in requetes if x[0] == "/api/inscription"][0][3]
+              assert envoi == {"code_invitation": "bonne-invitation", "nom": "Julie", "email": "julie@exemple.fr", "mot_de_passe": "velo-de-julie-2026",
+                               "confirmation": "velo-de-julie-2026", "type_velo": "gravel", "nom_velo": "Mon gravel", "date_achat": "2024-05-17"}, envoi
+              assert pg.evaluate("sessionStorage.getItem('vtt_code')") == JETON and pg.evaluate("localStorage.getItem('maillons_session')") == JETON
+              assert pg.evaluate("localStorage.getItem('maillons_deja_inscrit')") == "1"
+              assert pg.eval_on_selector("#authScreen", "e => getComputedStyle(e).display") == "none"
+              assert texte(pg, "#headerVeloNom") == "Mon gravel"
+              assert "Julie" in texte(pg, "#headerBienvenue")
+              assert [x for x in requetes if x[0] == "/api/velos"][-1][2] == JETON, "le jeton remplace le code dans l'en-tête"
+              pg.evaluate("location.hash = '#reglages'"); pg.wait_for_timeout(300)
+              assert texte(pg, "#compteIdentite") == "Connecté : Julie" and visible(pg, "#formMotDePasse") and not visible(pg, "#compteProvisoire")
+
+              # 2) Mot de passe changé depuis Réglages.
+              pg.fill("#mdpAncien", "faux-mot-de-passe"); pg.fill("#mdpNouveau", "nouveau-solide-123"); pg.fill("#mdpNouveau2", "nouveau-solide-123")
+              pg.click("#formMotDePasse button"); pg.wait_for_timeout(500)
+              assert texte(pg, "#messageCompte") == "L'ancien mot de passe est incorrect."
+              pg.fill("#mdpAncien", "bon-mot-de-passe")
+              pg.click("#formMotDePasse button"); pg.wait_for_timeout(500)
+              assert etat["mdp_change"] == {"ancien": "bon-mot-de-passe", "nouveau": "nouveau-solide-123", "confirmation": "nouveau-solide-123"}
+              assert texte(pg, "#messageCompte").startswith("Mot de passe changé.") and pg.input_value("#mdpAncien") == ""
+
+              # 3) Déconnexion : le serveur est prévenu, tout est oublié, retour à « Se connecter ».
+              requetes.clear()
+              pg.click("#boutonDeconnexion"); pg.wait_for_timeout(1500)
+              dec = [x for x in requetes if x[0] == "/api/deconnexion"]
+              assert len(dec) == 1 and dec[0][1] == "POST" and dec[0][2] == JETON
+              assert pg.evaluate("sessionStorage.getItem('vtt_code')") is None and pg.evaluate("localStorage.getItem('maillons_session')") is None
+              assert pg.evaluate("localStorage.getItem('maillons_deja_inscrit')") == "1", "on sait qu'il s'est déjà inscrit"
+              assert pg.eval_on_selector("#authScreen", "e => getComputedStyle(e).display") == "flex"
+              assert texte(pg, "#authTitrePanneau") == "Se connecter" and visible(pg, "#authPanneauConnexion")
+              assert texte(pg, "#authAccroche") == "Content de te revoir !"
+              pg.close()
+
+              # 4) Visite suivante : « Se connecter ». Mauvais mot de passe, puis bon.
+              pg = ouvrir(stockage_local="localStorage.setItem('maillons_deja_inscrit','1');")
+              assert texte(pg, "#authTitrePanneau") == "Se connecter" and visible(pg, "#authPanneauConnexion") and not visible(pg, "#authPanneauInscription")
+              pg.fill("#authEmail", "julie@exemple.fr"); pg.fill("#authMdp", "mauvais")
+              pg.click("#authPanneauConnexion button"); pg.wait_for_timeout(500)
+              assert texte(pg, "#authError") == "E-mail ou mot de passe incorrect." and pg.evaluate("localStorage.getItem('maillons_session')") is None
+              requetes.clear()
+              pg.fill("#authMdp", "bon-mot-de-passe")
+              pg.click("#authPanneauConnexion button"); pg.wait_for_timeout(1800)
+              assert [x for x in requetes if x[0] == "/api/connexion"][0][3] == {"email": "julie@exemple.fr", "mot_de_passe": "bon-mot-de-passe"}
+              assert pg.eval_on_selector("#authScreen", "e => getComputedStyle(e).display") == "none" and texte(pg, "#headerVeloNom") == "Mon gravel"
+              # Les liens passent d'un écran à l'autre.
+              pg.close()
+              pg = ouvrir(stockage_local="localStorage.setItem('maillons_deja_inscrit','1');")
+              pg.click("#authLienAutre"); assert texte(pg, "#authTitrePanneau") == "S'inscrire" and visible(pg, "#authPanneauInscription")
+              pg.click("#authLienAutre"); assert texte(pg, "#authTitrePanneau") == "Se connecter"
+              pg.click("#authLienCode"); assert texte(pg, "#authTitrePanneau") == "Code d'accès" and visible(pg, "#authInput") and not visible(pg, "#authLienCode")
+              pg.click("#authLienAutre"); assert visible(pg, "#authPanneauConnexion") and visible(pg, "#authLienCode")
+              pg.close()
+
+              # 5) Mot de passe provisoire (donné par Math) : on est envoyé vers Réglages avec le message.
+              etat["provisoire"] = True
+              pg = ouvrir(stockage_local="localStorage.setItem('maillons_deja_inscrit','1');")
+              pg.fill("#authEmail", "julie@exemple.fr"); pg.fill("#authMdp", "bon-mot-de-passe")
+              pg.click("#authPanneauConnexion button"); pg.wait_for_timeout(1800)
+              assert pg.evaluate("location.hash") == "#reglages" and visible(pg, "#compteProvisoire") and visible(pg, "#page-reglages")
+              pg.fill("#mdpAncien", "bon-mot-de-passe"); pg.fill("#mdpNouveau", "nouveau-solide-123"); pg.fill("#mdpNouveau2", "nouveau-solide-123")
+              pg.click("#formMotDePasse button"); pg.wait_for_timeout(500)
+              assert not visible(pg, "#compteProvisoire") and pg.evaluate("sessionStorage.getItem('maillons_mdp_provisoire')") is None
+              etat["provisoire"] = False
+              pg.close()
+
+              # 6) Réouverture plus tard (nouvel onglet : session du téléphone seulement) : pas de nouvel écran de connexion.
+              pg = ouvrir(stockage_local="localStorage.setItem('maillons_session','" + JETON + "'); localStorage.setItem('maillons_deja_inscrit','1');")
+              assert pg.eval_on_selector("#authScreen", "e => getComputedStyle(e).display") == "none" and texte(pg, "#headerVeloNom") == "Mon gravel"
+              assert pg.evaluate("sessionStorage.getItem('vtt_code')") == JETON
+              pg.close()
+              # Session périmée ou retirée par Math : on l'oublie et on demande de se reconnecter.
+              pg = ouvrir(stockage_local="localStorage.setItem('maillons_session','ses_perimee'); localStorage.setItem('maillons_deja_inscrit','1');")
+              assert pg.eval_on_selector("#authScreen", "e => getComputedStyle(e).display") == "flex" and visible(pg, "#authPanneauConnexion")
+              assert pg.evaluate("localStorage.getItem('maillons_session')") is None and pg.evaluate("sessionStorage.getItem('vtt_code')") is None
+              pg.close()
+
+              # 7) Math entre avec son code d'accès : pas de formulaire de mot de passe, son ancien chemin marche.
+              pg = ouvrir()
+              pg.click("#authLienCode"); pg.fill("#authInput", "code-de-math"); pg.click("#authValiderCode"); pg.wait_for_timeout(1200)
+              assert pg.eval_on_selector("#authScreen", "e => getComputedStyle(e).display") == "none"
+              assert pg.evaluate("localStorage.getItem('maillons_deja_inscrit')") == "1" and pg.evaluate("localStorage.getItem('maillons_session')") is None
+              pg.evaluate("location.hash = '#reglages'"); pg.wait_for_timeout(300)
+              assert texte(pg, "#compteIdentite") == "Connecté : Math" and not visible(pg, "#formMotDePasse") and visible(pg, "#boutonDeconnexion")
+              pg.close()
+              nav.close()
+
+          assert not erreurs, erreurs
+          print("OK: écran d'accès (inscription, connexion, code d'accès, mot de passe, déconnexion) dans un vrai navigateur")
+          PY
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_ecran_acces.py"
       - name: Tester la recherche avec l'IA (copier-coller) dans un vrai navigateur
         env:
           SQLITE_PATH: ${{ runner.temp }}/maillons-ia-test.db
