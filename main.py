@@ -51,6 +51,9 @@ REGLAGES_PAR_DEFAUT = {
 LONGUEUR_MINI_CODE = 8
 
 
+PREFIXE_SESSION = "ses_"
+
+
 def empreinte_code(code, sel):
     """Empreinte d'un code personnel : le code n'est jamais stocké en clair.
     SHA-256 salé et non un calcul lent : le navigateur renvoie le code à chaque
@@ -101,6 +104,9 @@ def definir_code_personne(cursor, personne_id, code):
             "Code trop court (%d caractères au minimum)." % LONGUEUR_MINI_CODE
         )
 
+    if code.startswith(PREFIXE_SESSION):
+        raise ValueError("Ce code est réservé.")
+
     if CODE_ACCES and hmac.compare_digest(code.encode("utf-8"), CODE_ACCES.encode("utf-8")):
         raise ValueError("Ce code est déjà utilisé.")
 
@@ -140,7 +146,10 @@ def verifier_auth(x_code_acces=None):
     if hmac.compare_digest(envoye, CODE_ACCES.encode("utf-8")):
         return 1
 
-    personne = trouver_personne_par_code(x_code_acces or "")
+    if (x_code_acces or "").startswith(PREFIXE_SESSION):
+        personne = trouver_personne_par_session(x_code_acces)
+    else:
+        personne = trouver_personne_par_code(x_code_acces or "")
 
     if personne is not None:
         return personne
@@ -817,6 +826,39 @@ def init_db():
     # Vide pour Math, dont le code est celui réglé dans Render (CODE_ACCES).
     ajouter_colonne(cursor, "personnes", "code_sel", "TEXT")
     ajouter_colonne(cursor, "personnes", "code_hash", "TEXT")
+
+    # Connexion par e-mail + mot de passe : le mot de passe n'est jamais gardé,
+    # seulement son empreinte lente (PBKDF2 avec sel). Après trop d'essais ratés,
+    # la connexion est bloquée quelques minutes.
+    ajouter_colonne(cursor, "personnes", "mot_de_passe", "TEXT")
+    ajouter_colonne(cursor, "personnes", "mdp_provisoire", "INTEGER DEFAULT 0")
+    ajouter_colonne(cursor, "personnes", "echecs_connexion", "INTEGER DEFAULT 0")
+    ajouter_colonne(cursor, "personnes", "bloque_jusqua", "TEXT")
+
+    # Sessions : un jeton aléatoire remis à la connexion ; seule son empreinte est gardée.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS sessions (
+            jeton_hash TEXT PRIMARY KEY,
+            personne_id INTEGER NOT NULL,
+            cree_le TEXT NOT NULL,
+            expire_le TEXT NOT NULL
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS sessions_personne ON sessions (personne_id)")
+
+    # Invitations : code à usage unique donné par Math pour accéder au formulaire d'inscription.
+    cursor.execute(f"""
+        CREATE TABLE IF NOT EXISTS invitations (
+            id {db.AUTO_ID},
+            code_hash TEXT NOT NULL UNIQUE,
+            pour TEXT,
+            cree_le TEXT NOT NULL,
+            expire_le TEXT NOT NULL,
+            utilisee_par INTEGER,
+            utilisee_le TEXT,
+            annulee INTEGER DEFAULT 0
+        )
+    """)
 
     cursor.execute("""
         INSERT INTO personnes (id, nom, est_admin, actif, cree_le)
@@ -14220,12 +14262,17 @@ def lister_personnes(x_code_acces: Optional[str] = Header(default=None)):
         cursor.execute("""
             SELECT p.id, p.nom, p.est_admin, p.actif,
                    CASE WHEN p.code_hash IS NULL THEN 0 ELSE 1 END,
-                   (SELECT COUNT(*) FROM velos v WHERE v.personne_id = p.id)
+                   (SELECT COUNT(*) FROM velos v WHERE v.personne_id = p.id),
+                   p.email,
+                   CASE WHEN p.mot_de_passe IS NULL THEN 0 ELSE 1 END,
+                   p.mdp_provisoire
             FROM personnes p ORDER BY p.id
         """)
         return [
             {"id": r[0], "nom": r[1], "est_admin": bool(r[2]), "actif": bool(r[3]),
-             "a_un_code": r[0] == 1 or bool(r[4]), "nb_velos": r[5]}
+             "a_un_code": r[0] == 1 or bool(r[4]), "nb_velos": r[5],
+             "email": r[6], "a_un_mot_de_passe": bool(r[7]),
+             "mot_de_passe_provisoire": bool(r[8])}
             for r in cursor.fetchall()
         ]
     finally:
@@ -14367,9 +14414,485 @@ def supprimer_personne(personne_id: int, x_code_acces: Optional[str] = Header(de
         for velo in velos:
             effacer_donnees_velo(cursor, velo[0])
         cursor.execute("DELETE FROM reglages_personne WHERE personne_id = ?", (personne_id,))
+        cursor.execute("DELETE FROM sessions WHERE personne_id = ?", (personne_id,))
+        cursor.execute("UPDATE invitations SET utilisee_par = NULL WHERE utilisee_par = ?", (personne_id,))
         cursor.execute("DELETE FROM personnes WHERE id = ?", (personne_id,))
         conn.commit()
         return {"statut": "success", "id": personne_id, "nom": personne[1], "velos_effaces": len(velos)}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Inscription sur invitation, connexion par e-mail + mot de passe, sessions
+# ---------------------------------------------------------------------------
+
+ITERATIONS_MDP = 300000
+DUREE_SESSION_JOURS = 90
+DUREE_INVITATION_JOURS = 7
+ESSAIS_AVANT_BLOCAGE = 5
+DUREE_BLOCAGE_MINUTES = 10
+LONGUEUR_MINI_MDP = 8
+LONGUEUR_MAXI_MDP = 128
+MOTS_DE_PASSE_TROP_FACILES = {
+    "12345678", "123456789", "1234567890", "azertyui", "azertyuiop", "motdepasse",
+    "password", "password1", "qwertyui", "qwertyuiop", "00000000", "11111111",
+    "maillons", "maillons1", "velo1234", "vttvttvtt",
+}
+TYPES_VELO_AUTORISES = {
+    "vtt_electrique", "vtt", "enduro", "descente",
+    "gravel", "gravel_electrique", "route", "route_electrique"
+}
+MESSAGE_CONNEXION_REFUSEE = "E-mail ou mot de passe incorrect."
+_FAUX_MOT_DE_PASSE_STOCKE = []
+
+
+def iso_utc(moment):
+    return moment.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def hacher_mot_de_passe(mot_de_passe, iterations=ITERATIONS_MDP):
+    """Empreinte lente d'un mot de passe : pbkdf2_sha256$tours$sel$empreinte."""
+    sel = secrets.token_hex(16)
+    empreinte = hashlib.pbkdf2_hmac(
+        "sha256", mot_de_passe.encode("utf-8"), sel.encode("utf-8"), iterations
+    ).hex()
+    return "pbkdf2_sha256$%d$%s$%s" % (iterations, sel, empreinte)
+
+
+def verifier_mot_de_passe(mot_de_passe, stocke):
+    try:
+        algo, tours, sel, attendu = (stocke or "").split("$")
+        tours = int(tours)
+    except ValueError:
+        return False
+    if algo != "pbkdf2_sha256" or tours < 1:
+        return False
+    calcule = hashlib.pbkdf2_hmac(
+        "sha256", (mot_de_passe or "").encode("utf-8"), sel.encode("utf-8"), tours
+    ).hex()
+    return hmac.compare_digest(calcule, attendu)
+
+
+def depenser_le_meme_temps(mot_de_passe):
+    """E-mail inconnu ou sans mot de passe : on fait le même calcul lent, pour que
+    la durée de la réponse ne révèle pas si l'adresse existe."""
+    if not _FAUX_MOT_DE_PASSE_STOCKE:
+        _FAUX_MOT_DE_PASSE_STOCKE.append(hacher_mot_de_passe(secrets.token_hex(8)))
+    verifier_mot_de_passe(mot_de_passe, _FAUX_MOT_DE_PASSE_STOCKE[0])
+
+
+def nettoyer_email(email):
+    """Adresse e-mail en minuscules, ou None si elle n'a pas une forme plausible."""
+    e = (email or "").strip().lower()
+    if not e or len(e) > 254 or e.count("@") != 1 or any(c.isspace() for c in e):
+        return None
+    debut, domaine = e.split("@")
+    if not debut or "." not in domaine or domaine.startswith(".") or domaine.endswith(".") or ".." in domaine:
+        return None
+    return e
+
+
+def verifier_regles_mot_de_passe(mot_de_passe, confirmation, email=None):
+    if mot_de_passe != confirmation:
+        raise HTTPException(status_code=400, detail="Les deux mots de passe ne sont pas identiques.")
+    if len(mot_de_passe) < LONGUEUR_MINI_MDP:
+        raise HTTPException(
+            status_code=400,
+            detail="Le mot de passe doit faire au moins %d caractères." % LONGUEUR_MINI_MDP
+        )
+    if len(mot_de_passe) > LONGUEUR_MAXI_MDP:
+        raise HTTPException(
+            status_code=400,
+            detail="Le mot de passe est trop long (%d caractères au maximum)." % LONGUEUR_MAXI_MDP
+        )
+    minuscules = mot_de_passe.strip().lower()
+    if not minuscules or minuscules in MOTS_DE_PASSE_TROP_FACILES or (email and minuscules == email):
+        raise HTTPException(
+            status_code=400,
+            detail="Ce mot de passe est trop facile à deviner. Choisis-en un autre."
+        )
+
+
+def empreinte_jeton(jeton):
+    return hashlib.sha256(jeton.encode("utf-8")).hexdigest()
+
+
+def creer_session(cursor, personne_id):
+    """Ouvre une session et renvoie son jeton (donné une seule fois)."""
+    jeton = PREFIXE_SESSION + secrets.token_urlsafe(32)
+    maintenant = datetime.now(timezone.utc)
+    cursor.execute("DELETE FROM sessions WHERE expire_le < ?", (iso_utc(maintenant),))
+    cursor.execute(
+        "INSERT INTO sessions (jeton_hash, personne_id, cree_le, expire_le) VALUES (?, ?, ?, ?)",
+        (empreinte_jeton(jeton), personne_id, iso_utc(maintenant),
+         iso_utc(maintenant + timedelta(days=DUREE_SESSION_JOURS)))
+    )
+    return jeton
+
+
+def trouver_personne_par_session(jeton):
+    """Numéro de la personne active à qui appartient ce jeton de session, sinon None."""
+    if not jeton or not jeton.startswith(PREFIXE_SESSION) or len(jeton) > 200:
+        return None
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT s.personne_id FROM sessions s
+            JOIN personnes p ON p.id = s.personne_id
+            WHERE s.jeton_hash = ? AND s.expire_le > ? AND p.actif = 1
+        """, (empreinte_jeton(jeton), iso_utc(datetime.now(timezone.utc))))
+        ligne = cursor.fetchone()
+        return ligne[0] if ligne else None
+    finally:
+        conn.close()
+
+
+def generer_code_invitation():
+    """Code d'invitation lisible de 16 caractères, par exemple k7m2-9xqa-t4wd-h6pn."""
+    signes = "".join(secrets.choice(ALPHABET_CODE) for _ in range(16))
+    return "-".join(signes[i:i + 4] for i in range(0, 16, 4))
+
+
+def empreinte_invitation(code):
+    return hashlib.sha256(("invitation:" + (code or "").strip().lower()).encode("utf-8")).hexdigest()
+
+
+class NouvelleInvitationRequest(BaseModel):
+    pour: Optional[str] = Field(default=None, max_length=60)
+
+
+class InscriptionRequest(BaseModel):
+    code_invitation: str = Field(min_length=1, max_length=64)
+    nom: str = Field(min_length=1, max_length=60)
+    email: str = Field(min_length=1, max_length=254)
+    mot_de_passe: str = Field(min_length=1, max_length=200)
+    confirmation: str = Field(min_length=1, max_length=200)
+    type_velo: Optional[str] = Field(default="vtt_electrique", max_length=40)
+    nom_velo: Optional[str] = Field(default=None, max_length=80)
+    date_achat: Optional[str] = Field(default=None, max_length=10)
+
+
+class ConnexionRequest(BaseModel):
+    email: str = Field(min_length=1, max_length=254)
+    mot_de_passe: str = Field(min_length=1, max_length=200)
+
+
+class ChangerMotDePasseRequest(BaseModel):
+    ancien: str = Field(min_length=1, max_length=200)
+    nouveau: str = Field(min_length=1, max_length=200)
+    confirmation: str = Field(min_length=1, max_length=200)
+
+
+@app.post("/api/invitations")
+def creer_invitation(data: NouvelleInvitationRequest, x_code_acces: Optional[str] = Header(default=None)):
+    """Crée un code d'invitation (usage unique, 7 jours). Renvoyé une seule fois."""
+    exiger_admin(x_code_acces)
+    pour = " ".join((data.pour or "").split()) or None
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        maintenant = datetime.now(timezone.utc)
+        for _ in range(20):
+            code = generer_code_invitation()
+            cursor.execute("SELECT id FROM invitations WHERE code_hash = ?", (empreinte_invitation(code),))
+            if cursor.fetchone() is None:
+                break
+        else:
+            raise HTTPException(status_code=500, detail="Impossible de générer un code. Réessaie.")
+        expire = iso_utc(maintenant + timedelta(days=DUREE_INVITATION_JOURS))
+        cursor.execute(
+            "INSERT INTO invitations (code_hash, pour, cree_le, expire_le) VALUES (?, ?, ?, ?)",
+            (empreinte_invitation(code), pour, iso_utc(maintenant), expire)
+        )
+        cursor.execute("SELECT id FROM invitations WHERE code_hash = ?", (empreinte_invitation(code),))
+        invitation_id = cursor.fetchone()[0]
+        conn.commit()
+        return {"statut": "success", "id": invitation_id, "code": code, "pour": pour, "expire_le": expire}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+@app.get("/api/invitations")
+def lister_invitations(x_code_acces: Optional[str] = Header(default=None)):
+    """Les 30 dernières invitations avec leur état (le code lui-même n'est jamais renvoyé)."""
+    exiger_admin(x_code_acces)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT i.id, i.pour, i.cree_le, i.expire_le, i.utilisee_par, i.annulee, p.nom
+            FROM invitations i LEFT JOIN personnes p ON p.id = i.utilisee_par
+            ORDER BY i.id DESC LIMIT 30
+        """)
+        maintenant = iso_utc(datetime.now(timezone.utc))
+        resultat = []
+        for r in cursor.fetchall():
+            if r[5]:
+                etat = "annulee"
+            elif r[4] is not None:
+                etat = "utilisee"
+            elif r[3] <= maintenant:
+                etat = "expiree"
+            else:
+                etat = "en_attente"
+            resultat.append({"id": r[0], "pour": r[1], "cree_le": r[2], "expire_le": r[3],
+                             "etat": etat, "utilisee_par": r[6]})
+        return resultat
+    finally:
+        conn.close()
+
+
+@app.post("/api/invitations/{invitation_id}/annuler")
+def annuler_invitation(invitation_id: int, x_code_acces: Optional[str] = Header(default=None)):
+    exiger_admin(x_code_acces)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT utilisee_par, annulee FROM invitations WHERE id = ?", (invitation_id,))
+        ligne = cursor.fetchone()
+        if ligne is None:
+            raise HTTPException(status_code=404, detail="Invitation introuvable.")
+        if ligne[0] is not None:
+            raise HTTPException(status_code=400, detail="Cette invitation est déjà utilisée.")
+        cursor.execute("UPDATE invitations SET annulee = 1 WHERE id = ?", (invitation_id,))
+        conn.commit()
+        return {"statut": "success", "id": invitation_id}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+@app.post("/api/inscription")
+def inscription(data: InscriptionRequest):
+    """Crée un compte avec un code d'invitation (page publique : le code d'invitation fait office de clé).
+    Renvoie un jeton de session : la personne est connectée tout de suite."""
+    mauvaise_invitation = HTTPException(status_code=403, detail="Code d'invitation invalide ou expiré.")
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        maintenant = iso_utc(datetime.now(timezone.utc))
+        cursor.execute(
+            "SELECT id FROM invitations WHERE code_hash = ? AND utilisee_par IS NULL AND annulee = 0 AND expire_le > ?",
+            (empreinte_invitation(data.code_invitation), maintenant)
+        )
+        invitation = cursor.fetchone()
+        if invitation is None:
+            time.sleep(0.5)
+            raise mauvaise_invitation
+
+        nom = " ".join(data.nom.split())
+        if not nom:
+            raise HTTPException(status_code=400, detail="Donne ton prénom.")
+        email = nettoyer_email(data.email)
+        if email is None:
+            raise HTTPException(status_code=400, detail="Cette adresse e-mail n'a pas l'air valide.")
+        verifier_regles_mot_de_passe(data.mot_de_passe, data.confirmation, email)
+        type_velo = (data.type_velo or "vtt_electrique").strip().lower()
+        if type_velo not in TYPES_VELO_AUTORISES:
+            raise HTTPException(status_code=400, detail="Type de vélo inconnu.")
+        nom_velo = " ".join((data.nom_velo or "").split()) or "Mon vélo"
+        date_achat = data.date_achat.strip() if data.date_achat else None
+        if date_achat:
+            try:
+                date.fromisoformat(date_achat)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Date d'achat non valide.")
+
+        cursor.execute("SELECT id FROM personnes WHERE LOWER(nom) = LOWER(?)", (nom,))
+        if cursor.fetchone() is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="Ce prénom est déjà pris : ajoute une initiale, par exemple Paul D."
+            )
+        cursor.execute("SELECT id FROM personnes WHERE LOWER(email) = ?", (email,))
+        if cursor.fetchone() is not None:
+            raise HTTPException(status_code=409, detail="Cette adresse e-mail est déjà utilisée.")
+
+        cursor.execute(
+            "INSERT INTO personnes (nom, email, est_admin, actif, cree_le, mot_de_passe, mdp_provisoire) "
+            "VALUES (?, ?, 0, 1, ?, ?, 0)",
+            (nom, email, maintenant, hacher_mot_de_passe(data.mot_de_passe))
+        )
+        cursor.execute("SELECT id FROM personnes WHERE email = ?", (email,))
+        personne_id = cursor.fetchone()[0]
+
+        # Usage unique : on réserve l'invitation puis on relit qui l'a obtenue.
+        # Si deux personnes l'utilisent en même temps, une seule la garde.
+        cursor.execute(
+            "UPDATE invitations SET utilisee_par = ?, utilisee_le = ? "
+            "WHERE id = ? AND utilisee_par IS NULL AND annulee = 0 AND expire_le > ?",
+            (personne_id, maintenant, invitation[0], maintenant)
+        )
+        cursor.execute("SELECT utilisee_par FROM invitations WHERE id = ?", (invitation[0],))
+        if cursor.fetchone()[0] != personne_id:
+            raise mauvaise_invitation
+
+        velo_id = inserer_velo(
+            cursor, personne_id, type_velo, nom_velo,
+            NouveauVeloRequest(nom=nom_velo, type=type_velo, date_achat=date_achat), date_achat
+        )
+        jeton = creer_session(cursor, personne_id)
+        conn.commit()
+        return {"statut": "success", "token": jeton, "id": personne_id, "nom": nom, "velo_id": velo_id}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+@app.post("/api/connexion")
+def connexion(data: ConnexionRequest):
+    """Connexion par e-mail + mot de passe. Renvoie un jeton de session."""
+    email = nettoyer_email(data.email)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        ligne = None
+        if email is not None:
+            cursor.execute("""
+                SELECT id, nom, est_admin, actif, mot_de_passe, mdp_provisoire, echecs_connexion, bloque_jusqua
+                FROM personnes WHERE email = ?
+            """, (email,))
+            ligne = cursor.fetchone()
+
+        if ligne is None or not ligne[4]:
+            depenser_le_meme_temps(data.mot_de_passe)
+            time.sleep(0.5)
+            raise HTTPException(status_code=401, detail=MESSAGE_CONNEXION_REFUSEE)
+
+        maintenant = datetime.now(timezone.utc)
+        if ligne[7] and ligne[7] > iso_utc(maintenant):
+            raise HTTPException(
+                status_code=429,
+                detail="Trop d'essais. Réessaie dans quelques minutes."
+            )
+
+        if not verifier_mot_de_passe(data.mot_de_passe, ligne[4]):
+            echecs = (ligne[6] or 0) + 1
+            if echecs >= ESSAIS_AVANT_BLOCAGE:
+                cursor.execute(
+                    "UPDATE personnes SET echecs_connexion = 0, bloque_jusqua = ? WHERE id = ?",
+                    (iso_utc(maintenant + timedelta(minutes=DUREE_BLOCAGE_MINUTES)), ligne[0])
+                )
+            else:
+                cursor.execute("UPDATE personnes SET echecs_connexion = ? WHERE id = ?", (echecs, ligne[0]))
+            conn.commit()
+            time.sleep(0.5)
+            raise HTTPException(status_code=401, detail=MESSAGE_CONNEXION_REFUSEE)
+
+        if not ligne[3]:
+            raise HTTPException(
+                status_code=403,
+                detail="Ce compte est désactivé. Contacte l'administrateur."
+            )
+
+        cursor.execute(
+            "UPDATE personnes SET echecs_connexion = 0, bloque_jusqua = NULL WHERE id = ?", (ligne[0],)
+        )
+        jeton = creer_session(cursor, ligne[0])
+        conn.commit()
+        return {
+            "statut": "success", "token": jeton, "id": ligne[0], "nom": ligne[1],
+            "est_admin": bool(ligne[2]), "mot_de_passe_provisoire": bool(ligne[5])
+        }
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+@app.post("/api/deconnexion")
+def deconnexion(x_code_acces: Optional[str] = Header(default=None)):
+    """Ferme la session en cours (sans effet pour une connexion par code d'accès)."""
+    verifier_auth(x_code_acces)
+    if (x_code_acces or "").startswith(PREFIXE_SESSION):
+        conn = db.connect()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM sessions WHERE jeton_hash = ?", (empreinte_jeton(x_code_acces),))
+            conn.commit()
+        finally:
+            conn.close()
+    return {"statut": "success"}
+
+
+@app.post("/api/mot-de-passe")
+def changer_mot_de_passe(data: ChangerMotDePasseRequest, x_code_acces: Optional[str] = Header(default=None)):
+    """Change son propre mot de passe ; les autres appareils sont déconnectés."""
+    personne_id = verifier_auth(x_code_acces)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT mot_de_passe, email FROM personnes WHERE id = ?", (personne_id,))
+        ligne = cursor.fetchone()
+        if not ligne or not ligne[0]:
+            raise HTTPException(
+                status_code=400,
+                detail="Ton compte se connecte avec un code d'accès : il n'a pas de mot de passe à changer."
+            )
+        if not verifier_mot_de_passe(data.ancien, ligne[0]):
+            time.sleep(0.5)
+            raise HTTPException(status_code=403, detail="L'ancien mot de passe est incorrect.")
+        verifier_regles_mot_de_passe(data.nouveau, data.confirmation, ligne[1])
+        if data.nouveau == data.ancien:
+            raise HTTPException(status_code=400, detail="Choisis un mot de passe différent de l'ancien.")
+        cursor.execute(
+            "UPDATE personnes SET mot_de_passe = ?, mdp_provisoire = 0, echecs_connexion = 0, bloque_jusqua = NULL "
+            "WHERE id = ?",
+            (hacher_mot_de_passe(data.nouveau), personne_id)
+        )
+        cursor.execute(
+            "DELETE FROM sessions WHERE personne_id = ? AND jeton_hash <> ?",
+            (personne_id, empreinte_jeton(x_code_acces or ""))
+        )
+        conn.commit()
+        return {"statut": "success"}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+@app.post("/api/personnes/{personne_id}/reinitialiser-mot-de-passe")
+def reinitialiser_mot_de_passe(personne_id: int, x_code_acces: Optional[str] = Header(default=None)):
+    """Donne un mot de passe provisoire (affiché une seule fois) à une personne qui a oublié le sien."""
+    exiger_admin(x_code_acces)
+    if personne_id == 1:
+        raise HTTPException(status_code=400, detail="Ton accès se règle dans Render (CODE_ACCES), pas ici.")
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT mot_de_passe FROM personnes WHERE id = ?", (personne_id,))
+        ligne = cursor.fetchone()
+        if ligne is None:
+            raise HTTPException(status_code=404, detail="Personne introuvable.")
+        if not ligne[0]:
+            raise HTTPException(
+                status_code=400,
+                detail="Cette personne se connecte avec un code d'accès : utilise « Nouveau code »."
+            )
+        provisoire = generer_code_personnel()
+        cursor.execute(
+            "UPDATE personnes SET mot_de_passe = ?, mdp_provisoire = 1, echecs_connexion = 0, bloque_jusqua = NULL "
+            "WHERE id = ?",
+            (hacher_mot_de_passe(provisoire), personne_id)
+        )
+        cursor.execute("DELETE FROM sessions WHERE personne_id = ?", (personne_id,))
+        conn.commit()
+        return {"statut": "success", "id": personne_id, "mot_de_passe_provisoire": provisoire}
     except Exception:
         conn.rollback()
         raise
