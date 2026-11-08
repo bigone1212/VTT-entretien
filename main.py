@@ -6456,7 +6456,7 @@ def accueil():
                 }
             });
 
-            // Retrouve la session gardée sur ce téléphone (connexion par e-mail), puis vérifie qu'elle est valable.
+            // Vérifie si un code est déjà en mémoire (ou une session gardée sur ce téléphone après une connexion par e-mail).
             if (!sessionStorage.getItem('vtt_code')) {
                 const gardee = sessionMemorisee();
                 if (gardee) sessionStorage.setItem('vtt_code', gardee);
