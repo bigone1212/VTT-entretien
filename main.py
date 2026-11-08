@@ -51,6 +51,9 @@ REGLAGES_PAR_DEFAUT = {
 LONGUEUR_MINI_CODE = 8
 
 
+PREFIXE_SESSION = "ses_"
+
+
 def empreinte_code(code, sel):
     """Empreinte d'un code personnel : le code n'est jamais stocké en clair.
     SHA-256 salé et non un calcul lent : le navigateur renvoie le code à chaque
@@ -101,6 +104,9 @@ def definir_code_personne(cursor, personne_id, code):
             "Code trop court (%d caractères au minimum)." % LONGUEUR_MINI_CODE
         )
 
+    if code.startswith(PREFIXE_SESSION):
+        raise ValueError("Ce code est réservé.")
+
     if CODE_ACCES and hmac.compare_digest(code.encode("utf-8"), CODE_ACCES.encode("utf-8")):
         raise ValueError("Ce code est déjà utilisé.")
 
@@ -140,7 +146,10 @@ def verifier_auth(x_code_acces=None):
     if hmac.compare_digest(envoye, CODE_ACCES.encode("utf-8")):
         return 1
 
-    personne = trouver_personne_par_code(x_code_acces or "")
+    if (x_code_acces or "").startswith(PREFIXE_SESSION):
+        personne = trouver_personne_par_session(x_code_acces)
+    else:
+        personne = trouver_personne_par_code(x_code_acces or "")
 
     if personne is not None:
         return personne
@@ -818,6 +827,39 @@ def init_db():
     ajouter_colonne(cursor, "personnes", "code_sel", "TEXT")
     ajouter_colonne(cursor, "personnes", "code_hash", "TEXT")
 
+    # Connexion par e-mail + mot de passe : le mot de passe n'est jamais gardé,
+    # seulement son empreinte lente (PBKDF2 avec sel). Après trop d'essais ratés,
+    # la connexion est bloquée quelques minutes.
+    ajouter_colonne(cursor, "personnes", "mot_de_passe", "TEXT")
+    ajouter_colonne(cursor, "personnes", "mdp_provisoire", "INTEGER DEFAULT 0")
+    ajouter_colonne(cursor, "personnes", "echecs_connexion", "INTEGER DEFAULT 0")
+    ajouter_colonne(cursor, "personnes", "bloque_jusqua", "TEXT")
+
+    # Sessions : un jeton aléatoire remis à la connexion ; seule son empreinte est gardée.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS sessions (
+            jeton_hash TEXT PRIMARY KEY,
+            personne_id INTEGER NOT NULL,
+            cree_le TEXT NOT NULL,
+            expire_le TEXT NOT NULL
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS sessions_personne ON sessions (personne_id)")
+
+    # Invitations : code à usage unique donné par Math pour accéder au formulaire d'inscription.
+    cursor.execute(f"""
+        CREATE TABLE IF NOT EXISTS invitations (
+            id {db.AUTO_ID},
+            code_hash TEXT NOT NULL UNIQUE,
+            pour TEXT,
+            cree_le TEXT NOT NULL,
+            expire_le TEXT NOT NULL,
+            utilisee_par INTEGER,
+            utilisee_le TEXT,
+            annulee INTEGER DEFAULT 0
+        )
+    """)
+
     cursor.execute("""
         INSERT INTO personnes (id, nom, est_admin, actif, cree_le)
         VALUES (1, 'Math', 1, 1, ?)
@@ -1328,12 +1370,15 @@ def accueil():
                 display: flex;
                 flex-direction: column;
                 align-items: center;
-                justify-content: center;
+                justify-content: flex-start;
                 z-index: 9999;
                 padding: 20px;
+                overflow-y: auto;
+                box-sizing: border-box;
             }
 
             .auth-card {
+                margin: auto;
                 background: var(--card-bg);
                 padding: 24px;
                 border-radius: 14px;
@@ -1348,6 +1393,50 @@ def accueil():
                 margin-top: 0;
                 font-size: 1.2rem;
                 color: var(--strong);
+            }
+
+            .auth-card h3 {
+                margin: 4px 0 4px;
+                font-size: 1.05rem;
+                color: var(--strong);
+            }
+
+            .auth-panneau {
+                text-align: left;
+                margin-top: 12px;
+            }
+
+            .auth-panneau[hidden] {
+                display: none;
+            }
+
+            .auth-panneau label {
+                display: block;
+                font-size: 0.75rem;
+                color: var(--text-muted);
+                margin: 0 0 4px;
+            }
+
+            .auth-liens {
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+                margin-top: 14px;
+            }
+
+            button.auth-lien {
+                background: none;
+                border: none;
+                color: var(--accent);
+                font-size: 0.85rem;
+                cursor: pointer;
+                padding: 6px;
+                text-decoration: underline;
+            }
+
+            button.auth-lien.discret {
+                color: var(--text-muted);
+                font-size: 0.75rem;
             }
 
             .header {
@@ -1554,6 +1643,7 @@ def accueil():
 
             input[type="number"],
             input[type="text"],
+            input[type="email"],
             input[type="date"],
             input[type="password"],
             select {
@@ -2009,6 +2099,10 @@ def accueil():
             #blocPersonnes .personne-nom { font-weight: 600; }
             #blocPersonnes .personne-actions { display: flex; gap: 8px; flex-wrap: wrap; }
             #blocPersonnes .personne-actions button { flex: 1 1 120px; }
+            #blocPersonnes .invitations-bloc { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); }
+            #blocPersonnes .invitation-ligne { padding: 8px 0; border-top: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+            #blocPersonnes .invitation-ligne:first-child { border-top: none; }
+            #blocPersonnes .invitation-ligne button { flex: 0 0 auto; }
             #blocPersonnes .code-affiche {
                 margin: 12px 0;
                 padding: 12px;
@@ -3940,10 +4034,56 @@ def accueil():
             <div class="auth-card">
                 <svg class="logo" style="width:64px;height:64px;border-radius:18px;margin-bottom:12px" role="img" aria-label="Maillons"><use href="#logo-maillon"/></svg>
                 <h2>Maillons</h2>
-                <p class="form-help">Entrez votre code d'accès</p>
-                <input type="password" id="authInput" placeholder="Code secret" style="margin-bottom: 12px;">
-                <button class="btn-primary" style="width: 100%;" onclick="tenterConnexion()">Valider</button>
+                <h3 id="authTitrePanneau"></h3>
+                <p class="form-help" id="authAccroche"></p>
+
+                <form id="authPanneauConnexion" class="auth-panneau">
+                    <label for="authEmail">Adresse e-mail</label>
+                    <input type="email" id="authEmail" autocomplete="username" maxlength="200" required>
+                    <label for="authMdp">Mot de passe</label>
+                    <input type="password" id="authMdp" autocomplete="current-password" maxlength="200" required>
+                    <button type="submit" class="btn-primary" style="width: 100%;">Se connecter</button>
+                </form>
+
+                <form id="authPanneauInscription" class="auth-panneau" hidden>
+                    <label for="inscCode">Code d'invitation</label>
+                    <input type="text" id="inscCode" autocomplete="off" maxlength="60" placeholder="xxxx-xxxx-xxxx-xxxx" required>
+                    <label for="inscNom">Prénom</label>
+                    <input type="text" id="inscNom" autocomplete="given-name" maxlength="60" required>
+                    <label for="inscEmail">Adresse e-mail</label>
+                    <input type="email" id="inscEmail" autocomplete="username" maxlength="200" required>
+                    <label for="inscMdp">Mot de passe (8 caractères au moins)</label>
+                    <input type="password" id="inscMdp" autocomplete="new-password" maxlength="200" required>
+                    <label for="inscMdp2">Confirmation du mot de passe</label>
+                    <input type="password" id="inscMdp2" autocomplete="new-password" maxlength="200" required>
+                    <label for="inscType">Type de vélo</label>
+                    <select id="inscType">
+                    <option value="vtt_electrique">VTT électrique</option>
+                    <option value="vtt">VTT sans moteur</option>
+                    <option value="enduro">Enduro</option>
+                    <option value="descente">Descente</option>
+                    <option value="gravel">Gravel</option>
+                    <option value="gravel_electrique">Gravel électrique</option>
+                    <option value="route">Route</option>
+                    <option value="route_electrique">Route électrique</option>
+                    </select>
+                    <label for="inscNomVelo">Nom du vélo</label>
+                    <input type="text" id="inscNomVelo" maxlength="80" placeholder="Ex. : Mon gravel">
+                    <label for="inscDate">Date d'achat du vélo</label>
+                    <input type="date" id="inscDate">
+                    <button type="submit" class="btn-primary" style="width: 100%;">Créer mon profil</button>
+                </form>
+
+                <div id="authPanneauCode" class="auth-panneau" hidden>
+                    <input type="password" id="authInput" placeholder="Code secret" style="margin-bottom: 12px;">
+                    <button class="btn-primary" id="authValiderCode" style="width: 100%;" onclick="tenterConnexion()">Valider</button>
+                </div>
+
                 <p id="authError" style="color: var(--danger); font-size: 0.8rem; margin-top: 10px;"></p>
+                <div class="auth-liens">
+                    <button type="button" class="auth-lien" id="authLienAutre"></button>
+                    <button type="button" class="auth-lien discret" id="authLienCode">Se connecter avec un code d'accès</button>
+                </div>
             </div>
         </div>
 
@@ -4110,6 +4250,25 @@ def accueil():
             <p class="form-help" id="messageMesVelos" aria-live="polite"></p>
         </section>
 
+        <section class="mes-reglages" id="blocCompte">
+            <div class="mr-titre">
+                <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c0-4 3.4-7 7.5-7s7.5 3 7.5 7"/></svg><span>Mon compte</span></strong>
+            </div>
+            <p class="form-help" id="compteIdentite"></p>
+            <p class="form-help" id="compteProvisoire" style="display:none; color: var(--danger);">Ton mot de passe est provisoire : choisis-en un nouveau ci-dessous.</p>
+            <form id="formMotDePasse" style="display:none;">
+                <label for="mdpAncien">Mot de passe actuel</label>
+                <input id="mdpAncien" type="password" autocomplete="current-password" maxlength="200" required>
+                <label for="mdpNouveau">Nouveau mot de passe (8 caractères au moins)</label>
+                <input id="mdpNouveau" type="password" autocomplete="new-password" maxlength="200" required>
+                <label for="mdpNouveau2">Confirmation du nouveau mot de passe</label>
+                <input id="mdpNouveau2" type="password" autocomplete="new-password" maxlength="200" required>
+                <button type="submit" class="btn-primary" style="width:100%; margin-top:8px;">Changer mon mot de passe</button>
+            </form>
+            <p class="form-help" id="messageCompte" aria-live="polite"></p>
+            <button type="button" id="boutonDeconnexion" class="btn-primary" style="width:100%; margin-top:8px;">Se déconnecter</button>
+        </section>
+
         <section class="mes-reglages" id="blocPersonnes" style="display:none;">
             <div class="mr-titre">
                 <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.4"/><path d="M16 14.2c2.9 0 5 2.2 5 5.2"/></svg><span>Personnes</span></strong>
@@ -4122,6 +4281,7 @@ def accueil():
                 <div class="form-help">Ce code ne sera plus jamais affiché : note-le ou envoie-le maintenant à la personne.</div>
                 <div class="personne-actions">
                     <button type="button" id="boutonCopierCode">Copier le code</button>
+                    <button type="button" id="boutonCopierInvitation" style="display:none;">Copier le message à envoyer</button>
                     <button type="button" id="boutonCodeNote">J’ai noté le code</button>
                 </div>
             </div>
@@ -4141,6 +4301,16 @@ def accueil():
                 </select>
                 <button type="submit" class="btn-primary" style="width:100%; margin-top:8px;">Ajouter cette personne</button>
             </form>
+            <div class="invitations-bloc">
+                <strong>Inviter quelqu'un</strong>
+                <p class="form-help">Crée un code d'invitation à usage unique (valable 7 jours). La personne s'inscrit toute seule avec son e-mail et son mot de passe.</p>
+                <form id="formInviter">
+                    <label for="invitationPour">Pour qui ? (facultatif, pour t'y retrouver)</label>
+                    <input id="invitationPour" type="text" maxlength="60" placeholder="Ex. : Julie">
+                    <button type="submit" class="btn-primary" style="width:100%; margin-top:8px;">Créer une invitation</button>
+                </form>
+                <div id="listeInvitations"></div>
+            </div>
             <p class="form-help" id="messagePersonnes" aria-live="polite"></p>
         </section>
         <dialog id="fenetreVelo" class="fenetre-velo" aria-labelledby="titreFormVelo">
@@ -4982,7 +5152,7 @@ def accueil():
             window.fetch = function (url, options) {
                 let cible = url;
                 if (typeof url === 'string' && url.startsWith('/api/')) {
-                    const globales = ['/api/velos', '/api/sauvegarde', '/api/reglages'];
+                    const globales = ['/api/velos', '/api/sauvegarde', '/api/reglages', '/api/connexion', '/api/inscription', '/api/deconnexion', '/api/mot-de-passe'];
                     if (!globales.some(p => url === p || url.startsWith(p + '?'))) {
                         const separateur = url.includes('?') ? '&' : '?';
                         cible = url + separateur + 'velo_id=' + encodeURIComponent(veloActifId);
@@ -6140,6 +6310,137 @@ def accueil():
                 }
             });
 
+            // ----- Écran d'accès : S'inscrire / Se connecter / code d'accès -----
+            const CLE_INSCRIT = 'maillons_deja_inscrit';
+            const CLE_SESSION = 'maillons_session';
+
+            function dejaInscrit() {
+                try { return localStorage.getItem(CLE_INSCRIT) === '1'; } catch (e) { return false; }
+            }
+
+            function noterInscrit() {
+                try { localStorage.setItem(CLE_INSCRIT, '1'); } catch (e) { /* mémoire du téléphone indisponible */ }
+            }
+
+            function sessionMemorisee() {
+                try { return localStorage.getItem(CLE_SESSION) || ''; } catch (e) { return ''; }
+            }
+
+            function memoriserSession(jeton) {
+                try {
+                    if (jeton) localStorage.setItem(CLE_SESSION, jeton);
+                    else localStorage.removeItem(CLE_SESSION);
+                } catch (e) { /* mémoire du téléphone indisponible */ }
+            }
+
+            function oublierSession() {
+                sessionStorage.removeItem('vtt_code');
+                sessionStorage.removeItem('maillons_velo_id');
+                sessionStorage.removeItem('maillons_mdp_provisoire');
+                memoriserSession('');
+            }
+
+            const PANNEAUX_ACCES = {
+                connexion: 'authPanneauConnexion',
+                inscription: 'authPanneauInscription',
+                code: 'authPanneauCode'
+            };
+
+            function montrerPanneau(nom) {
+                Object.keys(PANNEAUX_ACCES).forEach(cle => {
+                    document.getElementById(PANNEAUX_ACCES[cle]).hidden = cle !== nom;
+                });
+                const titres = { connexion: 'Se connecter', inscription: "S'inscrire", code: "Code d'accès" };
+                const accroches = {
+                    connexion: dejaInscrit() ? 'Content de te revoir !' : 'Entre ton e-mail et ton mot de passe.',
+                    inscription: "Crée ton profil avec le code d'invitation que Math t'a donné.",
+                    code: "Entre le code d'accès qu'on t'a donné."
+                };
+                const autres = {
+                    connexion: { texte: "Pas encore de compte ? S'inscrire", vers: 'inscription' },
+                    inscription: { texte: 'Déjà un compte ? Se connecter', vers: 'connexion' },
+                    code: { texte: 'Retour à la connexion par e-mail', vers: 'connexion' }
+                };
+                document.getElementById('authTitrePanneau').textContent = titres[nom];
+                document.getElementById('authAccroche').textContent = accroches[nom];
+                const lien = document.getElementById('authLienAutre');
+                lien.textContent = autres[nom].texte;
+                lien.dataset.vers = autres[nom].vers;
+                document.getElementById('authLienCode').hidden = nom === 'code';
+                document.getElementById('authError').textContent = '';
+            }
+
+            document.getElementById('authLienAutre').addEventListener('click', event => {
+                montrerPanneau(event.currentTarget.dataset.vers);
+            });
+            document.getElementById('authLienCode').addEventListener('click', () => montrerPanneau('code'));
+            montrerPanneau(dejaInscrit() ? 'connexion' : 'inscription');
+
+            function messageErreurServeur(data, defaut) {
+                return data && typeof data.detail === 'string' ? data.detail : defaut;
+            }
+
+            // Envoie le formulaire ; en cas de succès, mémorise la session et recharge la page
+            // (état propre, surtout si deux personnes se servent du même téléphone).
+            async function envoyerAcces(adresse, corps, bouton) {
+                const erreur = document.getElementById('authError');
+                erreur.textContent = '';
+                bouton.disabled = true;
+                try {
+                    const res = await fetch(adresse, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(corps)
+                    });
+                    let data = null;
+                    try { data = await res.json(); } catch (e) { data = null; }
+                    if (!res.ok || !data || !data.token) {
+                        erreur.textContent = messageErreurServeur(data, 'Impossible de continuer. Réessaie dans un instant.');
+                        return;
+                    }
+                    sessionStorage.removeItem('maillons_velo_id');
+                    sessionStorage.setItem('vtt_code', data.token);
+                    if (data.mot_de_passe_provisoire) sessionStorage.setItem('maillons_mdp_provisoire', '1');
+                    else sessionStorage.removeItem('maillons_mdp_provisoire');
+                    memoriserSession(data.token);
+                    noterInscrit();
+                    location.reload();
+                } catch (e) {
+                    erreur.textContent = 'Erreur de connexion.';
+                } finally {
+                    bouton.disabled = false;
+                }
+            }
+
+            document.getElementById('authPanneauConnexion').addEventListener('submit', event => {
+                event.preventDefault();
+                envoyerAcces('/api/connexion', {
+                    email: document.getElementById('authEmail').value.trim(),
+                    mot_de_passe: document.getElementById('authMdp').value
+                }, event.currentTarget.querySelector('button[type="submit"]'));
+            });
+
+            document.getElementById('authPanneauInscription').addEventListener('submit', event => {
+                event.preventDefault();
+                const mdp = document.getElementById('inscMdp').value;
+                if (mdp !== document.getElementById('inscMdp2').value) {
+                    document.getElementById('authError').textContent = 'Les deux mots de passe ne sont pas identiques.';
+                    return;
+                }
+                const corps = {
+                    code_invitation: document.getElementById('inscCode').value.trim(),
+                    nom: document.getElementById('inscNom').value.trim(),
+                    email: document.getElementById('inscEmail').value.trim(),
+                    mot_de_passe: mdp,
+                    confirmation: mdp,
+                    type_velo: document.getElementById('inscType').value,
+                    nom_velo: document.getElementById('inscNomVelo').value.trim()
+                };
+                const date = document.getElementById('inscDate').value;
+                if (date) corps.date_achat = date;
+                envoyerAcces('/api/inscription', corps, event.currentTarget.querySelector('button[type="submit"]'));
+            });
+
             async function tenterConnexion() {
                 const code = document.getElementById('authInput').value;
                 sessionStorage.setItem('vtt_code', code);
@@ -6147,6 +6448,8 @@ def accueil():
                 try {
                     const res = await fetch('/api/velos', { headers: getHeaders() });
                     if (res.ok) {
+                        noterInscrit();
+                        memoriserSession('');
                         document.getElementById('authScreen').style.display = 'none';
                         await chargerVelos();
                         chargerEtat();
@@ -6168,7 +6471,11 @@ def accueil():
                 }
             });
 
-            // Vérifie si un code est déjà en mémoire
+            // Vérifie si un code est déjà en mémoire (ou une session gardée sur ce téléphone après une connexion par e-mail).
+            if (!sessionStorage.getItem('vtt_code')) {
+                const gardee = sessionMemorisee();
+                if (gardee) sessionStorage.setItem('vtt_code', gardee);
+            }
             if (sessionStorage.getItem('vtt_code')) {
                 fetch('/api/velos', { headers: getHeaders() }).then(async res => {
                     if (res.ok) {
@@ -6176,9 +6483,61 @@ def accueil():
                         await chargerVelos();
                         await chargerEtat();
                         chargerMoi();
+                    } else if (res.status === 401) {
+                        oublierSession();
                     }
                 });
             }
+
+            // ----- Mon compte : changer le mot de passe, se déconnecter -----
+            function majBlocCompte(nom) {
+                const aSession = (sessionStorage.getItem('vtt_code') || '').startsWith('ses_');
+                document.getElementById('compteIdentite').textContent = nom ? 'Connecté : ' + nom : '';
+                document.getElementById('formMotDePasse').style.display = aSession ? '' : 'none';
+                const provisoire = aSession && sessionStorage.getItem('maillons_mdp_provisoire') === '1';
+                document.getElementById('compteProvisoire').style.display = provisoire ? '' : 'none';
+                if (provisoire && location.hash !== '#reglages') location.hash = '#reglages';
+            }
+
+            document.getElementById('formMotDePasse').addEventListener('submit', async event => {
+                event.preventDefault();
+                const formulaire = event.currentTarget;
+                const message = document.getElementById('messageCompte');
+                message.textContent = '';
+                const nouveau = document.getElementById('mdpNouveau').value;
+                try {
+                    const res = await fetch('/api/mot-de-passe', {
+                        method: 'POST',
+                        headers: getHeaders(),
+                        body: JSON.stringify({
+                            ancien: document.getElementById('mdpAncien').value,
+                            nouveau: nouveau,
+                            confirmation: document.getElementById('mdpNouveau2').value
+                        })
+                    });
+                    let data = null;
+                    try { data = await res.json(); } catch (e) { data = null; }
+                    if (!res.ok) {
+                        message.textContent = messageErreurServeur(data, 'Changement impossible.');
+                        return;
+                    }
+                    formulaire.reset();
+                    sessionStorage.removeItem('maillons_mdp_provisoire');
+                    document.getElementById('compteProvisoire').style.display = 'none';
+                    message.textContent = 'Mot de passe changé. Tes autres appareils devront se reconnecter.';
+                } catch (e) {
+                    message.textContent = 'Erreur de connexion.';
+                }
+            });
+
+            document.getElementById('boutonDeconnexion').addEventListener('click', async () => {
+                try {
+                    await fetch('/api/deconnexion', { method: 'POST', headers: getHeaders() });
+                } catch (e) { /* hors ligne : on se déconnecte quand même sur ce téléphone */ }
+                oublierSession();
+                location.hash = '';
+                location.reload();
+            });
 
             // ----- Administration des personnes (bloc visible seulement pour Math) -----
             function messagePersonnes(texte) {
@@ -6190,16 +6549,33 @@ def accueil():
                 return data && typeof data.detail === 'string' ? data.detail : defaut;
             }
 
-            function montrerCode(titre, code) {
+            let messageACopier = '';
+
+            function montrerCode(titre, code, message) {
                 document.getElementById('codeAfficheTitre').textContent = titre;
                 document.getElementById('codeAfficheValeur').textContent = code;
-                document.getElementById('codeAffiche').style.display = 'block';
+                messageACopier = message || '';
+                document.getElementById('boutonCopierInvitation').style.display = messageACopier ? '' : 'none';
+                const boite = document.getElementById('codeAffiche');
+                boite.style.display = 'block';
+                boite.scrollIntoView({ block: 'center' });
             }
 
             function cacherCode() {
                 document.getElementById('codeAfficheValeur').textContent = '';
+                messageACopier = '';
+                document.getElementById('boutonCopierInvitation').style.display = 'none';
                 document.getElementById('codeAffiche').style.display = 'none';
             }
+
+            document.getElementById('boutonCopierInvitation').addEventListener('click', async () => {
+                try {
+                    await navigator.clipboard.writeText(messageACopier);
+                    messagePersonnes('Message copié : colle-le dans ta messagerie.');
+                } catch (e) {
+                    messagePersonnes('Copie impossible : recopie le code à la main.');
+                }
+            });
 
             document.getElementById('boutonCodeNote').addEventListener('click', cacherCode);
             document.getElementById('boutonCopierCode').addEventListener('click', async () => {
@@ -6230,13 +6606,18 @@ def accueil():
                     admin = !!(moi && moi.est_admin === true);
                     moiId = moi && typeof moi.id === 'number' ? moi.id : null;
                     afficherBienvenue(moi ? moi.nom : '');
+                    majBlocCompte(moi ? moi.nom : '');
                 } catch (e) {
                     admin = false;
                     afficherBienvenue('');
+                    majBlocCompte('');
                 }
                 const bloc = document.getElementById('blocPersonnes');
                 if (bloc) bloc.style.display = admin ? '' : 'none';
-                if (admin) await chargerPersonnes();
+                if (admin) {
+                    await chargerPersonnes();
+                    await chargerInvitations();
+                }
             }
 
             function boutonPersonne(texte, action) {
@@ -6262,14 +6643,16 @@ def accueil():
                         nom.textContent = p.nom + (p.est_admin ? ' (administrateur)' : '') + (p.actif ? '' : ' · désactivée');
                         const detail = document.createElement('div');
                         detail.className = 'form-help';
-                        detail.textContent = p.nb_velos + (p.nb_velos > 1 ? ' vélos' : ' vélo');
+                        detail.textContent = p.nb_velos + (p.nb_velos > 1 ? ' vélos' : ' vélo') + (p.email ? ' · ' + p.email : '');
                         ligne.append(nom, detail);
                         const actions = document.createElement('div');
                         actions.className = 'personne-actions';
                         actions.append(boutonPersonne('Renommer', () => renommerPersonne(p)));
                         if (!p.est_admin) {
                             actions.append(
-                                boutonPersonne('Nouveau code', () => nouveauCodePersonne(p)),
+                                p.a_un_mot_de_passe
+                                    ? boutonPersonne('Mot de passe provisoire', () => motDePasseProvisoire(p))
+                                    : boutonPersonne('Nouveau code', () => nouveauCodePersonne(p)),
                                 boutonPersonne(p.actif ? 'Désactiver' : 'Réactiver', () => activerPersonne(p, !p.actif)),
                                 boutonPersonne('Supprimer', () => supprimerPersonne(p))
                             );
@@ -6279,6 +6662,22 @@ def accueil():
                     });
                 } catch (e) {
                     messagePersonnes(e.message || 'Lecture impossible.');
+                }
+            }
+
+            async function motDePasseProvisoire(p) {
+                if (!confirm('Donner un mot de passe provisoire à ' + p.nom + ' ? Son mot de passe actuel ne marchera plus et ses appareils seront déconnectés.')) return;
+                messagePersonnes('');
+                try {
+                    const res = await fetch('/api/personnes/' + p.id + '/reinitialiser-mot-de-passe', { method: 'POST', headers: getHeaders() });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(texteErreur(data, 'Changement impossible.'));
+                    const message = 'Salut ' + p.nom + ' ! Voici ton mot de passe provisoire pour Maillons : ' + data.mot_de_passe_provisoire
+                        + ' . Ouvre ' + location.origin + ' , connecte-toi avec ton e-mail et ce mot de passe, puis choisis-en un nouveau.';
+                    montrerCode('Mot de passe provisoire de ' + p.nom + ' :', data.mot_de_passe_provisoire, message);
+                    await chargerPersonnes();
+                } catch (e) {
+                    messagePersonnes(e.message || 'Changement impossible.');
                 }
             }
 
@@ -6352,6 +6751,84 @@ def accueil():
                     messagePersonnes(e.message || 'Suppression impossible.');
                 }
             }
+
+            function dateCourte(iso) {
+                const d = new Date(iso);
+                return isNaN(d.getTime()) ? '' : d.toLocaleDateString('fr-FR');
+            }
+
+            async function chargerInvitations() {
+                const zone = document.getElementById('listeInvitations');
+                try {
+                    const res = await fetch('/api/invitations', { headers: getHeaders() });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(texteErreur(data, 'Lecture impossible.'));
+                    zone.replaceChildren();
+                    data.forEach(inv => {
+                        const ligne = document.createElement('div');
+                        ligne.className = 'invitation-ligne';
+                        const texte = document.createElement('div');
+                        const etats = {
+                            en_attente: 'En attente, expire le ' + dateCourte(inv.expire_le),
+                            utilisee: 'Utilisée par ' + (inv.utilisee_par || 'une personne'),
+                            expiree: 'Expirée',
+                            annulee: 'Annulée'
+                        };
+                        const titre = document.createElement('div');
+                        titre.className = 'personne-nom';
+                        titre.textContent = inv.pour ? 'Pour ' + inv.pour : 'Invitation n° ' + inv.id;
+                        const detail = document.createElement('div');
+                        detail.className = 'form-help';
+                        detail.style.margin = '2px 0 0';
+                        detail.textContent = etats[inv.etat] || inv.etat;
+                        texte.append(titre, detail);
+                        ligne.append(texte);
+                        if (inv.etat === 'en_attente') {
+                            ligne.append(boutonPersonne('Annuler', () => annulerInvitation(inv)));
+                        }
+                        zone.appendChild(ligne);
+                    });
+                } catch (e) {
+                    messagePersonnes(e.message || 'Lecture impossible.');
+                }
+            }
+
+            async function annulerInvitation(inv) {
+                if (!confirm("Annuler cette invitation ? Son code ne marchera plus.")) return;
+                messagePersonnes('');
+                try {
+                    const res = await fetch('/api/invitations/' + inv.id + '/annuler', { method: 'POST', headers: getHeaders() });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(texteErreur(data, 'Annulation impossible.'));
+                    await chargerInvitations();
+                    messagePersonnes('Invitation annulée.');
+                } catch (e) {
+                    messagePersonnes(e.message || 'Annulation impossible.');
+                }
+            }
+
+            document.getElementById('formInviter').addEventListener('submit', async (event) => {
+                event.preventDefault();
+                const formulaire = event.currentTarget;
+                messagePersonnes('');
+                const pour = document.getElementById('invitationPour').value.trim();
+                try {
+                    const res = await fetch('/api/invitations', {
+                        method: 'POST',
+                        headers: getHeaders(),
+                        body: JSON.stringify(pour ? { pour: pour } : {})
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(texteErreur(data, 'Création impossible.'));
+                    formulaire.reset();
+                    const message = 'Bienvenue sur Maillons ! Ouvre ' + location.origin + " , touche S'inscrire et entre ce code d'invitation : "
+                        + data.code + " . Il marche une seule fois, pendant 7 jours.";
+                    montrerCode('Invitation' + (data.pour ? ' pour ' + data.pour : '') + ' :', data.code, message);
+                    await chargerInvitations();
+                } catch (e) {
+                    messagePersonnes(e.message || 'Création impossible.');
+                }
+            });
 
             document.getElementById('formAjouterPersonne').addEventListener('submit', async (event) => {
                 event.preventDefault();
@@ -14220,12 +14697,17 @@ def lister_personnes(x_code_acces: Optional[str] = Header(default=None)):
         cursor.execute("""
             SELECT p.id, p.nom, p.est_admin, p.actif,
                    CASE WHEN p.code_hash IS NULL THEN 0 ELSE 1 END,
-                   (SELECT COUNT(*) FROM velos v WHERE v.personne_id = p.id)
+                   (SELECT COUNT(*) FROM velos v WHERE v.personne_id = p.id),
+                   p.email,
+                   CASE WHEN p.mot_de_passe IS NULL THEN 0 ELSE 1 END,
+                   p.mdp_provisoire
             FROM personnes p ORDER BY p.id
         """)
         return [
             {"id": r[0], "nom": r[1], "est_admin": bool(r[2]), "actif": bool(r[3]),
-             "a_un_code": r[0] == 1 or bool(r[4]), "nb_velos": r[5]}
+             "a_un_code": r[0] == 1 or bool(r[4]), "nb_velos": r[5],
+             "email": r[6], "a_un_mot_de_passe": bool(r[7]),
+             "mot_de_passe_provisoire": bool(r[8])}
             for r in cursor.fetchall()
         ]
     finally:
@@ -14367,9 +14849,485 @@ def supprimer_personne(personne_id: int, x_code_acces: Optional[str] = Header(de
         for velo in velos:
             effacer_donnees_velo(cursor, velo[0])
         cursor.execute("DELETE FROM reglages_personne WHERE personne_id = ?", (personne_id,))
+        cursor.execute("DELETE FROM sessions WHERE personne_id = ?", (personne_id,))
+        cursor.execute("UPDATE invitations SET utilisee_par = NULL WHERE utilisee_par = ?", (personne_id,))
         cursor.execute("DELETE FROM personnes WHERE id = ?", (personne_id,))
         conn.commit()
         return {"statut": "success", "id": personne_id, "nom": personne[1], "velos_effaces": len(velos)}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Inscription sur invitation, connexion par e-mail + mot de passe, sessions
+# ---------------------------------------------------------------------------
+
+ITERATIONS_MDP = 300000
+DUREE_SESSION_JOURS = 90
+DUREE_INVITATION_JOURS = 7
+ESSAIS_AVANT_BLOCAGE = 5
+DUREE_BLOCAGE_MINUTES = 10
+LONGUEUR_MINI_MDP = 8
+LONGUEUR_MAXI_MDP = 128
+MOTS_DE_PASSE_TROP_FACILES = {
+    "12345678", "123456789", "1234567890", "azertyui", "azertyuiop", "motdepasse",
+    "password", "password1", "qwertyui", "qwertyuiop", "00000000", "11111111",
+    "maillons", "maillons1", "velo1234", "vttvttvtt",
+}
+TYPES_VELO_AUTORISES = {
+    "vtt_electrique", "vtt", "enduro", "descente",
+    "gravel", "gravel_electrique", "route", "route_electrique"
+}
+MESSAGE_CONNEXION_REFUSEE = "E-mail ou mot de passe incorrect."
+_FAUX_MOT_DE_PASSE_STOCKE = []
+
+
+def iso_utc(moment):
+    return moment.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def hacher_mot_de_passe(mot_de_passe, iterations=ITERATIONS_MDP):
+    """Empreinte lente d'un mot de passe : pbkdf2_sha256$tours$sel$empreinte."""
+    sel = secrets.token_hex(16)
+    empreinte = hashlib.pbkdf2_hmac(
+        "sha256", mot_de_passe.encode("utf-8"), sel.encode("utf-8"), iterations
+    ).hex()
+    return "pbkdf2_sha256$%d$%s$%s" % (iterations, sel, empreinte)
+
+
+def verifier_mot_de_passe(mot_de_passe, stocke):
+    try:
+        algo, tours, sel, attendu = (stocke or "").split("$")
+        tours = int(tours)
+    except ValueError:
+        return False
+    if algo != "pbkdf2_sha256" or tours < 1:
+        return False
+    calcule = hashlib.pbkdf2_hmac(
+        "sha256", (mot_de_passe or "").encode("utf-8"), sel.encode("utf-8"), tours
+    ).hex()
+    return hmac.compare_digest(calcule, attendu)
+
+
+def depenser_le_meme_temps(mot_de_passe):
+    """E-mail inconnu ou sans mot de passe : on fait le même calcul lent, pour que
+    la durée de la réponse ne révèle pas si l'adresse existe."""
+    if not _FAUX_MOT_DE_PASSE_STOCKE:
+        _FAUX_MOT_DE_PASSE_STOCKE.append(hacher_mot_de_passe(secrets.token_hex(8)))
+    verifier_mot_de_passe(mot_de_passe, _FAUX_MOT_DE_PASSE_STOCKE[0])
+
+
+def nettoyer_email(email):
+    """Adresse e-mail en minuscules, ou None si elle n'a pas une forme plausible."""
+    e = (email or "").strip().lower()
+    if not e or len(e) > 254 or e.count("@") != 1 or any(c.isspace() for c in e):
+        return None
+    debut, domaine = e.split("@")
+    if not debut or "." not in domaine or domaine.startswith(".") or domaine.endswith(".") or ".." in domaine:
+        return None
+    return e
+
+
+def verifier_regles_mot_de_passe(mot_de_passe, confirmation, email=None):
+    if mot_de_passe != confirmation:
+        raise HTTPException(status_code=400, detail="Les deux mots de passe ne sont pas identiques.")
+    if len(mot_de_passe) < LONGUEUR_MINI_MDP:
+        raise HTTPException(
+            status_code=400,
+            detail="Le mot de passe doit faire au moins %d caractères." % LONGUEUR_MINI_MDP
+        )
+    if len(mot_de_passe) > LONGUEUR_MAXI_MDP:
+        raise HTTPException(
+            status_code=400,
+            detail="Le mot de passe est trop long (%d caractères au maximum)." % LONGUEUR_MAXI_MDP
+        )
+    minuscules = mot_de_passe.strip().lower()
+    if not minuscules or minuscules in MOTS_DE_PASSE_TROP_FACILES or (email and minuscules == email):
+        raise HTTPException(
+            status_code=400,
+            detail="Ce mot de passe est trop facile à deviner. Choisis-en un autre."
+        )
+
+
+def empreinte_jeton(jeton):
+    return hashlib.sha256(jeton.encode("utf-8")).hexdigest()
+
+
+def creer_session(cursor, personne_id):
+    """Ouvre une session et renvoie son jeton (donné une seule fois)."""
+    jeton = PREFIXE_SESSION + secrets.token_urlsafe(32)
+    maintenant = datetime.now(timezone.utc)
+    cursor.execute("DELETE FROM sessions WHERE expire_le < ?", (iso_utc(maintenant),))
+    cursor.execute(
+        "INSERT INTO sessions (jeton_hash, personne_id, cree_le, expire_le) VALUES (?, ?, ?, ?)",
+        (empreinte_jeton(jeton), personne_id, iso_utc(maintenant),
+         iso_utc(maintenant + timedelta(days=DUREE_SESSION_JOURS)))
+    )
+    return jeton
+
+
+def trouver_personne_par_session(jeton):
+    """Numéro de la personne active à qui appartient ce jeton de session, sinon None."""
+    if not jeton or not jeton.startswith(PREFIXE_SESSION) or len(jeton) > 200:
+        return None
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT s.personne_id FROM sessions s
+            JOIN personnes p ON p.id = s.personne_id
+            WHERE s.jeton_hash = ? AND s.expire_le > ? AND p.actif = 1
+        """, (empreinte_jeton(jeton), iso_utc(datetime.now(timezone.utc))))
+        ligne = cursor.fetchone()
+        return ligne[0] if ligne else None
+    finally:
+        conn.close()
+
+
+def generer_code_invitation():
+    """Code d'invitation lisible de 16 caractères, par exemple k7m2-9xqa-t4wd-h6pn."""
+    signes = "".join(secrets.choice(ALPHABET_CODE) for _ in range(16))
+    return "-".join(signes[i:i + 4] for i in range(0, 16, 4))
+
+
+def empreinte_invitation(code):
+    return hashlib.sha256(("invitation:" + (code or "").strip().lower()).encode("utf-8")).hexdigest()
+
+
+class NouvelleInvitationRequest(BaseModel):
+    pour: Optional[str] = Field(default=None, max_length=60)
+
+
+class InscriptionRequest(BaseModel):
+    code_invitation: str = Field(min_length=1, max_length=64)
+    nom: str = Field(min_length=1, max_length=60)
+    email: str = Field(min_length=1, max_length=254)
+    mot_de_passe: str = Field(min_length=1, max_length=200)
+    confirmation: str = Field(min_length=1, max_length=200)
+    type_velo: Optional[str] = Field(default="vtt_electrique", max_length=40)
+    nom_velo: Optional[str] = Field(default=None, max_length=80)
+    date_achat: Optional[str] = Field(default=None, max_length=10)
+
+
+class ConnexionRequest(BaseModel):
+    email: str = Field(min_length=1, max_length=254)
+    mot_de_passe: str = Field(min_length=1, max_length=200)
+
+
+class ChangerMotDePasseRequest(BaseModel):
+    ancien: str = Field(min_length=1, max_length=200)
+    nouveau: str = Field(min_length=1, max_length=200)
+    confirmation: str = Field(min_length=1, max_length=200)
+
+
+@app.post("/api/invitations")
+def creer_invitation(data: NouvelleInvitationRequest, x_code_acces: Optional[str] = Header(default=None)):
+    """Crée un code d'invitation (usage unique, 7 jours). Renvoyé une seule fois."""
+    exiger_admin(x_code_acces)
+    pour = " ".join((data.pour or "").split()) or None
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        maintenant = datetime.now(timezone.utc)
+        for _ in range(20):
+            code = generer_code_invitation()
+            cursor.execute("SELECT id FROM invitations WHERE code_hash = ?", (empreinte_invitation(code),))
+            if cursor.fetchone() is None:
+                break
+        else:
+            raise HTTPException(status_code=500, detail="Impossible de générer un code. Réessaie.")
+        expire = iso_utc(maintenant + timedelta(days=DUREE_INVITATION_JOURS))
+        cursor.execute(
+            "INSERT INTO invitations (code_hash, pour, cree_le, expire_le) VALUES (?, ?, ?, ?)",
+            (empreinte_invitation(code), pour, iso_utc(maintenant), expire)
+        )
+        cursor.execute("SELECT id FROM invitations WHERE code_hash = ?", (empreinte_invitation(code),))
+        invitation_id = cursor.fetchone()[0]
+        conn.commit()
+        return {"statut": "success", "id": invitation_id, "code": code, "pour": pour, "expire_le": expire}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+@app.get("/api/invitations")
+def lister_invitations(x_code_acces: Optional[str] = Header(default=None)):
+    """Les 30 dernières invitations avec leur état (le code lui-même n'est jamais renvoyé)."""
+    exiger_admin(x_code_acces)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT i.id, i.pour, i.cree_le, i.expire_le, i.utilisee_par, i.annulee, p.nom
+            FROM invitations i LEFT JOIN personnes p ON p.id = i.utilisee_par
+            ORDER BY i.id DESC LIMIT 30
+        """)
+        maintenant = iso_utc(datetime.now(timezone.utc))
+        resultat = []
+        for r in cursor.fetchall():
+            if r[5]:
+                etat = "annulee"
+            elif r[4] is not None:
+                etat = "utilisee"
+            elif r[3] <= maintenant:
+                etat = "expiree"
+            else:
+                etat = "en_attente"
+            resultat.append({"id": r[0], "pour": r[1], "cree_le": r[2], "expire_le": r[3],
+                             "etat": etat, "utilisee_par": r[6]})
+        return resultat
+    finally:
+        conn.close()
+
+
+@app.post("/api/invitations/{invitation_id}/annuler")
+def annuler_invitation(invitation_id: int, x_code_acces: Optional[str] = Header(default=None)):
+    exiger_admin(x_code_acces)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT utilisee_par, annulee FROM invitations WHERE id = ?", (invitation_id,))
+        ligne = cursor.fetchone()
+        if ligne is None:
+            raise HTTPException(status_code=404, detail="Invitation introuvable.")
+        if ligne[0] is not None:
+            raise HTTPException(status_code=400, detail="Cette invitation est déjà utilisée.")
+        cursor.execute("UPDATE invitations SET annulee = 1 WHERE id = ?", (invitation_id,))
+        conn.commit()
+        return {"statut": "success", "id": invitation_id}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+@app.post("/api/inscription")
+def inscription(data: InscriptionRequest):
+    """Crée un compte avec un code d'invitation (page publique : le code d'invitation fait office de clé).
+    Renvoie un jeton de session : la personne est connectée tout de suite."""
+    mauvaise_invitation = HTTPException(status_code=403, detail="Code d'invitation invalide ou expiré.")
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        maintenant = iso_utc(datetime.now(timezone.utc))
+        cursor.execute(
+            "SELECT id FROM invitations WHERE code_hash = ? AND utilisee_par IS NULL AND annulee = 0 AND expire_le > ?",
+            (empreinte_invitation(data.code_invitation), maintenant)
+        )
+        invitation = cursor.fetchone()
+        if invitation is None:
+            time.sleep(0.5)
+            raise mauvaise_invitation
+
+        nom = " ".join(data.nom.split())
+        if not nom:
+            raise HTTPException(status_code=400, detail="Donne ton prénom.")
+        email = nettoyer_email(data.email)
+        if email is None:
+            raise HTTPException(status_code=400, detail="Cette adresse e-mail n'a pas l'air valide.")
+        verifier_regles_mot_de_passe(data.mot_de_passe, data.confirmation, email)
+        type_velo = (data.type_velo or "vtt_electrique").strip().lower()
+        if type_velo not in TYPES_VELO_AUTORISES:
+            raise HTTPException(status_code=400, detail="Type de vélo inconnu.")
+        nom_velo = " ".join((data.nom_velo or "").split()) or "Mon vélo"
+        date_achat = data.date_achat.strip() if data.date_achat else None
+        if date_achat:
+            try:
+                date.fromisoformat(date_achat)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Date d'achat non valide.")
+
+        cursor.execute("SELECT id FROM personnes WHERE LOWER(nom) = LOWER(?)", (nom,))
+        if cursor.fetchone() is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="Ce prénom est déjà pris : ajoute une initiale, par exemple Paul D."
+            )
+        cursor.execute("SELECT id FROM personnes WHERE LOWER(email) = ?", (email,))
+        if cursor.fetchone() is not None:
+            raise HTTPException(status_code=409, detail="Cette adresse e-mail est déjà utilisée.")
+
+        cursor.execute(
+            "INSERT INTO personnes (nom, email, est_admin, actif, cree_le, mot_de_passe, mdp_provisoire) "
+            "VALUES (?, ?, 0, 1, ?, ?, 0)",
+            (nom, email, maintenant, hacher_mot_de_passe(data.mot_de_passe))
+        )
+        cursor.execute("SELECT id FROM personnes WHERE email = ?", (email,))
+        personne_id = cursor.fetchone()[0]
+
+        # Usage unique : on réserve l'invitation puis on relit qui l'a obtenue.
+        # Si deux personnes l'utilisent en même temps, une seule la garde.
+        cursor.execute(
+            "UPDATE invitations SET utilisee_par = ?, utilisee_le = ? "
+            "WHERE id = ? AND utilisee_par IS NULL AND annulee = 0 AND expire_le > ?",
+            (personne_id, maintenant, invitation[0], maintenant)
+        )
+        cursor.execute("SELECT utilisee_par FROM invitations WHERE id = ?", (invitation[0],))
+        if cursor.fetchone()[0] != personne_id:
+            raise mauvaise_invitation
+
+        velo_id = inserer_velo(
+            cursor, personne_id, type_velo, nom_velo,
+            NouveauVeloRequest(nom=nom_velo, type=type_velo, date_achat=date_achat), date_achat
+        )
+        jeton = creer_session(cursor, personne_id)
+        conn.commit()
+        return {"statut": "success", "token": jeton, "id": personne_id, "nom": nom, "velo_id": velo_id}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+@app.post("/api/connexion")
+def connexion(data: ConnexionRequest):
+    """Connexion par e-mail + mot de passe. Renvoie un jeton de session."""
+    email = nettoyer_email(data.email)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        ligne = None
+        if email is not None:
+            cursor.execute("""
+                SELECT id, nom, est_admin, actif, mot_de_passe, mdp_provisoire, echecs_connexion, bloque_jusqua
+                FROM personnes WHERE email = ?
+            """, (email,))
+            ligne = cursor.fetchone()
+
+        if ligne is None or not ligne[4]:
+            depenser_le_meme_temps(data.mot_de_passe)
+            time.sleep(0.5)
+            raise HTTPException(status_code=401, detail=MESSAGE_CONNEXION_REFUSEE)
+
+        maintenant = datetime.now(timezone.utc)
+        if ligne[7] and ligne[7] > iso_utc(maintenant):
+            raise HTTPException(
+                status_code=429,
+                detail="Trop d'essais. Réessaie dans quelques minutes."
+            )
+
+        if not verifier_mot_de_passe(data.mot_de_passe, ligne[4]):
+            echecs = (ligne[6] or 0) + 1
+            if echecs >= ESSAIS_AVANT_BLOCAGE:
+                cursor.execute(
+                    "UPDATE personnes SET echecs_connexion = 0, bloque_jusqua = ? WHERE id = ?",
+                    (iso_utc(maintenant + timedelta(minutes=DUREE_BLOCAGE_MINUTES)), ligne[0])
+                )
+            else:
+                cursor.execute("UPDATE personnes SET echecs_connexion = ? WHERE id = ?", (echecs, ligne[0]))
+            conn.commit()
+            time.sleep(0.5)
+            raise HTTPException(status_code=401, detail=MESSAGE_CONNEXION_REFUSEE)
+
+        if not ligne[3]:
+            raise HTTPException(
+                status_code=403,
+                detail="Ce compte est désactivé. Contacte l'administrateur."
+            )
+
+        cursor.execute(
+            "UPDATE personnes SET echecs_connexion = 0, bloque_jusqua = NULL WHERE id = ?", (ligne[0],)
+        )
+        jeton = creer_session(cursor, ligne[0])
+        conn.commit()
+        return {
+            "statut": "success", "token": jeton, "id": ligne[0], "nom": ligne[1],
+            "est_admin": bool(ligne[2]), "mot_de_passe_provisoire": bool(ligne[5])
+        }
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+@app.post("/api/deconnexion")
+def deconnexion(x_code_acces: Optional[str] = Header(default=None)):
+    """Ferme la session en cours (sans effet pour une connexion par code d'accès)."""
+    verifier_auth(x_code_acces)
+    if (x_code_acces or "").startswith(PREFIXE_SESSION):
+        conn = db.connect()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM sessions WHERE jeton_hash = ?", (empreinte_jeton(x_code_acces),))
+            conn.commit()
+        finally:
+            conn.close()
+    return {"statut": "success"}
+
+
+@app.post("/api/mot-de-passe")
+def changer_mot_de_passe(data: ChangerMotDePasseRequest, x_code_acces: Optional[str] = Header(default=None)):
+    """Change son propre mot de passe ; les autres appareils sont déconnectés."""
+    personne_id = verifier_auth(x_code_acces)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT mot_de_passe, email FROM personnes WHERE id = ?", (personne_id,))
+        ligne = cursor.fetchone()
+        if not ligne or not ligne[0]:
+            raise HTTPException(
+                status_code=400,
+                detail="Ton compte se connecte avec un code d'accès : il n'a pas de mot de passe à changer."
+            )
+        if not verifier_mot_de_passe(data.ancien, ligne[0]):
+            time.sleep(0.5)
+            raise HTTPException(status_code=403, detail="L'ancien mot de passe est incorrect.")
+        verifier_regles_mot_de_passe(data.nouveau, data.confirmation, ligne[1])
+        if data.nouveau == data.ancien:
+            raise HTTPException(status_code=400, detail="Choisis un mot de passe différent de l'ancien.")
+        cursor.execute(
+            "UPDATE personnes SET mot_de_passe = ?, mdp_provisoire = 0, echecs_connexion = 0, bloque_jusqua = NULL "
+            "WHERE id = ?",
+            (hacher_mot_de_passe(data.nouveau), personne_id)
+        )
+        cursor.execute(
+            "DELETE FROM sessions WHERE personne_id = ? AND jeton_hash <> ?",
+            (personne_id, empreinte_jeton(x_code_acces or ""))
+        )
+        conn.commit()
+        return {"statut": "success"}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+@app.post("/api/personnes/{personne_id}/reinitialiser-mot-de-passe")
+def reinitialiser_mot_de_passe(personne_id: int, x_code_acces: Optional[str] = Header(default=None)):
+    """Donne un mot de passe provisoire (affiché une seule fois) à une personne qui a oublié le sien."""
+    exiger_admin(x_code_acces)
+    if personne_id == 1:
+        raise HTTPException(status_code=400, detail="Ton accès se règle dans Render (CODE_ACCES), pas ici.")
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT mot_de_passe FROM personnes WHERE id = ?", (personne_id,))
+        ligne = cursor.fetchone()
+        if ligne is None:
+            raise HTTPException(status_code=404, detail="Personne introuvable.")
+        if not ligne[0]:
+            raise HTTPException(
+                status_code=400,
+                detail="Cette personne se connecte avec un code d'accès : utilise « Nouveau code »."
+            )
+        provisoire = generer_code_personnel()
+        cursor.execute(
+            "UPDATE personnes SET mot_de_passe = ?, mdp_provisoire = 1, echecs_connexion = 0, bloque_jusqua = NULL "
+            "WHERE id = ?",
+            (hacher_mot_de_passe(provisoire), personne_id)
+        )
+        cursor.execute("DELETE FROM sessions WHERE personne_id = ?", (personne_id,))
+        conn.commit()
+        return {"statut": "success", "id": personne_id, "mot_de_passe_provisoire": provisoire}
     except Exception:
         conn.rollback()
         raise

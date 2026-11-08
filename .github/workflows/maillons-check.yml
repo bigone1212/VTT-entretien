@@ -1513,6 +1513,14 @@ jobs:
               "activer_personne": "administration : réservée à l'administrateur (exiger_admin)",
               "supprimer_personne": "administration : réservée à l'administrateur (exiger_admin)",
               "renommer_personne": "administration : réservée à l'administrateur (exiger_admin)",
+              "inscription": "publique : protégée par un code d'invitation à usage unique",
+              "connexion": "publique : protégée par e-mail + mot de passe, avec blocage après 5 échecs",
+              "deconnexion": "ferme la session de la personne connectée (verifier_auth)",
+              "changer_mot_de_passe": "mot de passe de la personne connectée (verifier_auth)",
+              "creer_invitation": "administration : réservée à l'administrateur (exiger_admin)",
+              "lister_invitations": "administration : réservée à l'administrateur (exiger_admin)",
+              "annuler_invitation": "administration : réservée à l'administrateur (exiger_admin)",
+              "reinitialiser_mot_de_passe": "administration : réservée à l'administrateur (exiger_admin)",
           }
 
           arbre = ast.parse(open("main.py", encoding="utf-8").read())
@@ -1542,7 +1550,7 @@ jobs:
                   "La route %s ne contrôle pas le vélo demandé (controle_acces). "
                   "Ajoute le contrôle, ou justifie-la dans SANS_CONTROLE_DE_VELO." % nom
               )
-              if nom != "accueil":
+              if nom not in ("accueil", "inscription", "connexion"):
                   assert "verifier_auth" in appels or "exiger_admin" in appels, "La route %s n'a aucun contrôle d'accès" % nom
           for nom in SANS_CONTROLE_DE_VELO:
               assert nom in [r[0] for r in routes], "Liste d'exceptions périmée : %s n'est plus une route" % nom
@@ -1990,6 +1998,308 @@ jobs:
               c.execute("CREATE DATABASE maillons_admin")
           PY2
           DATABASE_URL=postgresql://postgres:postgres@localhost:5432/maillons_admin PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_admin.py"
+      - name: Vérifier l'inscription sur invitation, la connexion par e-mail et les sessions (SQLite puis PostgreSQL)
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-inscription-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_inscription.py" <<'PY'
+          import os
+          import re
+
+          import db
+          import main
+          from fastapi import HTTPException
+
+          # Les attentes de 0,5 s sur un refus ralentiraient inutilement ce test.
+          main.time.sleep = lambda secondes: None
+
+          CODE_MATH = "code-de-math-123"
+          main.CODE_ACCES = CODE_MATH
+          os.environ["CODE_ACCES"] = CODE_MATH
+          MDP = "velo-de-julie-2026"
+
+
+          def lire(sql, p=()):
+              c = db.connect()
+              cur = c.cursor()
+              cur.execute(sql, p)
+              r = [tuple(x) for x in cur.fetchall()]
+              c.close()
+              return r
+
+
+          def ecrire(sql, p=()):
+              c = db.connect()
+              cur = c.cursor()
+              cur.execute(sql, p)
+              c.commit()
+              c.close()
+
+
+          def refuse(statut, detail, fonction, *a, **k):
+              try:
+                  fonction(*a, **k)
+              except HTTPException as e:
+                  assert e.status_code == statut and e.detail == detail, (fonction.__name__, e.status_code, e.detail)
+                  return
+              raise AssertionError("%s aurait dû répondre %s" % (fonction.__name__, statut))
+
+
+          def refuse_statut(statut, fonction, *a, **k):
+              try:
+                  fonction(*a, **k)
+              except HTTPException as e:
+                  assert e.status_code == statut, (fonction.__name__, e.status_code, e.detail)
+                  return
+              raise AssertionError("%s aurait dû répondre %s" % (fonction.__name__, statut))
+
+
+          def invitation(pour=None):
+              return main.creer_invitation(main.NouvelleInvitationRequest(pour=pour), CODE_MATH)
+
+
+          def formulaire(code, **autres):
+              champs = dict(code_invitation=code, nom="Julie", email="Julie@Exemple.fr", mot_de_passe=MDP,
+                            confirmation=MDP, type_velo="gravel", nom_velo="Mon gravel", date_achat="2024-05-17")
+              champs.update(autres)
+              return main.InscriptionRequest(**champs)
+
+
+          def tout_le_texte():
+              """Tout ce que la base contient, en texte : on y cherche les secrets qui ne doivent pas y être."""
+              morceaux = []
+              for table in ("personnes", "sessions", "invitations"):
+                  morceaux += [str(x) for ligne in lire("SELECT * FROM " + table) for x in ligne]
+              return " | ".join(morceaux)
+
+
+          # ---------- 1. Fonctions de base
+          h1, h2 = main.hacher_mot_de_passe("abcdefgh"), main.hacher_mot_de_passe("abcdefgh")
+          assert h1 != h2 and h1.startswith("pbkdf2_sha256$300000$")
+          assert main.verifier_mot_de_passe("abcdefgh", h1) and not main.verifier_mot_de_passe("abcdefgi", h1)
+          for faux in (None, "", "n'importe quoi", "a$b$c$d", "pbkdf2_sha256$x$y$z", "md5$1$a$b"):
+              assert main.verifier_mot_de_passe("abcdefgh", faux) is False, faux
+          assert main.nettoyer_email("  Julie@Exemple.FR ") == "julie@exemple.fr"
+          for mauvais in ("", "julie", "julie@", "@exemple.fr", "a@b", "a@@b.fr", "a b@c.fr", "a@.fr", "a@b.", "a@b..fr", None):
+              assert main.nettoyer_email(mauvais) is None, mauvais
+
+          # ---------- 2. Invitations (réservées à Math)
+          inv = invitation("Julie")
+          assert re.fullmatch("[a-z2-9]{4}(-[a-z2-9]{4}){3}", inv["code"]), inv
+          assert inv["pour"] == "Julie" and inv["expire_le"] > main.iso_utc(main.datetime.now(main.timezone.utc))
+          assert inv["code"] not in tout_le_texte() and inv["code"].replace("-", "") not in tout_le_texte(), "le code ne doit pas être gardé en clair"
+          liste = main.lister_invitations(CODE_MATH)
+          assert [(x["id"], x["pour"], x["etat"], x["utilisee_par"]) for x in liste] == [(inv["id"], "Julie", "en_attente", None)]
+          assert "code" not in liste[0] and "code_hash" not in liste[0]
+          ami = main.ajouter_personne(main.NouvellePersonneRequest(nom="Ami"), CODE_MATH)  # connexion par code d'accès
+          refuse(403, "Réservé à l'administrateur.", main.creer_invitation, main.NouvelleInvitationRequest(), ami["code"])
+          refuse(403, "Réservé à l'administrateur.", main.lister_invitations, ami["code"])
+          refuse(403, "Réservé à l'administrateur.", main.annuler_invitation, inv["id"], ami["code"])
+          refuse_statut(401, main.creer_invitation, main.NouvelleInvitationRequest(), "faux")
+          assert invitation()["code"] != inv["code"]
+
+          # ---------- 3. Inscription : le cas normal
+          avant = lire("SELECT COUNT(*) FROM personnes")[0][0]
+          r = main.inscription(formulaire(inv["code"]))
+          assert r["statut"] == "success" and r["token"].startswith("ses_") and r["nom"] == "Julie", r
+          jeton, pid = r["token"], r["id"]
+          ligne = lire("SELECT email, est_admin, actif, mot_de_passe, mdp_provisoire, code_hash FROM personnes WHERE id = ?", (pid,))[0]
+          assert ligne[0] == "julie@exemple.fr" and ligne[1] == 0 and ligne[2] == 1 and ligne[4] == 0 and ligne[5] is None
+          assert ligne[3].startswith("pbkdf2_sha256$300000$")
+          texte = tout_le_texte()
+          assert MDP not in texte and jeton not in texte and jeton[4:] not in texte, "mot de passe et jeton jamais en clair"
+          assert lire("SELECT nom, type, date_achat, personne_id FROM velos WHERE id = ?", (r["velo_id"],)) == [("Mon gravel", "gravel", "2024-05-17", pid)]
+          assert lire("SELECT COUNT(*) FROM composants WHERE velo_id = ?", (r["velo_id"],))[0][0] > 0
+          etat = {x["id"]: x for x in main.lister_invitations(CODE_MATH)}[inv["id"]]
+          assert etat["etat"] == "utilisee" and etat["utilisee_par"] == "Julie"
+          # Le jeton ouvre exactement ce que le code ouvrait : ses vélos, rien de ceux des autres.
+          assert main.verifier_auth(jeton) == pid
+          assert main.qui_suis_je(jeton) == {"id": pid, "nom": "Julie", "est_admin": False}
+          assert [v["id"] for v in main.obtenir_velos(jeton)] == [r["velo_id"]]
+          refuse(404, "Vélo introuvable.", main.controle_acces, jeton, 1)
+          refuse(403, "Réservé à l'administrateur.", main.lister_personnes, jeton)
+          assert main.verifier_auth(CODE_MATH) == 1 and main.verifier_auth(ami["code"]) == ami["id"], "les anciens codes marchent toujours"
+
+          # ---------- 4. Invitation inutilisable : déjà utilisée, inconnue, annulée, expirée
+          MAUVAISE = "Code d'invitation invalide ou expiré."
+          refuse(403, MAUVAISE, main.inscription, formulaire(inv["code"], nom="Autre", email="autre@exemple.fr"))
+          refuse(403, MAUVAISE, main.inscription, formulaire("zzzz-zzzz-zzzz-zzzz", nom="Autre", email="autre@exemple.fr"))
+          annulee = invitation()
+          main.annuler_invitation(annulee["id"], CODE_MATH)
+          refuse(403, MAUVAISE, main.inscription, formulaire(annulee["code"], nom="Autre", email="autre@exemple.fr"))
+          refuse(400, "Cette invitation est déjà utilisée.", main.annuler_invitation, inv["id"], CODE_MATH)
+          refuse(404, "Invitation introuvable.", main.annuler_invitation, 9999, CODE_MATH)
+          perimee = invitation()
+          ecrire("UPDATE invitations SET expire_le = '2000-01-01T00:00:00Z' WHERE id = ?", (perimee["id"],))
+          refuse(403, MAUVAISE, main.inscription, formulaire(perimee["code"], nom="Autre", email="autre@exemple.fr"))
+          etats = {x["id"]: x["etat"] for x in main.lister_invitations(CODE_MATH)}
+          assert etats[annulee["id"]] == "annulee" and etats[perimee["id"]] == "expiree"
+          # Le code est reconnu même écrit en majuscules ou avec des espaces autour.
+          cas = invitation()
+          r2 = main.inscription(formulaire("  " + cas["code"].upper() + " ", nom="Paul", email="paul@exemple.fr"))
+          assert r2["nom"] == "Paul"
+
+          # ---------- 5. Formulaire refusé : rien n'est créé et l'invitation reste valable
+          bonne = invitation()
+          n_personnes = lire("SELECT COUNT(*) FROM personnes")[0][0]
+          n_velos = lire("SELECT COUNT(*) FROM velos")[0][0]
+          essais = [
+              (400, "Les deux mots de passe ne sont pas identiques.", dict(confirmation="autre-chose-123")),
+              (400, "Le mot de passe doit faire au moins 8 caractères.", dict(mot_de_passe="court", confirmation="court")),
+              (400, "Le mot de passe est trop long (128 caractères au maximum).", dict(mot_de_passe="a" * 129, confirmation="a" * 129)),
+              (400, "Ce mot de passe est trop facile à deviner. Choisis-en un autre.", dict(mot_de_passe="MotDePasse", confirmation="MotDePasse")),
+              (400, "Ce mot de passe est trop facile à deviner. Choisis-en un autre.", dict(email="nouvelle@exemple.fr", mot_de_passe="nouvelle@exemple.fr", confirmation="nouvelle@exemple.fr")),
+              (400, "Cette adresse e-mail n'a pas l'air valide.", dict(email="pas-un-mail")),
+              (400, "Type de vélo inconnu.", dict(type_velo="trottinette")),
+              (400, "Date d'achat non valide.", dict(date_achat="31/12/2024")),
+              (400, "Donne ton prénom.", dict(nom="   ")),
+              (409, "Ce prénom est déjà pris : ajoute une initiale, par exemple Paul D.", dict(nom="JULIE", email="nouvelle@exemple.fr")),
+              (409, "Cette adresse e-mail est déjà utilisée.", dict(nom="Autre Julie", email="JULIE@exemple.FR")),
+          ]
+          for statut, detail, champs in essais:
+              if "email" not in champs:
+                  champs["email"] = "nouvelle@exemple.fr"
+              if "nom" not in champs:
+                  champs["nom"] = "Nouvelle"
+              refuse(statut, detail, main.inscription, formulaire(bonne["code"], **champs))
+          assert lire("SELECT COUNT(*) FROM personnes")[0][0] == n_personnes and lire("SELECT COUNT(*) FROM velos")[0][0] == n_velos
+          assert {x["id"]: x["etat"] for x in main.lister_invitations(CODE_MATH)}[bonne["id"]] == "en_attente", "un refus ne consomme pas l'invitation"
+          # Sans nom de vélo ni date : « Mon vélo », VTT électrique par défaut.
+          r3 = main.inscription(main.InscriptionRequest(code_invitation=bonne["code"], nom="Zoé", email="zoe@exemple.fr",
+                                                        mot_de_passe=MDP, confirmation=MDP))
+          assert lire("SELECT nom, type, date_achat FROM velos WHERE id = ?", (r3["velo_id"],)) == [("Mon vélo", "vtt_electrique", main.date.today().isoformat())]
+
+          # ---------- 6. Connexion
+          c = main.connexion(main.ConnexionRequest(email="  JULIE@exemple.fr ", mot_de_passe=MDP))
+          assert c["token"].startswith("ses_") and c["token"] != jeton and c["nom"] == "Julie" and c["est_admin"] is False
+          assert c["mot_de_passe_provisoire"] is False
+          assert main.verifier_auth(c["token"]) == pid and main.verifier_auth(jeton) == pid, "deux appareils, deux sessions"
+          GENERIQUE = main.MESSAGE_CONNEXION_REFUSEE
+          refuse(401, GENERIQUE, main.connexion, main.ConnexionRequest(email="julie@exemple.fr", mot_de_passe="mauvais-mot-de-passe"))
+          refuse(401, GENERIQUE, main.connexion, main.ConnexionRequest(email="inconnu@exemple.fr", mot_de_passe=MDP))
+          refuse(401, GENERIQUE, main.connexion, main.ConnexionRequest(email="pas-un-mail", mot_de_passe=MDP))
+          refuse(401, GENERIQUE, main.connexion, main.ConnexionRequest(email="math@exemple.fr", mot_de_passe=MDP))
+          # Une personne qui se connecte par code d'accès n'a pas de connexion par e-mail.
+          ecrire("UPDATE personnes SET email = 'ami@exemple.fr' WHERE id = ?", (ami["id"],))
+          refuse(401, GENERIQUE, main.connexion, main.ConnexionRequest(email="ami@exemple.fr", mot_de_passe=MDP))
+
+          # Blocage : 5 essais ratés, puis même le bon mot de passe est refusé (429) jusqu'à la fin du blocage.
+          for _ in range(4):
+              refuse(401, GENERIQUE, main.connexion, main.ConnexionRequest(email="paul@exemple.fr", mot_de_passe="mauvais-mot-de-passe"))
+          assert lire("SELECT echecs_connexion FROM personnes WHERE id = ?", (r2["id"],)) == [(4,)]
+          refuse(401, GENERIQUE, main.connexion, main.ConnexionRequest(email="paul@exemple.fr", mot_de_passe="mauvais-mot-de-passe"))
+          refuse(429, "Trop d'essais. Réessaie dans quelques minutes.", main.connexion, main.ConnexionRequest(email="paul@exemple.fr", mot_de_passe=MDP))
+          refuse(429, "Trop d'essais. Réessaie dans quelques minutes.", main.connexion, main.ConnexionRequest(email="paul@exemple.fr", mot_de_passe="mauvais-mot-de-passe"))
+          bloque = lire("SELECT bloque_jusqua FROM personnes WHERE id = ?", (r2["id"],))[0][0]
+          assert bloque > main.iso_utc(main.datetime.now(main.timezone.utc) + main.timedelta(minutes=9))
+          # Le blocage de Paul ne gêne pas Julie.
+          assert main.connexion(main.ConnexionRequest(email="julie@exemple.fr", mot_de_passe=MDP))["id"] == pid
+          ecrire("UPDATE personnes SET bloque_jusqua = '2000-01-01T00:00:00Z' WHERE id = ?", (r2["id"],))
+          assert main.connexion(main.ConnexionRequest(email="paul@exemple.fr", mot_de_passe=MDP))["id"] == r2["id"]
+          assert lire("SELECT echecs_connexion, bloque_jusqua FROM personnes WHERE id = ?", (r2["id"],)) == [(0, None)]
+          # Un succès remet le compteur à zéro.
+          refuse(401, GENERIQUE, main.connexion, main.ConnexionRequest(email="paul@exemple.fr", mot_de_passe="mauvais-mot-de-passe"))
+          main.connexion(main.ConnexionRequest(email="paul@exemple.fr", mot_de_passe=MDP))
+          assert lire("SELECT echecs_connexion FROM personnes WHERE id = ?", (r2["id"],)) == [(0,)]
+
+          # ---------- 7. Personne désactivée
+          main.activer_personne(pid, main.PersonneActiveRequest(actif=False), CODE_MATH)
+          refuse_statut(401, main.verifier_auth, jeton)
+          refuse(403, "Ce compte est désactivé. Contacte l'administrateur.", main.connexion, main.ConnexionRequest(email="julie@exemple.fr", mot_de_passe=MDP))
+          refuse(401, GENERIQUE, main.connexion, main.ConnexionRequest(email="julie@exemple.fr", mot_de_passe="mauvais-mot-de-passe"))
+          main.activer_personne(pid, main.PersonneActiveRequest(actif=True), CODE_MATH)
+          assert main.verifier_auth(jeton) == pid
+
+          # ---------- 8. Expiration d'une session
+          ecrire("UPDATE sessions SET expire_le = '2000-01-01T00:00:00Z' WHERE jeton_hash = ?", (main.empreinte_jeton(c["token"]),))
+          refuse_statut(401, main.verifier_auth, c["token"])
+          assert main.verifier_auth(jeton) == pid
+          main.connexion(main.ConnexionRequest(email="julie@exemple.fr", mot_de_passe=MDP))  # le ménage retire les sessions expirées
+          assert lire("SELECT COUNT(*) FROM sessions WHERE jeton_hash = ?", (main.empreinte_jeton(c["token"]),)) == [(0,)]
+
+          # ---------- 9. Déconnexion
+          d1 = main.connexion(main.ConnexionRequest(email="julie@exemple.fr", mot_de_passe=MDP))["token"]
+          d2 = main.connexion(main.ConnexionRequest(email="julie@exemple.fr", mot_de_passe=MDP))["token"]
+          assert main.deconnexion(d1) == {"statut": "success"}
+          refuse_statut(401, main.verifier_auth, d1)
+          assert main.verifier_auth(d2) == pid, "l'autre appareil reste connecté"
+          assert main.deconnexion(CODE_MATH) == {"statut": "success"} and main.verifier_auth(CODE_MATH) == 1
+          refuse_statut(401, main.deconnexion, "faux")
+
+          # ---------- 10. Changer son mot de passe
+          NOUVEAU = "nouveau-mdp-solide-9"
+          refuse(403, "L'ancien mot de passe est incorrect.", main.changer_mot_de_passe, main.ChangerMotDePasseRequest(ancien="pas-le-bon-mdp", nouveau=NOUVEAU, confirmation=NOUVEAU), d2)
+          refuse(400, "Les deux mots de passe ne sont pas identiques.", main.changer_mot_de_passe, main.ChangerMotDePasseRequest(ancien=MDP, nouveau=NOUVEAU, confirmation="autre-chose-12"), d2)
+          refuse(400, "Le mot de passe doit faire au moins 8 caractères.", main.changer_mot_de_passe, main.ChangerMotDePasseRequest(ancien=MDP, nouveau="court", confirmation="court"), d2)
+          refuse(400, "Choisis un mot de passe différent de l'ancien.", main.changer_mot_de_passe, main.ChangerMotDePasseRequest(ancien=MDP, nouveau=MDP, confirmation=MDP), d2)
+          refuse(400, "Ton compte se connecte avec un code d'accès : il n'a pas de mot de passe à changer.", main.changer_mot_de_passe, main.ChangerMotDePasseRequest(ancien=MDP, nouveau=NOUVEAU, confirmation=NOUVEAU), ami["code"])
+          refuse(400, "Ton compte se connecte avec un code d'accès : il n'a pas de mot de passe à changer.", main.changer_mot_de_passe, main.ChangerMotDePasseRequest(ancien=MDP, nouveau=NOUVEAU, confirmation=NOUVEAU), CODE_MATH)
+          refuse_statut(401, main.changer_mot_de_passe, main.ChangerMotDePasseRequest(ancien=MDP, nouveau=NOUVEAU, confirmation=NOUVEAU), "faux")
+          autre_appareil = main.connexion(main.ConnexionRequest(email="julie@exemple.fr", mot_de_passe=MDP))["token"]
+          assert main.changer_mot_de_passe(main.ChangerMotDePasseRequest(ancien=MDP, nouveau=NOUVEAU, confirmation=NOUVEAU), d2) == {"statut": "success"}
+          assert main.verifier_auth(d2) == pid, "l'appareil qui change garde sa session"
+          refuse_statut(401, main.verifier_auth, autre_appareil)
+          refuse_statut(401, main.verifier_auth, jeton)
+          refuse(401, GENERIQUE, main.connexion, main.ConnexionRequest(email="julie@exemple.fr", mot_de_passe=MDP))
+          assert main.connexion(main.ConnexionRequest(email="julie@exemple.fr", mot_de_passe=NOUVEAU))["id"] == pid
+          assert NOUVEAU not in tout_le_texte()
+
+          # ---------- 11. Réinitialisation par Math
+          refuse(403, "Réservé à l'administrateur.", main.reinitialiser_mot_de_passe, pid, ami["code"])
+          refuse(403, "Réservé à l'administrateur.", main.reinitialiser_mot_de_passe, pid, d2)
+          refuse(400, "Ton accès se règle dans Render (CODE_ACCES), pas ici.", main.reinitialiser_mot_de_passe, 1, CODE_MATH)
+          refuse(404, "Personne introuvable.", main.reinitialiser_mot_de_passe, 9999, CODE_MATH)
+          refuse(400, "Cette personne se connecte avec un code d'accès : utilise « Nouveau code ».", main.reinitialiser_mot_de_passe, ami["id"], CODE_MATH)
+          ecrire("UPDATE personnes SET bloque_jusqua = '2999-01-01T00:00:00Z', echecs_connexion = 3 WHERE id = ?", (pid,))
+          prov = main.reinitialiser_mot_de_passe(pid, CODE_MATH)["mot_de_passe_provisoire"]
+          assert re.fullmatch("[a-z2-9]{4}(-[a-z2-9]{4}){2}", prov) and prov not in tout_le_texte()
+          refuse_statut(401, main.verifier_auth, d2)
+          refuse(401, GENERIQUE, main.connexion, main.ConnexionRequest(email="julie@exemple.fr", mot_de_passe=NOUVEAU))
+          ap = main.connexion(main.ConnexionRequest(email="julie@exemple.fr", mot_de_passe=prov))
+          assert ap["mot_de_passe_provisoire"] is True, "le débloquage est inclus"
+          refuse(400, "Ce mot de passe est trop facile à deviner. Choisis-en un autre.", main.changer_mot_de_passe, main.ChangerMotDePasseRequest(ancien=prov, nouveau="password1", confirmation="password1"), ap["token"])
+          main.changer_mot_de_passe(main.ChangerMotDePasseRequest(ancien=prov, nouveau=MDP, confirmation=MDP), ap["token"])
+          assert main.connexion(main.ConnexionRequest(email="julie@exemple.fr", mot_de_passe=MDP))["mot_de_passe_provisoire"] is False
+
+          # ---------- 12. Liste des personnes et codes d'accès
+          liste = {x["id"]: x for x in main.lister_personnes(CODE_MATH)}
+          assert liste[pid]["email"] == "julie@exemple.fr" and liste[pid]["a_un_mot_de_passe"] and not liste[pid]["a_un_code"]
+          assert liste[ami["id"]]["a_un_code"] and not liste[ami["id"]]["a_un_mot_de_passe"]
+          assert all("mot_de_passe" not in x and "code_hash" not in x for x in liste.values())
+          c = db.connect()
+          cur = c.cursor()
+          try:
+              main.definir_code_personne(cur, ami["id"], "ses_un-faux-jeton")
+              raise AssertionError("un code qui ressemble à un jeton doit être refusé")
+          except ValueError as e:
+              assert str(e) == "Ce code est réservé."
+          finally:
+              c.close()
+
+          # ---------- 13. Supprimer une personne nettoie ses sessions et libère son e-mail
+          tok = main.connexion(main.ConnexionRequest(email="julie@exemple.fr", mot_de_passe=MDP))["token"]
+          main.supprimer_personne(pid, CODE_MATH)
+          refuse_statut(401, main.verifier_auth, tok)
+          assert lire("SELECT COUNT(*) FROM sessions WHERE personne_id = ?", (pid,)) == [(0,)]
+          assert {x["id"]: x["utilisee_par"] for x in main.lister_invitations(CODE_MATH)}[inv["id"]] is None
+          refuse(401, GENERIQUE, main.connexion, main.ConnexionRequest(email="julie@exemple.fr", mot_de_passe=MDP))
+          nouvelle = invitation()
+          rr = main.inscription(formulaire(nouvelle["code"]))
+          assert rr["id"] != pid and main.verifier_auth(rr["token"]) == rr["id"]
+          assert [v["id"] for v in main.obtenir_velos(rr["token"])] == [rr["velo_id"]], "la nouvelle Julie n'hérite de rien"
+
+          print("OK: inscription sur invitation, connexion, sessions, mot de passe (" + ("PostgreSQL" if db.USE_PG else "SQLite") + ").")
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_inscription.py"
+          python - <<'PY2'
+          import psycopg
+          with psycopg.connect("postgresql://postgres:postgres@localhost:5432/maillons_test", autocommit=True) as c:
+              c.execute("DROP DATABASE IF EXISTS maillons_inscription")
+              c.execute("CREATE DATABASE maillons_inscription")
+          PY2
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/maillons_inscription PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_inscription.py"
       - name: Vérifier de bout en bout par le vrai serveur web (Math crée Julie, qui entre avec son code ; SQLite puis PostgreSQL)
         env:
           SQLITE_PATH: ${{ runner.temp }}/maillons-http-test.db
@@ -2120,6 +2430,284 @@ jobs:
               c.execute("CREATE DATABASE maillons_http")
           PY2
           DATABASE_URL=postgresql://postgres:postgres@localhost:5432/maillons_http PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_http.py"
+      - name: Vérifier de bout en bout l'inscription, la connexion et la déconnexion par le vrai serveur web (SQLite puis PostgreSQL)
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-http-inscription-test.db
+          CODE_ACCES: test
+        run: |
+          pip install httpx
+          cat > "$RUNNER_TEMP/test_http_inscription.py" <<'PY'
+          import os
+
+          import db
+          import main
+          from fastapi.testclient import TestClient
+
+          # Vrai serveur web (en mémoire), vrais en-têtes, vraies erreurs HTTP.
+          main.time.sleep = lambda secondes: None
+          CODE_MATH = "code-math-inscription-http"
+          main.CODE_ACCES = CODE_MATH
+          os.environ["CODE_ACCES"] = CODE_MATH
+          MDP = "velo-de-julie-2026"
+
+
+          def h(code):
+              return {"x-code-acces": code}
+
+
+          def sql(requete, p=()):
+              c = db.connect()
+              cur = c.cursor()
+              cur.execute(requete, p)
+              c.commit()
+              c.close()
+
+
+          def formulaire(code, **autres):
+              d = {"code_invitation": code, "nom": "Julie", "email": "Julie@Exemple.fr", "mot_de_passe": MDP, "confirmation": MDP,
+                   "type_velo": "gravel", "nom_velo": "Mon gravel", "date_achat": "2024-05-17"}
+              d.update(autres)
+              return d
+
+
+          with TestClient(main.app) as client:
+              sql("UPDATE velos SET nom = 'VELO-SECRET-DE-MATH' WHERE id = 1")
+
+              # La page d'accueil (publique) propose bien l'inscription et la connexion.
+              page = client.get("/")
+              assert page.status_code == 200 and "authPanneauInscription" in page.text and "authPanneauConnexion" in page.text
+
+              # Les invitations sont réservées à Math.
+              assert client.post("/api/invitations", json={"pour": "Julie"}).status_code == 401
+              assert client.post("/api/invitations", json={"pour": "Julie"}, headers=h("faux")).status_code == 401
+              ami = client.post("/api/personnes", json={"nom": "Ami"}, headers=h(CODE_MATH)).json()
+              assert client.post("/api/invitations", json={"pour": "Julie"}, headers=h(ami["code"])).status_code == 403
+              assert client.get("/api/invitations", headers=h(ami["code"])).status_code == 403
+              r = client.post("/api/invitations", json={"pour": "Julie"}, headers=h(CODE_MATH))
+              assert r.status_code == 200, r.text
+              inv = r.json()
+              assert [x["etat"] for x in client.get("/api/invitations", headers=h(CODE_MATH)).json()] == ["en_attente"]
+
+              # L'inscription est publique (aucun en-tête) mais exige l'invitation.
+              assert client.post("/api/inscription", json={"nom": "Julie"}).status_code == 422
+              r = client.post("/api/inscription", json=formulaire("zzzz-zzzz-zzzz-zzzz"))
+              assert r.status_code == 403 and r.json()["detail"] == "Code d'invitation invalide ou expiré."
+              assert client.post("/api/inscription", json=formulaire(inv["code"], confirmation="autre-chose-123")).status_code == 400
+              assert client.post("/api/inscription", json=formulaire(inv["code"], email="pas-un-mail")).status_code == 400
+              r = client.post("/api/inscription", json=formulaire(inv["code"]))
+              assert r.status_code == 200, r.text
+              julie = r.json()
+              jeton = julie["token"]
+              assert jeton.startswith("ses_") and julie["nom"] == "Julie"
+              assert client.post("/api/inscription", json=formulaire(inv["code"], nom="Autre", email="autre@exemple.fr")).status_code == 403, "invitation à usage unique"
+              assert client.post("/api/inscription", json=formulaire(client.post("/api/invitations", json={}, headers=h(CODE_MATH)).json()["code"])).status_code == 409, "e-mail déjà pris"
+
+              # Avec son jeton, Julie voit ce qui est à elle, et seulement cela.
+              assert client.get("/api/moi", headers=h(jeton)).json() == {"id": julie["id"], "nom": "Julie", "est_admin": False}
+              vj = client.get("/api/velos", headers=h(jeton)).json()
+              assert [v["id"] for v in vj] == [julie["velo_id"]] and vj[0]["nom"] == "Mon gravel", vj
+              assert client.get("/api/etat?velo_id=%d" % julie["velo_id"], headers=h(jeton)).status_code == 200
+              for chemin in ("/api/etat", "/api/sorties", "/api/historique"):
+                  assert client.get(chemin + "?velo_id=1", headers=h(jeton)).status_code == 404, chemin
+              assert "VELO-SECRET-DE-MATH" not in client.get("/api/sauvegarde", headers=h(jeton)).text
+              for reponse in (client.get("/api/personnes", headers=h(jeton)), client.get("/api/invitations", headers=h(jeton)),
+                              client.post("/api/invitations", json={}, headers=h(jeton)),
+                              client.post("/api/personnes/1/reinitialiser-mot-de-passe", headers=h(jeton))):
+                  assert reponse.status_code == 403
+              # Le jeton n'est pas un code d'accès : on ne peut pas s'en servir pour en fabriquer un, ni le deviner.
+              assert client.get("/api/velos", headers=h("ses_" + "a" * 43)).status_code == 401
+              assert client.get("/api/velos", headers=h(jeton[:-1])).status_code == 401
+
+              # Connexion par e-mail : mauvais mot de passe, e-mail inconnu, puis le bon (autre appareil = autre jeton).
+              assert client.post("/api/connexion", json={"email": "julie@exemple.fr", "mot_de_passe": "mauvais-mot-de-passe"}).status_code == 401
+              assert client.post("/api/connexion", json={"email": "inconnu@exemple.fr", "mot_de_passe": MDP}).status_code == 401
+              r = client.post("/api/connexion", json={"email": "  JULIE@exemple.fr ", "mot_de_passe": MDP})
+              assert r.status_code == 200, r.text
+              jeton2 = r.json()["token"]
+              assert jeton2 != jeton and r.json()["mot_de_passe_provisoire"] is False and r.json()["est_admin"] is False
+              assert client.get("/api/velos", headers=h(jeton2)).status_code == 200 and client.get("/api/velos", headers=h(jeton)).status_code == 200
+
+              # Blocage après 5 mauvais essais (même le bon mot de passe est alors refusé), sans gêner les autres.
+              for _ in range(5):
+                  assert client.post("/api/connexion", json={"email": "julie@exemple.fr", "mot_de_passe": "mauvais-mot-de-passe"}).status_code == 401
+              assert client.post("/api/connexion", json={"email": "julie@exemple.fr", "mot_de_passe": MDP}).status_code == 429
+              assert client.get("/api/velos", headers=h(jeton)).status_code == 200, "une session déjà ouverte n'est pas coupée"
+              assert client.get("/api/velos", headers=h(CODE_MATH)).status_code == 200 and client.get("/api/velos", headers=h(ami["code"])).status_code == 200
+              sql("UPDATE personnes SET bloque_jusqua = NULL, echecs_connexion = 0 WHERE id = ?", (julie["id"],))
+
+              # Déconnexion d'un appareil : l'autre reste ouvert.
+              assert client.post("/api/deconnexion", headers=h(jeton2)).json() == {"statut": "success"}
+              assert client.get("/api/velos", headers=h(jeton2)).status_code == 401 and client.get("/api/velos", headers=h(jeton)).status_code == 200
+              assert client.post("/api/deconnexion").status_code == 401
+
+              # Changer son mot de passe : l'autre appareil est déconnecté, l'ancien mot de passe ne marche plus.
+              r = client.post("/api/connexion", json={"email": "julie@exemple.fr", "mot_de_passe": MDP})
+              jeton3 = r.json()["token"]
+              nouveau = "nouveau-solide-9876"
+              assert client.post("/api/mot-de-passe", json={"ancien": "pas-le-bon", "nouveau": nouveau, "confirmation": nouveau}, headers=h(jeton3)).status_code == 403
+              assert client.post("/api/mot-de-passe", json={"ancien": MDP, "nouveau": nouveau, "confirmation": nouveau}, headers=h(jeton3)).status_code == 200
+              assert client.get("/api/velos", headers=h(jeton3)).status_code == 200 and client.get("/api/velos", headers=h(jeton)).status_code == 401
+              assert client.post("/api/connexion", json={"email": "julie@exemple.fr", "mot_de_passe": MDP}).status_code == 401
+              assert client.post("/api/connexion", json={"email": "julie@exemple.fr", "mot_de_passe": nouveau}).status_code == 200
+
+              # Math voit l'e-mail dans la liste, annule une invitation, et donne un mot de passe provisoire.
+              liste = {p["id"]: p for p in client.get("/api/personnes", headers=h(CODE_MATH)).json()}
+              assert liste[julie["id"]]["email"] == "julie@exemple.fr" and liste[julie["id"]]["a_un_mot_de_passe"] is True
+              assert "mot_de_passe" not in liste[julie["id"]] and "code_hash" not in liste[julie["id"]]
+              attente = client.post("/api/invitations", json={"pour": "Paul"}, headers=h(CODE_MATH)).json()
+              assert client.post("/api/invitations/%d/annuler" % attente["id"], headers=h(CODE_MATH)).status_code == 200
+              assert client.post("/api/inscription", json=formulaire(attente["code"], nom="Paul", email="paul@exemple.fr")).status_code == 403
+              assert client.post("/api/invitations/%d/annuler" % inv["id"], headers=h(CODE_MATH)).status_code == 400, "déjà utilisée"
+              r = client.post("/api/personnes/%d/reinitialiser-mot-de-passe" % julie["id"], headers=h(CODE_MATH))
+              assert r.status_code == 200, r.text
+              provisoire = r.json()["mot_de_passe_provisoire"]
+              assert client.get("/api/velos", headers=h(jeton3)).status_code == 401, "ses appareils sont déconnectés"
+              r = client.post("/api/connexion", json={"email": "julie@exemple.fr", "mot_de_passe": provisoire})
+              assert r.status_code == 200 and r.json()["mot_de_passe_provisoire"] is True
+              assert client.post("/api/personnes/1/reinitialiser-mot-de-passe", headers=h(CODE_MATH)).status_code == 400
+              assert client.post("/api/personnes/%d/reinitialiser-mot-de-passe" % ami["id"], headers=h(CODE_MATH)).status_code == 400, "l'ami se connecte par code"
+
+              # Désactivée : le jeton ne marche plus ; supprimée : tout disparaît et l'e-mail est de nouveau libre.
+              jeton4 = r.json()["token"]
+              assert client.post("/api/personnes/%d/actif" % julie["id"], json={"actif": False}, headers=h(CODE_MATH)).status_code == 200
+              assert client.get("/api/velos", headers=h(jeton4)).status_code == 401
+              assert client.post("/api/connexion", json={"email": "julie@exemple.fr", "mot_de_passe": provisoire}).status_code == 403
+              assert client.post("/api/personnes/%d/actif" % julie["id"], json={"actif": True}, headers=h(CODE_MATH)).status_code == 200
+              assert client.get("/api/velos", headers=h(jeton4)).status_code == 200
+              assert client.post("/api/personnes/%d/supprimer" % julie["id"], headers=h(CODE_MATH)).status_code == 200
+              assert client.get("/api/velos", headers=h(jeton4)).status_code == 401
+              assert client.post("/api/connexion", json={"email": "julie@exemple.fr", "mot_de_passe": provisoire}).status_code == 401
+              neuve = client.post("/api/invitations", json={"pour": "Julie"}, headers=h(CODE_MATH)).json()
+              r = client.post("/api/inscription", json=formulaire(neuve["code"]))
+              assert r.status_code == 200 and r.json()["id"] != julie["id"], "l'e-mail est de nouveau libre"
+              assert len(client.get("/api/velos", headers=h(r.json()["token"])).json()) == 1, "la nouvelle Julie n'hérite de rien"
+
+              # Math et l'ami n'ont jamais été gênés : leurs codes marchent comme avant.
+              assert client.get("/api/moi", headers=h(CODE_MATH)).json() == {"id": 1, "nom": "Math", "est_admin": True}
+              assert client.get("/api/etat?velo_id=1", headers=h(CODE_MATH)).status_code == 200
+              assert client.get("/api/moi", headers=h(ami["code"])).json()["nom"] == "Ami"
+              assert client.post("/api/connexion", json={"email": "math@exemple.fr", "mot_de_passe": CODE_MATH}).status_code == 401
+
+          print("OK: inscription sur invitation, connexion, déconnexion, mot de passe et administration de bout en bout (" + ("PostgreSQL" if db.USE_PG else "SQLite") + ").")
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_http_inscription.py"
+          python - <<'PY2'
+          import psycopg
+          with psycopg.connect("postgresql://postgres:postgres@localhost:5432/maillons_test", autocommit=True) as c:
+              c.execute("DROP DATABASE IF EXISTS maillons_http_inscription")
+              c.execute("CREATE DATABASE maillons_http_inscription")
+          PY2
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/maillons_http_inscription PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_http_inscription.py"
+      - name: Vérifier la mise à niveau d'une base en ligne faite par l'ancien code (SQLite puis PostgreSQL)
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-niveau-test.db
+          CODE_ACCES: test
+        run: |
+          git fetch --depth=1 origin main
+          mkdir -p "$RUNNER_TEMP/ancien"
+          git show FETCH_HEAD:main.py > "$RUNNER_TEMP/ancien/main.py"
+          cp db.py gpx_import.py "$RUNNER_TEMP/ancien/"
+          cat > "$RUNNER_TEMP/test_mise_a_niveau.py" <<'PY'
+          import json
+          import os
+          import sys
+
+          import db
+          import main
+          from fastapi import HTTPException
+
+          phase, fichier = sys.argv[1], sys.argv[2]
+          CODE_MATH = "code-de-math-mise-a-niveau"
+          main.CODE_ACCES = CODE_MATH
+          os.environ["CODE_ACCES"] = CODE_MATH
+          TABLES = ("personnes", "velos", "composants", "historique")
+
+
+          def lire(sql, p=()):
+              c = db.connect()
+              cur = c.cursor()
+              cur.execute(sql, p)
+              r = [tuple(x) for x in cur.fetchall()]
+              c.close()
+              return r
+
+
+          def ecrire(sql, p=()):
+              c = db.connect()
+              cur = c.cursor()
+              cur.execute(sql, p)
+              c.commit()
+              c.close()
+
+
+          def compter():
+              return {t: lire("SELECT COUNT(*) FROM " + t)[0][0] for t in TABLES}
+
+
+          if phase == "ancien":
+              # La base telle qu'elle est en ligne aujourd'hui : l'ancien code, ses personnes, ses vélos.
+              ami = main.ajouter_personne(main.NouvellePersonneRequest(nom="Ami", type_velo="gravel"), CODE_MATH)
+              ecrire("UPDATE velos SET nom = 'VELO-ANCIEN-DE-MATH' WHERE id = 1")
+              assert lire("SELECT COUNT(*) FROM composants")[0][0] > 0
+              anciennes = {x[0] for x in lire("SELECT name FROM sqlite_master WHERE type = 'table'")} if not db.USE_PG else set()
+              assert "sessions" not in anciennes and "invitations" not in anciennes, "l'ancienne base ne connaît pas les sessions"
+              with open(fichier, "w", encoding="utf-8") as f:
+                  json.dump({"ami": ami, "compte": compter()}, f)
+              print("OK: ancienne base préparée (" + ("PostgreSQL" if db.USE_PG else "SQLite") + ") : " + json.dumps(compter()))
+          else:
+              # Le nouveau code démarre (init_db a tourné à l'import) sur la base de l'ancien.
+              avant = json.load(open(fichier, encoding="utf-8"))
+              ami = avant["ami"]
+              assert compter() == avant["compte"], (compter(), avant["compte"])
+              assert lire("SELECT nom FROM velos WHERE id = 1") == [("VELO-ANCIEN-DE-MATH",)]
+              ligne = lire("SELECT mot_de_passe, mdp_provisoire, echecs_connexion, bloque_jusqua, email FROM personnes WHERE id = ?", (ami["id"],))[0]
+              assert ligne[0] is None and ligne[1] in (0, None) and ligne[2] in (0, None) and ligne[3] is None, ligne
+              assert lire("SELECT COUNT(*) FROM sessions")[0][0] == 0 and lire("SELECT COUNT(*) FROM invitations")[0][0] == 0
+              # Les anciens accès marchent comme avant.
+              assert main.verifier_auth(CODE_MATH) == 1
+              assert main.verifier_auth(ami["code"]) == ami["id"]
+              assert [v["id"] for v in main.obtenir_velos(ami["code"])] == [ami["velo_id"]]
+              assert 1 in [v["id"] for v in main.obtenir_velos(CODE_MATH)]
+              try:
+                  main.controle_acces(ami["code"], 1)
+                  raise AssertionError("l'ami ne doit pas voir le vélo de Math")
+              except HTTPException as e:
+                  assert e.status_code == 404
+              liste = {x["id"]: x for x in main.lister_personnes(CODE_MATH)}
+              assert liste[ami["id"]]["a_un_code"] and not liste[ami["id"]]["a_un_mot_de_passe"] and liste[ami["id"]]["nb_velos"] == 1
+              # Une personne ancienne ne peut pas se connecter par e-mail (elle n'a pas de mot de passe).
+              try:
+                  main.connexion(main.ConnexionRequest(email="ami@exemple.fr", mot_de_passe="n-importe-quoi-123"))
+                  raise AssertionError("pas de connexion par e-mail sans mot de passe")
+              except HTTPException as e:
+                  assert e.status_code == 401
+              # Le nouveau parcours marche sur cette base mise à niveau.
+              main.time.sleep = lambda s: None
+              inv = main.creer_invitation(main.NouvelleInvitationRequest(pour="Julie"), CODE_MATH)
+              r = main.inscription(main.InscriptionRequest(code_invitation=inv["code"], nom="Julie", email="julie@exemple.fr",
+                                                           mot_de_passe="velo-de-julie-2026", confirmation="velo-de-julie-2026", type_velo="route"))
+              assert main.verifier_auth(r["token"]) == r["id"] and r["id"] not in (1, ami["id"])
+              assert [v["id"] for v in main.obtenir_velos(r["token"])] == [r["velo_id"]]
+              # Un second démarrage (redéploiement) ne change rien et ne perd rien.
+              main.init_db()
+              main.init_db()
+              assert compter() == {"personnes": avant["compte"]["personnes"] + 1, "velos": avant["compte"]["velos"] + 1,
+                                   "composants": compter()["composants"], "historique": avant["compte"]["historique"]}
+              assert main.verifier_auth(r["token"]) == r["id"] and main.verifier_auth(ami["code"]) == ami["id"]
+              print("OK: mise à niveau de la base en ligne vers les comptes e-mail (" + ("PostgreSQL" if db.USE_PG else "SQLite") + ").")
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$RUNNER_TEMP/ancien" python "$RUNNER_TEMP/test_mise_a_niveau.py" ancien "$RUNNER_TEMP/etat-sqlite.json"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_mise_a_niveau.py" nouveau "$RUNNER_TEMP/etat-sqlite.json"
+          python - <<'PY2'
+          import psycopg
+          with psycopg.connect("postgresql://postgres:postgres@localhost:5432/maillons_test", autocommit=True) as c:
+              c.execute("DROP DATABASE IF EXISTS maillons_niveau")
+              c.execute("CREATE DATABASE maillons_niveau")
+          PY2
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/maillons_niveau PYTHONPATH="$RUNNER_TEMP/ancien" python "$RUNNER_TEMP/test_mise_a_niveau.py" ancien "$RUNNER_TEMP/etat-pg.json"
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/maillons_niveau PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_mise_a_niveau.py" nouveau "$RUNNER_TEMP/etat-pg.json"
       - name: Vérifier l'heure de départ unique par vélo et la mise à niveau de l'ancienne base (SQLite puis PostgreSQL)
         env:
           SQLITE_PATH: ${{ runner.temp }}/maillons-unicite-test.db
@@ -3410,7 +3998,7 @@ jobs:
               # 1) Saisie du code d'une autre personne que Math (le vélo n° 1 n'est pas le sien).
               pg = nouveau(None)
               pg.goto("http://localhost/"); pg.wait_for_timeout(600)
-              pg.fill("#authInput", CODE_AMI); pg.click("#authScreen button"); pg.wait_for_timeout(1200)
+              pg.click("#authLienCode"); pg.fill("#authInput", CODE_AMI); pg.click("#authValiderCode"); pg.wait_for_timeout(1200)
               assert pg.eval_on_selector("#authScreen", "e => getComputedStyle(e).display") == "none", "l'écran du code est resté"
               assert pg.eval_on_selector("#authError", "e => e.textContent.trim()") == ""
               assert pg.eval_on_selector("#headerVeloNom", "e => e.textContent.trim()") == "Gravel de l'ami"
@@ -3448,7 +4036,7 @@ jobs:
               # 3) Mauvais code : refusé.
               pg = nouveau(None)
               pg.goto("http://localhost/"); pg.wait_for_timeout(600)
-              pg.fill("#authInput", "mauvais"); pg.click("#authScreen button"); pg.wait_for_timeout(800)
+              pg.click("#authLienCode"); pg.fill("#authInput", "mauvais"); pg.click("#authValiderCode"); pg.wait_for_timeout(800)
               assert pg.eval_on_selector("#authError", "e => e.textContent.trim()") == "Code incorrect."
               assert pg.eval_on_selector("#authScreen", "e => getComputedStyle(e).display") != "none"
               assert pg.eval_on_selector("#headerBienvenue", "e => e.hidden"), "pas de bienvenue sans connexion"
@@ -3645,6 +4233,393 @@ jobs:
           PY
           rm -f "$SQLITE_PATH"
           PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_admin_navigateur.py"
+      - name: Tester l'écran S'inscrire / Se connecter, la déconnexion et le mot de passe dans un vrai navigateur
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-acces-nav-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_ecran_acces.py" <<'PY'
+          import json
+          from urllib.parse import urlparse
+
+          from playwright.sync_api import sync_playwright
+
+          import main
+
+          html = main.accueil()
+          JETON = "ses_jeton-de-julie"
+          VELO = [{"id": 7, "nom": "Mon gravel", "type": "gravel", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0}]
+          erreurs, requetes = [], []
+          etat = {"provisoire": False, "mdp_ok": True, "mdp_change": None}
+
+
+          def api(r):
+              u = urlparse(r.request.url)
+              corps_requete = r.request.post_data
+              requetes.append((u.path, r.request.method, r.request.headers.get("x-code-acces"), json.loads(corps_requete) if corps_requete else None))
+
+              def rep(statut, corps):
+                  r.fulfill(status=statut, content_type="application/json", body=json.dumps(corps))
+
+              if u.path == "/api/inscription":
+                  d = json.loads(corps_requete)
+                  if d["code_invitation"] != "bonne-invitation":
+                      return rep(403, {"detail": "Code d'invitation invalide ou expiré."})
+                  return rep(200, {"statut": "success", "token": JETON, "id": 9, "nom": d["nom"], "velo_id": 7})
+              if u.path == "/api/connexion":
+                  d = json.loads(corps_requete)
+                  if d["mot_de_passe"] != "bon-mot-de-passe":
+                      return rep(401, {"detail": "E-mail ou mot de passe incorrect."})
+                  return rep(200, {"statut": "success", "token": JETON, "id": 9, "nom": "Julie", "est_admin": False, "mot_de_passe_provisoire": etat["provisoire"]})
+              if u.path == "/api/deconnexion":
+                  return rep(200, {"statut": "success"})
+              if u.path == "/api/mot-de-passe":
+                  d = json.loads(corps_requete)
+                  etat["mdp_change"] = d
+                  if d["ancien"] != "bon-mot-de-passe":
+                      return rep(403, {"detail": "L'ancien mot de passe est incorrect."})
+                  return rep(200, {"statut": "success"})
+              if r.request.headers.get("x-code-acces") not in (JETON, "code-de-math"):
+                  return rep(401, {"detail": "Code d'accès incorrect."})
+              if u.path == "/api/velos":
+                  return rep(200, VELO)
+              if u.path == "/api/moi":
+                  if r.request.headers.get("x-code-acces") == "code-de-math":
+                      return rep(200, {"id": 1, "nom": "Math", "est_admin": True})
+                  return rep(200, {"id": 9, "nom": "Julie", "est_admin": False})
+              if u.path == "/api/etat":
+                  return rep(200, {"km_total": 0, "composants": []})
+              if u.path == "/api/mes-reglages":
+                  return rep(200, {"valeurs": {}, "maj_le": None})
+              if u.path == "/api/reglages":
+                  return rep(200, {"terrain_route": 1, "terrain_mixte": 1.2, "terrain_chemin": 1.5, "terrain_sentier": 2, "poids_denivele": 1})
+              return rep(200, [])
+
+
+          def visible(pg, sel):
+              return pg.eval_on_selector(sel, "e => !e.hidden && getComputedStyle(e).display !== 'none'")
+
+
+          def texte(pg, sel):
+              return pg.eval_on_selector(sel, "e => e.textContent.trim()")
+
+
+          with sync_playwright() as p:
+              nav = p.chromium.launch()
+
+              def ouvrir(stockage_local="", stockage_session=""):
+                  ctx = nav.new_context(viewport={"width": 390, "height": 800})
+                  ctx.route("**/localhost/api/**", api)
+                  ctx.route(lambda u: not u.startswith("http://localhost/"), lambda r: r.abort())
+                  # Ne s'applique qu'à la toute première ouverture : un rechargement ne doit pas tout remettre à zéro.
+                  ctx.add_init_script("if (!sessionStorage.getItem('__init')) { sessionStorage.setItem('__init', '1');" + stockage_session + stockage_local + " }")
+                  pg = ctx.new_page()
+                  pg.on("pageerror", lambda e: erreurs.append(str(e)[:200]))
+                  pg.route("http://localhost/", lambda r: r.fulfill(status=200, content_type="text/html", body=html))
+                  pg.goto("http://localhost/")
+                  pg.wait_for_timeout(700)
+                  return pg
+
+              # 1) Première visite : « S'inscrire », formulaire complet, lien discret vers le code d'accès.
+              pg = ouvrir()
+              assert texte(pg, "#authTitrePanneau") == "S'inscrire"
+              assert visible(pg, "#authPanneauInscription") and not visible(pg, "#authPanneauConnexion") and not visible(pg, "#authPanneauCode")
+              for champ in ("inscCode", "inscNom", "inscEmail", "inscMdp", "inscMdp2", "inscType", "inscNomVelo", "inscDate"):
+                  assert visible(pg, "#" + champ), champ
+              assert pg.eval_on_selector("#inscMdp", "e => e.type") == "password" and pg.eval_on_selector("#inscEmail", "e => e.type") == "email"
+              assert visible(pg, "#authLienCode") and texte(pg, "#authLienCode") == "Se connecter avec un code d'accès"
+              assert pg.eval_on_selector("#authScreen", "e => getComputedStyle(e).display") == "flex"
+              # Le formulaire tient dans un petit téléphone : on peut faire défiler jusqu'au bouton.
+              pg.eval_on_selector("#authPanneauInscription button", "e => e.scrollIntoView()")
+              box = pg.eval_on_selector("#authPanneauInscription button", "e => { const r = e.getBoundingClientRect(); return [r.top, r.bottom] }")
+              assert 0 <= box[0] and box[1] <= 800, box
+
+              # Deux mots de passe différents : refus sur place, rien n'est envoyé.
+              requetes.clear()
+              pg.fill("#inscCode", "bonne-invitation"); pg.fill("#inscNom", "Julie"); pg.fill("#inscEmail", "julie@exemple.fr")
+              pg.fill("#inscMdp", "velo-de-julie-2026"); pg.fill("#inscMdp2", "autre-chose-12345")
+              pg.select_option("#inscType", "gravel"); pg.fill("#inscNomVelo", "Mon gravel"); pg.fill("#inscDate", "2024-05-17")
+              pg.click("#authPanneauInscription button"); pg.wait_for_timeout(300)
+              assert texte(pg, "#authError") == "Les deux mots de passe ne sont pas identiques."
+              assert not [x for x in requetes if x[0] == "/api/inscription"]
+              # Mauvaise invitation : le message du serveur s'affiche, on reste sur l'écran.
+              pg.fill("#inscMdp2", "velo-de-julie-2026"); pg.fill("#inscCode", "mauvaise")
+              pg.click("#authPanneauInscription button"); pg.wait_for_timeout(500)
+              assert texte(pg, "#authError") == "Code d'invitation invalide ou expiré."
+              assert visible(pg, "#authPanneauInscription") and pg.evaluate("sessionStorage.getItem('vtt_code')") is None
+              # Bonne invitation : inscription, mémorisation, rechargement, arrivée sur son vélo.
+              pg.fill("#inscCode", "bonne-invitation")
+              requetes.clear()
+              pg.click("#authPanneauInscription button"); pg.wait_for_timeout(1800)
+              envoi = [x for x in requetes if x[0] == "/api/inscription"][0][3]
+              assert envoi == {"code_invitation": "bonne-invitation", "nom": "Julie", "email": "julie@exemple.fr", "mot_de_passe": "velo-de-julie-2026",
+                               "confirmation": "velo-de-julie-2026", "type_velo": "gravel", "nom_velo": "Mon gravel", "date_achat": "2024-05-17"}, envoi
+              assert pg.evaluate("sessionStorage.getItem('vtt_code')") == JETON and pg.evaluate("localStorage.getItem('maillons_session')") == JETON
+              assert pg.evaluate("localStorage.getItem('maillons_deja_inscrit')") == "1"
+              assert pg.eval_on_selector("#authScreen", "e => getComputedStyle(e).display") == "none"
+              assert texte(pg, "#headerVeloNom") == "Mon gravel"
+              assert "Julie" in texte(pg, "#headerBienvenue")
+              assert [x for x in requetes if x[0] == "/api/velos"][-1][2] == JETON, "le jeton remplace le code dans l'en-tête"
+              pg.evaluate("location.hash = '#reglages'"); pg.wait_for_timeout(300)
+              assert texte(pg, "#compteIdentite") == "Connecté : Julie" and visible(pg, "#formMotDePasse") and not visible(pg, "#compteProvisoire")
+
+              # 2) Mot de passe changé depuis Réglages.
+              pg.fill("#mdpAncien", "faux-mot-de-passe"); pg.fill("#mdpNouveau", "nouveau-solide-123"); pg.fill("#mdpNouveau2", "nouveau-solide-123")
+              pg.click("#formMotDePasse button"); pg.wait_for_timeout(500)
+              assert texte(pg, "#messageCompte") == "L'ancien mot de passe est incorrect."
+              pg.fill("#mdpAncien", "bon-mot-de-passe")
+              pg.click("#formMotDePasse button"); pg.wait_for_timeout(500)
+              assert etat["mdp_change"] == {"ancien": "bon-mot-de-passe", "nouveau": "nouveau-solide-123", "confirmation": "nouveau-solide-123"}
+              assert texte(pg, "#messageCompte").startswith("Mot de passe changé.") and pg.input_value("#mdpAncien") == ""
+
+              # 3) Déconnexion : le serveur est prévenu, tout est oublié, retour à « Se connecter ».
+              requetes.clear()
+              pg.click("#boutonDeconnexion"); pg.wait_for_timeout(1500)
+              dec = [x for x in requetes if x[0] == "/api/deconnexion"]
+              assert len(dec) == 1 and dec[0][1] == "POST" and dec[0][2] == JETON
+              assert pg.evaluate("sessionStorage.getItem('vtt_code')") is None and pg.evaluate("localStorage.getItem('maillons_session')") is None
+              assert pg.evaluate("localStorage.getItem('maillons_deja_inscrit')") == "1", "on sait qu'il s'est déjà inscrit"
+              assert pg.eval_on_selector("#authScreen", "e => getComputedStyle(e).display") == "flex"
+              assert texte(pg, "#authTitrePanneau") == "Se connecter" and visible(pg, "#authPanneauConnexion")
+              assert texte(pg, "#authAccroche") == "Content de te revoir !"
+              pg.close()
+
+              # 4) Visite suivante : « Se connecter ». Mauvais mot de passe, puis bon.
+              pg = ouvrir(stockage_local="localStorage.setItem('maillons_deja_inscrit','1');")
+              assert texte(pg, "#authTitrePanneau") == "Se connecter" and visible(pg, "#authPanneauConnexion") and not visible(pg, "#authPanneauInscription")
+              pg.fill("#authEmail", "julie@exemple.fr"); pg.fill("#authMdp", "mauvais")
+              pg.click("#authPanneauConnexion button"); pg.wait_for_timeout(500)
+              assert texte(pg, "#authError") == "E-mail ou mot de passe incorrect." and pg.evaluate("localStorage.getItem('maillons_session')") is None
+              requetes.clear()
+              pg.fill("#authMdp", "bon-mot-de-passe")
+              pg.click("#authPanneauConnexion button"); pg.wait_for_timeout(1800)
+              assert [x for x in requetes if x[0] == "/api/connexion"][0][3] == {"email": "julie@exemple.fr", "mot_de_passe": "bon-mot-de-passe"}
+              assert pg.eval_on_selector("#authScreen", "e => getComputedStyle(e).display") == "none" and texte(pg, "#headerVeloNom") == "Mon gravel"
+              # Les liens passent d'un écran à l'autre.
+              pg.close()
+              pg = ouvrir(stockage_local="localStorage.setItem('maillons_deja_inscrit','1');")
+              pg.click("#authLienAutre"); assert texte(pg, "#authTitrePanneau") == "S'inscrire" and visible(pg, "#authPanneauInscription")
+              pg.click("#authLienAutre"); assert texte(pg, "#authTitrePanneau") == "Se connecter"
+              pg.click("#authLienCode"); assert texte(pg, "#authTitrePanneau") == "Code d'accès" and visible(pg, "#authInput") and not visible(pg, "#authLienCode")
+              pg.click("#authLienAutre"); assert visible(pg, "#authPanneauConnexion") and visible(pg, "#authLienCode")
+              pg.close()
+
+              # 5) Mot de passe provisoire (donné par Math) : on est envoyé vers Réglages avec le message.
+              etat["provisoire"] = True
+              pg = ouvrir(stockage_local="localStorage.setItem('maillons_deja_inscrit','1');")
+              pg.fill("#authEmail", "julie@exemple.fr"); pg.fill("#authMdp", "bon-mot-de-passe")
+              pg.click("#authPanneauConnexion button"); pg.wait_for_timeout(1800)
+              assert pg.evaluate("location.hash") == "#reglages" and visible(pg, "#compteProvisoire") and visible(pg, "#page-reglages")
+              pg.fill("#mdpAncien", "bon-mot-de-passe"); pg.fill("#mdpNouveau", "nouveau-solide-123"); pg.fill("#mdpNouveau2", "nouveau-solide-123")
+              pg.click("#formMotDePasse button"); pg.wait_for_timeout(500)
+              assert not visible(pg, "#compteProvisoire") and pg.evaluate("sessionStorage.getItem('maillons_mdp_provisoire')") is None
+              etat["provisoire"] = False
+              pg.close()
+
+              # 6) Réouverture plus tard (nouvel onglet : session du téléphone seulement) : pas de nouvel écran de connexion.
+              pg = ouvrir(stockage_local="localStorage.setItem('maillons_session','" + JETON + "'); localStorage.setItem('maillons_deja_inscrit','1');")
+              assert pg.eval_on_selector("#authScreen", "e => getComputedStyle(e).display") == "none" and texte(pg, "#headerVeloNom") == "Mon gravel"
+              assert pg.evaluate("sessionStorage.getItem('vtt_code')") == JETON
+              pg.close()
+              # Session périmée ou retirée par Math : on l'oublie et on demande de se reconnecter.
+              pg = ouvrir(stockage_local="localStorage.setItem('maillons_session','ses_perimee'); localStorage.setItem('maillons_deja_inscrit','1');")
+              assert pg.eval_on_selector("#authScreen", "e => getComputedStyle(e).display") == "flex" and visible(pg, "#authPanneauConnexion")
+              assert pg.evaluate("localStorage.getItem('maillons_session')") is None and pg.evaluate("sessionStorage.getItem('vtt_code')") is None
+              pg.close()
+
+              # 7) Math entre avec son code d'accès : pas de formulaire de mot de passe, son ancien chemin marche.
+              pg = ouvrir()
+              pg.click("#authLienCode"); pg.fill("#authInput", "code-de-math"); pg.click("#authValiderCode"); pg.wait_for_timeout(1200)
+              assert pg.eval_on_selector("#authScreen", "e => getComputedStyle(e).display") == "none"
+              assert pg.evaluate("localStorage.getItem('maillons_deja_inscrit')") == "1" and pg.evaluate("localStorage.getItem('maillons_session')") is None
+              pg.evaluate("location.hash = '#reglages'"); pg.wait_for_timeout(300)
+              assert texte(pg, "#compteIdentite") == "Connecté : Math" and not visible(pg, "#formMotDePasse") and visible(pg, "#boutonDeconnexion")
+              pg.close()
+              nav.close()
+
+          assert not erreurs, erreurs
+          print("OK: écran d'accès (inscription, connexion, code d'accès, mot de passe, déconnexion) dans un vrai navigateur")
+          PY
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_ecran_acces.py"
+      - name: Tester les invitations et les mots de passe provisoires (administration) dans un vrai navigateur
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-invitations-nav-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_admin_invitations.py" <<'PY'
+          import json
+          from urllib.parse import urlparse
+
+          from playwright.sync_api import sync_playwright
+
+          import main
+
+          html = main.accueil()
+          MATH = "code-de-math"
+          VELOS = [{"id": 1, "nom": "Mon CUBE", "type": "vtt_electrique", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0}]
+          personnes = [
+              {"id": 1, "nom": "Math", "est_admin": True, "actif": 1, "nb_velos": 1, "email": None, "a_un_code": False, "a_un_mot_de_passe": False, "mot_de_passe_provisoire": False},
+              {"id": 2, "nom": "Julie", "est_admin": False, "actif": 1, "nb_velos": 2, "email": "julie@exemple.fr", "a_un_code": False, "a_un_mot_de_passe": True, "mot_de_passe_provisoire": False},
+              {"id": 3, "nom": "Ami", "est_admin": False, "actif": 1, "nb_velos": 1, "email": None, "a_un_code": True, "a_un_mot_de_passe": False, "mot_de_passe_provisoire": False},
+          ]
+          invitations = [
+              {"id": 4, "pour": "Paul", "cree_le": "2026-11-08T08:00:00Z", "expire_le": "2026-11-15T08:00:00Z", "etat": "en_attente", "utilisee_par": None},
+              {"id": 3, "pour": None, "cree_le": "2026-11-01T08:00:00Z", "expire_le": "2026-11-08T08:00:00Z", "etat": "utilisee", "utilisee_par": "Julie"},
+              {"id": 2, "pour": "Zoé", "cree_le": "2026-10-01T08:00:00Z", "expire_le": "2026-10-08T08:00:00Z", "etat": "expiree", "utilisee_par": None},
+              {"id": 1, "pour": "Luc", "cree_le": "2026-10-01T08:00:00Z", "expire_le": "2026-10-08T08:00:00Z", "etat": "annulee", "utilisee_par": None},
+          ]
+          requetes, erreurs, dialogues = [], [], []
+          admin = {"oui": True}
+
+
+          def api(r):
+              u = urlparse(r.request.url)
+              corps = r.request.post_data
+              requetes.append((u.path, r.request.method, json.loads(corps) if corps else None))
+
+              def rep(statut, c):
+                  r.fulfill(status=statut, content_type="application/json", body=json.dumps(c))
+
+              if r.request.headers.get("x-code-acces") != MATH:
+                  return rep(401, {"detail": "Code d'accès incorrect."})
+              if u.path == "/api/velos":
+                  return rep(200, VELOS)
+              if u.path == "/api/moi":
+                  return rep(200, {"id": 1, "nom": "Math", "est_admin": admin["oui"]})
+              if u.path == "/api/personnes":
+                  return rep(200, personnes)
+              if u.path == "/api/invitations" and r.request.method == "GET":
+                  return rep(200, invitations)
+              if u.path == "/api/invitations" and r.request.method == "POST":
+                  d = json.loads(corps)
+                  invitations.insert(0, {"id": 5, "pour": d.get("pour"), "cree_le": "2026-11-08T17:00:00Z", "expire_le": "2026-11-15T17:00:00Z", "etat": "en_attente", "utilisee_par": None})
+                  return rep(200, {"statut": "success", "id": 5, "code": "abcd-efgh-jkmn-pqrs", "pour": d.get("pour"), "expire_le": "2026-11-15T17:00:00Z"})
+              if u.path == "/api/invitations/4/annuler":
+                  [i for i in invitations if i["id"] == 4][0]["etat"] = "annulee"
+                  return rep(200, {"statut": "success"})
+              if u.path == "/api/personnes/2/reinitialiser-mot-de-passe":
+                  return rep(200, {"statut": "success", "id": 2, "mot_de_passe_provisoire": "abcd-efgh-jkmn"})
+              if u.path == "/api/etat":
+                  return rep(200, {"km_total": 0, "composants": []})
+              if u.path == "/api/mes-reglages":
+                  return rep(200, {"valeurs": {}, "maj_le": None})
+              if u.path == "/api/reglages":
+                  return rep(200, {"terrain_route": 1, "terrain_mixte": 1.2, "terrain_chemin": 1.5, "terrain_sentier": 2, "poids_denivele": 1})
+              return rep(200, [])
+
+
+          def texte(pg, sel):
+              return pg.eval_on_selector(sel, "e => e.textContent.trim()")
+
+
+          def visible(pg, sel):
+              return pg.eval_on_selector(sel, "e => getComputedStyle(e).display !== 'none'")
+
+
+          def noms_boutons(pg, sel):
+              return pg.eval_on_selector_all(sel, "els => els.map(e => e.textContent.trim())")
+
+
+          with sync_playwright() as p:
+              nav = p.chromium.launch()
+              ctx = nav.new_context(viewport={"width": 390, "height": 900})
+              ctx.route("**/localhost/api/**", api)
+              ctx.route(lambda u: not u.startswith("http://localhost/"), lambda r: r.abort())
+              ctx.add_init_script("sessionStorage.setItem('vtt_code', '" + MATH + "'); window.__copie = null;"
+                                  "Object.defineProperty(navigator, 'clipboard', {value: {writeText: async t => { window.__copie = t; }}, configurable: true});")
+              pg = ctx.new_page()
+              pg.on("pageerror", lambda e: erreurs.append(str(e)[:200]))
+              reponse = {"ok": True}
+
+              def dialogue(d):
+                  dialogues.append(d.message)
+                  d.accept() if reponse["ok"] else d.dismiss()
+
+              pg.on("dialog", dialogue)
+              pg.route("http://localhost/", lambda r: r.fulfill(status=200, content_type="text/html", body=html))
+              pg.goto("http://localhost/#reglages"); pg.wait_for_timeout(900)
+
+              # 1) Les personnes : e-mail visible ; mot de passe provisoire pour Julie, nouveau code pour l'ami.
+              lignes = pg.query_selector_all("#listePersonnes .personne-ligne")
+              assert len(lignes) == 3
+              assert "julie@exemple.fr" in lignes[1].inner_text() and "2 vélos" in lignes[1].inner_text()
+              assert noms_boutons(pg, "#listePersonnes .personne-ligne:nth-child(1) button") == ["Renommer"]
+              assert "Mot de passe provisoire" in noms_boutons(pg, "#listePersonnes .personne-ligne:nth-child(2) button")
+              assert "Nouveau code" not in noms_boutons(pg, "#listePersonnes .personne-ligne:nth-child(2) button")
+              assert "Nouveau code" in noms_boutons(pg, "#listePersonnes .personne-ligne:nth-child(3) button")
+              assert "Mot de passe provisoire" not in noms_boutons(pg, "#listePersonnes .personne-ligne:nth-child(3) button")
+
+              # 2) La liste des invitations : un état par ligne, « Annuler » seulement pour celle en attente.
+              inv = pg.query_selector_all("#listeInvitations .invitation-ligne")
+              assert len(inv) == 4
+              t = [x.inner_text() for x in inv]
+              assert "Pour Paul" in t[0] and "En attente, expire le 15/11/2026" in t[0]
+              assert "Invitation n° 3" in t[1] and "Utilisée par Julie" in t[1]
+              assert "Expirée" in t[2] and "Annulée" in t[3]
+              assert noms_boutons(pg, "#listeInvitations button") == ["Annuler"]
+
+              # 3) Créer une invitation : le code s'affiche une fois, avec un message prêt à envoyer.
+              requetes.clear()
+              pg.fill("#invitationPour", "Léa")
+              pg.click("#formInviter button"); pg.wait_for_timeout(700)
+              assert [x for x in requetes if x[0] == "/api/invitations" and x[1] == "POST"][0][2] == {"pour": "Léa"}
+              assert visible(pg, "#codeAffiche") and texte(pg, "#codeAfficheValeur") == "abcd-efgh-jkmn-pqrs"
+              assert texte(pg, "#codeAfficheTitre") == "Invitation pour Léa :" and visible(pg, "#boutonCopierInvitation")
+              assert pg.input_value("#invitationPour") == ""
+              assert len(pg.query_selector_all("#listeInvitations .invitation-ligne")) == 5, "la liste est rechargée"
+              pg.click("#boutonCopierInvitation"); pg.wait_for_timeout(200)
+              copie = pg.evaluate("window.__copie")
+              assert "abcd-efgh-jkmn-pqrs" in copie and "http://localhost" in copie and "S'inscrire" in copie and "7 jours" in copie, copie
+              assert "Message copié" in texte(pg, "#messagePersonnes")
+              pg.click("#boutonCodeNote")
+              assert not visible(pg, "#codeAffiche") and texte(pg, "#codeAfficheValeur") == "" and not visible(pg, "#boutonCopierInvitation")
+              # Sans nom : l'invitation est créée quand même.
+              requetes.clear()
+              pg.click("#formInviter button"); pg.wait_for_timeout(600)
+              assert [x for x in requetes if x[0] == "/api/invitations" and x[1] == "POST"][0][2] == {}
+              assert texte(pg, "#codeAfficheTitre") == "Invitation :"
+              pg.click("#boutonCodeNote")
+
+              # 4) Annuler : refusé = rien n'est envoyé ; accepté = envoyé et liste rechargée.
+              requetes.clear(); reponse["ok"] = False
+              pg.click("#listeInvitations .invitation-ligne:has-text('Pour Paul') button"); pg.wait_for_timeout(300)
+              assert not [x for x in requetes if "annuler" in x[0]]
+              reponse["ok"] = True
+              pg.click("#listeInvitations .invitation-ligne:has-text('Pour Paul') button"); pg.wait_for_timeout(600)
+              assert [x for x in requetes if "annuler" in x[0]][0][:2] == ("/api/invitations/4/annuler", "POST")
+              assert texte(pg, "#messagePersonnes") == "Invitation annulée."
+              paul = pg.query_selector("#listeInvitations .invitation-ligne:has-text('Pour Paul')")
+              assert "Annulée" in paul.inner_text() and not paul.query_selector("button")
+
+              # 5) Mot de passe provisoire : confirmation, affichage une fois, message à envoyer.
+              requetes.clear(); reponse["ok"] = False
+              pg.click("#listePersonnes .personne-ligne:nth-child(2) button:has-text('Mot de passe provisoire')"); pg.wait_for_timeout(300)
+              assert not [x for x in requetes if "reinitialiser" in x[0]]
+              reponse["ok"] = True
+              pg.click("#listePersonnes .personne-ligne:nth-child(2) button:has-text('Mot de passe provisoire')"); pg.wait_for_timeout(600)
+              assert [x for x in requetes if "reinitialiser" in x[0]][0][:2] == ("/api/personnes/2/reinitialiser-mot-de-passe", "POST")
+              assert "Julie" in dialogues[-1] and "appareils seront déconnectés" in dialogues[-1]
+              assert texte(pg, "#codeAfficheTitre") == "Mot de passe provisoire de Julie :" and texte(pg, "#codeAfficheValeur") == "abcd-efgh-jkmn"
+              pg.click("#boutonCopierInvitation"); pg.wait_for_timeout(200)
+              copie = pg.evaluate("window.__copie")
+              assert "abcd-efgh-jkmn" in copie and "Julie" in copie and "choisis-en un nouveau" in copie, copie
+              pg.close()
+
+              # 6) Une personne qui n'est pas administratrice ne voit rien de tout cela et ne charge pas les invitations.
+              admin["oui"] = False
+              requetes.clear()
+              pg = ctx.new_page()
+              pg.on("pageerror", lambda e: erreurs.append(str(e)[:200]))
+              pg.route("http://localhost/", lambda r: r.fulfill(status=200, content_type="text/html", body=html))
+              pg.goto("http://localhost/#reglages"); pg.wait_for_timeout(900)
+              assert not visible(pg, "#blocPersonnes")
+              assert not [x for x in requetes if x[0] in ("/api/invitations", "/api/personnes")], requetes
+              nav.close()
+
+          assert not erreurs, erreurs
+          print("OK: administration des invitations et des mots de passe provisoires dans un vrai navigateur")
+          PY
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_admin_invitations.py"
       - name: Tester la recherche avec l'IA (copier-coller) dans un vrai navigateur
         env:
           SQLITE_PATH: ${{ runner.temp }}/maillons-ia-test.db
