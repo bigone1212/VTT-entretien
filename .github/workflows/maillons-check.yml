@@ -2604,7 +2604,8 @@ jobs:
           SQLITE_PATH: ${{ runner.temp }}/maillons-niveau-test.db
           CODE_ACCES: test
         run: |
-          git fetch --depth=1 origin main
+          # L'« ancien » code est figé : la version en ligne avant la fusion de l'inscription sur invitation.
+          git fetch --depth=1 origin 14353c97e62eb0db9bfa566d872e3be929c8b391
           mkdir -p "$RUNNER_TEMP/ancien"
           git show FETCH_HEAD:main.py > "$RUNNER_TEMP/ancien/main.py"
           cp db.py gpx_import.py "$RUNNER_TEMP/ancien/"
@@ -4692,6 +4693,20 @@ jobs:
               print("5)", msg()); assert "bloc JSON" in msg()
               js("document.getElementById('reponseIA').value = '{pas du json}'; document.getElementById('boutonRemplirFicheIA').click()"); page.wait_for_timeout(200)
               print("6)", msg()); assert "pas lisible" in msg()
+              # 7) réponse « façon ChatGPT » : renvois de sources, virgules en trop, valeurs écrites autrement
+              CHATGPT = ("Voici la fiche {comme demandé} :\n```json\n{\n"
+                  + '  "marque": "Trek", // la marque\n  "modele": "Fuel EXe 9.7" ' + chr(0xE200) + "cite" + chr(0xE202) + "turn0search1" + chr(0xE201) + ',\n'
+                  + '  "annee": "2025", "type": "VTT électrique", "freins": "Disque hydraulique", "moteur": "TQ HPR50:contentReference[oaicite:0]{index=0}",\n'
+                  + '  "composants": [\n    {"categorie": "Tige de selle", "nom": "TranzX JD-YSP39 \u301012\u2020source\u3011", "source": "https://opticycles.com/x"},\n'
+                  + '    {"categorie": "fourche", "nom": "Fox Rhythm 36", "sources": ["https://shop.example/p"]},\n  ],\n}\n```')
+              js("document.getElementById('reponseIA').value = " + json.dumps(CHATGPT) + "; document.getElementById('boutonRemplirFicheIA').click()"); page.wait_for_timeout(300)
+              print("7)", msg())
+              champs = js("({marque: nouveauVeloMarque.value, modele: nouveauVeloModele.value, annee: nouveauVeloAnnee.value, type: nouveauVeloType.value, freins: nouveauVeloFreins.value, moteur: nouveauVeloMoteur.value})")
+              assert champs == {"marque": "Trek", "modele": "Fuel EXe 9.7", "annee": "2025", "type": "vtt_electrique", "freins": "disque_hydraulique", "moteur": "TQ HPR50"}, champs
+              radios = js("Array.from(document.querySelectorAll('#resultatsRechercheFiche input[type=radio]')).map(r => r.name)")
+              assert "composant-tige_de_selle" in radios and "composant-fourche" in radios, radios
+              texte_fiche = js("document.getElementById('resultatsRechercheFiche').textContent")
+              assert "TranzX JD-YSP39" in texte_fiche and "oaicite" not in texte_fiche and "12" not in texte_fiche.split("TranzX JD-YSP39")[1][:6], texte_fiche
               nav.close()
           print("erreurs page :", erreurs); assert not erreurs
           print("TOUT OK")
