@@ -150,6 +150,9 @@
 ---
 
 
+## 2026-11-09 — Essai de Math confirmé : la réponse de ChatGPT est lue
+- Math a confirmé en ligne (après avoir actualisé l'appli) que la recherche avec l'IA lit bien la réponse de ChatGPT (PR 30 et 31). Un premier « ça ne marche pas » venait d'une page non actualisée.
+
 ## 2026-11-09 — PR 31 fusionnée : réponse de ChatGPT copiée depuis le chat (texte « habillé »)
 - Cause trouvée avec la vraie réponse de Math : copiée depuis le chat (pas depuis le bloc de code), elle contenait des espaces écrits &#x20;, des barres obliques inverses en fin de ligne et devant : / . *. Ces habillages sont défaits avant la lecture (essai sur sa vraie réponse : 23 composants lus, 3 tailles de tige de selle à choisir).
 - Sur GitHub (main). Testé : navigateur local (vraie réponse + test synthétique ajouté au CI) et tests automatiques GitHub, passés.
