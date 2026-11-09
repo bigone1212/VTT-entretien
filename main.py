@@ -4271,6 +4271,7 @@ def accueil():
                 <div class="select-velo-zone"><select id="selectVelo" aria-label="Choisir mon vélo"></select></div>
             </div>
             <span class="km-pill" id="veloInfo">… km</span>
+            <button type="button" class="bouton-parametres" id="boutonCompte" aria-label="Mon compte" title="Mon compte" onclick="location.hash='compte'"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="10" r="3.2"/><path d="M5.8 18.6c1.2-2.5 3.5-3.9 6.2-3.9s5 1.4 6.2 3.9"/></svg></button>
             <button type="button" class="bouton-parametres" id="boutonParametres" aria-label="Paramètres" title="Paramètres" onclick="location.hash='parametres'"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
         </header>
 
@@ -4360,24 +4361,6 @@ def accueil():
             <p class="form-help" id="messageMesVelos" aria-live="polite"></p>
         </section>
 
-        <section class="mes-reglages" id="blocCompte">
-            <div class="mr-titre">
-                <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c0-4 3.4-7 7.5-7s7.5 3 7.5 7"/></svg><span>Mon compte</span></strong>
-            </div>
-            <p class="form-help" id="compteIdentite"></p>
-            <p class="form-help" id="compteProvisoire" style="display:none; color: var(--danger);">Ton mot de passe est provisoire : choisis-en un nouveau ci-dessous.</p>
-            <form id="formMotDePasse" style="display:none;">
-                <label for="mdpAncien">Mot de passe actuel</label>
-                <input id="mdpAncien" type="password" autocomplete="current-password" maxlength="200" required>
-                <label for="mdpNouveau">Nouveau mot de passe (8 caractères au moins)</label>
-                <input id="mdpNouveau" type="password" autocomplete="new-password" maxlength="200" required>
-                <label for="mdpNouveau2">Confirmation du nouveau mot de passe</label>
-                <input id="mdpNouveau2" type="password" autocomplete="new-password" maxlength="200" required>
-                <button type="submit" class="btn-primary" style="width:100%; margin-top:8px;">Changer mon mot de passe</button>
-            </form>
-            <p class="form-help" id="messageCompte" aria-live="polite"></p>
-            <button type="button" id="boutonDeconnexion" class="btn-primary" style="width:100%; margin-top:8px;">Se déconnecter</button>
-        </section>
 
         <section class="mes-reglages" id="blocPersonnes" style="display:none;">
             <div class="mr-titre">
@@ -4713,6 +4696,28 @@ def accueil():
             </div>
         </section>
         </div>
+        </div>
+
+        <div class="page" id="page-compte" style="display:none;">
+        <section class="mes-reglages" id="blocCompte">
+            <div class="mr-titre">
+                <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c0-4 3.4-7 7.5-7s7.5 3 7.5 7"/></svg><span>Mon compte</span></strong>
+                <button type="button" id="boutonRetourCompte" class="bouton-retour" aria-label="Retour" onclick="quitterParametres()"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+            </div>
+            <p class="form-help" id="compteIdentite"></p>
+            <p class="form-help" id="compteProvisoire" style="display:none; color: var(--danger);">Ton mot de passe est provisoire : choisis-en un nouveau ci-dessous.</p>
+            <form id="formMotDePasse" style="display:none;">
+                <label for="mdpAncien">Mot de passe actuel</label>
+                <input id="mdpAncien" type="password" autocomplete="current-password" maxlength="200" required>
+                <label for="mdpNouveau">Nouveau mot de passe (8 caractères au moins)</label>
+                <input id="mdpNouveau" type="password" autocomplete="new-password" maxlength="200" required>
+                <label for="mdpNouveau2">Confirmation du nouveau mot de passe</label>
+                <input id="mdpNouveau2" type="password" autocomplete="new-password" maxlength="200" required>
+                <button type="submit" class="btn-primary" style="width:100%; margin-top:8px;">Changer mon mot de passe</button>
+            </form>
+            <p class="form-help" id="messageCompte" aria-live="polite"></p>
+            <button type="button" id="boutonDeconnexion" class="btn-primary" style="width:100%; margin-top:8px;">Se déconnecter</button>
+        </section>
         </div>
 
         <div class="page" id="page-parametres" style="display:none;">
@@ -5117,7 +5122,7 @@ def accueil():
         </dialog>
 
         <script>
-            const PAGES = ['entretien', 'historique', 'reglages', 'sorties', 'parametres'];
+            const PAGES = ['entretien', 'historique', 'reglages', 'sorties', 'parametres', 'compte'];
 
             // Bouton « retour » des paramètres : revient à la page d'avant (Entretien si on n'en connaît pas).
             let pageAvantParametres = 'entretien';
@@ -5133,12 +5138,12 @@ def accueil():
                     nom = 'entretien';
                 }
 
-                if (nom !== 'parametres') pageAvantParametres = nom;
+                if (nom !== 'parametres' && nom !== 'compte') pageAvantParametres = nom;
                 PAGES.forEach(p => {
                     document.getElementById('page-' + p).style.display =
                         p === nom ? 'block' : 'none';
 
-                    const bouton = document.getElementById(p === 'parametres' ? 'boutonParametres' : 'onglet-' + p);
+                    const bouton = document.getElementById(p === 'parametres' ? 'boutonParametres' : p === 'compte' ? 'boutonCompte' : 'onglet-' + p);
                     if (!bouton) return;
                     bouton.classList.toggle('actif', p === nom);
 
@@ -6867,7 +6872,7 @@ def accueil():
                 document.getElementById('formMotDePasse').style.display = aSession ? '' : 'none';
                 const provisoire = aSession && sessionStorage.getItem('maillons_mdp_provisoire') === '1';
                 document.getElementById('compteProvisoire').style.display = provisoire ? '' : 'none';
-                if (provisoire && location.hash !== '#reglages') location.hash = '#reglages';
+                if (provisoire && location.hash !== '#compte') location.hash = '#compte';
             }
 
             document.getElementById('formMotDePasse').addEventListener('submit', async event => {
