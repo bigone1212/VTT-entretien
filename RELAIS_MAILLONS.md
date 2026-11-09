@@ -150,6 +150,12 @@
 ---
 
 
+## 2026-11-09 — PR 30 fusionnée : réponse de ChatGPT lue plus tolérantement (recherche avec l'IA)
+- Sur GitHub (main) : la réponse collée est nettoyée (renvois de sources ChatGPT, virgules en trop, commentaires, guillemets courbes), le bloc JSON est retrouvé même entouré de texte, les valeurs écrites autrement sont reconnues (année en texte, « VTT électrique », « Tige de selle »). La demande copiée dit à l'IA de ne pas mettre de renvois de sources. Aucun texte de la réponse n'est exécuté.
+- Cause exacte de l'échec de Math avec ChatGPT : non connue (message d'erreur non transmis) ; les défauts habituels de ChatGPT ont été simulés en test.
+- Fichier de tests : le test de mise à niveau d'une base prend maintenant comme « ancien code » le commit 14353c9 (avant la fusion de l'inscription sur invitation) au lieu de main.
+- Testé : navigateur local et tests automatiques GitHub, passés. Non vérifié d'ici : Render et un vrai essai avec ChatGPT.
+
 ## 2026-11-04 — NOUVELLE TÂCHE (pas commencée côté code) : plusieurs personnes, chacune avec son profil et ses vélos
 - **Confirmé par Math (04/11/2026, ~18h40) : c'est bien « un code secret par personne ».** L'entrée « compte Google » de 18h35 (juste en dessous) est annulée.
 - Demande de Math (04/11/2026, ~15h09) : faire profiter 5 à 6 personnes de l'appli, chacune avec son profil et ses vélos. **Choix de Math : un code secret par personne** (options proposées : code par personne, nom + mot de passe, lien personnel).
