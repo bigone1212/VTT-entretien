@@ -6147,7 +6147,8 @@ def accueil():
                 };
                 const lignes = [
                     'Je tiens le carnet d’entretien de mon vélo. Cherche sur le web la fiche technique du vélo suivant : ' + sujet + '.',
-                    'Réponds UNIQUEMENT avec un bloc JSON, sans autre texte, au format donné en exemple plus bas.',
+                    'Réponds UNIQUEMENT avec un bloc JSON, sans autre texte, au format donné en exemple plus bas, dans un seul bloc de code.',
+                    'N’ajoute aucune citation ni renvoi de source dans le texte des valeurs (pas de [1], pas de petit lien après le nom). Les adresses vont seulement dans « source ».',
                     'N’invente rien : si une information est introuvable, mets null (ou ne mets pas la ligne).',
                     'Pour chaque composant, donne dans « source » l’adresse de la page où tu l’as lu. S’il existe plusieurs versions selon la taille du cadre, mets une ligne par version, avec un nom qui commence par « Taille M : ».',
                     'Valeurs permises. type : ' + TYPES_IA.join(', ') + '. freins : ' + FREINS_IA.join(', ') + '. suspension : ' + SUSPENSIONS_IA.join(', ') + '. tubeless : ' + TUBELESS_IA.join(', ') + '. transmission : ' + TRANSMISSIONS_IA.join(', ') + '. categorie des composants : ' + CATEGORIES_IA.join(', ') + '.',
@@ -6194,24 +6195,151 @@ def accueil():
                 } catch (e) { return null; }
             }
 
+            // Les IA (ChatGPT surtout) ajoutent des renvois de sources, des virgules en trop, des guillemets courbes :
+            // on nettoie sans jamais exécuter le texte (lecture JSON seulement).
+            function nettoyerReponseIA(texte) {
+                let sortie = '';
+                let i = 0;
+                while (i < texte.length) {
+                    const code = texte.charCodeAt(i);
+                    if (code === 0xE200) {
+                        const fin = texte.indexOf(String.fromCharCode(0xE201), i);
+                        i = fin < 0 ? i + 1 : fin + 1;
+                        continue;
+                    }
+                    if (code === 0x3010) {
+                        const fin = texte.indexOf(String.fromCharCode(0x3011), i);
+                        if (fin > i) { i = fin + 1; continue; }
+                    }
+                    if (code >= 0xE000 && code <= 0xF8FF) { i += 1; continue; }
+                    sortie += texte[i];
+                    i += 1;
+                }
+                let pos = sortie.indexOf('contentReference[');
+                let tours = 0;
+                while (pos >= 0 && tours < 200) {
+                    tours += 1;
+                    const fin = sortie.indexOf('}', pos);
+                    if (fin < 0 || fin - pos > 60) break;
+                    const debutRetire = (pos > 0 && sortie[pos - 1] === ':') ? pos - 1 : pos;
+                    sortie = sortie.slice(0, debutRetire) + sortie.slice(fin + 1);
+                    pos = sortie.indexOf('contentReference[');
+                }
+                return sortie;
+            }
+
+            function retirerVirgulesEnTrop(t) {
+                const barre = String.fromCharCode(92);
+                const saut = String.fromCharCode(10);
+                let sortie = '';
+                let dansTexte = false;
+                let echappe = false;
+                for (let i = 0; i < t.length; i++) {
+                    const c = t[i];
+                    if (dansTexte) {
+                        sortie += c;
+                        if (echappe) echappe = false;
+                        else if (c === barre) echappe = true;
+                        else if (c === '"') dansTexte = false;
+                        continue;
+                    }
+                    if (c === '"') { dansTexte = true; sortie += c; continue; }
+                    if (c === '/' && t[i + 1] === '/') {
+                        while (i < t.length && t[i] !== saut) i++;
+                        continue;
+                    }
+                    if (c === ',') {
+                        let j = i + 1;
+                        while (j < t.length && t.charCodeAt(j) < 33) j++;
+                        if (t[j] === '}' || t[j] === ']') continue;
+                    }
+                    sortie += c;
+                }
+                return sortie;
+            }
+
+            function objetsJsonDansTexte(t) {
+                const barre = String.fromCharCode(92);
+                const trouves = [];
+                let essais = 0;
+                for (let debut = t.indexOf('{'); debut >= 0 && trouves.length < 20 && essais < 200; debut = t.indexOf('{', debut + 1)) {
+                    essais += 1;
+                    let profondeur = 0;
+                    let dansTexte = false;
+                    let echappe = false;
+                    let fin = -1;
+                    for (let i = debut; i < t.length; i++) {
+                        const c = t[i];
+                        if (dansTexte) {
+                            if (echappe) echappe = false;
+                            else if (c === barre) echappe = true;
+                            else if (c === '"') dansTexte = false;
+                            continue;
+                        }
+                        if (c === '"') dansTexte = true;
+                        else if (c === '{') profondeur += 1;
+                        else if (c === '}') {
+                            profondeur -= 1;
+                            if (profondeur === 0) { fin = i; break; }
+                        }
+                    }
+                    if (fin > debut) trouves.push(t.slice(debut, fin + 1));
+                }
+                return trouves;
+            }
+
+            function lireJsonTolerant(texte) {
+                const nettoye = nettoyerReponseIA(texte);
+                const variantes = [nettoye, nettoye.split('“').join('"').split('”').join('"')];
+                for (const variante of variantes) {
+                    for (const candidat of objetsJsonDansTexte(variante)) {
+                        for (const forme of [candidat, retirerVirgulesEnTrop(candidat)]) {
+                            try {
+                                const objet = JSON.parse(forme);
+                                if (objet && typeof objet === 'object' && !Array.isArray(objet) && ('composants' in objet || 'marque' in objet || 'modele' in objet)) return objet;
+                            } catch (e) { /* on essaie la forme suivante */ }
+                        }
+                    }
+                }
+                return null;
+            }
+
+            function cleNormalisee(valeur) {
+                let k = String(valeur === null || valeur === undefined ? '' : valeur).normalize('NFD').split('')
+                    .filter(c => { const n = c.charCodeAt(0); return n < 0x300 || n > 0x36F; }).join('')
+                    .toLowerCase().trim().split(' ').join('_').split('-').join('_');
+                while (k.includes('__')) k = k.split('__').join('_');
+                return k.split('_de_').join('_').split('_du_').join('_');
+            }
+
             // La réponse de l'IA est un texte non vérifié : on ne garde que ce qui est reconnu.
             function donneesDepuisReponseIA(texte) {
-                const debut = texte.indexOf('{');
-                const fin = texte.lastIndexOf('}');
-                if (debut < 0 || fin <= debut) throw new Error('Je ne trouve pas de bloc JSON dans cette réponse. Demande à l’IA de répondre uniquement avec le bloc JSON.');
-                let brut;
-                try { brut = JSON.parse(texte.slice(debut, fin + 1)); } catch (e) { throw new Error('Cette réponse n’est pas lisible. Demande à l’IA de répondre uniquement avec le bloc JSON.'); }
-                if (!brut || typeof brut !== 'object' || Array.isArray(brut)) throw new Error('Cette réponse n’a pas le bon format.');
+                if (texte.indexOf('{') < 0) throw new Error('Je ne trouve pas de bloc JSON dans cette réponse. Demande à l’IA de répondre uniquement avec le bloc JSON.');
+                const brut = lireJsonTolerant(texte);
+                if (!brut) throw new Error('Cette réponse n’est pas lisible. Demande à l’IA de répondre uniquement avec le bloc JSON, sans renvois de sources.');
                 const texteCourt = (valeur, max) => (typeof valeur === 'string' && valeur.trim()) ? valeur.trim().slice(0, max) : null;
-                const dans = (valeur, liste) => liste.includes(valeur) ? valeur : null;
-                const annee = Number.isInteger(brut.annee) && brut.annee >= 1950 && brut.annee <= 2100 ? brut.annee : null;
+                const dans = (valeur, liste) => {
+                    if (liste.includes(valeur)) return valeur;
+                    const cle = cleNormalisee(valeur);
+                    return liste.find(x => cleNormalisee(x) === cle) || null;
+                };
+                const anneeLue = Number(brut.annee);
+                const annee = Number.isInteger(anneeLue) && anneeLue >= 1950 && anneeLue <= 2100 ? anneeLue : null;
+                let listeBrute = [];
+                if (Array.isArray(brut.composants)) listeBrute = brut.composants;
+                else if (brut.composants && typeof brut.composants === 'object') {
+                    listeBrute = Object.keys(brut.composants).map(cle => {
+                        const v = brut.composants[cle];
+                        return (v && typeof v === 'object') ? Object.assign({ categorie: cle }, v) : { categorie: cle, nom: v };
+                    });
+                }
                 const parCategorie = {};
-                (Array.isArray(brut.composants) ? brut.composants : []).slice(0, 60).forEach(piece => {
+                listeBrute.slice(0, 60).forEach(piece => {
                     if (!piece || typeof piece !== 'object') return;
                     const categorie = dans(piece.categorie, CATEGORIES_IA);
-                    const nom = texteCourt(piece.nom, 300);
+                    const nom = texteCourt(piece.nom || piece.name || piece.modele, 300);
                     if (!categorie || !nom) return;
-                    const source = adresseWebSure(piece.source);
+                    const source = adresseWebSure(piece.source || piece.url || piece.lien || (Array.isArray(piece.sources) ? piece.sources[0] : null));
                     parCategorie[categorie] = parCategorie[categorie] || [];
                     if (!parCategorie[categorie].some(x => x.nom === nom)) parCategorie[categorie].push({ nom: nom, source: source });
                 });
