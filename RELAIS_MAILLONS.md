@@ -150,6 +150,12 @@
 ---
 
 
+## 2026-11-09 — Mes vélos : liste avec un menu par vélo (PR #32, fusionnée)
+- Mon vélo > Mes vélos : une ligne par vélo (nom, type, pastille « Affiché »), toucher la ligne affiche le vélo.
+- Chaque ligne a ses trois petits points : fiche, photo (fichier/lien/supprimer), repères, suppression. Sur un vélo non affiché, le menu l'affiche d'abord. CUBE : fiche et suppression grisées.
+- Le menu du haut de la carte ne garde que « Ajouter un vélo » (zone ajoutVeloMenuZone).
+- Tests CI mis à jour + nouveau test de la liste. Déploiement Render non vérifié depuis ici.
+
 ## 2026-11-09 — Essai de Math confirmé : la réponse de ChatGPT est lue
 - Math a confirmé en ligne (après avoir actualisé l'appli) que la recherche avec l'IA lit bien la réponse de ChatGPT (PR 30 et 31). Un premier « ça ne marche pas » venait d'une page non actualisée.
 
