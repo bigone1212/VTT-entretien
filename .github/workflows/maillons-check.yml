@@ -2604,7 +2604,8 @@ jobs:
           SQLITE_PATH: ${{ runner.temp }}/maillons-niveau-test.db
           CODE_ACCES: test
         run: |
-          git fetch --depth=1 origin main
+          # L'« ancien » code est figé : la version en ligne avant la fusion de l'inscription sur invitation.
+          git fetch --depth=1 origin 14353c97e62eb0db9bfa566d872e3be929c8b391
           mkdir -p "$RUNNER_TEMP/ancien"
           git show FETCH_HEAD:main.py > "$RUNNER_TEMP/ancien/main.py"
           cp db.py gpx_import.py "$RUNNER_TEMP/ancien/"
