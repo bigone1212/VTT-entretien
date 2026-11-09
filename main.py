@@ -6288,9 +6288,52 @@ def accueil():
                 return trouves;
             }
 
+            // Quand ChatGPT est copié depuis le chat (et non depuis son bloc de code), le texte arrive « habillé » :
+            // espaces écrits &#x20;, barres obliques inverses devant les signes (https:// devient https + barre + deux-points…).
+            function defaireHabillageMarkdown(texte) {
+                const barre = String.fromCharCode(92);
+                let sansEntites = '';
+                let i = 0;
+                while (i < texte.length) {
+                    if (texte[i] === '&') {
+                        const fin = texte.indexOf(';', i);
+                        if (fin > i && fin - i <= 10) {
+                            const nom = texte.slice(i + 1, fin);
+                            let code = null;
+                            if (nom[0] === '#') {
+                                const nombre = (nom[1] === 'x' || nom[1] === 'X') ? parseInt(nom.slice(2), 16) : parseInt(nom.slice(1), 10);
+                                if (Number.isInteger(nombre) && nombre > 0 && nombre < 0x110000) code = String.fromCodePoint(nombre);
+                            } else if (nom === 'amp') code = '&';
+                            else if (nom === 'quot') code = '"';
+                            else if (nom === 'lt') code = '<';
+                            else if (nom === 'gt') code = '>';
+                            else if (nom === 'nbsp') code = ' ';
+                            else if (nom === 'apos') code = "'";
+                            if (code !== null) { sansEntites += code; i = fin + 1; continue; }
+                        }
+                    }
+                    sansEntites += texte[i];
+                    i += 1;
+                }
+                const lettresJson = '"' + barre + '/bfnrtu';
+                let sortie = '';
+                for (let j = 0; j < sansEntites.length; j++) {
+                    const c = sansEntites[j];
+                    if (c === barre && j + 1 < sansEntites.length) {
+                        const suivant = sansEntites[j + 1];
+                        if (suivant === String.fromCharCode(10) || suivant === String.fromCharCode(13)) continue;
+                        if (!lettresJson.includes(suivant)) continue;
+                    }
+                    sortie += c;
+                }
+                return sortie;
+            }
+
             function lireJsonTolerant(texte) {
                 const nettoye = nettoyerReponseIA(texte);
                 const variantes = [nettoye, nettoye.split('“').join('"').split('”').join('"')];
+                const dehabille = defaireHabillageMarkdown(nettoye);
+                if (dehabille !== nettoye) variantes.push(dehabille, dehabille.split('“').join('"').split('”').join('"'));
                 for (const variante of variantes) {
                     for (const candidat of objetsJsonDansTexte(variante)) {
                         for (const forme of [candidat, retirerVirgulesEnTrop(candidat)]) {

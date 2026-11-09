@@ -4707,6 +4707,18 @@ jobs:
               assert "composant-tige_de_selle" in radios and "composant-fourche" in radios, radios
               texte_fiche = js("document.getElementById('resultatsRechercheFiche').textContent")
               assert "TranzX JD-YSP39" in texte_fiche and "oaicite" not in texte_fiche and "12" not in texte_fiche.split("TranzX JD-YSP39")[1][:6], texte_fiche
+              # 8) copie « habillée » depuis le chat ChatGPT : espaces &#x20;, barres obliques inverses devant les signes
+              BS = chr(92)
+              HABILLEE = ("{" + BS + "\n&#x20; \"marque\": \"Trek\"," + BS + "\n&#x20; \"modele\": \"Fuel EXe 9.7\"," + BS + "\n&#x20; \"annee\": 2023," + BS + "\n"
+                  + "&#x20; \"moteur\": \"TQ-HPR50, 50 Nm\"," + BS + "\n&#x20; \"composants\": [" + BS + "\n&#x20;   {" + BS + "\n"
+                  + "&#x20;     \"categorie\": \"plateau\"," + BS + "\n&#x20;     \"nom\": \"E" + BS + "*thirteen E" + BS + "*spec, 32 dents\"," + BS + "\n"
+                  + "&#x20;     \"source\": \"https" + BS + "://www" + BS + ".trekbikes.com/fiche\"" + BS + "\n&#x20;   }" + BS + "\n&#x20; ]" + BS + "\n}")
+              js("document.getElementById('reponseIA').value = " + json.dumps(HABILLEE) + "; document.getElementById('boutonRemplirFicheIA').click()"); page.wait_for_timeout(300)
+              print("8)", msg())
+              assert "1 composants lus" in msg(), msg()
+              assert js("nouveauVeloMarque.value") == "Trek" and js("nouveauVeloAnnee.value") == "2023" and js("nouveauVeloMoteur.value") == "TQ-HPR50, 50 Nm"
+              assert "E*thirteen E*spec, 32 dents" in js("document.getElementById('resultatsRechercheFiche').textContent")
+              assert js("Array.from(document.querySelectorAll('#resultatsRechercheFiche a')).some(a => a.href === 'https://www.trekbikes.com/fiche')")
               nav.close()
           print("erreurs page :", erreurs); assert not erreurs
           print("TOUT OK")
