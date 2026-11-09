@@ -5814,8 +5814,8 @@ def accueil():
                 }
             }
 
-            const ORDRE_EQUIPEMENT = ['moteur', 'batterie', 'cadre', 'fourche', 'amortisseur', 'suspension', 'freins', 'etriers', 'plaquettes', 'disques', 'transmission', 'derailleur', 'cassette', 'chaine', 'plateau', 'pedalier', 'pedales', 'manettes', 'roues', 'jantes', 'pneus', 'moyeux', 'jeu_direction', 'cintre', 'potence', 'poignees', 'tige_de_selle', 'selle', 'chargeur'];
-            const LIBELLES_EQUIPEMENT = { pneus_avant: 'Pneu avant', pneus_arriere: 'Pneu arrière', plaquettes_avant: 'Plaquettes avant', plaquettes_arriere: 'Plaquettes arrière', disques_avant: 'Disque avant', disques_arriere: 'Disque arrière', etriers_avant: 'Étrier avant', etriers_arriere: 'Étrier arrière', roues_avant: 'Roue avant', roues_arriere: 'Roue arrière', jantes_avant: 'Jante avant', jantes_arriere: 'Jante arrière', moyeux_avant: 'Moyeu avant', moyeux_arriere: 'Moyeu arrière', jantes: 'Jantes', etriers: 'Étriers', derailleur: 'Dérailleur', chaine: 'Chaîne', pedalier: 'Pédalier', pedales: 'Pédales', tige_de_selle: 'Tige de selle', jeu_direction: 'Jeu de direction', poignees: 'Poignées', suspension: 'Suspension' };
+            const ORDRE_EQUIPEMENT = ['moteur', 'batterie', 'ecran', 'cadre', 'fourche', 'amortisseur', 'suspension', 'freins', 'etriers', 'plaquettes', 'disques', 'transmission', 'derailleur', 'cassette', 'chaine', 'guide_chaine', 'plateau', 'pedalier', 'pedales', 'manettes', 'roues', 'jantes', 'pneus', 'moyeux', 'jeu_direction', 'cintre', 'potence', 'poignees', 'tige_de_selle', 'selle', 'chargeur'];
+            const LIBELLES_EQUIPEMENT = { pneus_avant: 'Pneu avant', pneus_arriere: 'Pneu arrière', plaquettes_avant: 'Plaquettes avant', plaquettes_arriere: 'Plaquettes arrière', disques_avant: 'Disque avant', disques_arriere: 'Disque arrière', etriers_avant: 'Étrier avant', etriers_arriere: 'Étrier arrière', roues_avant: 'Roue avant', roues_arriere: 'Roue arrière', jantes_avant: 'Jante avant', jantes_arriere: 'Jante arrière', moyeux_avant: 'Moyeu avant', moyeux_arriere: 'Moyeu arrière', jantes: 'Jantes', etriers: 'Étriers', derailleur: 'Dérailleur', chaine: 'Chaîne', pedalier: 'Pédalier', pedales: 'Pédales', tige_de_selle: 'Tige de selle', jeu_direction: 'Jeu de direction', poignees: 'Poignées', suspension: 'Suspension', ecran: 'Commande et écran', guide_chaine: 'Guide-chaîne' };
             const ICONE_SUSPENSION = '<svg viewBox="0 0 48 48"><path d="M14 6l-4 28m4-28l10 28m-10-28h7M10 34l-3 8m13-8l3 8M27 12h12m-12 7h12m-12 7h12"/></svg>';
             const ICONE_PNEUS = '<svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="16"/><circle cx="24" cy="24" r="7"/><path d="M24 8v9m16 7h-9M24 40v-9M8 24h9"/></svg>';
             const ICONE_TRANSMISSION = '<svg viewBox="0 0 48 48"><circle cx="12" cy="32" r="7"/><circle cx="36" cy="32" r="7"/><path d="M12 32l8-17h9l7 17M20 15h9M24 15l-4-6"/></svg>';
@@ -5844,7 +5844,10 @@ def accueil():
             const ICONE_TIGE = '<svg viewBox="0 0 48 48"><path d="M7 13h34c0 5-7 8-17 8S7 18 7 13z"/><path d="M24 21v23M19 33h10"/></svg>';
             const ICONE_SELLE = '<svg viewBox="0 0 48 48"><path d="M5 17c8-5 17-1 21 2l15-4c1 5-2 9-8 10l-14 1c-7 0-11-3-14-9z"/><path d="M15 29l-3 9m17-8l3 8"/></svg>';
             const ICONE_CHARGEUR = '<svg viewBox="0 0 48 48"><path d="M17 5v11m14-11v11M12 16h24v7a12 12 0 0 1-24 0z"/><path d="M24 35v9"/></svg>';
+            const ICONE_ECRAN = '<svg viewBox="0 0 48 48"><rect x="7" y="7" width="34" height="27" rx="5"/><path d="M17 41h14m-7-7v7M12 13h24M12 18h11"/><circle cx="32" cy="25" r="4"/></svg>';
+            const ICONE_GUIDE_CHAINE = '<svg viewBox="0 0 48 48"><path d="M8 12h32v24H8z"/><path d="M13 17h22v14H13zM18 21v6m6-6v6m6-6v6"/></svg>';
             const ICONES_EQUIPEMENT = {
+                ecran: ICONE_ECRAN, guide_chaine: ICONE_GUIDE_CHAINE,
                 moteur: ICONE_MOTEUR, batterie: ICONE_BATTERIE, cadre: ICONE_CADRE,
                 freins: ICONE_DISQUE, disques: ICONE_DISQUE, etriers: ICONE_ETRIERS, plaquettes: ICONE_PLAQUETTES,
                 fourche: ICONE_FOURCHE, amortisseur: ICONE_AMORTISSEUR, suspension: ICONE_SUSPENSION,
@@ -5967,10 +5970,9 @@ def accueil():
             function monterMenuComposant(item, velo, categorie, libelle, nom, sources, modifie) {
                 item.querySelectorAll('.menu-sortie-btn, .menu-sortie').forEach(e => e.remove());
                 const requete = encodeURIComponent(nom + ' ' + libelle.toLocaleLowerCase('fr'));
-                const sourceSure = (sources || []).map(adresseWebSure).find(Boolean) || '';
                 const actions = [
                     { icone: 'lien', texte: 'Fiche technique',
-                      action: () => ouvrirAdresse(sourceSure || 'https://www.google.com/search?q=' + requete + '+fiche+technique') },
+                      action: () => ouvrirAdresse('https://www.google.com/search?q=' + requete + '+fiche+technique') },
                     { icone: 'panier', texte: "Chercher à l'achat",
                       action: () => ouvrirAdresse('https://www.google.com/search?tbm=shop&q=' + requete) },
                     { icone: 'crayon', texte: 'Modifier ce composant',
@@ -6326,7 +6328,7 @@ def accueil():
             }
             document.getElementById('boutonRechercheFiche').addEventListener('click', () => rechercherFicheVelo());
 
-            const CATEGORIES_IA = ['cadre', 'fourche', 'amortisseur', 'tige_de_selle', 'freins', 'etriers', 'plaquettes', 'disques', 'transmission', 'derailleur', 'cassette', 'chaine', 'plateau', 'pedalier', 'pedales', 'manettes', 'poignees', 'jeu_direction', 'moyeux', 'chargeur', 'roues', 'pneus', 'selle', 'cintre', 'potence', 'moteur', 'batterie'];
+            const CATEGORIES_IA = ['cadre', 'fourche', 'amortisseur', 'tige_de_selle', 'freins', 'etriers', 'plaquettes', 'disques', 'transmission', 'derailleur', 'cassette', 'chaine', 'plateau', 'pedalier', 'pedales', 'manettes', 'poignees', 'jeu_direction', 'moyeux', 'chargeur', 'roues', 'pneus', 'selle', 'cintre', 'potence', 'moteur', 'batterie', 'ecran', 'guide_chaine', 'jantes'];
             const TYPES_IA = ['vtt_electrique', 'vtt', 'enduro', 'descente', 'gravel', 'gravel_electrique', 'route', 'route_electrique'];
             const FREINS_IA = ['patins', 'disque_hydraulique', 'disque_mecanique', 'disque'];
             const SUSPENSIONS_IA = ['rigide', 'avant', 'double'];
@@ -6358,6 +6360,7 @@ def accueil():
                     'N’invente rien : si une information est introuvable, mets null (ou ne mets pas la ligne).',
                     'Pour chaque composant, donne dans « source » l’adresse de la page où tu l’as lu. S’il existe plusieurs versions selon la taille du cadre, mets une ligne par version, avec un nom qui commence par « Taille M : ».',
                     'Valeurs permises. type : ' + TYPES_IA.join(', ') + '. freins : ' + FREINS_IA.join(', ') + '. suspension : ' + SUSPENSIONS_IA.join(', ') + '. tubeless : ' + TUBELESS_IA.join(', ') + '. transmission : ' + TRANSMISSIONS_IA.join(', ') + '. categorie des composants : ' + CATEGORIES_IA.join(', ') + '.',
+                    'Dans categorie, « ecran » veut dire la commande et l’écran du moteur électrique (par exemple Bosch Purion), « guide_chaine » le guide-chaîne, « jantes » les jantes.',
                     'Exemple de format :',
                     JSON.stringify(exemple, null, 2)
                 ];
@@ -6567,9 +6570,12 @@ def accueil():
                 const brut = lireJsonTolerant(texte);
                 if (!brut) throw new Error('Cette réponse n’est pas lisible. Demande à l’IA de répondre uniquement avec le bloc JSON, sans renvois de sources.');
                 const texteCourt = (valeur, max) => (typeof valeur === 'string' && valeur.trim()) ? valeur.trim().slice(0, max) : null;
+                const SYNONYMES_CATEGORIE = { commande_ecran: 'ecran', commande_et_ecran: 'ecran', ecran_commande: 'ecran', ecran_et_commande: 'ecran', display: 'ecran', afficheur: 'ecran', console: 'ecran', guide_chaine: 'guide_chaine', guidechaine: 'guide_chaine' };
                 const dans = (valeur, liste) => {
                     if (liste.includes(valeur)) return valeur;
                     const cle = cleNormalisee(valeur);
+                    const synonyme = liste === CATEGORIES_IA ? SYNONYMES_CATEGORIE[cle] : null;
+                    if (synonyme) return synonyme;
                     return liste.find(x => cleNormalisee(x) === cle) || null;
                 };
                 const anneeLue = Number(brut.annee);
