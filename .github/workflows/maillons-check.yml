@@ -4361,7 +4361,7 @@ jobs:
               assert texte(pg, "#headerVeloNom") == "Mon gravel"
               assert "Julie" in texte(pg, "#headerBienvenue")
               assert [x for x in requetes if x[0] == "/api/velos"][-1][2] == JETON, "le jeton remplace le code dans l'en-tête"
-              pg.evaluate("location.hash = '#reglages'"); pg.wait_for_timeout(300)
+              pg.evaluate("location.hash = '#compte'"); pg.wait_for_timeout(300)
               assert texte(pg, "#compteIdentite") == "Connecté : Julie" and visible(pg, "#formMotDePasse") and not visible(pg, "#compteProvisoire")
 
               # 2) Mot de passe changé depuis Réglages.
@@ -4405,12 +4405,12 @@ jobs:
               pg.click("#authLienAutre"); assert visible(pg, "#authPanneauConnexion") and visible(pg, "#authLienCode")
               pg.close()
 
-              # 5) Mot de passe provisoire (donné par Math) : on est envoyé vers Réglages avec le message.
+              # 5) Mot de passe provisoire (donné par Math) : on est envoyé vers la page Mon compte avec le message.
               etat["provisoire"] = True
               pg = ouvrir(stockage_local="localStorage.setItem('maillons_deja_inscrit','1');")
               pg.fill("#authEmail", "julie@exemple.fr"); pg.fill("#authMdp", "bon-mot-de-passe")
               pg.click("#authPanneauConnexion button"); pg.wait_for_timeout(1800)
-              assert pg.evaluate("location.hash") == "#reglages" and visible(pg, "#compteProvisoire") and visible(pg, "#page-reglages")
+              assert pg.evaluate("location.hash") == "#compte" and visible(pg, "#compteProvisoire") and visible(pg, "#page-compte")
               pg.fill("#mdpAncien", "bon-mot-de-passe"); pg.fill("#mdpNouveau", "nouveau-solide-123"); pg.fill("#mdpNouveau2", "nouveau-solide-123")
               pg.click("#formMotDePasse button"); pg.wait_for_timeout(500)
               assert not visible(pg, "#compteProvisoire") and pg.evaluate("sessionStorage.getItem('maillons_mdp_provisoire')") is None
@@ -4433,7 +4433,7 @@ jobs:
               pg.click("#authLienCode"); pg.fill("#authInput", "code-de-math"); pg.click("#authValiderCode"); pg.wait_for_timeout(1200)
               assert pg.eval_on_selector("#authScreen", "e => getComputedStyle(e).display") == "none"
               assert pg.evaluate("localStorage.getItem('maillons_deja_inscrit')") == "1" and pg.evaluate("localStorage.getItem('maillons_session')") is None
-              pg.evaluate("location.hash = '#reglages'"); pg.wait_for_timeout(300)
+              pg.evaluate("location.hash = '#compte'"); pg.wait_for_timeout(300)
               assert texte(pg, "#compteIdentite") == "Connecté : Math" and not visible(pg, "#formMotDePasse") and visible(pg, "#boutonDeconnexion")
               pg.close()
               nav.close()
@@ -4905,6 +4905,17 @@ jobs:
               # Toucher le nom replie le vélo affiché
               pg.click("#listeMesVelos .velo-ligne:nth-child(1) .velo-ligne-choix"); pg.wait_for_timeout(300)
               assert pg.eval_on_selector_all("#listeMesVelos .velo-ligne-corps", "e => e.length") == 0
+              # Icône « Mon compte » entre les kilomètres et l'engrenage, qui ouvre la page du compte
+              ordre = pg.evaluate("[...document.querySelectorAll('header > *')].map(e => e.id || e.className).filter(x => ['veloInfo', 'boutonCompte', 'boutonParametres'].includes(x))")
+              assert ordre == ["veloInfo", "boutonCompte", "boutonParametres"], ordre
+              assert not pg.is_visible("#blocCompte")
+              pg.click("#boutonCompte"); pg.wait_for_timeout(300)
+              assert pg.evaluate("location.hash") == "#compte" and pg.is_visible("#page-compte") and pg.is_visible("#boutonDeconnexion")
+              assert "actif" in pg.get_attribute("#boutonCompte", "class") and not pg.is_visible("#page-reglages")
+              pg.click("#boutonRetourCompte"); pg.wait_for_timeout(300)
+              assert pg.is_visible("#page-reglages") and not pg.is_visible("#page-compte")
+              pg.click("#boutonCompte"); pg.wait_for_timeout(200); pg.click("#boutonParametres"); pg.wait_for_timeout(200)
+              assert pg.evaluate("location.hash") == "#parametres" and "actif" not in pg.get_attribute("#boutonCompte", "class")
               assert not err, err
               nav.close()
           print("OK liste Mes vélos : une ligne et un menu par vélo")
