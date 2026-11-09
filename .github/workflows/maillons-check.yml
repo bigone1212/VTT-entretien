@@ -3338,7 +3338,7 @@ jobs:
               # CUBE affiché : suppression désactivée
               page.click(bouton)
               items = page.eval_on_selector_all("#veloMenuZone [role=menuitem]", "os => os.map(o => o.disabled)")
-              assert items == [True, False, False, True, True, True, True], items
+              assert items == [False, False, False, True, True, True, True], items
               assert not erreurs, erreurs
               nav.close()
           print("OK menu vélo : suppression confirmée, retour au CUBE, CUBE protégé")
@@ -4852,11 +4852,14 @@ jobs:
           V = [{"id": 1, "nom": "Mon CUBE", "type": "vtt_electrique", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0},
                {"id": 2, "nom": "Gravel test", "type": "gravel", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 1, "sorties_a_verifier": 2}]
           err = []
+          puts = []
           with sync_playwright() as p:
               nav = p.chromium.launch(); ctx = nav.new_context(viewport={"width": 390, "height": 844})
               def api(r):
                   u = urlparse(r.request.url)
                   c = V if u.path == "/api/velos" else {"km_total": 0, "composants": []} if u.path == "/api/etat" else {"valeurs": {}, "maj_le": None} if u.path == "/api/mes-reglages" else {"terrain_route": 1, "terrain_mixte": 1.2, "terrain_chemin": 1.5, "terrain_sentier": 2, "poids_denivele": 1} if u.path == "/api/reglages" else []
+                  if r.request.method == "PUT" and u.path == "/api/velos/1":
+                      puts.append(json.loads(r.request.post_data)); return r.fulfill(status=200, content_type="application/json", body=json.dumps({"statut": "success", "velo_id": 1}))
                   r.fulfill(status=200, content_type="application/json", body=json.dumps(c))
               ctx.route("**/localhost/api/**", api); ctx.route(lambda u: not u.startswith("http://localhost/"), lambda r: r.abort())
               ctx.add_init_script("sessionStorage.setItem('vtt_code','t');sessionStorage.setItem('maillons_velo_id','1')")
@@ -4876,7 +4879,17 @@ jobs:
               # Menu du CUBE : fiche et suppression grisées
               pg.click("#listeMesVelos .velo-ligne:nth-child(1) .velo-ligne-tete .menu-sortie-btn")
               etats = pg.eval_on_selector_all("#listeMesVelos .velo-ligne:nth-child(1) .velo-ligne-tete [role=menuitem]", "e => e.map(x => [x.textContent.trim(), x.disabled])")
-              assert etats[0][1] and etats[-1][1] and len(etats) == 7, etats
+              assert not etats[0][1] and etats[-1][1] and len(etats) == 7, etats
+              # Le CUBE se modifie comme les autres vélos (mais ne se supprime pas)
+              pg.click("#listeMesVelos .velo-ligne:nth-child(1) .velo-ligne-tete [role=menuitem]:has-text('Modifier la fiche')"); pg.wait_for_timeout(500)
+              assert pg.eval_on_selector("#fenetreVelo", "e => e.open") and pg.input_value("#nouveauVeloNom") == "Mon CUBE"
+              assert pg.eval_on_selector("#titreFormVelo", "e => e.textContent") == "Modifier la fiche du vélo"
+              pg.fill("#nouveauVeloNom", "Mon CUBE Stereo"); pg.click("#boutonCreerVelo"); pg.wait_for_timeout(700)
+              assert len(puts) == 1 and puts[0]["nom"] == "Mon CUBE Stereo", puts
+              assert not pg.eval_on_selector("#fenetreVelo", "e => e.open")
+              pg.evaluate("document.getElementById('ficheTechniqueCube').open = true"); assert pg.is_visible("#btnModifierFicheCube")
+              pg.click("#btnModifierFicheCube"); pg.wait_for_timeout(400)
+              assert pg.eval_on_selector("#fenetreVelo", "e => e.open") and pg.input_value("#nouveauVeloNom") == "Mon CUBE"
               pg.keyboard.press("Escape")
               # Menu du Gravel (pas affiché) : « Modifier la fiche » le rend actif et ouvre la fenêtre
               pg.click("#listeMesVelos .velo-ligne:nth-child(2) .velo-ligne-tete .menu-sortie-btn")
