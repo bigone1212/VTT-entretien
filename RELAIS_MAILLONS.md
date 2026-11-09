@@ -150,6 +150,11 @@
 ---
 
 
+## 2026-11-09 — PR 31 fusionnée : réponse de ChatGPT copiée depuis le chat (texte « habillé »)
+- Cause trouvée avec la vraie réponse de Math : copiée depuis le chat (pas depuis le bloc de code), elle contenait des espaces écrits &#x20;, des barres obliques inverses en fin de ligne et devant : / . *. Ces habillages sont défaits avant la lecture (essai sur sa vraie réponse : 23 composants lus, 3 tailles de tige de selle à choisir).
+- Sur GitHub (main). Testé : navigateur local (vraie réponse + test synthétique ajouté au CI) et tests automatiques GitHub, passés.
+- Non vérifié d'ici : Render, et l'essai de Math après mise à jour.
+
 ## 2026-11-09 — PR 30 fusionnée : réponse de ChatGPT lue plus tolérantement (recherche avec l'IA)
 - Sur GitHub (main) : la réponse collée est nettoyée (renvois de sources ChatGPT, virgules en trop, commentaires, guillemets courbes), le bloc JSON est retrouvé même entouré de texte, les valeurs écrites autrement sont reconnues (année en texte, « VTT électrique », « Tige de selle »). La demande copiée dit à l'IA de ne pas mettre de renvois de sources. Aucun texte de la réponse n'est exécuté.
 - Cause exacte de l'échec de Math avec ChatGPT : non connue (message d'erreur non transmis) ; les défauts habituels de ChatGPT ont été simulés en test.
