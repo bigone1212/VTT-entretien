@@ -4138,7 +4138,7 @@ jobs:
 
                   pg.on("dialog", gerer_dialogue)
                   pg.route("http://localhost/", lambda r: r.fulfill(status=200, content_type="text/html", body=html))
-                  pg.goto("http://localhost/#reglages"); pg.wait_for_timeout(1200)
+                  pg.goto("http://localhost/#compte"); pg.wait_for_timeout(1200)
                   return pg
 
               texte = lambda pg, sel: pg.eval_on_selector(sel, "e => e.textContent.trim()")
@@ -4146,7 +4146,7 @@ jobs:
 
               # 1) Math : le bloc est là, la liste aussi.
               pg = ouvrir(True)
-              assert visible(pg, "#blocPersonnes") and visible(pg, "#page-reglages")
+              assert visible(pg, "#blocPersonnes") and visible(pg, "#page-compte")
               assert texte(pg, "#headerBienvenue") == "Bienvenue Math" and visible(pg, "#headerBienvenue")
               assert "Math (administrateur)" in texte(pg, "#listePersonnes") and "1 vélo" in texte(pg, "#listePersonnes")
               assert not visible(pg, "#codeAffiche")

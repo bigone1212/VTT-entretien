@@ -4362,50 +4362,6 @@ def accueil():
         </section>
 
 
-        <section class="mes-reglages" id="blocPersonnes" style="display:none;">
-            <div class="mr-titre">
-                <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.4"/><path d="M16 14.2c2.9 0 5 2.2 5 5.2"/></svg><span>Personnes</span></strong>
-            </div>
-            <p class="form-help">Chaque personne a son code secret, ses vélos et ses réglages. Seul toi vois ce bloc.</p>
-            <div id="listePersonnes"></div>
-            <div class="code-affiche" id="codeAffiche" style="display:none;">
-                <div id="codeAfficheTitre"></div>
-                <strong class="code-affiche-valeur" id="codeAfficheValeur"></strong>
-                <div class="form-help">Ce code ne sera plus jamais affiché : note-le ou envoie-le maintenant à la personne.</div>
-                <div class="personne-actions">
-                    <button type="button" id="boutonCopierCode">Copier le code</button>
-                    <button type="button" id="boutonCopierInvitation" style="display:none;">Copier le message à envoyer</button>
-                    <button type="button" id="boutonCodeNote">J’ai noté le code</button>
-                </div>
-            </div>
-            <form id="formAjouterPersonne">
-                <label for="personneNom">Prénom de la nouvelle personne</label>
-                <input id="personneNom" type="text" maxlength="60" placeholder="Ex. : Julie" required>
-                <label for="personneTypeVelo">Type de son premier vélo</label>
-                <select id="personneTypeVelo">
-                    <option value="vtt_electrique">VTT électrique</option>
-                    <option value="vtt">VTT sans moteur</option>
-                    <option value="enduro">Enduro</option>
-                    <option value="descente">Descente</option>
-                    <option value="gravel">Gravel</option>
-                    <option value="gravel_electrique">Gravel électrique</option>
-                    <option value="route">Route</option>
-                    <option value="route_electrique">Route électrique</option>
-                </select>
-                <button type="submit" class="btn-primary" style="width:100%; margin-top:8px;">Ajouter cette personne</button>
-            </form>
-            <div class="invitations-bloc">
-                <strong>Inviter quelqu'un</strong>
-                <p class="form-help">Crée un code d'invitation à usage unique (valable 7 jours). La personne s'inscrit toute seule avec son e-mail et son mot de passe.</p>
-                <form id="formInviter">
-                    <label for="invitationPour">Pour qui ? (facultatif, pour t'y retrouver)</label>
-                    <input id="invitationPour" type="text" maxlength="60" placeholder="Ex. : Julie">
-                    <button type="submit" class="btn-primary" style="width:100%; margin-top:8px;">Créer une invitation</button>
-                </form>
-                <div id="listeInvitations"></div>
-            </div>
-            <p class="form-help" id="messagePersonnes" aria-live="polite"></p>
-        </section>
         <dialog id="fenetreVelo" class="fenetre-velo" aria-labelledby="titreFormVelo">
             <div class="fenetre-velo-entete">
                 <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span id="titreFormVelo">Ajouter un vélo</span></strong>
@@ -4717,6 +4673,51 @@ def accueil():
             </form>
             <p class="form-help" id="messageCompte" aria-live="polite"></p>
             <button type="button" id="boutonDeconnexion" class="btn-primary" style="width:100%; margin-top:8px;">Se déconnecter</button>
+        </section>
+
+        <section class="mes-reglages" id="blocPersonnes" style="display:none;">
+            <div class="mr-titre">
+                <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.4"/><path d="M16 14.2c2.9 0 5 2.2 5 5.2"/></svg><span>Personnes</span></strong>
+            </div>
+            <p class="form-help">Chaque personne a son code secret, ses vélos et ses réglages. Seul toi vois ce bloc.</p>
+            <div id="listePersonnes"></div>
+            <div class="code-affiche" id="codeAffiche" style="display:none;">
+                <div id="codeAfficheTitre"></div>
+                <strong class="code-affiche-valeur" id="codeAfficheValeur"></strong>
+                <div class="form-help">Ce code ne sera plus jamais affiché : note-le ou envoie-le maintenant à la personne.</div>
+                <div class="personne-actions">
+                    <button type="button" id="boutonCopierCode">Copier le code</button>
+                    <button type="button" id="boutonCopierInvitation" style="display:none;">Copier le message à envoyer</button>
+                    <button type="button" id="boutonCodeNote">J’ai noté le code</button>
+                </div>
+            </div>
+            <form id="formAjouterPersonne">
+                <label for="personneNom">Prénom de la nouvelle personne</label>
+                <input id="personneNom" type="text" maxlength="60" placeholder="Ex. : Julie" required>
+                <label for="personneTypeVelo">Type de son premier vélo</label>
+                <select id="personneTypeVelo">
+                    <option value="vtt_electrique">VTT électrique</option>
+                    <option value="vtt">VTT sans moteur</option>
+                    <option value="enduro">Enduro</option>
+                    <option value="descente">Descente</option>
+                    <option value="gravel">Gravel</option>
+                    <option value="gravel_electrique">Gravel électrique</option>
+                    <option value="route">Route</option>
+                    <option value="route_electrique">Route électrique</option>
+                </select>
+                <button type="submit" class="btn-primary" style="width:100%; margin-top:8px;">Ajouter cette personne</button>
+            </form>
+            <div class="invitations-bloc">
+                <strong>Inviter quelqu'un</strong>
+                <p class="form-help">Crée un code d'invitation à usage unique (valable 7 jours). La personne s'inscrit toute seule avec son e-mail et son mot de passe.</p>
+                <form id="formInviter">
+                    <label for="invitationPour">Pour qui ? (facultatif, pour t'y retrouver)</label>
+                    <input id="invitationPour" type="text" maxlength="60" placeholder="Ex. : Julie">
+                    <button type="submit" class="btn-primary" style="width:100%; margin-top:8px;">Créer une invitation</button>
+                </form>
+                <div id="listeInvitations"></div>
+            </div>
+            <p class="form-help" id="messagePersonnes" aria-live="polite"></p>
         </section>
         </div>
 
