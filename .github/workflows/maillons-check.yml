@@ -4904,6 +4904,8 @@ jobs:
               dans = lambda i: pg.evaluate("id => !!document.querySelector('#listeMesVelos .velo-ligne.deplie .velo-ligne-corps #' + id)", i)
               assert dans("ficheTechniqueAutre") and dans("mesReglages") and not pg.is_visible("#ficheTechniqueCube")
               assert pg.is_visible("#listeMesVelos .velo-ligne.deplie .velo-ligne-corps #ficheTechniqueAutre")
+              boite = lambda sel: pg.evaluate("s => { const b = document.querySelector(s).getBoundingClientRect(); return [Math.round(b.x), Math.round(b.width), Math.round(b.height)]; }", sel)
+              assert boite("#mesReglages .mr-chevron") == boite("#ficheTechniqueAutre .ftv-chevron"), (boite("#mesReglages .mr-chevron"), boite("#ficheTechniqueAutre .ftv-chevron"))
               pg.click("#listeMesVelos .velo-ligne:nth-child(2) .velo-ligne-fleche"); pg.wait_for_timeout(300)
               assert pg.eval_on_selector_all("#listeMesVelos .velo-ligne-corps", "e => e.length") == 0
               assert pg.evaluate("document.getElementById('ficheTechniqueAutre').parentElement.id") == "reserveFicheVelo"

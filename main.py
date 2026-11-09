@@ -2270,6 +2270,20 @@ def accueil():
             .mr-chevron { display: inline-flex; color: var(--text-muted); transition: transform 0.2s; }
             .mr-repliable.ouverte .mr-chevron { transform: rotate(180deg); }
 
+            /* Flèche de « Mes réglages vélo » : même taille et même place que celle de la fiche technique */
+            #mesReglages .mr-chevron svg { display: none; }
+            #mesReglages .mr-chevron {
+                width: 9px;
+                height: 9px;
+                flex: none;
+                margin-right: 4px;
+                border-right: 2px solid var(--text-muted);
+                border-bottom: 2px solid var(--text-muted);
+                transform: rotate(45deg);
+                transition: transform 0.18s ease;
+            }
+            #mesReglages.ouverte .mr-chevron { transform: rotate(225deg); }
+
             .mr-repliable .mr-corps { display: none; padding: 4px 0 10px; }
             .mr-repliable.ouverte .mr-corps { display: block; }
             .mr-repliable.ouverte > .mr-titre { border-bottom: 1px solid var(--line3); }
@@ -2390,7 +2404,7 @@ def accueil():
             .hist-entete h2 { margin: 0; }
             .photo-velo-bouton { border: 1px solid var(--accent); background: var(--card-bg); color: var(--accent); font-weight: 700; padding: 8px 16px; border-radius: 999px; cursor: pointer; font-size: 14px; }
             #blocAjouterVelo { position: relative; }
-            #blocAjouterVelo .mr-titre { padding-right: 44px; min-height: 36px; }
+            #blocAjouterVelo > .mr-titre { padding-right: 44px; min-height: 36px; }
             #blocAjouterVelo .menu-sortie-btn { top: 8px; right: 8px; }
             #blocAjouterVelo .mr-titre .menu-sortie-btn,
             #blocAjouterVelo .mr-titre .menu-sortie-btn:hover,
