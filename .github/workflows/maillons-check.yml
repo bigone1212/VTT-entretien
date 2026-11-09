@@ -4874,22 +4874,37 @@ jobs:
               assert pg.eval_on_selector_all("#ajoutVeloMenuZone [role=menuitem]", "e => e.map(x => x.textContent.trim())") == ["Ajouter un vélo"]
               pg.keyboard.press("Escape")
               # Menu du CUBE : fiche et suppression grisées
-              pg.click("#listeMesVelos .velo-ligne:nth-child(1) .menu-sortie-btn")
-              etats = pg.eval_on_selector_all("#listeMesVelos .velo-ligne:nth-child(1) [role=menuitem]", "e => e.map(x => [x.textContent.trim(), x.disabled])")
+              pg.click("#listeMesVelos .velo-ligne:nth-child(1) .velo-ligne-tete .menu-sortie-btn")
+              etats = pg.eval_on_selector_all("#listeMesVelos .velo-ligne:nth-child(1) .velo-ligne-tete [role=menuitem]", "e => e.map(x => [x.textContent.trim(), x.disabled])")
               assert etats[0][1] and etats[-1][1] and len(etats) == 7, etats
               pg.keyboard.press("Escape")
               # Menu du Gravel (pas affiché) : « Modifier la fiche » le rend actif et ouvre la fenêtre
-              pg.click("#listeMesVelos .velo-ligne:nth-child(2) .menu-sortie-btn")
-              etats = pg.eval_on_selector_all("#listeMesVelos .velo-ligne:nth-child(2) [role=menuitem]", "e => e.map(x => [x.textContent.trim(), x.disabled])")
+              pg.click("#listeMesVelos .velo-ligne:nth-child(2) .velo-ligne-tete .menu-sortie-btn")
+              etats = pg.eval_on_selector_all("#listeMesVelos .velo-ligne:nth-child(2) .velo-ligne-tete [role=menuitem]", "e => e.map(x => [x.textContent.trim(), x.disabled])")
               assert [e[0] for e in etats][0] == "Modifier la fiche de « Gravel test »" and not etats[0][1] and not etats[-1][1], etats
-              pg.click("#listeMesVelos .velo-ligne:nth-child(2) [role=menuitem]:has-text('Modifier la fiche')"); pg.wait_for_timeout(800)
+              pg.click("#listeMesVelos .velo-ligne:nth-child(2) .velo-ligne-tete [role=menuitem]:has-text('Modifier la fiche')"); pg.wait_for_timeout(800)
               assert pg.evaluate("veloActifId") == 2 and pg.eval_on_selector("#selectVelo", "s => s.value") == "2"
               assert pg.eval_on_selector("#fenetreVelo", "e => e.open") and pg.input_value("#nouveauVeloNom") == "Gravel test"
               pg.keyboard.press("Escape"); pg.wait_for_timeout(300)
               assert pg.eval_on_selector_all("#listeMesVelos .velo-ligne.actif .velo-ligne-nom", "e => e.map(x => x.textContent.trim())") == ["Gravel testAffiché"]
-              # Toucher la ligne d'un vélo l'affiche
-              pg.click("#listeMesVelos .velo-ligne:nth-child(1) .velo-ligne-choix"); pg.wait_for_timeout(800)
+              # Fiche technique et réglages sont dans la ligne du vélo affiché, avec une flèche pour tout replier
+              dans = lambda i: pg.evaluate("id => !!document.querySelector('#listeMesVelos .velo-ligne.deplie .velo-ligne-corps #' + id)", i)
+              assert dans("ficheTechniqueAutre") and dans("mesReglages") and not pg.is_visible("#ficheTechniqueCube")
+              assert pg.is_visible("#listeMesVelos .velo-ligne.deplie .velo-ligne-corps #ficheTechniqueAutre")
+              pg.click("#listeMesVelos .velo-ligne:nth-child(2) .velo-ligne-fleche"); pg.wait_for_timeout(300)
+              assert pg.eval_on_selector_all("#listeMesVelos .velo-ligne-corps", "e => e.length") == 0
+              assert pg.evaluate("document.getElementById('ficheTechniqueAutre').parentElement.id") == "reserveFicheVelo"
+              assert not pg.is_visible("#ficheTechniqueAutre")
+              pg.click("#listeMesVelos .velo-ligne:nth-child(2) .velo-ligne-fleche"); pg.wait_for_timeout(300)
+              assert dans("mesReglages")
+              # La flèche d'un autre vélo l'affiche et lui donne la fiche
+              pg.click("#listeMesVelos .velo-ligne:nth-child(1) .velo-ligne-fleche"); pg.wait_for_timeout(800)
               assert pg.evaluate("veloActifId") == 1 and pg.eval_on_selector("#selectVelo", "s => s.value") == "1"
+              assert dans("ficheTechniqueCube") and dans("mesReglages")
+              assert pg.eval_on_selector_all("#listeMesVelos .velo-ligne.deplie", "e => e.length") == 1
+              # Toucher le nom replie le vélo affiché
+              pg.click("#listeMesVelos .velo-ligne:nth-child(1) .velo-ligne-choix"); pg.wait_for_timeout(300)
+              assert pg.eval_on_selector_all("#listeMesVelos .velo-ligne-corps", "e => e.length") == 0
               assert not err, err
               nav.close()
           print("OK liste Mes vélos : une ligne et un menu par vélo")
