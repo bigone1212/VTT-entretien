@@ -150,6 +150,10 @@
 ---
 
 
+## 2026-11-09 — Personnes (administrateur) dans Mon compte (PR #35, fusionnée)
+- Le bloc « Personnes » (visible seulement pour l'administrateur) est passé de l'onglet Mon vélo à la page #compte, sous « Se déconnecter ».
+- Fonctionnement inchangé ; deux tests CI adaptés (ouverture sur #compte). Déploiement Render non vérifié depuis ici.
+
 ## 2026-11-09 — Icône Mon compte dans l'en-tête (PR #34, fusionnée)
 - Icône (cercle, tête, épaules) entre le kilométrage et l'engrenage ; elle ouvre la page #compte (identité, mot de passe, déconnexion), avec flèche retour.
 - Le bloc « Mon compte » a quitté l'onglet Mon vélo. Mot de passe provisoire : redirection vers #compte.
