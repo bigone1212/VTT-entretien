@@ -2409,10 +2409,45 @@ def accueil():
                 gap: 8px;
             }
 
-            .velo-ligne {
+            #reserveFicheVelo { display: none; }
+
+            .velo-ligne-tete {
                 position: relative;
                 display: flex;
                 align-items: center;
+                min-height: 56px;
+            }
+
+            .velo-ligne-fleche {
+                position: absolute;
+                top: 10px;
+                right: 42px;
+                width: 36px;
+                height: 36px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background: none;
+                border: none;
+                box-shadow: none;
+                padding: 0;
+                color: var(--strong);
+                cursor: pointer;
+            }
+
+            .velo-ligne-fleche svg { width: 20px; height: 20px; transition: transform 0.2s; }
+            .velo-ligne.deplie .velo-ligne-fleche svg { transform: rotate(180deg); }
+
+            .velo-ligne-corps {
+                padding: 4px 10px 10px;
+                border-top: 1px solid var(--field-line);
+            }
+
+            .velo-ligne-corps .mes-reglages,
+            .velo-ligne-corps .fiche-technique-velo { margin: 8px 0 0; }
+
+            .velo-ligne {
+                position: relative;
                 min-height: 56px;
                 background: var(--field);
                 border: 1px solid var(--field-line);
@@ -2431,7 +2466,7 @@ def accueil():
                 min-width: 0;
                 display: grid;
                 gap: 2px;
-                padding: 8px 48px 8px 14px;
+                padding: 8px 88px 8px 14px;
                 text-align: left;
                 background: none;
                 border: none;
@@ -4320,7 +4355,7 @@ def accueil():
                 <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="16" r="3.5"/><circle cx="18" cy="16" r="3.5"/><path d="M6 16l4-7h5l3 7M10 9l3 7M9 6h3"/></svg><span>Mes vélos</span></strong>
                 <div id="ajoutVeloMenuZone"></div>
             </div>
-            <p class="form-help">Touche un vélo pour l'afficher. Ses trois petits points donnent sa fiche, sa photo ou sa suppression ; ceux d'en haut ajoutent un vélo.</p>
+            <p class="form-help">Touche un vélo ou sa flèche pour déplier sa fiche technique et ses réglages. Ses trois petits points donnent sa fiche, sa photo ou sa suppression ; ceux d'en haut ajoutent un vélo.</p>
             <ul class="liste-mes-velos" id="listeMesVelos"></ul>
             <p class="form-help" id="messageMesVelos" aria-live="polite"></p>
         </section>
@@ -4491,6 +4526,7 @@ def accueil():
         </dialog>
 
 
+        <div id="reserveFicheVelo">
         <details class="fiche-technique-velo" id="ficheTechniqueCube">
             <summary class="ftv-resume">
                 <span class="ftv-entete">
@@ -4676,6 +4712,7 @@ def accueil():
                 </div>
             </div>
         </section>
+        </div>
         </div>
 
         <div class="page" id="page-parametres" style="display:none;">
@@ -5638,10 +5675,32 @@ def accueil():
                 await rechargerDonneesVelo();
             }
 
+            // Vélo dont les infos (fiche technique + réglages) sont dépliées : 0 = aucun.
+            let veloDeplie = 0;
+            let dernierVeloMonte = 0;
+
+            function basculerVeloDeplie(id) {
+                if (veloDeplie === id && id === veloActifId) {
+                    veloDeplie = 0;
+                    monterMenuVelo();
+                    return;
+                }
+                veloDeplie = id;
+                if (id === veloActifId) { monterMenuVelo(); return; }
+                activerVelo(id);
+            }
+
             function monterMenuVelo() {
                 const zoneAjout = document.getElementById('ajoutVeloMenuZone');
                 const liste = document.getElementById('listeMesVelos');
                 if (!zoneAjout || !liste) return;
+                // La fiche et les réglages retournent dans leur réserve avant de refaire la liste.
+                const reserve = document.getElementById('reserveFicheVelo');
+                const pieces = ['ficheTechniqueCube', 'ficheTechniqueAutre', 'mesReglages'].map(i => document.getElementById(i)).filter(Boolean);
+                if (reserve) pieces.forEach(p => reserve.appendChild(p));
+                if (dernierVeloMonte === 0) veloDeplie = veloActifId;
+                else if (dernierVeloMonte !== veloActifId && veloDeplie !== 0) veloDeplie = veloActifId;
+                dernierVeloMonte = veloActifId;
                 zoneAjout.replaceChildren();
                 liste.replaceChildren();
                 ajouterMenuPoints(zoneAjout, 'Ajouter un vélo', [
@@ -5658,7 +5717,10 @@ def accueil():
                         fonction();
                     };
                     const ligne = document.createElement('li');
-                    ligne.className = 'velo-ligne' + (actif ? ' actif' : '');
+                    const deplie = actif && veloDeplie === id;
+                    ligne.className = 'velo-ligne' + (actif ? ' actif' : '') + (deplie ? ' deplie' : '');
+                    const tete = document.createElement('div');
+                    tete.className = 'velo-ligne-tete';
                     const choix = document.createElement('button');
                     choix.type = 'button';
                     choix.className = 'velo-ligne-choix';
@@ -5677,11 +5739,27 @@ def accueil():
                     const nbAVerifier = Number(velo.sorties_a_verifier) || 0;
                     detail.textContent = (TYPES_VELO[velo.type] || velo.type || '') + (nbAVerifier > 0 ? ' · ' + nbAVerifier + ' à vérifier' : '');
                     choix.append(titre, detail);
-                    choix.addEventListener('click', () => { activerVelo(id); });
-                    ligne.appendChild(choix);
+                    choix.setAttribute('aria-expanded', String(deplie));
+                    choix.addEventListener('click', () => { basculerVeloDeplie(id); });
+                    tete.appendChild(choix);
+                    const fleche = document.createElement('button');
+                    fleche.type = 'button';
+                    fleche.className = 'velo-ligne-fleche';
+                    fleche.setAttribute('aria-label', (deplie ? 'Replier les infos de ' : 'Déplier les infos de ') + nom);
+                    fleche.setAttribute('aria-expanded', String(deplie));
+                    fleche.innerHTML = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">' + ICONES.bas + '</svg>';
+                    fleche.addEventListener('click', () => { basculerVeloDeplie(id); });
+                    tete.appendChild(fleche);
                     const zone = document.createElement('div');
                     if (actif) zone.id = 'veloMenuZone';
-                    ligne.appendChild(zone);
+                    tete.appendChild(zone);
+                    ligne.appendChild(tete);
+                    if (deplie) {
+                        const corps = document.createElement('div');
+                        corps.className = 'velo-ligne-corps';
+                        pieces.forEach(p => corps.appendChild(p));
+                        ligne.appendChild(corps);
+                    }
                     liste.appendChild(ligne);
                     const aPhoto = Number(velo.a_photo) === 1;
                     ajouterMenuPoints(zone, actif ? 'Actions du vélo' : 'Actions de « ' + court + ' »', [
