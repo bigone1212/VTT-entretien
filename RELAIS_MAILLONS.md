@@ -150,6 +150,11 @@
 ---
 
 
+## 2026-11-09 — IA : commande et écran + lien Fiche technique (PR #36, fusionnée)
+- La demande IA connaît ecran (« Commande et écran »), guide_chaine et jantes (synonymes acceptés : display, afficheur, commande et écran…), avec libellés et icônes dans la fiche des autres vélos.
+- Menu d'un composant : « Fiche technique » lance toujours la recherche Google (nom + libellé + fiche technique), comme pour le CUBE, au lieu d'ouvrir le site source (qui reste affiché sous la carte).
+- Non fait : liste LIBELLES_COMPOSANTS_VELO côté serveur (recherche web automatique) pas étendue. Tests CI adaptés + nouveau test. Déploiement Render non vérifié depuis ici.
+
 ## 2026-11-09 — Personnes (administrateur) dans Mon compte (PR #35, fusionnée)
 - Le bloc « Personnes » (visible seulement pour l'administrateur) est passé de l'onglet Mon vélo à la page #compte, sous « Se déconnecter ».
 - Fonctionnement inchangé ; deux tests CI adaptés (ouverture sur #compte). Déploiement Render non vérifié depuis ici.
