@@ -2401,6 +2401,80 @@ def accueil():
             }
             #blocAjouterVelo .mr-titre .menu-sortie-btn:hover,
             #blocAjouterVelo .mr-titre .menu-sortie-btn[aria-expanded="true"] { color: var(--accent); }
+            .liste-mes-velos {
+                list-style: none;
+                margin: 10px 0 4px;
+                padding: 0;
+                display: grid;
+                gap: 8px;
+            }
+
+            .velo-ligne {
+                position: relative;
+                display: flex;
+                align-items: center;
+                min-height: 56px;
+                background: var(--field);
+                border: 1px solid var(--field-line);
+                border-radius: 14px;
+            }
+
+            .velo-ligne.actif {
+                border-color: var(--accent);
+                box-shadow: 0 0 0 1px var(--accent) inset;
+            }
+
+            .velo-ligne:has(.menu-sortie.ouvert) { z-index: 6; }
+
+            .velo-ligne-choix {
+                flex: 1;
+                min-width: 0;
+                display: grid;
+                gap: 2px;
+                padding: 8px 48px 8px 14px;
+                text-align: left;
+                background: none;
+                border: none;
+                color: var(--strong);
+                cursor: pointer;
+                font: inherit;
+            }
+
+            .velo-ligne-nom {
+                font-weight: 700;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
+            .velo-ligne-detail {
+                color: var(--text-muted);
+                font-size: 0.78rem;
+            }
+
+            .velo-ligne-badge {
+                display: inline-block;
+                margin-left: 6px;
+                padding: 1px 8px;
+                border-radius: 999px;
+                font-size: 0.68rem;
+                font-weight: 700;
+                color: var(--on-accent);
+                background: var(--accent);
+                vertical-align: middle;
+            }
+
+            .velo-ligne-choix:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 14px; }
+
+            #blocAjouterVelo .velo-ligne .menu-sortie-btn {
+                top: 10px;
+                right: 6px;
+                background: none;
+                border: none;
+                box-shadow: none;
+            }
+
+            #blocAjouterVelo .velo-ligne .menu-sortie { top: 46px; right: 6px; }
             #blocAjouterVelo .menu-sortie { top: 48px; right: 8px; }
             .hist-total { margin: 2px 0 8px; font-size: 0.82rem; color: var(--text-muted); }
             .hist-filtre-btn { right: 40px; }
@@ -4244,9 +4318,10 @@ def accueil():
         <section class="mes-reglages" id="blocAjouterVelo">
             <div class="mr-titre">
                 <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="16" r="3.5"/><circle cx="18" cy="16" r="3.5"/><path d="M6 16l4-7h5l3 7M10 9l3 7M9 6h3"/></svg><span>Mes vélos</span></strong>
-                <div id="veloMenuZone"></div>
+                <div id="ajoutVeloMenuZone"></div>
             </div>
-            <p class="form-help">Touche les trois points pour ajouter un vélo, modifier sa fiche, gérer sa photo ou le supprimer.</p>
+            <p class="form-help">Touche un vélo pour l'afficher. Ses trois petits points donnent sa fiche, sa photo ou sa suppression ; ceux d'en haut ajoutent un vélo.</p>
+            <ul class="liste-mes-velos" id="listeMesVelos"></ul>
             <p class="form-help" id="messageMesVelos" aria-live="polite"></p>
         </section>
 
@@ -5554,24 +5629,71 @@ def accueil():
 
             // Menu « trois points » de la carte « Ajouter un vélo » : actions du vélo affiché.
             // Le CUBE (vélo n° 1) est protégé : il ne peut ni être supprimé ni passer par cette fiche.
+            // Fait de ce vélo le vélo affiché (comme le choix en haut de l'appli), puis recharge ses données.
+            async function activerVelo(id) {
+                id = Number(id);
+                if (!id || id === veloActifId) return;
+                veloActifId = id;
+                sessionStorage.setItem('maillons_velo_id', String(veloActifId));
+                await rechargerDonneesVelo();
+            }
+
             function monterMenuVelo() {
-                const zone = document.getElementById('veloMenuZone');
-                if (!zone) return;
-                zone.replaceChildren();
-                const velo = velosDisponibles.find(v => Number(v.id) === veloActifId);
-                const estCube = !velo || Number(velo.id) === 1;
-                const nom = velo ? String(velo.nom) : 'ce vélo';
-                const court = nom.length > 22 ? nom.slice(0, 21) + '…' : nom;
-                ajouterMenuPoints(zone, 'Actions du vélo', [
-                    { icone: 'plus', texte: 'Ajouter un vélo', action: ouvrirCreationVelo },
-                    { icone: 'crayon', texte: 'Modifier la fiche de « ' + court + ' »', desactive: estCube, action: modifierFicheVelo },
-                    { icone: 'appareil', texte: velo && Number(velo.a_photo) === 1 ? 'Changer la photo' : 'Ajouter une photo', action: choisirPhotoVelo },
-                    { icone: 'lien', texte: 'Photo depuis un lien…', action: photoDepuisLien },
-                    { icone: 'poubelle', texte: 'Supprimer la photo', danger: true, desactive: !velo || Number(velo.a_photo) !== 1, action: supprimerPhotoVelo },
-                    { icone: 'repere', texte: 'Replacer les repères (guidon à droite)', desactive: !velo || Number(velo.a_photo) !== 1, action: () => placerRepresAuto(true, false) },
-                    { icone: 'repere', texte: 'Replacer les repères (guidon à gauche)', desactive: !velo || Number(velo.a_photo) !== 1, action: () => placerRepresAuto(false, false) },
-                    { icone: 'poubelle', texte: 'Supprimer « ' + court + ' »', danger: true, desactive: estCube, action: supprimerVelo }
+                const zoneAjout = document.getElementById('ajoutVeloMenuZone');
+                const liste = document.getElementById('listeMesVelos');
+                if (!zoneAjout || !liste) return;
+                zoneAjout.replaceChildren();
+                liste.replaceChildren();
+                ajouterMenuPoints(zoneAjout, 'Ajouter un vélo', [
+                    { icone: 'plus', texte: 'Ajouter un vélo', action: ouvrirCreationVelo }
                 ]);
+                velosDisponibles.forEach(velo => {
+                    const id = Number(velo.id);
+                    const actif = id === veloActifId;
+                    const estCube = id === 1;
+                    const nom = String(velo.nom);
+                    const court = nom.length > 22 ? nom.slice(0, 21) + '…' : nom;
+                    const sur = fonction => async () => {
+                        if (!actif) await activerVelo(id);
+                        fonction();
+                    };
+                    const ligne = document.createElement('li');
+                    ligne.className = 'velo-ligne' + (actif ? ' actif' : '');
+                    const choix = document.createElement('button');
+                    choix.type = 'button';
+                    choix.className = 'velo-ligne-choix';
+                    if (actif) choix.setAttribute('aria-current', 'true');
+                    const titre = document.createElement('span');
+                    titre.className = 'velo-ligne-nom';
+                    titre.textContent = nom;
+                    if (actif) {
+                        const badge = document.createElement('span');
+                        badge.className = 'velo-ligne-badge';
+                        badge.textContent = 'Affiché';
+                        titre.appendChild(badge);
+                    }
+                    const detail = document.createElement('span');
+                    detail.className = 'velo-ligne-detail';
+                    const nbAVerifier = Number(velo.sorties_a_verifier) || 0;
+                    detail.textContent = (TYPES_VELO[velo.type] || velo.type || '') + (nbAVerifier > 0 ? ' · ' + nbAVerifier + ' à vérifier' : '');
+                    choix.append(titre, detail);
+                    choix.addEventListener('click', () => { activerVelo(id); });
+                    ligne.appendChild(choix);
+                    const zone = document.createElement('div');
+                    if (actif) zone.id = 'veloMenuZone';
+                    ligne.appendChild(zone);
+                    liste.appendChild(ligne);
+                    const aPhoto = Number(velo.a_photo) === 1;
+                    ajouterMenuPoints(zone, actif ? 'Actions du vélo' : 'Actions de « ' + court + ' »', [
+                        { icone: 'crayon', texte: 'Modifier la fiche de « ' + court + ' »', desactive: estCube, action: sur(modifierFicheVelo) },
+                        { icone: 'appareil', texte: aPhoto ? 'Changer la photo' : 'Ajouter une photo', action: sur(choisirPhotoVelo) },
+                        { icone: 'lien', texte: 'Photo depuis un lien…', action: sur(photoDepuisLien) },
+                        { icone: 'poubelle', texte: 'Supprimer la photo', danger: true, desactive: !aPhoto, action: sur(supprimerPhotoVelo) },
+                        { icone: 'repere', texte: 'Replacer les repères (guidon à droite)', desactive: !aPhoto, action: sur(() => placerRepresAuto(true, false)) },
+                        { icone: 'repere', texte: 'Replacer les repères (guidon à gauche)', desactive: !aPhoto, action: sur(() => placerRepresAuto(false, false)) },
+                        { icone: 'poubelle', texte: 'Supprimer « ' + court + ' »', danger: true, desactive: estCube, action: sur(supprimerVelo) }
+                    ]);
+                });
             }
 
             async function supprimerVelo() {
