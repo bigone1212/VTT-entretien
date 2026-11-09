@@ -3327,7 +3327,7 @@ jobs:
               items = page.eval_on_selector_all("#veloMenuZone [role=menuitem]", "os => os.map(o => [o.textContent.trim(), o.disabled])")
               print("menu:", items)
               noms = [i[0] for i in items]
-              assert len(items) == 8 and noms[0] == "Ajouter un vélo" and not items[0][1] and noms[7] == "Supprimer « Gravel test »" and not items[7][1], items
+              assert len(items) == 7 and "Ajouter un vélo" not in noms and noms[6] == "Supprimer « Gravel test »" and not items[6][1], items
               page.click("#veloMenuZone [role=menuitem]:has-text('Supprimer «')")
               page.wait_for_timeout(1500)
               assert len(dialogues) == 1 and "7 pièce" in dialogues[0] and "3 sortie" in dialogues[0] and "Gravel test" in dialogues[0], dialogues
@@ -3338,7 +3338,7 @@ jobs:
               # CUBE affiché : suppression désactivée
               page.click(bouton)
               items = page.eval_on_selector_all("#veloMenuZone [role=menuitem]", "os => os.map(o => o.disabled)")
-              assert items == [False, True, False, False, True, True, True, True], items
+              assert items == [True, False, False, True, True, True, True], items
               assert not erreurs, erreurs
               nav.close()
           print("OK menu vélo : suppression confirmée, retour au CUBE, CUBE protégé")
@@ -3796,8 +3796,8 @@ jobs:
               assert "À confirmer" not in txt("#ficheAutreEquipement"), txt("#ficheAutreEquipement")
               # Le formulaire d'ajout est replié : il s'ouvre dans une fenêtre (menu trois points)
               assert not page.is_visible("#formAjouterVelo") and not page.eval_on_selector("#fenetreVelo", "e => e.open")
-              page.click("#veloMenuZone button[aria-label='Actions du vélo']")
-              page.click("#veloMenuZone [role=menuitem]:has-text('Ajouter un vélo')"); page.wait_for_timeout(300)
+              page.click("#ajoutVeloMenuZone button[aria-label='Ajouter un vélo']")
+              page.click("#ajoutVeloMenuZone [role=menuitem]:has-text('Ajouter un vélo')"); page.wait_for_timeout(300)
               assert page.eval_on_selector("#fenetreVelo", "e => e.open") and page.is_visible("#formAjouterVelo")
               page.fill("#veloRechercheFiche", "https://exemple.test/fiche")
               page.click("#boutonRechercheFiche"); page.wait_for_timeout(300)
@@ -4838,6 +4838,64 @@ jobs:
           PY
           rm -f "$SQLITE_PATH"
           PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_parametres.py"
+      - name: Tester la liste « Mes vélos » avec un menu par vélo dans un vrai navigateur
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-liste-velos-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_liste_velos.py" <<'PY'
+          import json
+          from urllib.parse import urlparse
+          from playwright.sync_api import sync_playwright
+          import main
+          html = main.accueil()
+          V = [{"id": 1, "nom": "Mon CUBE", "type": "vtt_electrique", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0},
+               {"id": 2, "nom": "Gravel test", "type": "gravel", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 1, "sorties_a_verifier": 2}]
+          err = []
+          with sync_playwright() as p:
+              nav = p.chromium.launch(); ctx = nav.new_context(viewport={"width": 390, "height": 844})
+              def api(r):
+                  u = urlparse(r.request.url)
+                  c = V if u.path == "/api/velos" else {"km_total": 0, "composants": []} if u.path == "/api/etat" else {"valeurs": {}, "maj_le": None} if u.path == "/api/mes-reglages" else {"terrain_route": 1, "terrain_mixte": 1.2, "terrain_chemin": 1.5, "terrain_sentier": 2, "poids_denivele": 1} if u.path == "/api/reglages" else []
+                  r.fulfill(status=200, content_type="application/json", body=json.dumps(c))
+              ctx.route("**/localhost/api/**", api); ctx.route(lambda u: not u.startswith("http://localhost/"), lambda r: r.abort())
+              ctx.add_init_script("sessionStorage.setItem('vtt_code','t');sessionStorage.setItem('maillons_velo_id','1')")
+              pg = ctx.new_page(); pg.on("pageerror", lambda e: err.append(str(e)))
+              pg.route("http://localhost/", lambda r: r.fulfill(status=200, content_type="text/html", body=html))
+              pg.goto("http://localhost/"); pg.wait_for_timeout(1200)
+              pg.evaluate("location.hash = 'reglages'"); pg.wait_for_timeout(500)
+              # La liste montre chaque vélo, le vélo affiché est marqué
+              noms = pg.eval_on_selector_all("#listeMesVelos .velo-ligne-nom", "e => e.map(x => x.textContent.trim())")
+              assert noms == ["Mon CUBEAffiché", "Gravel test"], noms
+              assert pg.eval_on_selector_all("#listeMesVelos .velo-ligne.actif", "e => e.length") == 1
+              assert "2 à vérifier" in pg.inner_text("#listeMesVelos .velo-ligne:nth-child(2) .velo-ligne-detail")
+              # Menu du haut : seulement « Ajouter un vélo »
+              pg.click("#ajoutVeloMenuZone .menu-sortie-btn")
+              assert pg.eval_on_selector_all("#ajoutVeloMenuZone [role=menuitem]", "e => e.map(x => x.textContent.trim())") == ["Ajouter un vélo"]
+              pg.keyboard.press("Escape")
+              # Menu du CUBE : fiche et suppression grisées
+              pg.click("#listeMesVelos .velo-ligne:nth-child(1) .menu-sortie-btn")
+              etats = pg.eval_on_selector_all("#listeMesVelos .velo-ligne:nth-child(1) [role=menuitem]", "e => e.map(x => [x.textContent.trim(), x.disabled])")
+              assert etats[0][1] and etats[-1][1] and len(etats) == 7, etats
+              pg.keyboard.press("Escape")
+              # Menu du Gravel (pas affiché) : « Modifier la fiche » le rend actif et ouvre la fenêtre
+              pg.click("#listeMesVelos .velo-ligne:nth-child(2) .menu-sortie-btn")
+              etats = pg.eval_on_selector_all("#listeMesVelos .velo-ligne:nth-child(2) [role=menuitem]", "e => e.map(x => [x.textContent.trim(), x.disabled])")
+              assert [e[0] for e in etats][0] == "Modifier la fiche de « Gravel test »" and not etats[0][1] and not etats[-1][1], etats
+              pg.click("#listeMesVelos .velo-ligne:nth-child(2) [role=menuitem]:has-text('Modifier la fiche')"); pg.wait_for_timeout(800)
+              assert pg.evaluate("veloActifId") == 2 and pg.eval_on_selector("#selectVelo", "s => s.value") == "2"
+              assert pg.eval_on_selector("#fenetreVelo", "e => e.open") and pg.input_value("#nouveauVeloNom") == "Gravel test"
+              pg.keyboard.press("Escape"); pg.wait_for_timeout(300)
+              assert pg.eval_on_selector_all("#listeMesVelos .velo-ligne.actif .velo-ligne-nom", "e => e.map(x => x.textContent.trim())") == ["Gravel testAffiché"]
+              # Toucher la ligne d'un vélo l'affiche
+              pg.click("#listeMesVelos .velo-ligne:nth-child(1) .velo-ligne-choix"); pg.wait_for_timeout(800)
+              assert pg.evaluate("veloActifId") == 1 and pg.eval_on_selector("#selectVelo", "s => s.value") == "1"
+              assert not err, err
+              nav.close()
+          print("OK liste Mes vélos : une ligne et un menu par vélo")
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_liste_velos.py"
       - name: Vérifier le script de migration SQLite sur une base temporaire
         run: |
           python - <<'PY'
