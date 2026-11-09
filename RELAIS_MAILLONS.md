@@ -150,6 +150,11 @@
 ---
 
 
+## 2026-11-09 — Le CUBE se modifie comme les autres vélos (PR #37, fusionnée)
+- « Modifier la fiche » n'est plus grisé pour le CUBE (menu de Mes vélos) ; bouton « Modifier cette fiche » ajouté dans sa fiche technique (#btnModifierFicheCube). Même fenêtre que les autres vélos (PUT /api/velos/1, déjà permis côté serveur).
+- Sous-titre de la fiche CUBE (#ficheCubeSousTitre) repris de marque/modèle/année seulement s'ils diffèrent des valeurs d'origine. Suppression du CUBE toujours interdite.
+- Tests CI adaptés. Déploiement Render non vérifié depuis ici.
+
 ## 2026-11-09 — IA : commande et écran + lien Fiche technique (PR #36, fusionnée)
 - La demande IA connaît ecran (« Commande et écran »), guide_chaine et jantes (synonymes acceptés : display, afficheur, commande et écran…), avec libellés et icônes dans la fiche des autres vélos.
 - Menu d'un composant : « Fiche technique » lance toujours la recherche Google (nom + libellé + fiche technique), comme pour le CUBE, au lieu d'ouvrir le site source (qui reste affiché sous la carte).
