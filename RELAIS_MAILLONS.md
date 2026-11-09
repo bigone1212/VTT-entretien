@@ -150,6 +150,11 @@
 ---
 
 
+## 2026-11-09 — Icône Mon compte dans l'en-tête (PR #34, fusionnée)
+- Icône (cercle, tête, épaules) entre le kilométrage et l'engrenage ; elle ouvre la page #compte (identité, mot de passe, déconnexion), avec flèche retour.
+- Le bloc « Mon compte » a quitté l'onglet Mon vélo. Mot de passe provisoire : redirection vers #compte.
+- Fonctionnement du compte inchangé ; tests CI adaptés. Déploiement Render non vérifié depuis ici.
+
 ## 2026-11-09 — Mes vélos : fiche technique et réglages dans chaque vélo (PR #33, fusionnée)
 - La fiche technique et « Mes réglages vélo » sont déplacées par le JS dans la ligne du vélo affiché (réserve cachée #reserveFicheVelo quand tout est replié).
 - Chaque ligne a une flèche à côté des trois petits points : déplie/replie. Un seul vélo déplié à la fois ; la flèche d'un autre vélo l'affiche et le déplie. Vélo affiché déplié au départ.
