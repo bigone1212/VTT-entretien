@@ -4538,7 +4538,7 @@ jobs:
 
               pg.on("dialog", dialogue)
               pg.route("http://localhost/", lambda r: r.fulfill(status=200, content_type="text/html", body=html))
-              pg.goto("http://localhost/#reglages"); pg.wait_for_timeout(900)
+              pg.goto("http://localhost/#compte"); pg.wait_for_timeout(900)
 
               # 1) Les personnes : e-mail visible ; mot de passe provisoire pour Julie, nouveau code pour l'ami.
               lignes = pg.query_selector_all("#listePersonnes .personne-ligne")
@@ -4612,7 +4612,7 @@ jobs:
               pg = ctx.new_page()
               pg.on("pageerror", lambda e: erreurs.append(str(e)[:200]))
               pg.route("http://localhost/", lambda r: r.fulfill(status=200, content_type="text/html", body=html))
-              pg.goto("http://localhost/#reglages"); pg.wait_for_timeout(900)
+              pg.goto("http://localhost/#compte"); pg.wait_for_timeout(900)
               assert not visible(pg, "#blocPersonnes")
               assert not [x for x in requetes if x[0] in ("/api/invitations", "/api/personnes")], requetes
               nav.close()
