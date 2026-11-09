@@ -150,6 +150,11 @@
 ---
 
 
+## 2026-11-09 — Mes vélos : fiche technique et réglages dans chaque vélo (PR #33, fusionnée)
+- La fiche technique et « Mes réglages vélo » sont déplacées par le JS dans la ligne du vélo affiché (réserve cachée #reserveFicheVelo quand tout est replié).
+- Chaque ligne a une flèche à côté des trois petits points : déplie/replie. Un seul vélo déplié à la fois ; la flèche d'un autre vélo l'affiche et le déplie. Vélo affiché déplié au départ.
+- Fonctionnement des blocs inchangé ; test CI de la liste étendu. Déploiement Render non vérifié depuis ici.
+
 ## 2026-11-09 — Mes vélos : liste avec un menu par vélo (PR #32, fusionnée)
 - Mon vélo > Mes vélos : une ligne par vélo (nom, type, pastille « Affiché »), toucher la ligne affiche le vélo.
 - Chaque ligne a ses trois petits points : fiche, photo (fichier/lien/supprimer), repères, suppression. Sur un vélo non affiché, le menu l'affiche d'abord. CUBE : fiche et suppression grisées.
