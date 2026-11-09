@@ -4473,7 +4473,7 @@ def accueil():
                         
                         <span>Fiche technique du vélo</span>
                     </strong>
-                    <span class="ftv-sous-titre">CUBE Stereo Hybrid ONE44 EXC 800 · 2025</span>
+                    <span class="ftv-sous-titre" id="ficheCubeSousTitre">CUBE Stereo Hybrid ONE44 EXC 800 · 2025</span>
                 </span>
                 <span class="ftv-chevron" aria-hidden="true"></span>
             </summary>
@@ -4593,6 +4593,7 @@ def accueil():
                     <span><span class="ftv-libelle">Plaquettes arrière</span><span class="ftv-valeur">Shimano compatibles BR-M8120</span><span class="ftv-libelle">Référence exacte à confirmer avant achat</span></span>
                 </div>
             </div>
+            <button type="button" id="btnModifierFicheCube" onclick="modifierFicheVelo()" style="width:100%; margin: 4px 0 8px;">Modifier cette fiche</button>
             <p class="ftv-note">Caractéristiques du modèle 2025. Les équipements peuvent varier selon la version et la taille du vélo.</p>
         </details>
         <details class="fiche-technique-velo" id="ficheTechniqueAutre" style="display:none;">
@@ -5769,7 +5770,7 @@ def accueil():
                     liste.appendChild(ligne);
                     const aPhoto = Number(velo.a_photo) === 1;
                     ajouterMenuPoints(zone, actif ? 'Actions du vélo' : 'Actions de « ' + court + ' »', [
-                        { icone: 'crayon', texte: 'Modifier la fiche de « ' + court + ' »', desactive: estCube, action: sur(modifierFicheVelo) },
+                        { icone: 'crayon', texte: 'Modifier la fiche de « ' + court + ' »', action: sur(modifierFicheVelo) },
                         { icone: 'appareil', texte: aPhoto ? 'Changer la photo' : 'Ajouter une photo', action: sur(choisirPhotoVelo) },
                         { icone: 'lien', texte: 'Photo depuis un lien…', action: sur(photoDepuisLien) },
                         { icone: 'poubelle', texte: 'Supprimer la photo', danger: true, desactive: !aPhoto, action: sur(supprimerPhotoVelo) },
@@ -6087,6 +6088,13 @@ def accueil():
                 const ficheGenerique = document.getElementById('ficheTechniqueAutre');
                 if (ficheCube) ficheCube.style.display = estCube ? '' : 'none';
                 if (estCube) monterFicheCube(velo || null);
+                const sousTitreCube = document.getElementById('ficheCubeSousTitre');
+                if (sousTitreCube && velo && Number(velo.id) === 1) {
+                    const modifieParToi = (velo.marque || '') !== 'Cube' || (velo.modele || '') !== 'Stereo Hybrid ONE44 EXC 800 (Bosch)' || Number(velo.annee) !== 2025;
+                    if (sousTitreCube.dataset.origine === undefined) sousTitreCube.dataset.origine = sousTitreCube.textContent;
+                    const titreFiche = [velo.marque, velo.modele].filter(Boolean).join(' ') + (velo.annee ? ' · ' + velo.annee : '');
+                    sousTitreCube.textContent = modifieParToi && titreFiche ? titreFiche : sousTitreCube.dataset.origine;
+                }
                 if (ficheGenerique) ficheGenerique.style.display = estCube ? 'none' : 'block';
                 const boutonModifierFiche = document.getElementById('btnModifierFicheVelo');
                 if (boutonModifierFiche) boutonModifierFiche.style.display = estCube ? 'none' : 'block';
@@ -6135,10 +6143,12 @@ def accueil():
 
             function modifierFicheVelo() {
                 const velo = velosDisponibles.find(v => Number(v.id) === veloActifId);
-                if (!velo || Number(velo.id) === 1) return;
+                if (!velo) return;
                 const formulaire = document.getElementById('formAjouterVelo');
                 formulaire.elements.nom.value = velo.nom || '';
-                formulaire.elements.type.value = velo.type || 'vtt';
+                formulaire.elements.type.value = velo.type === 'electrique' ? 'vtt_electrique' : (velo.type || 'vtt');
+                const zoneElectrique = document.getElementById('champsElectriques');
+                if (zoneElectrique) zoneElectrique.style.display = ['vtt_electrique', 'gravel_electrique', 'route_electrique'].includes(formulaire.elements.type.value) ? 'block' : 'none';
                 formulaire.elements.type.disabled = true;
                 formulaire.elements.marque.value = velo.marque || '';
                 formulaire.elements.modele.value = velo.modele || '';
