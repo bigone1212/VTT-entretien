@@ -150,6 +150,14 @@
 ---
 
 
+## 2026-11-10 (18h30) — Mon compte : en-tête, DÉCISIONS DE MATH et DÉBUT DU CODE (rien d'enregistré sur main hors cette note)
+- Accord de Math sur le périmètre de la première étape (en-tête de Mon compte) : photo de profil ronde (remplace aussi le bonhomme de l'en-tête), « nom d'utilisateur » = le champ `nom` actuel renommé (reste utilisé dans « Bienvenue » et la liste Personnes), PRÉNOM et NOM en plus (facultatifs, modifiables), e-mail affiché non modifiable, « membre depuis » (cree_le), version de l'appli en petit en bas de page. PAS d'adresse (décision : donnée inutile).
+- Les personnes déjà inscrites gardent leur nom comme nom d'utilisateur ; prénom et nom vides au départ.
+- Branche de code : `reprise/2026-11-10-mon-compte-en-tete` (fusion dans main seulement avec l'accord explicite de Math). Fichiers prévus : `main.py`, `.github/workflows/maillons-check.yml`.
+- Plan technique : colonnes `personnes.prenom`, `personnes.nom_famille`, `personnes.photo` (petite image) ; `/api/moi` enrichi ; routes PUT `/api/moi/profil`, PUT/DELETE `/api/moi/photo` ; version = date + début du commit Render si connu. Aucun changement au mot de passe, à la connexion, à Personnes.
+- Environnement de Claude : fastapi n'est pas installé ici (pas de réseau) : l'appli ne peut pas être lancée localement ; les tests complets passeront par le CI GitHub de la branche.
+- Rien de déployé, aucune opération Neon.
+
 ## 2026-11-10 — PROCHAIN CHANTIER (à reprendre dans un NOUVEAU chat) : améliorer la page Mon compte (« onglet profil »)
 - Demande de Math : discuter d'abord (rien de codé), dans une nouvelle conversation. « Profil » = la page Mon compte (icône bonhomme de l'en-tête, hash #compte). Contenu actuel : « Connecté : nom », changement de mot de passe, « Se déconnecter », et « Personnes » (administrateur seulement).
 - Axes cochés par Math : (1) photo et identité (photo de profil, prénom/nom modifiables, e-mail affiché), (2) un résumé de lui (vélos, kilomètres, sorties, ancienneté), (3) sécurité et sessions (mot de passe, appareils connectés, déconnexion partout), (4) « autre chose » (pas encore précisé). Math cherche des idées sur d'autres sites et attend des propositions de Claude.
