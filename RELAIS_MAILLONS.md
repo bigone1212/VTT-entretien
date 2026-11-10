@@ -150,6 +150,13 @@
 ---
 
 
+## 2026-11-10 — Galerie de 6 photos par vélo + flèche Mes réglages (PR #39, fusionnée ; #38 fermée, son commit y est inclus)
+- Chaque vélo : photo principale (colonne photo, inchangée, sert à l'onglet Entretien et aux repères) + jusqu'à 5 photos en plus (nouvelle colonne velos.photos_galerie, liste JSON). 6 au maximum.
+- Routes : GET/POST /api/velos/{id}/photos, DELETE /api/velos/{id}/photos/{position} (toutes avec controle_acces).
+- Interface : galerie #galerieVelo en premier dans le corps de la ligne dépliée de Mes vélos, avant la fiche technique ; défilement, flèches, points, compteur ; ajout multiple ou depuis un lien ; croix de suppression. Vélo sans photo : la première ajoutée devient la principale ; CUBE : photo d'origine = première.
+- Flèche de « Mes réglages vélo » alignée sur celle de la fiche technique (la règle #blocAjouterVelo .mr-titre est devenue #blocAjouterVelo > .mr-titre).
+- Tests CI : navigateur (galerie) + serveur (photos). Déploiement Render non vérifié depuis ici.
+
 ## 2026-11-09 — Le CUBE se modifie comme les autres vélos (PR #37, fusionnée)
 - « Modifier la fiche » n'est plus grisé pour le CUBE (menu de Mes vélos) ; bouton « Modifier cette fiche » ajouté dans sa fiche technique (#btnModifierFicheCube). Même fenêtre que les autres vélos (PUT /api/velos/1, déjà permis côté serveur).
 - Sous-titre de la fiche CUBE (#ficheCubeSousTitre) repris de marque/modèle/année seulement s'ils diffèrent des valeurs d'origine. Suppression du CUBE toujours interdite.
