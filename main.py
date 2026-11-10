@@ -2462,26 +2462,30 @@ def accueil():
             .galerie-velo { margin: 8px 0 4px; }
 
             .galerie-piste {
-                display: flex;
-                overflow-x: auto;
-                scroll-snap-type: x mandatory;
-                scrollbar-width: none;
+                position: relative;
+                height: 200px;
+                overflow: hidden;
                 border-radius: 12px;
-                background: var(--card-bg);
+                background: #ffffff;
                 border: 1px solid var(--field-line);
             }
 
-            .galerie-piste::-webkit-scrollbar { display: none; }
-
             .galerie-diapo {
-                position: relative;
-                flex: 0 0 100%;
-                height: 200px;
-                scroll-snap-align: center;
+                position: absolute;
+                inset: 0;
                 display: flex;
                 align-items: center;
                 justify-content: center;
                 background: #ffffff;
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.9s ease-in-out;
+            }
+
+            .galerie-diapo.actif { opacity: 1; pointer-events: auto; z-index: 1; }
+
+            @media (prefers-reduced-motion: reduce) {
+                .galerie-diapo { transition: none; }
             }
 
             .galerie-diapo img { width: 100%; height: 100%; object-fit: contain; }
@@ -2533,9 +2537,11 @@ def accueil():
 
             .galerie-points { flex: 1; display: flex; justify-content: center; gap: 6px; }
 
-            .galerie-point { width: 8px; height: 8px; border-radius: 50%; background: var(--field-line); }
+            .galerie-point { width: 8px; height: 8px; padding: 0; border: none; border-radius: 50%; background: var(--field-line); cursor: pointer; }
 
             .galerie-point.actif { background: var(--accent); }
+            .galerie-point { position: relative; }
+            .galerie-point::before { content: ''; position: absolute; inset: -8px -3px; }
 
             .galerie-compteur { font-size: 0.8rem; color: var(--text-muted); min-width: 34px; text-align: right; }
 
@@ -5784,6 +5790,11 @@ def accueil():
 
             // ---- Galerie du vélo : jusqu'à 6 photos (la principale + 5 autres), entre le nom et la fiche technique ----
             const MAX_PHOTOS_VELO = 6;
+            // Défilement automatique avec fondu : une photo toutes les 4,5 secondes (sauf si l'appareil demande moins d'animations).
+            let delaiDiaporama = 4500;
+            function diaporamaReduit() {
+                try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; }
+            }
             const galeriesVelos = {};
 
             async function chargerGalerieVelo(id) {
@@ -5818,18 +5829,17 @@ def accueil():
                 piste.setAttribute('role', 'list');
                 if (!diapos.length) {
                     const vide = document.createElement('div');
-                    vide.className = 'galerie-diapo galerie-vide';
+                    vide.className = 'galerie-diapo galerie-vide actif';
                     vide.textContent = 'Aucune photo pour le moment.';
                     piste.appendChild(vide);
                 }
-                diapos.forEach((d, i) => {
+                const elementsDiapos = diapos.map((d, i) => {
                     const diapo = document.createElement('div');
-                    diapo.className = 'galerie-diapo';
+                    diapo.className = 'galerie-diapo' + (i === 0 ? ' actif' : '');
                     diapo.setAttribute('role', 'listitem');
                     const img = document.createElement('img');
                     img.src = d.src;
                     img.alt = 'Photo ' + (i + 1) + ' de ' + velo.nom;
-                    img.loading = 'lazy';
                     diapo.appendChild(img);
                     if (i === 0) {
                         const badge = document.createElement('span');
@@ -5848,10 +5858,14 @@ def accueil():
                         diapo.appendChild(croix);
                     }
                     piste.appendChild(diapo);
+                    return diapo;
                 });
                 zone.appendChild(piste);
 
+                if (zone.minuteurDiaporama) { clearInterval(zone.minuteurDiaporama); zone.minuteurDiaporama = 0; }
                 if (diapos.length > 1) {
+                    let rang = 0;
+                    let enPause = false;
                     const pied = document.createElement('div');
                     pied.className = 'galerie-pied';
                     const precedent = document.createElement('button');
@@ -5868,27 +5882,54 @@ def accueil():
                     suivant.textContent = '›';
                     const compteur = document.createElement('span');
                     compteur.className = 'galerie-compteur';
-                    const marqueurs = diapos.map(() => {
-                        const p = document.createElement('span');
+                    const marqueurs = diapos.map((d, i) => {
+                        const p = document.createElement('button');
+                        p.type = 'button';
                         p.className = 'galerie-point';
+                        p.setAttribute('aria-label', 'Voir la photo ' + (i + 1));
+                        p.addEventListener('click', () => { aller(i); });
                         points.appendChild(p);
                         return p;
                     });
-                    const majPosition = () => {
-                        const largeur = piste.clientWidth || 1;
-                        const rang = Math.min(diapos.length - 1, Math.max(0, Math.round(piste.scrollLeft / largeur)));
+                    const demarrer = () => {
+                        if (zone.minuteurDiaporama) clearInterval(zone.minuteurDiaporama);
+                        zone.minuteurDiaporama = 0;
+                        if (diaporamaReduit()) return;
+                        zone.minuteurDiaporama = setInterval(() => {
+                            if (!document.body.contains(zone)) { clearInterval(zone.minuteurDiaporama); zone.minuteurDiaporama = 0; return; }
+                            if (enPause || document.hidden) return;
+                            aller(rang + 1, true);
+                        }, delaiDiaporama);
+                    };
+                    const aller = (n, automatique) => {
+                        rang = (n + diapos.length) % diapos.length;
+                        elementsDiapos.forEach((el, i) => el.classList.toggle('actif', i === rang));
                         marqueurs.forEach((p, i) => p.classList.toggle('actif', i === rang));
                         compteur.textContent = (rang + 1) + ' / ' + diapos.length;
+                        if (!automatique) demarrer();
                     };
-                    piste.addEventListener('scroll', majPosition);
-                    precedent.addEventListener('click', () => piste.scrollBy({ left: -piste.clientWidth, behavior: 'smooth' }));
-                    suivant.addEventListener('click', () => piste.scrollBy({ left: piste.clientWidth, behavior: 'smooth' }));
+                    precedent.addEventListener('click', () => aller(rang - 1));
+                    suivant.addEventListener('click', () => aller(rang + 1));
+                    // Le défilement s'arrête quand le doigt ou la souris est sur les photos ; un glissement change de photo.
+                    let departX = null;
+                    piste.addEventListener('mouseenter', () => { enPause = true; });
+                    piste.addEventListener('mouseleave', () => { enPause = false; });
+                    piste.addEventListener('touchstart', (e) => { enPause = true; departX = e.touches[0].clientX; }, { passive: true });
+                    piste.addEventListener('touchend', (e) => {
+                        enPause = false;
+                        if (departX !== null && e.changedTouches.length) {
+                            const ecart = e.changedTouches[0].clientX - departX;
+                            if (Math.abs(ecart) > 40) aller(rang + (ecart < 0 ? 1 : -1));
+                        }
+                        departX = null;
+                    });
                     pied.appendChild(precedent);
                     pied.appendChild(points);
                     pied.appendChild(compteur);
                     pied.appendChild(suivant);
                     zone.appendChild(pied);
-                    majPosition();
+                    aller(0, true);
+                    demarrer();
                 }
 
                 const ajout = document.createElement('div');
