@@ -150,6 +150,12 @@
 ---
 
 
+## 2026-11-10 — PROCHAIN CHANTIER (à reprendre dans un NOUVEAU chat) : améliorer la page Mon compte (« onglet profil »)
+- Demande de Math : discuter d'abord (rien de codé), dans une nouvelle conversation. « Profil » = la page Mon compte (icône bonhomme de l'en-tête, hash #compte). Contenu actuel : « Connecté : nom », changement de mot de passe, « Se déconnecter », et « Personnes » (administrateur seulement).
+- Axes cochés par Math : (1) photo et identité (photo de profil, prénom/nom modifiables, e-mail affiché), (2) un résumé de lui (vélos, kilomètres, sorties, ancienneté), (3) sécurité et sessions (mot de passe, appareils connectés, déconnexion partout), (4) « autre chose » (pas encore précisé). Math cherche des idées sur d'autres sites et attend des propositions de Claude.
+- Propositions faites à Math : en-tête du profil (photo ronde, prénom, e-mail, « membre depuis ») ; photo qui remplace le bonhomme de l'en-tête ; résumé (nombre de vélos, kilomètres de tous les vélos, nombre de sorties, km du mois et de l'année, dernier entretien, pièce la plus usée) ; préférences (vélo affiché au démarrage) ; sécurité (appareils connectés avec « déconnecter », supprimer mon compte, télécharger mes données — une sauvegarde JSON existe déjà) ; À propos (version de l'appli).
+- Rien n'est décidé. Règles inchangées : une étape à la fois, accord de Math avant de coder, branche puis « fusionne ».
+
 ## 2026-11-10 — Pastilles rouges : pas pour mes propres actions (PR #41, fusionnée)
 - Constaté en navigateur avant correction : mon propre entretien allumait la pastille Historique ; un vélo ajouté n'allumait rien.
 - Maintenant : toute modification faite par moi dans l'appli (requête POST/PUT/DELETE sur /api/, hors connexion/inscription/déconnexion/mot de passe) met derniereModifLocale ; pendant 15 s actualiserPastilles met à jour la mémoire sans allumer de pastille ni marquer de sortie « Nouveau ».
