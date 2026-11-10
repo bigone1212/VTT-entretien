@@ -5087,6 +5087,75 @@ jobs:
           PY
           rm -f "$SQLITE_PATH"
           PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_galerie.py"
+      - name: Tester les pastilles rouges de nouveauté (mes actions / ce qui vient d'ailleurs)
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-pastilles-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_pastilles.py" <<'PY'
+          import json
+          from urllib.parse import urlparse
+          from playwright.sync_api import sync_playwright
+          import main
+          html = main.accueil()
+          V = [{"id": 1, "nom": "Mon CUBE", "type": "vtt_electrique", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0}]
+          def comp(i, nom, usure=50): return {"id": i, "nom": nom, "categorie": "piece", "pourcentage_usure": usure, "pos_x": 50, "pos_y": 50, "numero": i, "km_restants": 100, "seuil_km": 1000, "verification": False, "alerte_entretien": usure >= 90}
+          HIST = [{"id": 1, "nom_composant": "Chaîne", "date": "2026-10-01", "notes": "x", "km": 100}]
+          SORT = [{"id": 1, "nom": "Sortie 1", "debut": "2026-10-01T10:00:00", "distance": 10, "favori": 0, "a_verifier": 0}]
+          ETAT = {"km_total": 0, "composants": [comp(11, "Pneu arrière / tubeless"), comp(13, "Cassette")]}
+          err = []
+          with sync_playwright() as p:
+              nav = p.chromium.launch(); ctx = nav.new_context(viewport={"width": 390, "height": 900})
+              def api(r):
+                  u = urlparse(r.request.url); m = r.request.method
+                  if u.path.endswith("/remplacer"):
+                      HIST.append({"id": len(HIST) + 10, "nom_composant": "Pneu", "date": "2026-11-10", "notes": "n", "km": 0}); c = {"statut": "success"}
+                  elif m == "POST" and u.path == "/api/velos":
+                      V.append({"id": len(V) + 1, "nom": "Nouveau vélo", "type": "gravel", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0}); c = {"statut": "success", "velo_id": len(V)}
+                  else: c = V if u.path == "/api/velos" else ETAT if u.path == "/api/etat" else HIST if u.path == "/api/historique" else SORT if u.path == "/api/sorties" else {"valeurs": {}, "maj_le": None} if u.path == "/api/mes-reglages" else {"terrain_route": 1, "terrain_mixte": 1.2, "terrain_chemin": 1.5, "terrain_sentier": 2, "poids_denivele": 1} if u.path == "/api/reglages" else []
+                  r.fulfill(status=200, content_type="application/json", body=json.dumps(c))
+              ctx.route("**/localhost/api/**", api); ctx.route(lambda u: not u.startswith("http://localhost/"), lambda r: r.abort())
+              ctx.add_init_script("sessionStorage.setItem('vtt_code','t');sessionStorage.setItem('maillons_velo_id','1')")
+              pg = ctx.new_page(); pg.on("dialog", lambda d: d.accept()); pg.on("pageerror", lambda e: err.append(str(e)))
+              pg.route("http://localhost/", lambda r: r.fulfill(status=200, content_type="text/html", body=html))
+              pg.goto("http://localhost/"); pg.wait_for_timeout(1500)
+              badges = lambda: pg.evaluate("['entretien','historique','reglages','sorties'].filter(p => document.getElementById('onglet-'+p).classList.contains('avec-pastille'))")
+              assert badges() == [], badges()
+              # 1) Ce que je fais moi-même n'allume aucune pastille (entretien, nouveau vélo)
+              pg.evaluate("remplacer(11,'Pneu arrière / tubeless','piece')"); pg.wait_for_timeout(300)
+              pg.click("#boutonValiderRemplacement"); pg.wait_for_timeout(1500)
+              assert badges() == [], badges()
+              pg.evaluate("fetch('/api/velos', {method: 'POST', body: '{}'}).then(() => rechargerDonneesVelo ? chargerVelos().then(rechargerDonneesVelo) : null)"); pg.wait_for_timeout(1500)
+              assert len(V) == 2 and badges() == [], (len(V), badges())
+              # 2) Quelqu'un d'autre (ou un autre appareil) ajoute une sortie, un entretien et un vélo : pastilles aux bons endroits
+              pg.evaluate("derniereModifLocale = 0")
+              SORT.append({"id": 2, "nom": "Sortie 2", "debut": "2026-11-10T10:00:00", "distance": 20, "favori": 0, "a_verifier": 0})
+              HIST.append({"id": 99, "nom_composant": "Autre", "date": "2026-11-10", "notes": "n", "km": 0})
+              V.append({"id": 3, "nom": "Vélo d'ailleurs", "type": "route", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0})
+              pg.reload(); pg.wait_for_timeout(1800)
+              assert sorted(badges()) == ["historique", "reglages", "sorties"], badges()
+              # 3) Ouvrir l'onglet efface sa pastille
+              pg.click("#onglet-reglages"); pg.wait_for_timeout(300)
+              assert sorted(badges()) == ["historique", "sorties"], badges()
+              pg.click("#onglet-historique"); pg.wait_for_timeout(300)
+              assert badges() == ["sorties"], badges()
+              pg.click("#onglet-sorties"); pg.wait_for_timeout(300)
+              assert badges() == [], badges()
+              pg.click("#onglet-entretien"); pg.wait_for_timeout(300)
+              # 4) Retour dans l'appli après un moment : le nouveau venu d'ailleurs est signalé sans recharger la page
+              SORT.append({"id": 3, "nom": "Sortie 3", "debut": "2026-11-11T10:00:00", "distance": 5, "favori": 0, "a_verifier": 0})
+              pg.evaluate("derniereVerifExterne = 0; document.dispatchEvent(new Event('visibilitychange'))"); pg.wait_for_timeout(1800)
+              assert badges() == ["sorties"], badges()
+              # 5) Autre personne sur le même téléphone (aucun vélo en commun) : rien à signaler
+              V[:] = [{"id": 7, "nom": "Vélo de Julie", "type": "vtt", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0}]
+              pg.evaluate("sessionStorage.setItem('maillons_velo_id', '7')"); pg.reload(); pg.wait_for_timeout(1800)
+              assert "reglages" not in badges(), badges()
+              assert not err, err
+              nav.close()
+          print("OK pastilles rouges : rien pour mes propres actions, signalées pour ce qui vient d'ailleurs")
+          PY
+          rm -f "$SQLITE_PATH"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_pastilles.py"
       - name: Vérifier le script de migration SQLite sur une base temporaire
         run: |
           python - <<'PY'
