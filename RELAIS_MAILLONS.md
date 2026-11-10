@@ -150,6 +150,10 @@
 ---
 
 
+## 2026-11-10 — Galerie : défilement automatique avec fondu (PR #40, fusionnée)
+- Les photos de la galerie sont empilées (une seule visible, opacity 0,9 s) ; changement automatique toutes les 4,5 s (variable delaiDiaporama), arrêté sous la souris/le doigt, désactivé si l'appareil demande moins d'animations (prefers-reduced-motion).
+- Flèches, points cliquables et glissement au doigt changent de photo et relancent le minuteur. Rien changé côté serveur. Test navigateur adapté. Déploiement Render non vérifié depuis ici.
+
 ## 2026-11-10 — Galerie de 6 photos par vélo + flèche Mes réglages (PR #39, fusionnée ; #38 fermée, son commit y est inclus)
 - Chaque vélo : photo principale (colonne photo, inchangée, sert à l'onglet Entretien et aux repères) + jusqu'à 5 photos en plus (nouvelle colonne velos.photos_galerie, liste JSON). 6 au maximum.
 - Routes : GET/POST /api/velos/{id}/photos, DELETE /api/velos/{id}/photos/{position} (toutes avec controle_acces).
