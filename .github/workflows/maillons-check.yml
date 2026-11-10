@@ -5040,8 +5040,23 @@ jobs:
               assert pg.evaluate("document.querySelector('.velo-ligne-corps').firstElementChild.id") == "galerieVelo"
               assert pg.evaluate("document.querySelector('#galerieVelo').nextElementSibling.id") != ""
               assert pg.inner_text("#galerieVelo .galerie-compteur") == "1 / 3" and pg.inner_text("#galerieVelo .galerie-badge") == "Principale"
-              pg.click("#galerieVelo .galerie-nav[aria-label='Photo suivante']"); pg.wait_for_timeout(700)
+              pg.click("#galerieVelo .galerie-nav[aria-label='Photo suivante']"); pg.wait_for_timeout(300)
               assert pg.inner_text("#galerieVelo .galerie-compteur") == "2 / 3"
+              # Fondu : une seule photo visible à la fois, avec une transition d'opacité
+              assert pg.eval_on_selector_all("#galerieVelo .galerie-diapo.actif", "e => e.length") == 1
+              assert pg.eval_on_selector("#galerieVelo .galerie-diapo", "e => getComputedStyle(e).transitionProperty + '|' + getComputedStyle(e).transitionDuration") == "opacity|0.9s"
+              pg.click("#galerieVelo .galerie-point:nth-child(1)"); pg.wait_for_timeout(200)
+              assert pg.inner_text("#galerieVelo .galerie-compteur") == "1 / 3"
+              # Défilement automatique (délai raccourci pour le test), arrêté quand la souris est sur les photos
+              pg.evaluate("delaiDiaporama = 700; rafraichirGalerieVelo()"); pg.wait_for_timeout(300)
+              assert pg.inner_text("#galerieVelo .galerie-compteur") == "1 / 3"
+              pg.wait_for_timeout(1000)
+              assert pg.inner_text("#galerieVelo .galerie-compteur") in ("2 / 3", "3 / 3")
+              pg.hover("#galerieVelo .galerie-piste"); figee = pg.inner_text("#galerieVelo .galerie-compteur"); pg.wait_for_timeout(1800)
+              assert pg.inner_text("#galerieVelo .galerie-compteur") == figee
+              pg.mouse.move(5, 5); pg.wait_for_timeout(1100)
+              assert pg.inner_text("#galerieVelo .galerie-compteur") != figee
+              pg.evaluate("delaiDiaporama = 600000; rafraichirGalerieVelo()"); pg.wait_for_timeout(300)
               # Ajout de 3 photos d'un coup : on arrive à 6, le bouton d'ajout disparaît
               fichiers = [{"name": "p%d.jpg" % i, "mimeType": "image/jpeg", "buffer": base64.b64decode(JPEG)} for i in range(3)]
               pg.set_input_files("#galeriePhotoInput", fichiers); pg.wait_for_timeout(2500)
@@ -5052,6 +5067,7 @@ jobs:
               pg.set_input_files("#galeriePhotoInput", fichiers[:1]); pg.wait_for_timeout(1200)
               assert nb() == 6 and len(galeries[2]) == 5
               # Supprimer une photo supplémentaire
+              pg.click("#galerieVelo .galerie-point:nth-child(3)"); pg.wait_for_timeout(1200)
               pg.click("#galerieVelo .galerie-diapo:nth-child(3) .galerie-suppr"); pg.wait_for_timeout(700)
               assert nb() == 5 and len(galeries[2]) == 4 and pg.is_visible("#galerieVelo .galerie-ajout .photo-velo-bouton")
               # Vélo sans photo : la première photo devient la photo principale, la suivante va dans la galerie
