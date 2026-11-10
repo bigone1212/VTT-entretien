@@ -150,6 +150,13 @@
 ---
 
 
+## 2026-11-10 — Pastilles rouges : pas pour mes propres actions (PR #41, fusionnée)
+- Constaté en navigateur avant correction : mon propre entretien allumait la pastille Historique ; un vélo ajouté n'allumait rien.
+- Maintenant : toute modification faite par moi dans l'appli (requête POST/PUT/DELETE sur /api/, hors connexion/inscription/déconnexion/mot de passe) met derniereModifLocale ; pendant 15 s actualiserPastilles met à jour la mémoire sans allumer de pastille ni marquer de sortie « Nouveau ».
+- Nouveau : la liste des vélos est surveillée (mémoire globale maillons_velos_vus) → pastille sur l'onglet Mon vélo (id reglages) si un vélo apparaît ailleurs ; rien si aucun vélo en commun (autre personne sur le même téléphone).
+- Nouveau : au retour dans l'appli (visibilitychange) après plus d'une minute et sans fenêtre ouverte, chargerEtat() est relancé pour détecter le nouveau sans recharger la page.
+- Limite : un ajout externe dans les 15 s suivant une modification de ma part n'allume rien. Test navigateur ajouté (échoue sur l'ancien code). Déploiement Render non vérifié depuis ici.
+
 ## 2026-11-10 — Galerie : défilement automatique avec fondu (PR #40, fusionnée)
 - Les photos de la galerie sont empilées (une seule visible, opacity 0,9 s) ; changement automatique toutes les 4,5 s (variable delaiDiaporama), arrêté sous la souris/le doigt, désactivé si l'appareil demande moins d'animations (prefers-reduced-motion).
 - Flèches, points cliquables et glissement au doigt changent de photo et relancent le minuteur. Rien changé côté serveur. Test navigateur adapté. Déploiement Render non vérifié depuis ici.
