@@ -5269,6 +5269,10 @@ def accueil():
 
             // ---- Pastilles rouges : nouveautés depuis la dernière visite (mémorisées sur cet appareil) ----
             var etatComposants = null;
+            // Heure de ma dernière modification faite dans l'appli (ajout, changement, suppression) :
+            // ce que je viens de faire moi-même ne doit pas allumer de pastille rouge.
+            var derniereModifLocale = 0;
+            var derniereVerifExterne = Date.now();
 
             function lireVus() {
                 try {
@@ -5285,6 +5289,21 @@ def accueil():
                 } catch (e) {}
             }
 
+            function lireVelosVus() {
+                try {
+                    const texte = localStorage.getItem('maillons_velos_vus');
+                    return texte ? JSON.parse(texte) : null;
+                } catch (e) {
+                    return null;
+                }
+            }
+
+            function ecrireVelosVus(m) {
+                try {
+                    localStorage.setItem('maillons_velos_vus', JSON.stringify(m));
+                } catch (e) {}
+            }
+
             function pageCourante() {
                 const nom = (location.hash || '').replace('#', '');
                 return PAGES.includes(nom) ? nom : 'entretien';
@@ -5295,7 +5314,8 @@ def accueil():
                 PAGES.forEach(p => {
                     const bouton = document.getElementById('onglet-' + p);
                     if (!bouton) return;
-                    const actif = Boolean(v && v.badges && v.badges[p]);
+                    let actif = Boolean(v && v.badges && v.badges[p]);
+                    if (p === 'reglages') { const m = lireVelosVus(); if (m && m.badge) actif = true; }
                     bouton.classList.toggle('avec-pastille', actif);
                     if (!bouton.dataset.libelle) bouton.dataset.libelle = bouton.textContent.trim();
                     bouton.setAttribute('aria-label', actif ? bouton.dataset.libelle + ' (nouveauté)' : bouton.dataset.libelle);
@@ -5303,6 +5323,10 @@ def accueil():
             }
 
             function viderPastilleOnglet(nom) {
+                if (nom === 'reglages') {
+                    const m = lireVelosVus();
+                    if (m && m.badge) { m.badge = false; ecrireVelosVus(m); }
+                }
                 const v = lireVus();
                 if (v && v.badges && v.badges[nom]) {
                     v.badges[nom] = false;
@@ -5332,6 +5356,7 @@ def accueil():
                 if (!Array.isArray(v.nouvelles)) v.nouvelles = [];
 
                 const page = pageCourante();
+                const silencieux = Date.now() - derniereModifLocale < 15000;
                 const ids = (liste) => liste.map(x => String(x.id));
                 const traiter = (nom, courants, charge) => {
                     const ancien = v.base[nom];
@@ -5342,7 +5367,7 @@ def accueil():
                     }
                     const nouveaux = courants.filter(id => !ancien.includes(id));
                     v.base[nom] = courants;
-                    if (nouveaux.length && page !== nom) v.badges[nom] = true;
+                    if (nouveaux.length && page !== nom && !silencieux) v.badges[nom] = true;
                     return nouveaux;
                 };
 
@@ -5351,11 +5376,24 @@ def accueil():
                     : [];
                 traiter('entretien', enAlerte, Array.isArray(etatComposants));
                 traiter('historique', ids(historiqueDonnees), historiqueDonnees.length > 0);
+                // Un vélo ajouté depuis un autre appareil : pastille sur l'onglet « Mon vélo ».
+                // Liste mémorisée pour tous les vélos à la fois ; sans aucun vélo en commun avec la dernière fois
+                // (autre personne connectée sur ce téléphone), on ne signale rien.
+                if (velosDisponibles.length > 0) {
+                    const mesVelos = ids(velosDisponibles);
+                    const memoire = lireVelosVus() || { ids: null, badge: false };
+                    if (Array.isArray(memoire.ids) && memoire.ids.some(id => mesVelos.includes(id))) {
+                        const ajoutes = mesVelos.filter(id => !memoire.ids.includes(id));
+                        if (ajoutes.length && page !== 'reglages' && !silencieux) memoire.badge = true;
+                    }
+                    memoire.ids = mesVelos;
+                    ecrireVelosVus(memoire);
+                }
 
                 const idsSorties = ids(sortiesConnues);
                 const nouvellesSorties = traiter('sorties', idsSorties, idsSorties.length > 0);
                 nouvellesSorties.forEach(id => {
-                    if (!v.nouvelles.includes(id)) v.nouvelles.push(id);
+                    if (!silencieux && !v.nouvelles.includes(id)) v.nouvelles.push(id);
                 });
                 if (idsSorties.length > 0) {
                     v.nouvelles = v.nouvelles.filter(id => idsSorties.includes(id));
@@ -5363,10 +5401,19 @@ def accueil():
 
                 ecrireVus(v);
                 dessinerPastilles();
+                derniereVerifExterne = Date.now();
 
                 // Réaffiche la liste des sorties pour y poser la pastille « Nouveau ».
-                if (nouvellesSorties.length) chargerSorties(true);
+                if (nouvellesSorties.length && !silencieux) chargerSorties(true);
             }
+
+            // Retour dans l'appli après un moment : on regarde si quelque chose de nouveau est arrivé d'ailleurs.
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) return;
+                if (Date.now() - derniereVerifExterne < 60000) return;
+                if (document.querySelector('dialog[open]')) return;
+                if (typeof chargerEtat === 'function') chargerEtat();
+            });
 
             let veloActifId = Number(sessionStorage.getItem('maillons_velo_id')) || 1;
             let velosDisponibles = [];
@@ -5378,6 +5425,11 @@ def accueil():
             window.fetch = function (url, options) {
                 let cible = url;
                 if (typeof url === 'string' && url.startsWith('/api/')) {
+                    const methode = String((options && options.method) || 'GET').toUpperCase();
+                    const authentification = ['/api/connexion', '/api/inscription', '/api/deconnexion', '/api/mot-de-passe'];
+                    if (methode !== 'GET' && !authentification.some(p => url === p || url.startsWith(p + '?'))) {
+                        derniereModifLocale = Date.now();
+                    }
                     const globales = ['/api/velos', '/api/sauvegarde', '/api/reglages', '/api/connexion', '/api/inscription', '/api/deconnexion', '/api/mot-de-passe'];
                     if (!globales.some(p => url === p || url.startsWith(p + '?'))) {
                         const separateur = url.includes('?') ? '&' : '?';
