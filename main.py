@@ -781,6 +781,8 @@ def init_db():
     ajouter_colonne(cursor, "velos", "tubeless", "TEXT")
     ajouter_colonne(cursor, "velos", "transmission", "TEXT")
     ajouter_colonne(cursor, "velos", "fiche_composants", "TEXT")
+    # Photos supplémentaires du vélo (liste JSON, 5 au maximum : avec la photo principale, 6 en tout).
+    ajouter_colonne(cursor, "velos", "photos_galerie", "TEXT")
 
     # Le CUBE reçoit TOUJOURS l'identifiant 1 : les pièces et les sorties
     # existantes sont rattachées au vélo n° 1 (velo_id par défaut).
@@ -2456,6 +2458,90 @@ def accueil():
                 padding: 4px 10px 10px;
                 border-top: 1px solid var(--field-line);
             }
+
+            .galerie-velo { margin: 8px 0 4px; }
+
+            .galerie-piste {
+                display: flex;
+                overflow-x: auto;
+                scroll-snap-type: x mandatory;
+                scrollbar-width: none;
+                border-radius: 12px;
+                background: var(--card-bg);
+                border: 1px solid var(--field-line);
+            }
+
+            .galerie-piste::-webkit-scrollbar { display: none; }
+
+            .galerie-diapo {
+                position: relative;
+                flex: 0 0 100%;
+                height: 200px;
+                scroll-snap-align: center;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background: #ffffff;
+            }
+
+            .galerie-diapo img { width: 100%; height: 100%; object-fit: contain; }
+
+            .galerie-vide { color: var(--text-muted); font-size: 0.9rem; background: var(--card-bg); }
+
+            .galerie-badge {
+                position: absolute;
+                left: 8px;
+                bottom: 8px;
+                padding: 2px 9px;
+                border-radius: 999px;
+                font-size: 0.72rem;
+                font-weight: 700;
+                color: var(--on-accent);
+                background: var(--accent);
+            }
+
+            .galerie-suppr {
+                position: absolute;
+                top: 8px;
+                right: 8px;
+                width: 30px;
+                height: 30px;
+                padding: 0;
+                border: none;
+                border-radius: 50%;
+                font-size: 20px;
+                line-height: 1;
+                color: #ffffff;
+                background: rgba(15, 23, 42, 0.62);
+                cursor: pointer;
+            }
+
+            .galerie-pied { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+
+            .galerie-nav {
+                width: 30px;
+                height: 30px;
+                padding: 0;
+                border: 1px solid var(--field-line);
+                border-radius: 50%;
+                font-size: 20px;
+                line-height: 1;
+                color: var(--strong);
+                background: var(--card-bg);
+                cursor: pointer;
+            }
+
+            .galerie-points { flex: 1; display: flex; justify-content: center; gap: 6px; }
+
+            .galerie-point { width: 8px; height: 8px; border-radius: 50%; background: var(--field-line); }
+
+            .galerie-point.actif { background: var(--accent); }
+
+            .galerie-compteur { font-size: 0.8rem; color: var(--text-muted); min-width: 34px; text-align: right; }
+
+            .galerie-ajout { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+
+            .galerie-plein { font-size: 0.82rem; color: var(--text-muted); }
 
             .velo-ligne-corps .mes-reglages,
             .velo-ligne-corps .fiche-technique-velo { margin: 8px 0 0; }
@@ -4314,6 +4400,7 @@ def accueil():
                 <button type="button" class="photo-velo-bouton" id="btnPhotoVeloLien" onclick="photoDepuisLien()">Photo depuis un lien</button>
             </div>
             <input type="file" id="veloPhotoInput" accept="image/*" style="display:none">
+            <input type="file" id="galeriePhotoInput" accept="image/*" multiple style="display:none">
             <div id="hotspotsContainer"></div>
         </div>
 
@@ -5349,14 +5436,11 @@ def accueil():
             const photoCubeOrigine = (document.querySelector('.bike-img') || {}).src || '';
             const photosVelos = {};
 
-            async function afficherPhotoVelo() {
-                const photo = document.querySelector('.bike-img');
-                const vide = document.getElementById('photoVeloACompleter');
-                const velo = velosDisponibles.find(v => Number(v.id) === veloActifId);
-                const id = veloActifId;
-                const estCube = !velo || Number(velo.id) === 1;
+            // Photo principale d'un vélo (sa photo enregistrée, sinon celle d'origine pour le CUBE).
+            async function photoPrincipaleVelo(velo) {
+                const id = Number(velo.id);
                 let source = '';
-                if (velo && Number(velo.a_photo) === 1) {
+                if (Number(velo.a_photo) === 1) {
                     if (photosVelos[id] === undefined) {
                         try {
                             const res = await fetch('/api/velos/' + id + '/photo', { headers: getHeaders() });
@@ -5365,10 +5449,21 @@ def accueil():
                         } catch (e) {
                             photosVelos[id] = '';
                         }
-                        if (id !== veloActifId) return;
                     }
                     source = photosVelos[id];
                 }
+                if (!source && id === 1) source = photoCubeOrigine;
+                return source;
+            }
+
+            async function afficherPhotoVelo() {
+                const photo = document.querySelector('.bike-img');
+                const vide = document.getElementById('photoVeloACompleter');
+                const velo = velosDisponibles.find(v => Number(v.id) === veloActifId);
+                const id = veloActifId;
+                const estCube = !velo || Number(velo.id) === 1;
+                let source = velo ? await photoPrincipaleVelo(velo) : '';
+                if (id !== veloActifId) return;
                 if (!source && estCube) source = photoCubeOrigine;
                 if (photo) {
                     if (source) photo.src = source;
@@ -5418,7 +5513,7 @@ def accueil():
             }
 
             // Photo récupérée sur Internet : le serveur va la chercher, puis la page la réduit et l'enregistre.
-            async function photoDepuisLien() {
+            async function photoDepuisLien(versGalerie) {
                 const message = document.getElementById('messageMesVelos');
                 const lien = prompt("Colle ici le lien de la page du vélo (Décathlon, Opticycles...) ou d'une image :");
                 if (!lien || !lien.trim()) return;
@@ -5431,7 +5526,8 @@ def accueil():
                     });
                     const data = await res.json();
                     if (!res.ok) throw new Error(data.detail || 'Photo introuvable.');
-                    await enregistrerPhotoVelo(dataUrlEnFichier(data.photo));
+                    if (versGalerie) await ajouterPhotoGalerie(dataUrlEnFichier(data.photo));
+                    else await enregistrerPhotoVelo(dataUrlEnFichier(data.photo));
                 } catch (e) {
                     const texte = e.message || 'Photo introuvable.';
                     if (message) message.textContent = texte;
@@ -5685,6 +5781,206 @@ def accueil():
                 });
             });
 
+
+            // ---- Galerie du vélo : jusqu'à 6 photos (la principale + 5 autres), entre le nom et la fiche technique ----
+            const MAX_PHOTOS_VELO = 6;
+            const galeriesVelos = {};
+
+            async function chargerGalerieVelo(id) {
+                try {
+                    const res = await fetch('/api/velos/' + id + '/photos', { headers: getHeaders() });
+                    const data = await res.json();
+                    galeriesVelos[id] = res.ok && Array.isArray(data.photos) ? data.photos : [];
+                } catch (e) {
+                    galeriesVelos[id] = [];
+                }
+            }
+
+            function rafraichirGalerieVelo() {
+                const zone = document.getElementById('galerieVelo');
+                if (zone) remplirGalerieVelo(zone);
+            }
+
+            async function remplirGalerieVelo(zone) {
+                const id = veloActifId;
+                const velo = velosDisponibles.find(v => Number(v.id) === id);
+                if (!velo) return;
+                const principale = await photoPrincipaleVelo(velo);
+                if (galeriesVelos[id] === undefined) await chargerGalerieVelo(id);
+                if (id !== veloActifId || document.getElementById('galerieVelo') !== zone) return;
+                const diapos = [];
+                if (principale) diapos.push({ src: principale, extra: false, position: -1 });
+                (galeriesVelos[id] || []).forEach((src, i) => diapos.push({ src: src, extra: true, position: i }));
+                zone.replaceChildren();
+
+                const piste = document.createElement('div');
+                piste.className = 'galerie-piste';
+                piste.setAttribute('role', 'list');
+                if (!diapos.length) {
+                    const vide = document.createElement('div');
+                    vide.className = 'galerie-diapo galerie-vide';
+                    vide.textContent = 'Aucune photo pour le moment.';
+                    piste.appendChild(vide);
+                }
+                diapos.forEach((d, i) => {
+                    const diapo = document.createElement('div');
+                    diapo.className = 'galerie-diapo';
+                    diapo.setAttribute('role', 'listitem');
+                    const img = document.createElement('img');
+                    img.src = d.src;
+                    img.alt = 'Photo ' + (i + 1) + ' de ' + velo.nom;
+                    img.loading = 'lazy';
+                    diapo.appendChild(img);
+                    if (i === 0) {
+                        const badge = document.createElement('span');
+                        badge.className = 'galerie-badge';
+                        badge.textContent = 'Principale';
+                        diapo.appendChild(badge);
+                    }
+                    const supprimable = d.extra || Number(velo.a_photo) === 1;
+                    if (supprimable) {
+                        const croix = document.createElement('button');
+                        croix.type = 'button';
+                        croix.className = 'galerie-suppr';
+                        croix.setAttribute('aria-label', 'Supprimer la photo ' + (i + 1));
+                        croix.textContent = '×';
+                        croix.addEventListener('click', () => supprimerPhotoGalerie(d));
+                        diapo.appendChild(croix);
+                    }
+                    piste.appendChild(diapo);
+                });
+                zone.appendChild(piste);
+
+                if (diapos.length > 1) {
+                    const pied = document.createElement('div');
+                    pied.className = 'galerie-pied';
+                    const precedent = document.createElement('button');
+                    precedent.type = 'button';
+                    precedent.className = 'galerie-nav';
+                    precedent.setAttribute('aria-label', 'Photo précédente');
+                    precedent.textContent = '‹';
+                    const points = document.createElement('div');
+                    points.className = 'galerie-points';
+                    const suivant = document.createElement('button');
+                    suivant.type = 'button';
+                    suivant.className = 'galerie-nav';
+                    suivant.setAttribute('aria-label', 'Photo suivante');
+                    suivant.textContent = '›';
+                    const compteur = document.createElement('span');
+                    compteur.className = 'galerie-compteur';
+                    const marqueurs = diapos.map(() => {
+                        const p = document.createElement('span');
+                        p.className = 'galerie-point';
+                        points.appendChild(p);
+                        return p;
+                    });
+                    const majPosition = () => {
+                        const largeur = piste.clientWidth || 1;
+                        const rang = Math.min(diapos.length - 1, Math.max(0, Math.round(piste.scrollLeft / largeur)));
+                        marqueurs.forEach((p, i) => p.classList.toggle('actif', i === rang));
+                        compteur.textContent = (rang + 1) + ' / ' + diapos.length;
+                    };
+                    piste.addEventListener('scroll', majPosition);
+                    precedent.addEventListener('click', () => piste.scrollBy({ left: -piste.clientWidth, behavior: 'smooth' }));
+                    suivant.addEventListener('click', () => piste.scrollBy({ left: piste.clientWidth, behavior: 'smooth' }));
+                    pied.appendChild(precedent);
+                    pied.appendChild(points);
+                    pied.appendChild(compteur);
+                    pied.appendChild(suivant);
+                    zone.appendChild(pied);
+                    majPosition();
+                }
+
+                const ajout = document.createElement('div');
+                ajout.className = 'galerie-ajout';
+                if (diapos.length < MAX_PHOTOS_VELO) {
+                    const depuisFichier = document.createElement('button');
+                    depuisFichier.type = 'button';
+                    depuisFichier.className = 'photo-velo-bouton';
+                    depuisFichier.textContent = '+ Ajouter une photo';
+                    depuisFichier.addEventListener('click', () => {
+                        const champ = document.getElementById('galeriePhotoInput');
+                        if (champ) champ.click();
+                    });
+                    const depuisLien = document.createElement('button');
+                    depuisLien.type = 'button';
+                    depuisLien.className = 'photo-velo-bouton';
+                    depuisLien.textContent = 'Depuis un lien';
+                    depuisLien.addEventListener('click', () => photoDepuisLien(true));
+                    ajout.appendChild(depuisFichier);
+                    ajout.appendChild(depuisLien);
+                } else {
+                    const plein = document.createElement('span');
+                    plein.className = 'galerie-plein';
+                    plein.textContent = '6 photos : c’est le maximum. Supprime-en une pour en ajouter.';
+                    ajout.appendChild(plein);
+                }
+                zone.appendChild(ajout);
+            }
+
+            // Ajoute une photo : la première d'un vélo sans photo devient sa photo principale, les suivantes vont dans la galerie.
+            async function ajouterPhotoGalerie(fichier) {
+                const message = document.getElementById('messageMesVelos');
+                const id = veloActifId;
+                const velo = velosDisponibles.find(v => Number(v.id) === id);
+                if (!velo) return;
+                const principale = await photoPrincipaleVelo(velo);
+                if (!principale) { await enregistrerPhotoVelo(fichier); return; }
+                if (galeriesVelos[id] === undefined) await chargerGalerieVelo(id);
+                if (1 + galeriesVelos[id].length >= MAX_PHOTOS_VELO) {
+                    if (message) message.textContent = '6 photos au maximum par vélo.';
+                    alert('6 photos au maximum par vélo.');
+                    return;
+                }
+                try {
+                    if (message) message.textContent = 'Enregistrement de la photo…';
+                    const photo = await reduirePhoto(fichier);
+                    const res = await fetch('/api/velos/' + id + '/photos', {
+                        method: 'POST',
+                        headers: getHeaders(),
+                        body: JSON.stringify({ photo: photo })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Enregistrement impossible.');
+                    galeriesVelos[id].push(photo);
+                    if (message) message.textContent = 'Photo ajoutée.';
+                    rafraichirGalerieVelo();
+                } catch (e) {
+                    if (message) message.textContent = e.message || 'Enregistrement impossible.';
+                    alert(e.message || 'Enregistrement impossible.');
+                }
+            }
+
+            async function supprimerPhotoGalerie(diapo) {
+                if (!diapo.extra) { await supprimerPhotoVelo(); rafraichirGalerieVelo(); return; }
+                const message = document.getElementById('messageMesVelos');
+                const id = veloActifId;
+                if (!confirm('Supprimer cette photo ?')) return;
+                try {
+                    const res = await fetch('/api/velos/' + id + '/photos/' + diapo.position, {
+                        method: 'DELETE',
+                        headers: getHeaders()
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Suppression impossible.');
+                    galeriesVelos[id].splice(diapo.position, 1);
+                    if (message) message.textContent = 'Photo supprimée.';
+                    rafraichirGalerieVelo();
+                } catch (e) {
+                    if (message) message.textContent = e.message || 'Suppression impossible.';
+                }
+            }
+
+            document.addEventListener('DOMContentLoaded', () => {
+                const champ = document.getElementById('galeriePhotoInput');
+                if (!champ) return;
+                champ.addEventListener('change', async () => {
+                    const fichiers = Array.from(champ.files || []);
+                    champ.value = '';
+                    for (const fichier of fichiers) await ajouterPhotoGalerie(fichier);
+                });
+            });
+
             // Menu « trois points » de la carte « Ajouter un vélo » : actions du vélo affiché.
             // Le CUBE (vélo n° 1) est protégé : il ne peut ni être supprimé ni passer par cette fiche.
             // Fait de ce vélo le vélo affiché (comme le choix en haut de l'appli), puis recharge ses données.
@@ -5778,6 +6074,11 @@ def accueil():
                     if (deplie) {
                         const corps = document.createElement('div');
                         corps.className = 'velo-ligne-corps';
+                        const zoneGalerie = document.createElement('div');
+                        zoneGalerie.className = 'galerie-velo';
+                        zoneGalerie.id = 'galerieVelo';
+                        corps.appendChild(zoneGalerie);
+                        remplirGalerieVelo(zoneGalerie);
                         pieces.forEach(p => corps.appendChild(p));
                         ligne.appendChild(corps);
                     }
@@ -15889,6 +16190,87 @@ def supprimer_photo_velo(velo_id: int, x_code_acces: Optional[str] = Header(defa
         cursor.execute("UPDATE velos SET photo = NULL WHERE id = ?", (velo_id,))
         conn.commit()
         return {"statut": "success", "velo_id": velo_id}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+MAX_PHOTOS_GALERIE = 5
+
+
+def lire_galerie(cursor, velo_id):
+    """Liste des photos supplémentaires du vélo (vide s'il n'y en a pas)."""
+    cursor.execute("SELECT photos_galerie FROM velos WHERE id = ?", (velo_id,))
+    ligne = cursor.fetchone()
+    if ligne is None:
+        raise HTTPException(status_code=404, detail="Vélo introuvable.")
+    try:
+        liste = json.loads(ligne[0]) if ligne[0] else []
+    except ValueError:
+        liste = []
+    return [p for p in liste if isinstance(p, str) and p]
+
+
+@app.get("/api/velos/{velo_id}/photos")
+def lire_photos_galerie(velo_id: int, x_code_acces: Optional[str] = Header(default=None)):
+    """Photos supplémentaires du vélo (la photo principale a sa propre route)."""
+    controle_acces(x_code_acces, velo_id)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        return {"photos": lire_galerie(cursor, velo_id)}
+    finally:
+        conn.close()
+
+
+@app.post("/api/velos/{velo_id}/photos")
+def ajouter_photo_galerie(velo_id: int, data: PhotoVeloRequest, x_code_acces: Optional[str] = Header(default=None)):
+    """Ajoute une photo à la galerie du vélo (5 au maximum en plus de la photo principale)."""
+    controle_acces(x_code_acces, velo_id)
+    photo = data.photo.strip()
+    debut = next((d for d in PHOTO_DEBUTS if photo.startswith(d)), None)
+    if debut is None:
+        raise HTTPException(status_code=400, detail="Format de photo non reconnu (JPEG, PNG ou WebP).")
+    try:
+        base64.b64decode(photo[len(debut):], validate=True)
+    except Exception:
+        raise HTTPException(status_code=400, detail="La photo est illisible.")
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        liste = lire_galerie(cursor, velo_id)
+        if len(liste) >= MAX_PHOTOS_GALERIE:
+            raise HTTPException(status_code=400, detail="6 photos au maximum par vélo.")
+        liste.append(photo)
+        cursor.execute("UPDATE velos SET photos_galerie = ? WHERE id = ?", (json.dumps(liste), velo_id))
+        conn.commit()
+        return {"statut": "success", "nombre": len(liste)}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+@app.delete("/api/velos/{velo_id}/photos/{position}")
+def supprimer_photo_galerie(velo_id: int, position: int, x_code_acces: Optional[str] = Header(default=None)):
+    """Retire une photo de la galerie (position : 0 = la première photo supplémentaire)."""
+    controle_acces(x_code_acces, velo_id)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        liste = lire_galerie(cursor, velo_id)
+        if position < 0 or position >= len(liste):
+            raise HTTPException(status_code=404, detail="Photo introuvable.")
+        liste.pop(position)
+        cursor.execute(
+            "UPDATE velos SET photos_galerie = ? WHERE id = ?",
+            (json.dumps(liste) if liste else None, velo_id)
+        )
+        conn.commit()
+        return {"statut": "success", "nombre": len(liste)}
     except Exception:
         conn.rollback()
         raise
