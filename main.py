@@ -7958,6 +7958,27 @@ def accueil():
                 return c ? String(c.nom) : '';
             }
 
+            // Débattement en mm de la fourche ou de l'amortisseur du vélo affiché (connu seulement pour le CUBE).
+            function debattementMm(role) {
+                const velo = velosDisponibles.find(v => Number(v.id) === Number(veloActifId)) || null;
+                if (velo && Number(velo.id) === 1) return 140;
+                return null;
+            }
+
+            // Lit un nombre écrit à la française, avec ou sans « % » : sinon null.
+            function lireNombreSimple(texte) {
+                const t = String(texte || '').replace('%', '').replace(',', '.').trim();
+                return /^[0-9]+([.][0-9]+)?$/.test(t) ? Number(t) : null;
+            }
+
+            function mmDepuisPourcent(pourcent, debattement) {
+                return String(Math.round(debattement * pourcent / 10) / 10).replace('.', ',');
+            }
+
+            function pourcentDepuisMm(mm, debattement) {
+                return String(Math.round(mm / debattement * 1000) / 10).replace('.', ',');
+            }
+
             // Conseil de pression de départ pour la fourche ou l'amortisseur du vélo affiché.
             // Seulement pour les modèles dont on connaît un tableau ou une règle Fox ; sinon rien.
             function conseilSuspension(role) {
@@ -7982,14 +8003,18 @@ def accueil():
                     }
                     const electrique = String((velo && velo.type) || '').indexOf('electrique') >= 0;
                     const psi = FOX36_PSI[rang][electrique ? 2 : 1];
+                    const dFourche = debattementMm('fourche');
                     return {
-                        titre: 'Conseil de départ : ' + psi + ' psi (' + enBar(psi) + ' bar) · SAG visé 15 à 20 %',
+                        titre: 'Conseil de départ : ' + psi + ' psi (' + enBar(psi) + ' bar) · SAG visé 15 à 20 %'
+                            + (dFourche ? ' (' + mmDepuisPourcent(15, dFourche) + ' à ' + mmDepuisPourcent(20, dFourche) + ' mm)' : ''),
                         aide: poidsTexte + ' · tableau Fox 36 ' + (electrique ? 'E-Bike+' : 'standard') + '. Ajuste de 10 psi au plus pour atteindre ton SAG.'
                     };
                 }
                 const psiAmorto = Math.round(livres);
+                const dAmorto = debattementMm('amortisseur');
                 return {
-                    titre: 'Conseil de départ : ' + psiAmorto + ' psi (' + enBar(psiAmorto) + ' bar) · SAG visé 25 à 30 %',
+                    titre: 'Conseil de départ : ' + psiAmorto + ' psi (' + enBar(psiAmorto) + ' bar) · SAG visé 25 à 30 %'
+                        + (dAmorto ? ' (' + mmDepuisPourcent(25, dAmorto) + ' à ' + mmDepuisPourcent(30, dAmorto) + ' mm)' : ''),
                     aide: poidsTexte + ' · règle générale Fox (psi = poids en livres). Le cadre peut demander une autre pression : ajuste avec ton SAG.'
                 };
             }
@@ -8271,9 +8296,40 @@ def accueil():
                         } else {
                             const v = document.createElement('b');
                             v.textContent = mrValeurs[cle] || (cle === 'taille_cadre' ? 'M' : '—');
+                            const sagLu = (cle === 'fourche_sag' || cle === 'amorto_sag') ? lireNombreSimple(mrValeurs[cle]) : null;
+                            const debattement = sagLu === null ? null : debattementMm(cle === 'fourche_sag' ? 'fourche' : 'amortisseur');
+                            if (debattement) v.textContent = mrValeurs[cle] + ' (≈ ' + mmDepuisPourcent(sagLu, debattement) + ' mm)';
                             ligne.appendChild(v);
                         }
                         bloc.appendChild(ligne);
+                        // En modification : une ligne « SAG (mm) » liée au champ « SAG (%) », dans les deux sens.
+                        const debattementEdition = (mrEdition && (cle === 'fourche_sag' || cle === 'amorto_sag'))
+                            ? debattementMm(cle === 'fourche_sag' ? 'fourche' : 'amortisseur') : null;
+                        if (debattementEdition) {
+                            const ligneMm = document.createElement('div');
+                            ligneMm.className = 'mr-ligne';
+                            const lMm = document.createElement('span');
+                            lMm.textContent = 'SAG (mm)';
+                            ligneMm.appendChild(lMm);
+                            const champMm = document.createElement('input');
+                            champMm.type = 'text';
+                            champMm.inputMode = 'decimal';
+                            champMm.maxLength = 8;
+                            champMm.id = 'mr-' + cle + '-mm';
+                            const champPourcent = ligne.querySelector('input');
+                            const pourcentLu = lireNombreSimple(champPourcent.value);
+                            champMm.value = pourcentLu === null ? '' : mmDepuisPourcent(pourcentLu, debattementEdition);
+                            champPourcent.addEventListener('input', () => {
+                                const p = lireNombreSimple(champPourcent.value);
+                                champMm.value = p === null ? '' : mmDepuisPourcent(p, debattementEdition);
+                            });
+                            champMm.addEventListener('input', () => {
+                                const m = lireNombreSimple(champMm.value);
+                                champPourcent.value = m === null ? '' : pourcentDepuisMm(m, debattementEdition);
+                            });
+                            ligneMm.appendChild(champMm);
+                            bloc.appendChild(ligneMm);
+                        }
                     });
                     const conseil = g.conseil ? conseilSuspension(g.conseil) : null;
                     if (conseil) {
