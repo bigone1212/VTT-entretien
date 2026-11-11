@@ -6356,7 +6356,6 @@ jobs:
           import os
           import json
           os.environ.setdefault("CODE_ACCES", "c")
-          if os.path.exists(S+"t10.db"): os.remove(S+"t10.db")
           import main
           from fastapi import HTTPException
           N=main.nettoyer_suspension_infos
