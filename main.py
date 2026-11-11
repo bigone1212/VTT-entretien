@@ -20,7 +20,7 @@ import urllib.parse
 import urllib.request
 import unicodedata
 import xml.etree.ElementTree as ET
-from typing import Optional, List, Dict
+from typing import Any, Optional, List, Dict
 from datetime import date, datetime, timedelta, timezone
 
 app = FastAPI(title="VTTAE Entretien")
@@ -781,6 +781,8 @@ def init_db():
     ajouter_colonne(cursor, "velos", "tubeless", "TEXT")
     ajouter_colonne(cursor, "velos", "transmission", "TEXT")
     ajouter_colonne(cursor, "velos", "fiche_composants", "TEXT")
+    # Réglages de suspension trouvés par l'IA de Math pour ce vélo (JSON : débattement, SAG visé, tableau de pression).
+    ajouter_colonne(cursor, "velos", "suspension_infos", "TEXT")
     # Photos supplémentaires du vélo (liste JSON, 5 au maximum : avec la photo principale, 6 en tout).
     ajouter_colonne(cursor, "velos", "photos_galerie", "TEXT")
 
@@ -1179,8 +1181,8 @@ class ReglagesRequest(BaseModel):
 
 MES_REGLAGES_CLES = {
     "taille_cadre", "pneu_av", "pneu_ar",
-    "fourche_psi", "fourche_sag", "fourche_detente", "fourche_bagues",
-    "amorto_psi", "amorto_sag", "amorto_detente", "amorto_bagues",
+    "fourche_psi", "fourche_sag", "fourche_detente", "fourche_bagues", "fourche_debattement",
+    "amorto_psi", "amorto_sag", "amorto_detente", "amorto_bagues", "amorto_debattement",
     "notes",
 }
 
@@ -1681,6 +1683,7 @@ def accueil():
             }
             .mr-conseil b { display: block; }
             .mr-conseil span { display: block; margin-top: 2px; color: var(--text-muted); }
+            .mr-conseil a { display: block; margin-top: 4px; color: var(--accent); font-weight: 700; }
             .compte-version { margin: 14px 0 0; text-align: center; font-size: 0.75rem; }
 
             .km-pill {
@@ -6652,6 +6655,7 @@ def accueil():
             document.getElementById('selectVelo').addEventListener('change', changerVeloActif);
             document.getElementById('nouveauVeloType').addEventListener('change', afficherNomVeloActif);
             let veloEditionId = null;
+            let suspensionIAEnAttente = null;
 
             function modifierFicheVelo() {
                 const velo = velosDisponibles.find(v => Number(v.id) === veloActifId);
@@ -6698,6 +6702,7 @@ def accueil():
 
             function annulerEditionFiche() {
                 veloEditionId = null;
+                suspensionIAEnAttente = null;
                 const formulaire = document.getElementById('formAjouterVelo');
                 formulaire.reset();
                 formulaire.elements.type.disabled = false;
@@ -6873,7 +6878,19 @@ def accueil():
                     composants: [
                         { categorie: 'fourche', nom: 'Fox Rhythm 36', source: 'https://exemple.com/fiche-du-velo' },
                         { categorie: 'tige_de_selle', nom: 'Taille M : TranzX JD-YSP39, 150 mm', source: 'https://exemple.com/fiche-du-velo' }
-                    ]
+                    ],
+                    reglages_suspension: {
+                        fourche: {
+                            modele: 'Fox Rhythm 36', debattement_mm: 150, sag_min: 15, sag_max: 20,
+                            tableau: [{ kg: 60, psi: 75 }, { kg: 75, psi: 88 }, { kg: 90, psi: 101 }],
+                            source: 'https://exemple.com/tableau-de-pression'
+                        },
+                        amortisseur: {
+                            modele: 'Fox Float X', debattement_mm: 140, sag_min: 25, sag_max: 30,
+                            formule: { psi_par_kg: 2.2, psi_fixe: 0 },
+                            source: 'https://exemple.com/regle-de-pression'
+                        }
+                    }
                 };
                 const lignes = [
                     'Je tiens le carnet d’entretien de mon vélo. Cherche sur le web la fiche technique du vélo suivant : ' + sujet + '.',
@@ -6882,6 +6899,11 @@ def accueil():
                     'N’invente rien : si une information est introuvable, mets null (ou ne mets pas la ligne).',
                     'Pour chaque composant, donne dans « source » l’adresse de la page où tu l’as lu. S’il existe plusieurs versions selon la taille du cadre, mets une ligne par version, avec un nom qui commence par « Taille M : ».',
                     'Valeurs permises. type : ' + TYPES_IA.join(', ') + '. freins : ' + FREINS_IA.join(', ') + '. suspension : ' + SUSPENSIONS_IA.join(', ') + '. tubeless : ' + TUBELESS_IA.join(', ') + '. transmission : ' + TRANSMISSIONS_IA.join(', ') + '. categorie des composants : ' + CATEGORIES_IA.join(', ') + '.',
+                    'Si le vélo a une fourche ou un amortisseur à air, ajoute aussi « reglages_suspension » avec « fourche » et « amortisseur » (mets null pour une suspension absente ou si tu ne trouves rien).',
+                    'Pour chacun : modele, debattement_mm (nombre, en mm), sag_min et sag_max (en pourcent, selon le constructeur de la suspension), source (adresse de la page où tu l’as lu) et UNE façon de calculer la pression en psi.',
+                    'Soit « tableau » : les lignes {kg, psi} copiées du tableau publié par le constructeur de la suspension (poids du pilote équipé en kg, au moins 3 lignes, pour l’usage de CE vélo, électrique ou non).',
+                    'Soit, seulement s’il n’y a pas de tableau mais une règle publiée, « formule » : {psi_par_kg, psi_fixe}, avec psi = psi_fixe + psi_par_kg × poids en kg.',
+                    'Ne devine jamais une pression : s’il n’y a ni tableau ni règle publiés par le constructeur, ne mets ni tableau ni formule.',
                     'Dans categorie, « ecran » veut dire la commande et l’écran du moteur électrique (par exemple Bosch Purion), « guide_chaine » le guide-chaîne, « jantes » les jantes.',
                     'Exemple de format :',
                     JSON.stringify(exemple, null, 2)
@@ -7150,6 +7172,8 @@ def accueil():
                     transmission: dans(brut.transmission, TRANSMISSIONS_IA),
                     moteur: texteCourt(brut.moteur, 120),
                     batterie: texteCourt(brut.batterie, 120),
+                    reglages_suspension: (brut.reglages_suspension && typeof brut.reglages_suspension === 'object' && !Array.isArray(brut.reglages_suspension))
+                        ? brut.reglages_suspension : null,
                     composants_techniques: composants,
                     sources_fiche: sites,
                     source: 'la réponse de ton IA'
@@ -7168,7 +7192,10 @@ def accueil():
                     const data = donneesDepuisReponseIA(texte);
                     zone.textContent = '';
                     afficherResultatFiche(data, zone);
-                    message.textContent = data.composants_techniques.length + ' composants lus. Vérifie-les dans la liste plus bas, puis enregistre la fiche.';
+                    suspensionIAEnAttente = data.reglages_suspension;
+                    const roles = suspensionIAEnAttente ? ['fourche', 'amortisseur'].filter(r => suspensionIAEnAttente[r] && typeof suspensionIAEnAttente[r] === 'object') : [];
+                    message.textContent = data.composants_techniques.length + ' composants lus. Vérifie-les dans la liste plus bas, puis enregistre la fiche.'
+                        + (roles.length ? ' Réglages de suspension reçus (' + roles.join(', ') + ') : ils seront contrôlés à l’enregistrement.' : '');
                 } catch (e) {
                     message.textContent = e.message || 'Réponse illisible.';
                 }
@@ -7206,8 +7233,29 @@ def accueil():
                     if (!res.ok) throw new Error(data.detail || 'Enregistrement impossible.');
                     if (data.velo_id) veloActifId = Number(data.velo_id);
                     sessionStorage.setItem('maillons_velo_id', String(veloActifId));
+                    // Réglages de suspension reçus de l'IA : gardés avec ce vélo (le serveur les contrôle).
+                    let noteSuspension = '';
+                    const veloConcerne = data.velo_id ? Number(data.velo_id) : veloEditionId;
+                    if (suspensionIAEnAttente && veloConcerne) {
+                        try {
+                            const resSusp = await fetch('/api/velos/' + veloConcerne + '/suspension', {
+                                method: 'PUT',
+                                headers: getHeaders(),
+                                body: JSON.stringify({ suspension_infos: suspensionIAEnAttente })
+                            });
+                            if (!resSusp.ok) {
+                                let detailSusp = null;
+                                try { detailSusp = await resSusp.json(); } catch (e) { detailSusp = null; }
+                                noteSuspension = ' Les réglages de suspension n’ont pas été gardés : ' + messageErreurServeur(detailSusp, 'enregistrement impossible.');
+                            } else {
+                                noteSuspension = ' Réglages de suspension gardés.';
+                            }
+                        } catch (e) {
+                            noteSuspension = ' Les réglages de suspension n’ont pas été gardés (erreur de connexion).';
+                        }
+                    }
                     annulerEditionFiche();
-                    document.getElementById('messageMesVelos').textContent = edition ? 'Fiche mise à jour.' : 'Vélo créé. Chargement de ses données…';
+                    document.getElementById('messageMesVelos').textContent = (edition ? 'Fiche mise à jour.' : 'Vélo créé. Chargement de ses données…') + noteSuspension;
                     await chargerVelos();
                     await rechargerDonneesVelo();
                 } catch (e) {
@@ -7958,17 +8006,42 @@ def accueil():
                 return c ? String(c.nom) : '';
             }
 
-            // Débattement en mm de la fourche ou de l'amortisseur du vélo affiché (connu seulement pour le CUBE).
-            function debattementMm(role) {
-                const velo = velosDisponibles.find(v => Number(v.id) === Number(veloActifId)) || null;
-                if (velo && Number(velo.id) === 1) return 140;
-                return null;
+            const POIDS_PAR_DEFAUT_KG = 85;
+
+            function veloAffiche() {
+                return velosDisponibles.find(v => Number(v.id) === Number(veloActifId)) || null;
+            }
+
+            // Réglages de suspension gardés avec le vélo (trouvés par ton IA) : pour la fourche ou l'amortisseur.
+            function infosSuspensionVelo(velo, role) {
+                if (!velo || !velo.suspension_infos) return null;
+                let infos = null;
+                try { infos = JSON.parse(velo.suspension_infos); } catch (e) { infos = null; }
+                const element = infos && typeof infos === 'object' ? infos[role] : null;
+                return element && typeof element === 'object' ? element : null;
             }
 
             // Lit un nombre écrit à la française, avec ou sans « % » : sinon null.
             function lireNombreSimple(texte) {
                 const t = String(texte || '').replace('%', '').replace(',', '.').trim();
                 return /^[0-9]+([.][0-9]+)?$/.test(t) ? Number(t) : null;
+            }
+
+            // Débattement en mm : celui que tu as noté, puis celui de l'IA, puis celui du CUBE,
+            // puis (fourche seulement) un « NNN mm » écrit dans le nom de la pièce. Sinon rien.
+            function debattementMm(role) {
+                const velo = veloAffiche();
+                if (!velo) return null;
+                const note = lireNombreSimple(mrValeurs[role === 'fourche' ? 'fourche_debattement' : 'amorto_debattement']);
+                if (note !== null && note >= 20 && note <= 250) return note;
+                const infos = infosSuspensionVelo(velo, role);
+                if (infos && typeof infos.debattement_mm === 'number') return infos.debattement_mm;
+                if (Number(velo.id) === 1) return 140;
+                if (role === 'fourche') {
+                    const dansLeNom = /([0-9]{3})[ ]*mm/i.exec(nomComposantVelo(velo, 'fourche'));
+                    if (dansLeNom && Number(dansLeNom[1]) >= 80 && Number(dansLeNom[1]) <= 250) return Number(dansLeNom[1]);
+                }
+                return null;
             }
 
             function mmDepuisPourcent(pourcent, debattement) {
@@ -7979,43 +8052,89 @@ def accueil():
                 return String(Math.round(mm / debattement * 1000) / 10).replace('.', ',');
             }
 
+            // Pression (psi) pour un poids total en kg, d'après les réglages gardés avec le vélo :
+            // tableau (calcul entre deux lignes) ou, à défaut, formule. Hors du tableau : pas de chiffre.
+            function pressionDepuisInfos(infos, total) {
+                if (Array.isArray(infos.tableau)) {
+                    const t = infos.tableau.filter(x => x && typeof x.kg === 'number' && typeof x.psi === 'number')
+                        .sort((a, b) => a.kg - b.kg);
+                    if (t.length >= 3) {
+                        if (total < t[0].kg || total > t[t.length - 1].kg) {
+                            return { hors: t[0].kg + ' à ' + t[t.length - 1].kg + ' kg' };
+                        }
+                        for (let i = 0; i < t.length - 1; i++) {
+                            if (total >= t[i].kg && total <= t[i + 1].kg) {
+                                const part = (total - t[i].kg) / (t[i + 1].kg - t[i].kg);
+                                return { psi: Math.round(t[i].psi + part * (t[i + 1].psi - t[i].psi)) };
+                            }
+                        }
+                    }
+                }
+                if (infos.formule && typeof infos.formule.psi_par_kg === 'number') {
+                    return { psi: Math.round((infos.formule.psi_fixe || 0) + infos.formule.psi_par_kg * total) };
+                }
+                return null;
+            }
+
             // Conseil de pression de départ pour la fourche ou l'amortisseur du vélo affiché.
-            // Seulement pour les modèles dont on connaît un tableau ou une règle Fox ; sinon rien.
+            // Les tableaux Fox lus à la main (Fox 36, Fox Float) passent en premier ; sinon, ce que ton IA a trouvé
+            // pour ce vélo ; sinon rien (on n'invente jamais une pression).
             function conseilSuspension(role) {
-                const velo = velosDisponibles.find(v => Number(v.id) === Number(veloActifId)) || null;
+                const velo = veloAffiche();
                 const nom = nomComposantVelo(velo, role);
                 const fox = /fox/i.test(nom);
-                const connu = role === 'fourche' ? (fox && /36/.test(nom)) : (fox && /float/i.test(nom));
-                if (!connu) return null;
-                const poids = profilMoi && typeof profilMoi.poids_kg === 'number' ? profilMoi.poids_kg : null;
-                if (poids === null) {
-                    return { titre: 'Conseil de pression', aide: 'Renseigne ton poids dans Mon compte pour avoir un conseil de départ.' };
-                }
+                const foxConnu = role === 'fourche' ? (fox && /36/.test(nom)) : (fox && /float/i.test(nom));
+                const infos = foxConnu ? null : infosSuspensionVelo(velo, role);
+                const calculable = !!infos && ((Array.isArray(infos.tableau) && infos.tableau.length >= 3)
+                    || (!!infos.formule && typeof infos.formule.psi_par_kg === 'number'));
+                if (!foxConnu && !calculable) return null;
+                const poidsNote = profilMoi && typeof profilMoi.poids_kg === 'number' ? profilMoi.poids_kg : null;
+                const poids = poidsNote === null ? POIDS_PAR_DEFAUT_KG : poidsNote;
                 const sac = profilMoi && typeof profilMoi.poids_sac_kg === 'number' ? profilMoi.poids_sac_kg : 2.5;
                 const total = poids + sac;
                 const livres = total * 2.20462;
                 const enBar = psi => (psi * 0.0689476).toFixed(1).replace('.', ',');
-                const poidsTexte = total.toFixed(1).replace('.', ',') + ' kg (toi + sac)';
-                if (role === 'fourche') {
+                const formater = x => String(Math.round(x * 10) / 10).replace('.', ',');
+                const poidsTexte = formater(total) + ' kg (' + (poidsNote === null ? POIDS_PAR_DEFAUT_KG + ' kg par défaut + sac' : 'toi + sac') + ')';
+                const noteDefaut = poidsNote === null ? ' Poids par défaut : note le tien dans Mon compte.' : '';
+                const dMm = debattementMm(role);
+                const avecMm = (mini, maxi) => ' · SAG visé ' + formater(mini) + ' à ' + formater(maxi) + ' %'
+                    + (dMm ? ' (' + mmDepuisPourcent(mini, dMm) + ' à ' + mmDepuisPourcent(maxi, dMm) + ' mm)' : '');
+                if (foxConnu && role === 'fourche') {
                     const rang = Math.floor((livres - 120) / 10);
                     if (livres < 120 || rang >= FOX36_PSI.length) {
-                        return { titre: 'Conseil de pression', aide: 'Avec ' + poidsTexte + ', tu es hors du tableau Fox (54 à 113 kg) : pas de conseil.' };
+                        return { titre: 'Conseil de pression', aide: 'Avec ' + poidsTexte + ', tu es hors du tableau Fox (54 à 113 kg) : pas de conseil.' + noteDefaut };
                     }
                     const electrique = String((velo && velo.type) || '').indexOf('electrique') >= 0;
                     const psi = FOX36_PSI[rang][electrique ? 2 : 1];
-                    const dFourche = debattementMm('fourche');
                     return {
-                        titre: 'Conseil de départ : ' + psi + ' psi (' + enBar(psi) + ' bar) · SAG visé 15 à 20 %'
-                            + (dFourche ? ' (' + mmDepuisPourcent(15, dFourche) + ' à ' + mmDepuisPourcent(20, dFourche) + ' mm)' : ''),
-                        aide: poidsTexte + ' · tableau Fox 36 ' + (electrique ? 'E-Bike+' : 'standard') + '. Ajuste de 10 psi au plus pour atteindre ton SAG.'
+                        titre: 'Conseil de départ : ' + psi + ' psi (' + enBar(psi) + ' bar)' + avecMm(15, 20),
+                        aide: poidsTexte + ' · tableau Fox 36 ' + (electrique ? 'E-Bike+' : 'standard') + '. Ajuste de 10 psi au plus pour atteindre ton SAG.' + noteDefaut
                     };
                 }
-                const psiAmorto = Math.round(livres);
-                const dAmorto = debattementMm('amortisseur');
+                if (foxConnu) {
+                    const psiAmorto = Math.round(livres);
+                    return {
+                        titre: 'Conseil de départ : ' + psiAmorto + ' psi (' + enBar(psiAmorto) + ' bar)' + avecMm(25, 30),
+                        aide: poidsTexte + ' · règle générale Fox (psi = poids en livres). Le cadre peut demander une autre pression : ajuste avec ton SAG.' + noteDefaut
+                    };
+                }
+                const calcul = pressionDepuisInfos(infos, total);
+                if (!calcul) return null;
+                if (calcul.hors) {
+                    return {
+                        titre: 'Conseil de pression',
+                        aide: 'Avec ' + poidsTexte + ', tu es hors du tableau trouvé par ton IA (' + calcul.hors + ') : pas de conseil.' + noteDefaut,
+                        source: adresseWebSure(infos.source)
+                    };
+                }
+                const sagMini = typeof infos.sag_min === 'number' ? infos.sag_min : null;
+                const sagMaxi = typeof infos.sag_max === 'number' ? infos.sag_max : null;
+                const origine = Array.isArray(infos.tableau) && infos.tableau.length >= 3 ? 'tableau du constructeur' : 'règle du constructeur';
                 return {
-                    titre: 'Conseil de départ : ' + psiAmorto + ' psi (' + enBar(psiAmorto) + ' bar) · SAG visé 25 à 30 %'
-                        + (dAmorto ? ' (' + mmDepuisPourcent(25, dAmorto) + ' à ' + mmDepuisPourcent(30, dAmorto) + ' mm)' : ''),
-                    aide: poidsTexte + ' · règle générale Fox (psi = poids en livres). Le cadre peut demander une autre pression : ajuste avec ton SAG.'
+                    titre: 'Conseil de départ : ' + calcul.psi + ' psi (' + enBar(calcul.psi) + ' bar)' + (sagMini !== null && sagMaxi !== null ? avecMm(sagMini, sagMaxi) : ''),
+                    aide: poidsTexte + ' · trouvé par ton IA' + (infos.modele ? ' pour ' + infos.modele : '') + ' (' + origine + '). À vérifier avec la source et ton SAG.' + noteDefaut,
+                    source: adresseWebSure(infos.source)
                 };
             }
 
@@ -8031,10 +8150,10 @@ def accueil():
                 { titre: '🛞 Pneus', champs: [
                     ['pneu_av', 'Avant (bar)'], ['pneu_ar', 'Arrière (bar)'] ] },
                 { titre: '🔱 Fourche', conseil: 'fourche', champs: [
-                    ['fourche_psi', 'Pression (psi)'], ['fourche_sag', 'SAG (%)'],
+                    ['fourche_psi', 'Pression (psi)'], ['fourche_sag', 'SAG (%)'], ['fourche_debattement', 'Débattement (mm)'],
                     ['fourche_detente', 'Détente (clics)'], ['fourche_bagues', 'Bagues de volume'] ] },
                 { titre: '🌀 Amortisseur', conseil: 'amortisseur', champs: [
-                    ['amorto_psi', 'Pression (psi)'], ['amorto_sag', 'SAG (%)'],
+                    ['amorto_psi', 'Pression (psi)'], ['amorto_sag', 'SAG (%)'], ['amorto_debattement', 'Débattement (mm)'],
                     ['amorto_detente', 'Détente (clics)'], ['amorto_bagues', 'Bagues de volume'] ] },
                 { titre: '📝 Remarque', champs: [
                     ['notes', 'Note libre'] ] }
@@ -8341,6 +8460,14 @@ def accueil():
                         const aide = document.createElement('span');
                         aide.textContent = conseil.aide;
                         boite.appendChild(aide);
+                        if (conseil.source) {
+                            const lienSource = document.createElement('a');
+                            lienSource.href = conseil.source;
+                            lienSource.target = '_blank';
+                            lienSource.rel = 'noopener';
+                            lienSource.textContent = 'Voir la source';
+                            boite.appendChild(lienSource);
+                        }
                         bloc.appendChild(boite);
                     }
                     zone.appendChild(bloc);
@@ -15513,6 +15640,7 @@ def obtenir_velos(x_code_acces: Optional[str] = Header(default=None)):
         cursor.execute("""
             SELECT id, nom, type, marque, modele, annee, taille, actif,
                    km_total, km_frac, km_maj_le, date_achat, moteur, batterie, freins, suspension, tubeless, transmission, fiche_composants,
+                   suspension_infos,
                    CASE WHEN photo IS NULL OR photo = '' THEN 0 ELSE 1 END AS a_photo
             FROM velos
             WHERE actif = 1 AND personne_id = ?
@@ -15540,7 +15668,8 @@ def obtenir_velos(x_code_acces: Optional[str] = Header(default=None)):
                 "suspension": row["suspension"],
                 "tubeless": row["tubeless"],
                 "transmission": row["transmission"],
-                "fiche_composants": row["fiche_composants"]
+                "fiche_composants": row["fiche_composants"],
+                "suspension_infos": row["suspension_infos"]
             }
             for row in cursor.fetchall()
         ]
@@ -15579,6 +15708,115 @@ class ModifierFicheVeloRequest(BaseModel):
     tubeless: Optional[str] = Field(default="inconnu", max_length=20)
     transmission: Optional[str] = Field(default="inconnu", max_length=20)
     fiche_composants: Optional[str] = Field(default=None, max_length=30000)
+
+
+def _nombre_entre(valeur, minimum, maximum):
+    """Un nombre (pas un booléen ni du texte) compris entre deux bornes, sinon None."""
+    if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
+        return None
+    if valeur != valeur or valeur < minimum or valeur > maximum:
+        return None
+    return float(valeur)
+
+
+def nettoyer_suspension_infos(brut):
+    """Contrôle les réglages de suspension donnés par l'IA : ne garde que des valeurs plausibles.
+
+    Pour la fourche et l'amortisseur : modèle, débattement (mm), SAG visé (%), source (adresse web) et
+    UNE façon de calculer la pression : un tableau [{kg, psi}] (au moins 3 lignes, pression qui ne baisse
+    jamais quand le poids monte) ou, à défaut, une formule psi = psi_fixe + psi_par_kg x kg.
+    Renvoie un dictionnaire propre, ou None s'il n'y a rien d'utilisable."""
+    if not isinstance(brut, dict):
+        return None
+    resultat = {}
+    for role in ("fourche", "amortisseur"):
+        element = brut.get(role)
+        if not isinstance(element, dict):
+            continue
+        propre = {}
+        modele = element.get("modele")
+        if isinstance(modele, str) and modele.strip():
+            propre["modele"] = " ".join(modele.split())[:120]
+        debattement = _nombre_entre(element.get("debattement_mm"), 20, 250)
+        if debattement is not None:
+            propre["debattement_mm"] = round(debattement, 1)
+        sag_min = _nombre_entre(element.get("sag_min"), 5, 50)
+        sag_max = _nombre_entre(element.get("sag_max"), 5, 50)
+        if sag_min is not None and sag_max is not None and sag_min <= sag_max:
+            propre["sag_min"] = round(sag_min, 1)
+            propre["sag_max"] = round(sag_max, 1)
+        tableau = []
+        lignes = element.get("tableau")
+        if isinstance(lignes, list):
+            for ligne in lignes[:40]:
+                if not isinstance(ligne, dict):
+                    continue
+                kg = _nombre_entre(ligne.get("kg"), 30, 200)
+                psi = _nombre_entre(ligne.get("psi"), 20, 400)
+                if kg is not None and psi is not None:
+                    tableau.append({"kg": round(kg, 1), "psi": round(psi, 1)})
+            tableau.sort(key=lambda x: x["kg"])
+            poids_vus = [x["kg"] for x in tableau]
+            pressions = [x["psi"] for x in tableau]
+            valide = (
+                len(tableau) >= 3
+                and len(set(poids_vus)) == len(poids_vus)
+                and all(pressions[i] <= pressions[i + 1] for i in range(len(pressions) - 1))
+            )
+            if not valide:
+                tableau = []
+        if tableau:
+            propre["tableau"] = tableau
+        else:
+            formule = element.get("formule")
+            if isinstance(formule, dict):
+                par_kg = _nombre_entre(formule.get("psi_par_kg"), 0.3, 6)
+                fixe = _nombre_entre(formule.get("psi_fixe", 0), -150, 300)
+                if par_kg is not None and fixe is not None:
+                    propre["formule"] = {"psi_par_kg": round(par_kg, 3), "psi_fixe": round(fixe, 1)}
+        source = element.get("source")
+        if isinstance(source, str) and re.match(r"^https?://\S+$", source.strip()) and len(source.strip()) <= 300:
+            propre["source"] = source.strip()
+        if propre:
+            resultat[role] = propre
+    return resultat or None
+
+
+class SuspensionInfosRequest(BaseModel):
+    # None = effacer ce qui était gardé pour ce vélo.
+    suspension_infos: Optional[Dict[str, Any]] = None
+
+
+@app.put("/api/velos/{velo_id}/suspension")
+def enregistrer_suspension_velo(
+    velo_id: int,
+    data: SuspensionInfosRequest,
+    x_code_acces: Optional[str] = Header(default=None)
+):
+    """Garde avec le vélo les réglages de suspension trouvés par l'IA (contrôlés ici avant d'être rangés)."""
+    controle_acces(x_code_acces, velo_id)
+    texte = None
+    if data.suspension_infos is not None:
+        propre = nettoyer_suspension_infos(data.suspension_infos)
+        if propre is None:
+            raise HTTPException(status_code=400, detail="Je n'ai rien d'utilisable dans ces réglages de suspension.")
+        texte = json.dumps(propre, ensure_ascii=False)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT id FROM velos WHERE id = ? AND actif = 1", (velo_id,))
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Vélo introuvable.")
+        cursor.execute("UPDATE velos SET suspension_infos = ? WHERE id = ?", (texte, velo_id))
+        conn.commit()
+        return {"statut": "success", "suspension_infos": json.loads(texte) if texte else None}
+    except HTTPException:
+        raise
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def adapter_freins_velo(cursor, velo_id, freins, suspension=None, tubeless=None, transmission=None):
