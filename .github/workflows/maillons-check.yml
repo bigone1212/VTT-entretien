@@ -79,6 +79,8 @@ jobs:
           PY
       - name: Installer les dépendances de l'application
         run: pip install -r requirements.txt
+      - name: Tester l'agrégation des moteurs de recherche gratuits et les composants complémentaires
+        run: python tests/test_recherche_fiche_gratuite.py
       - name: Tester la recherche de fiche et l'adaptation des freins
         run: |
           python - <<'PY'
