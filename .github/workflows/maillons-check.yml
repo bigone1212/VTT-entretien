@@ -5778,7 +5778,9 @@ jobs:
               assert client.put("/api/moi/profil", headers=MATH, json={"poids_kg": None, "poids_sac_kg": None}).status_code == 200
               moi = client.get("/api/moi", headers=MATH).json()
               assert moi["poids_kg"] is None and moi["poids_sac_kg"] == 2.5, moi
-              client.put("/api/moi/profil", headers=MATH, json={"poids_kg": 70})
+              assert client.put("/api/moi/profil", headers=MATH, json={"poids_kg": 70}).status_code == 200
+              moi = client.get("/api/moi", headers=MATH).json()
+              assert moi["prenom"] == "Mathieu" and moi["nom_famille"] == "Vialard", "un champ absent ne doit rien effacer"
 
               # Une autre personne ne voit ni le profil ni la photo de Math, et change le sien sans toucher à celui de Math.
               nouvelle = client.post("/api/personnes", headers=MATH, json={"nom": "Julie"}).json()

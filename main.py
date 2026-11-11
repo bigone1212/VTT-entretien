@@ -15888,27 +15888,31 @@ class PhotoProfilRequest(BaseModel):
 def enregistrer_profil(data: ProfilRequest, x_code_acces: Optional[str] = Header(default=None)):
     """Prénom, nom, poids et poids du sac de la personne connectée (tout est facultatif)."""
     personne_id = verifier_auth(x_code_acces)
-    prenom = " ".join(data.prenom.split())
-    nom_famille = " ".join(data.nom_famille.split())
     envoyes = getattr(data, "model_fields_set", None)
     if envoyes is None:
         envoyes = data.__fields_set__
     conn = db.connect()
     cursor = conn.cursor()
     try:
-        cursor.execute(
-            "UPDATE personnes SET prenom = ?, nom_famille = ? WHERE id = ?",
-            (prenom or None, nom_famille or None, personne_id)
-        )
-        reponse = {"statut": "success", "prenom": prenom, "nom_famille": nom_famille}
+        # Un champ absent de la demande reste tel quel ; un champ vide l'efface.
+        for champ in ("prenom", "nom_famille"):
+            if champ in envoyes:
+                texte = " ".join(getattr(data, champ).split())
+                cursor.execute("UPDATE personnes SET " + champ + " = ? WHERE id = ?", (texte or None, personne_id))
         for champ in ("poids_kg", "poids_sac_kg"):
             if champ in envoyes:
                 valeur = getattr(data, champ)
                 valeur = None if valeur is None else round(float(valeur), 1)
                 cursor.execute("UPDATE personnes SET " + champ + " = ? WHERE id = ?", (valeur, personne_id))
-                reponse[champ] = POIDS_SAC_DEFAUT_KG if (champ == "poids_sac_kg" and valeur is None) else valeur
+        cursor.execute(
+            "SELECT prenom, nom_famille, poids_kg, poids_sac_kg FROM personnes WHERE id = ?", (personne_id,)
+        )
+        ligne = cursor.fetchone()
         conn.commit()
-        return reponse
+        return {
+            "statut": "success", "prenom": ligne[0] or "", "nom_famille": ligne[1] or "",
+            "poids_kg": ligne[2], "poids_sac_kg": POIDS_SAC_DEFAUT_KG if ligne[3] is None else ligne[3],
+        }
     except Exception:
         conn.rollback()
         raise
