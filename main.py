@@ -837,6 +837,12 @@ def init_db():
     ajouter_colonne(cursor, "personnes", "echecs_connexion", "INTEGER DEFAULT 0")
     ajouter_colonne(cursor, "personnes", "bloque_jusqua", "TEXT")
 
+    # Profil (page Mon compte) : prénom et nom facultatifs, petite photo ronde.
+    # La colonne « nom » reste le nom d'utilisateur (« Bienvenue … », liste Personnes).
+    ajouter_colonne(cursor, "personnes", "prenom", "TEXT")
+    ajouter_colonne(cursor, "personnes", "nom_famille", "TEXT")
+    ajouter_colonne(cursor, "personnes", "photo", "TEXT")
+
     # Sessions : un jeton aléatoire remis à la connexion ; seule son empreinte est gardée.
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS sessions (
@@ -1609,6 +1615,61 @@ def accueil():
                 outline: 2px solid var(--accent);
                 outline-offset: 2px;
             }
+
+            /* Photo de profil : dans l'en-tête à la place du bonhomme, et en grand dans Mon compte. */
+            .bouton-parametres { overflow: hidden; }
+            .bouton-parametres img.photo-compte-entete {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+                display: block;
+            }
+            .compte-entete {
+                display: flex;
+                align-items: center;
+                gap: 14px;
+                margin: 4px 0 12px;
+            }
+            .compte-avatar {
+                position: relative;
+                flex: none;
+                width: 76px;
+                height: 76px;
+                border-radius: 50%;
+                overflow: hidden;
+                display: grid;
+                place-items: center;
+                color: var(--accent);
+                background: rgba(var(--ac-rgb),0.12);
+                border: 1px solid rgba(var(--ac-rgb),0.3);
+            }
+            .compte-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+            .compte-avatar svg {
+                width: 44px;
+                height: 44px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 1.8;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+            .compte-qui { min-width: 0; }
+            .compte-qui strong { display: block; font-size: 1.05rem; overflow-wrap: anywhere; }
+            .compte-qui .form-help { margin: 2px 0 0; overflow-wrap: anywhere; }
+            .compte-photo-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 12px; }
+            .compte-photo-actions button {
+                border: 1px solid var(--accent);
+                background: var(--card-bg);
+                color: var(--accent);
+                font-weight: 700;
+                padding: 8px 14px;
+                border-radius: 999px;
+                cursor: pointer;
+                font-size: 14px;
+            }
+            #formProfil { margin-bottom: 12px; }
+            #messageProfil { margin: 8px 0 0; }
+            .compte-version { margin: 14px 0 0; text-align: center; font-size: 0.75rem; }
 
             .km-pill {
                 flex-shrink: 0;
@@ -4768,7 +4829,31 @@ def accueil():
                 <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c0-4 3.4-7 7.5-7s7.5 3 7.5 7"/></svg><span>Mon compte</span></strong>
                 <button type="button" id="boutonRetourCompte" class="bouton-retour" aria-label="Retour" onclick="quitterParametres()"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
             </div>
-            <p class="form-help" id="compteIdentite"></p>
+            <div class="compte-entete">
+                <div class="compte-avatar" id="compteAvatar">
+                    <svg id="compteAvatarIco" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c0-4 3.4-7 7.5-7s7.5 3 7.5 7"/></svg>
+                    <img id="compteAvatarImg" alt="Ma photo de profil" style="display:none;">
+                </div>
+                <div class="compte-qui">
+                    <strong id="compteNomComplet"></strong>
+                    <p class="form-help" id="compteIdentite"></p>
+                    <p class="form-help" id="compteEmail"></p>
+                    <p class="form-help" id="compteDepuis"></p>
+                </div>
+            </div>
+            <div class="compte-photo-actions">
+                <button type="button" id="boutonPhotoCompte">Changer la photo</button>
+                <button type="button" id="boutonPhotoCompteRetirer" style="display:none;">Retirer la photo</button>
+                <input type="file" id="fichierPhotoCompte" accept="image/*" style="display:none;">
+            </div>
+            <form id="formProfil">
+                <label for="profilPrenom">Prénom</label>
+                <input id="profilPrenom" type="text" autocomplete="given-name" maxlength="60" placeholder="Facultatif">
+                <label for="profilNomFamille">Nom</label>
+                <input id="profilNomFamille" type="text" autocomplete="family-name" maxlength="60" placeholder="Facultatif">
+                <button type="submit" class="btn-primary" style="width:100%; margin-top:8px;">Enregistrer mon profil</button>
+                <p class="form-help" id="messageProfil" aria-live="polite"></p>
+            </form>
             <p class="form-help" id="compteProvisoire" style="display:none; color: var(--danger);">Ton mot de passe est provisoire : choisis-en un nouveau ci-dessous.</p>
             <form id="formMotDePasse" style="display:none;">
                 <label for="mdpAncien">Mot de passe actuel</label>
@@ -4781,6 +4866,7 @@ def accueil():
             </form>
             <p class="form-help" id="messageCompte" aria-live="polite"></p>
             <button type="button" id="boutonDeconnexion" class="btn-primary" style="width:100%; margin-top:8px;">Se déconnecter</button>
+            <p class="form-help compte-version" id="compteVersion"></p>
         </section>
 
         <section class="mes-reglages" id="blocPersonnes" style="display:none;">
@@ -7340,6 +7426,156 @@ def accueil():
                 location.reload();
             });
 
+            // ----- Mon compte : photo, prénom, nom, e-mail, version -----
+            function dateLongue(texte) {
+                const d = new Date(texte);
+                if (!texte || isNaN(d.getTime())) return '';
+                return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+            }
+
+            // Photo de profil : dans Mon compte, et dans l'en-tête à la place du bonhomme.
+            function afficherPhotoCompte(photo) {
+                const img = document.getElementById('compteAvatarImg');
+                const ico = document.getElementById('compteAvatarIco');
+                if (photo) img.src = photo; else img.removeAttribute('src');
+                img.style.display = photo ? 'block' : 'none';
+                ico.style.display = photo ? 'none' : '';
+                document.getElementById('boutonPhotoCompteRetirer').style.display = photo ? '' : 'none';
+                const bouton = document.getElementById('boutonCompte');
+                const dessin = bouton.querySelector('svg');
+                let entete = bouton.querySelector('img.photo-compte-entete');
+                if (photo) {
+                    if (!entete) {
+                        entete = document.createElement('img');
+                        entete.className = 'photo-compte-entete';
+                        entete.alt = '';
+                        bouton.appendChild(entete);
+                    }
+                    entete.src = photo;
+                    if (dessin) dessin.style.display = 'none';
+                } else {
+                    if (entete) entete.remove();
+                    if (dessin) dessin.style.display = '';
+                }
+            }
+
+            function majProfilCompte(moi) {
+                const m = moi || {};
+                const nomComplet = [m.prenom, m.nom_famille].filter(Boolean).join(' ');
+                document.getElementById('compteNomComplet').textContent = nomComplet || m.nom || '';
+                document.getElementById('compteEmail').textContent = m.email || '';
+                const depuis = dateLongue(m.cree_le);
+                document.getElementById('compteDepuis').textContent = depuis ? 'Membre depuis le ' + depuis : '';
+                document.getElementById('compteVersion').textContent = m.version ? 'Maillons · version ' + m.version : '';
+                const prenom = document.getElementById('profilPrenom');
+                const nomFamille = document.getElementById('profilNomFamille');
+                if (document.activeElement !== prenom) prenom.value = m.prenom || '';
+                if (document.activeElement !== nomFamille) nomFamille.value = m.nom_famille || '';
+                afficherPhotoCompte(m.photo || '');
+            }
+
+            // Réduit la photo de profil : carré centré de 256 px, en JPEG.
+            function reduirePhotoCarree(fichier, cote) {
+                return new Promise((resolve, reject) => {
+                    const url = URL.createObjectURL(fichier);
+                    const img = new Image();
+                    img.onload = () => {
+                        const petit = Math.min(img.naturalWidth, img.naturalHeight);
+                        const sx = (img.naturalWidth - petit) / 2;
+                        const sy = (img.naturalHeight - petit) / 2;
+                        const canvas = document.createElement('canvas');
+                        canvas.width = cote;
+                        canvas.height = cote;
+                        const ctx = canvas.getContext('2d');
+                        ctx.fillStyle = '#ffffff';
+                        ctx.fillRect(0, 0, cote, cote);
+                        ctx.drawImage(img, sx, sy, petit, petit, 0, 0, cote, cote);
+                        URL.revokeObjectURL(url);
+                        resolve(canvas.toDataURL('image/jpeg', 0.85));
+                    };
+                    img.onerror = () => {
+                        URL.revokeObjectURL(url);
+                        reject(new Error('Cette image ne peut pas être lue.'));
+                    };
+                    img.src = url;
+                });
+            }
+
+            document.getElementById('boutonPhotoCompte').addEventListener('click', () => {
+                document.getElementById('fichierPhotoCompte').click();
+            });
+
+            document.getElementById('fichierPhotoCompte').addEventListener('change', async event => {
+                const champ = event.currentTarget;
+                const fichier = champ.files && champ.files[0];
+                champ.value = '';
+                if (!fichier) return;
+                const message = document.getElementById('messageProfil');
+                message.textContent = 'Enregistrement de la photo…';
+                try {
+                    const photo = await reduirePhotoCarree(fichier, 256);
+                    const res = await fetch('/api/moi/photo', {
+                        method: 'PUT',
+                        headers: getHeaders(),
+                        body: JSON.stringify({ photo: photo })
+                    });
+                    let data = null;
+                    try { data = await res.json(); } catch (e) { data = null; }
+                    if (!res.ok) {
+                        message.textContent = messageErreurServeur(data, 'Enregistrement impossible.');
+                        return;
+                    }
+                    afficherPhotoCompte(photo);
+                    message.textContent = 'Photo enregistrée.';
+                } catch (e) {
+                    message.textContent = e.message || 'Enregistrement impossible.';
+                }
+            });
+
+            document.getElementById('boutonPhotoCompteRetirer').addEventListener('click', async () => {
+                const message = document.getElementById('messageProfil');
+                try {
+                    const res = await fetch('/api/moi/photo', { method: 'DELETE', headers: getHeaders() });
+                    if (!res.ok) {
+                        let data = null;
+                        try { data = await res.json(); } catch (e) { data = null; }
+                        message.textContent = messageErreurServeur(data, 'Suppression impossible.');
+                        return;
+                    }
+                    afficherPhotoCompte('');
+                    message.textContent = 'Photo retirée.';
+                } catch (e) {
+                    message.textContent = 'Erreur de connexion.';
+                }
+            });
+
+            document.getElementById('formProfil').addEventListener('submit', async event => {
+                event.preventDefault();
+                const message = document.getElementById('messageProfil');
+                message.textContent = '';
+                try {
+                    const res = await fetch('/api/moi/profil', {
+                        method: 'PUT',
+                        headers: getHeaders(),
+                        body: JSON.stringify({
+                            prenom: document.getElementById('profilPrenom').value,
+                            nom_famille: document.getElementById('profilNomFamille').value
+                        })
+                    });
+                    let data = null;
+                    try { data = await res.json(); } catch (e) { data = null; }
+                    if (!res.ok) {
+                        message.textContent = messageErreurServeur(data, 'Enregistrement impossible.');
+                        return;
+                    }
+                    const nomComplet = [data.prenom, data.nom_famille].filter(Boolean).join(' ');
+                    document.getElementById('compteNomComplet').textContent = nomComplet || (document.getElementById('compteIdentite').textContent || '').replace('Connecté : ', '');
+                    message.textContent = 'Profil enregistré.';
+                } catch (e) {
+                    message.textContent = 'Erreur de connexion.';
+                }
+            });
+
             // ----- Administration des personnes (bloc visible seulement pour Math) -----
             function messagePersonnes(texte) {
                 const m = document.getElementById('messagePersonnes');
@@ -7408,10 +7644,12 @@ def accueil():
                     moiId = moi && typeof moi.id === 'number' ? moi.id : null;
                     afficherBienvenue(moi ? moi.nom : '');
                     majBlocCompte(moi ? moi.nom : '');
+                    majProfilCompte(moi);
                 } catch (e) {
                     admin = false;
                     afficherBienvenue('');
                     majBlocCompte('');
+                    majProfilCompte(null);
                 }
                 const bloc = document.getElementById('blocPersonnes');
                 if (bloc) bloc.style.display = admin ? '' : 'none';
@@ -15477,14 +15715,106 @@ class RenommerPersonneRequest(BaseModel):
 
 @app.get("/api/moi")
 def qui_suis_je(x_code_acces: Optional[str] = Header(default=None)):
-    """Nom de la personne connectée et si elle est administratrice."""
+    """Nom de la personne connectée, si elle est administratrice, et son profil."""
     personne_id = verifier_auth(x_code_acces)
     conn = db.connect()
     cursor = conn.cursor()
     try:
-        cursor.execute("SELECT nom, est_admin FROM personnes WHERE id = ?", (personne_id,))
+        cursor.execute(
+            "SELECT nom, est_admin, prenom, nom_famille, email, cree_le, photo FROM personnes WHERE id = ?",
+            (personne_id,)
+        )
         ligne = cursor.fetchone()
-        return {"id": personne_id, "nom": ligne[0], "est_admin": bool(ligne[1])}
+        return {
+            "id": personne_id, "nom": ligne[0], "est_admin": bool(ligne[1]),
+            "prenom": ligne[2] or "", "nom_famille": ligne[3] or "",
+            "email": ligne[4] or "", "cree_le": ligne[5] or "",
+            "photo": ligne[6] or None,
+            "version": version_appli(),
+        }
+    finally:
+        conn.close()
+
+
+# Date de la dernière évolution visible de l'appli (à mettre à jour avec les changements).
+VERSION_APPLI = "2026-11-10"
+
+
+def version_appli():
+    """Date de version, suivie du début du numéro de commit quand Render le donne."""
+    commit = (os.environ.get("RENDER_GIT_COMMIT") or "").strip()[:7]
+    return VERSION_APPLI + (" (" + commit + ")" if commit else "")
+
+
+class ProfilRequest(BaseModel):
+    prenom: str = Field(default="", max_length=60)
+    nom_famille: str = Field(default="", max_length=60)
+
+
+class PhotoProfilRequest(BaseModel):
+    photo: str = Field(min_length=30, max_length=300000)
+
+
+@app.put("/api/moi/profil")
+def enregistrer_profil(data: ProfilRequest, x_code_acces: Optional[str] = Header(default=None)):
+    """Prénom et nom de la personne connectée (facultatifs, peuvent être vidés)."""
+    personne_id = verifier_auth(x_code_acces)
+    prenom = " ".join(data.prenom.split())
+    nom_famille = " ".join(data.nom_famille.split())
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "UPDATE personnes SET prenom = ?, nom_famille = ? WHERE id = ?",
+            (prenom or None, nom_famille or None, personne_id)
+        )
+        conn.commit()
+        return {"statut": "success", "prenom": prenom, "nom_famille": nom_famille}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+@app.put("/api/moi/photo")
+def enregistrer_photo_profil(data: PhotoProfilRequest, x_code_acces: Optional[str] = Header(default=None)):
+    """Photo de profil, déjà réduite par le téléphone (petite image carrée)."""
+    personne_id = verifier_auth(x_code_acces)
+    photo = data.photo.strip()
+    debut = next((d for d in PHOTO_DEBUTS if photo.startswith(d)), None)
+    if debut is None:
+        raise HTTPException(status_code=400, detail="Format de photo non reconnu (JPEG, PNG ou WebP).")
+    try:
+        base64.b64decode(photo[len(debut):], validate=True)
+    except Exception:
+        raise HTTPException(status_code=400, detail="La photo est illisible.")
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("UPDATE personnes SET photo = ? WHERE id = ?", (photo, personne_id))
+        conn.commit()
+        return {"statut": "success"}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+@app.delete("/api/moi/photo")
+def supprimer_photo_profil(x_code_acces: Optional[str] = Header(default=None)):
+    """Retire la photo de profil (le bonhomme revient)."""
+    personne_id = verifier_auth(x_code_acces)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("UPDATE personnes SET photo = NULL WHERE id = ?", (personne_id,))
+        conn.commit()
+        return {"statut": "success"}
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 

@@ -5717,3 +5717,202 @@ jobs:
           conn.close()
           print("OK: nomenclature technique enregistrée, relue et mise à jour sans toucher aux autres vélos.")
           PY
+      - name: Tester le profil de Mon compte (prénom, nom, photo, version) côté serveur
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-profil-serveur-test.db
+          CODE_ACCES: test
+        run: |
+          pip install httpx
+          python - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+
+          path = Path(os.environ["SQLITE_PATH"])
+          if path.exists():
+              path.unlink()
+
+          import main
+          from fastapi.testclient import TestClient
+
+          MATH = {"x-code-acces": "test"}
+          jpeg = "data:image/jpeg;base64," + base64.b64encode(b"\xff\xd8\xff" + b"0" * 60).decode()
+
+          with TestClient(main.app) as client:
+              moi = client.get("/api/moi", headers=MATH).json()
+              assert moi["id"] == 1 and moi["nom"] == "Math" and moi["est_admin"] is True, moi
+              assert moi["prenom"] == "" and moi["nom_famille"] == "" and moi["photo"] is None, moi
+              assert moi["version"].startswith(main.VERSION_APPLI), moi["version"]
+              assert "email" in moi and "cree_le" in moi, moi
+
+              # Prénom et nom : enregistrés, espaces nettoyés, relus, puis vidés.
+              r = client.put("/api/moi/profil", headers=MATH, json={"prenom": "  Mathieu ", "nom_famille": "Vialard"})
+              assert r.status_code == 200 and r.json()["prenom"] == "Mathieu", r.text
+              moi = client.get("/api/moi", headers=MATH).json()
+              assert moi["prenom"] == "Mathieu" and moi["nom_famille"] == "Vialard" and moi["nom"] == "Math", moi
+              assert client.put("/api/moi/profil", headers=MATH, json={"prenom": "x" * 61}).status_code == 422
+              assert client.put("/api/moi/profil", json={"prenom": "A"}).status_code == 401
+
+              # Photo : refusée si ce n'est pas une image ou si elle est illisible, acceptée sinon.
+              assert client.put("/api/moi/photo", headers=MATH, json={"photo": "data:text/html;base64," + "A" * 40}).status_code == 400
+              assert client.put("/api/moi/photo", headers=MATH, json={"photo": "data:image/jpeg;base64," + "!" * 40}).status_code == 400
+              assert client.put("/api/moi/photo", json={"photo": jpeg}).status_code == 401
+              assert client.put("/api/moi/photo", headers=MATH, json={"photo": jpeg}).status_code == 200
+              assert client.get("/api/moi", headers=MATH).json()["photo"] == jpeg
+
+              # Une autre personne ne voit ni le profil ni la photo de Math, et change le sien sans toucher à celui de Math.
+              nouvelle = client.post("/api/personnes", headers=MATH, json={"nom": "Julie"}).json()
+              JULIE = {"x-code-acces": nouvelle["code"]}
+              julie = client.get("/api/moi", headers=JULIE).json()
+              assert julie["nom"] == "Julie" and julie["photo"] is None and julie["prenom"] == "", julie
+              assert client.put("/api/moi/profil", headers=JULIE, json={"prenom": "Julie", "nom_famille": "Martin"}).status_code == 200
+              assert client.put("/api/moi/photo", headers=JULIE, json={"photo": jpeg}).status_code == 200
+              assert client.delete("/api/moi/photo", headers=JULIE).status_code == 200
+              assert client.get("/api/moi", headers=JULIE).json()["photo"] is None
+              moi = client.get("/api/moi", headers=MATH).json()
+              assert moi["prenom"] == "Mathieu" and moi["photo"] == jpeg, moi
+
+              # Retirer la photo de Math et vider son prénom.
+              assert client.delete("/api/moi/photo", headers=MATH).status_code == 200
+              assert client.put("/api/moi/profil", headers=MATH, json={"prenom": "", "nom_famille": ""}).status_code == 200
+              moi = client.get("/api/moi", headers=MATH).json()
+              assert moi["photo"] is None and moi["prenom"] == "" and moi["nom_famille"] == "", moi
+          print("OK: profil de Mon compte (prénom, nom, photo, version), chacun le sien")
+          PY
+      - name: Tester l'en-tête de Mon compte (photo, prénom, nom, e-mail, version) dans un vrai navigateur
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-profil-nav-test.db
+          CODE_ACCES: test
+        run: |
+          pip install pillow
+          cat > "$RUNNER_TEMP/test_compte_profil.py" <<'PY'
+          import base64
+          import io
+          import json
+          from urllib.parse import urlparse
+
+          from PIL import Image
+          from playwright.sync_api import sync_playwright
+
+          import main
+
+          html = main.accueil()
+          JETON = "ses_jeton-de-julie"
+          VELO = [{"id": 7, "nom": "Mon gravel", "type": "gravel", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0}]
+          erreurs, appels = [], []
+          moi = {"id": 9, "nom": "Julie", "est_admin": False, "prenom": "", "nom_famille": "", "email": "julie@exemple.fr",
+                 "cree_le": "2026-10-04T08:00:00Z", "photo": None, "version": "2026-11-10 (abc1234)"}
+          tampon = io.BytesIO()
+          Image.new("RGB", (400, 300), (200, 30, 30)).save(tampon, "JPEG")
+          FICHIER = tampon.getvalue()
+
+
+          def api(r):
+              u = urlparse(r.request.url)
+              corps = r.request.post_data
+
+              def rep(statut, contenu):
+                  r.fulfill(status=statut, content_type="application/json", body=json.dumps(contenu))
+
+              if r.request.headers.get("x-code-acces") != JETON:
+                  return rep(401, {"detail": "Code d'accès incorrect."})
+              if u.path == "/api/moi" and r.request.method == "GET":
+                  return rep(200, moi)
+              if u.path == "/api/moi/profil" and r.request.method == "PUT":
+                  d = json.loads(corps)
+                  appels.append(("profil", d))
+                  moi.update(prenom=d["prenom"], nom_famille=d["nom_famille"])
+                  return rep(200, {"statut": "success", "prenom": d["prenom"], "nom_famille": d["nom_famille"]})
+              if u.path == "/api/moi/photo" and r.request.method == "PUT":
+                  d = json.loads(corps)
+                  appels.append(("photo", len(d["photo"]), d["photo"][:23]))
+                  moi["photo"] = d["photo"]
+                  return rep(200, {"statut": "success"})
+              if u.path == "/api/moi/photo" and r.request.method == "DELETE":
+                  appels.append(("photo-supprimee",))
+                  moi["photo"] = None
+                  return rep(200, {"statut": "success"})
+              if u.path == "/api/velos":
+                  return rep(200, VELO)
+              if u.path == "/api/etat":
+                  return rep(200, {"km_total": 0, "composants": []})
+              if u.path == "/api/mes-reglages":
+                  return rep(200, {"valeurs": {}, "maj_le": None})
+              if u.path == "/api/reglages":
+                  return rep(200, {"terrain_route": 1, "terrain_mixte": 1.2, "terrain_chemin": 1.5, "terrain_sentier": 2, "poids_denivele": 1})
+              return rep(200, [])
+
+
+          def visible(pg, sel):
+              return pg.eval_on_selector(sel, "e => !e.hidden && getComputedStyle(e).display !== 'none'")
+
+
+          def texte(pg, sel):
+              return pg.eval_on_selector(sel, "e => e.textContent.trim()")
+
+
+          def entete_a_photo(pg):
+              return pg.evaluate("!!document.querySelector('#boutonCompte img.photo-compte-entete')")
+
+
+          with sync_playwright() as p:
+              nav = p.chromium.launch()
+              ctx = nav.new_context(viewport={"width": 390, "height": 800})
+              ctx.route("**/localhost/api/**", api)
+              ctx.route(lambda u: not u.startswith("http://localhost/"), lambda r: r.abort())
+              ctx.add_init_script("if (!sessionStorage.getItem('__init')) { sessionStorage.setItem('__init', '1'); sessionStorage.setItem('vtt_code', '" + JETON + "'); }")
+              pg = ctx.new_page()
+              pg.on("pageerror", lambda e: erreurs.append(str(e)[:200]))
+              pg.route("http://localhost/", lambda r: r.fulfill(status=200, content_type="text/html", body=html))
+              pg.goto("http://localhost/#compte")
+              pg.wait_for_timeout(1500)
+
+              # Sans photo : le bonhomme est partout, e-mail, date et version sont affichés.
+              assert pg.is_visible("#blocCompte")
+              assert texte(pg, "#compteIdentite") == "Connecté : Julie" and texte(pg, "#compteNomComplet") == "Julie"
+              assert texte(pg, "#compteEmail") == "julie@exemple.fr"
+              assert "4 octobre 2026" in texte(pg, "#compteDepuis"), texte(pg, "#compteDepuis")
+              assert texte(pg, "#compteVersion") == "Maillons · version 2026-11-10 (abc1234)"
+              assert visible(pg, "#compteAvatarIco") and not visible(pg, "#compteAvatarImg") and not visible(pg, "#boutonPhotoCompteRetirer")
+              assert not entete_a_photo(pg) and visible(pg, "#boutonCompte svg")
+              assert pg.eval_on_selector("#profilPrenom", "e => e.value") == "" and pg.eval_on_selector("#profilNomFamille", "e => e.value") == ""
+
+              # Prénom et nom : envoyés tels quels, le nom complet remplace le nom d'utilisateur dans le titre.
+              pg.fill("#profilPrenom", "Julie"); pg.fill("#profilNomFamille", "Martin")
+              pg.click("#formProfil button[type=submit]"); pg.wait_for_timeout(500)
+              assert appels[-1] == ("profil", {"prenom": "Julie", "nom_famille": "Martin"}), appels[-1]
+              assert texte(pg, "#messageProfil") == "Profil enregistré." and texte(pg, "#compteNomComplet") == "Julie Martin"
+              assert texte(pg, "#compteIdentite") == "Connecté : Julie"
+
+              # Photo : réduite à 256 x 256 sur le téléphone, affichée ici et dans l'en-tête à la place du bonhomme.
+              pg.set_input_files("#fichierPhotoCompte", files=[{"name": "moi.jpg", "mimeType": "image/jpeg", "buffer": FICHIER}])
+              pg.wait_for_timeout(1200)
+              assert appels[-1][0] == "photo" and appels[-1][2] == "data:image/jpeg;base64," and appels[-1][1] < 300000, appels[-1]
+              assert texte(pg, "#messageProfil") == "Photo enregistrée."
+              assert visible(pg, "#compteAvatarImg") and not visible(pg, "#compteAvatarIco") and visible(pg, "#boutonPhotoCompteRetirer")
+              assert entete_a_photo(pg) and not visible(pg, "#boutonCompte svg")
+              assert pg.evaluate("[document.getElementById('compteAvatarImg').naturalWidth, document.getElementById('compteAvatarImg').naturalHeight]") == [256, 256]
+
+              # Rechargement : tout revient depuis le serveur, dont l'icône de l'en-tête sur les autres pages.
+              pg.goto("http://localhost/#"); pg.reload(); pg.wait_for_timeout(1500)
+              assert entete_a_photo(pg) and not pg.is_visible("#blocCompte")
+              pg.evaluate("location.hash = '#compte'"); pg.wait_for_timeout(300)
+              assert visible(pg, "#compteAvatarImg") and texte(pg, "#compteNomComplet") == "Julie Martin"
+              assert pg.eval_on_selector("#profilPrenom", "e => e.value") == "Julie" and pg.eval_on_selector("#profilNomFamille", "e => e.value") == "Martin"
+
+              # Retirer la photo : le bonhomme revient ; champs vidés : retour au nom d'utilisateur.
+              pg.click("#boutonPhotoCompteRetirer"); pg.wait_for_timeout(500)
+              assert appels[-1] == ("photo-supprimee",) and texte(pg, "#messageProfil") == "Photo retirée."
+              assert not visible(pg, "#compteAvatarImg") and visible(pg, "#compteAvatarIco") and not entete_a_photo(pg) and visible(pg, "#boutonCompte svg")
+              pg.fill("#profilPrenom", ""); pg.fill("#profilNomFamille", "")
+              pg.click("#formProfil button[type=submit]"); pg.wait_for_timeout(500)
+              assert texte(pg, "#compteNomComplet") == "Julie"
+
+              # Le mot de passe et la déconnexion sont toujours là.
+              assert visible(pg, "#formMotDePasse") and visible(pg, "#boutonDeconnexion")
+              nav.close()
+
+          assert not erreurs, erreurs
+          print("OK: en-tête de Mon compte (photo, prénom, nom, e-mail, date, version) dans un vrai navigateur")
+          PY
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_compte_profil.py"
