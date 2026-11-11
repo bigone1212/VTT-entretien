@@ -150,7 +150,12 @@
 ---
 
 
-## 2026-11-11 (~13h30) — SAG en mm : code prêt sur la branche, EN ATTENTE de l'accord de Math pour fusionner
+## 2026-11-11 (~13h05) — PR #44 FUSIONNÉE : SAG aussi en mm (CUBE)
+- Fusion faite avec l'accord explicite de Math (11/11/2026, « Fusionne »). Commit de fusion sur `main` : `12ba4a2e64c5ebe62681e39df10008ac095608a0`. Après fusion, Claude a seulement revérifié que `main` contient le code (`debattementMm`) et que `main.py` compile ; le CI ne tourne pas sur `main`.
+- **Déploiement Render NON vérifié : ne pas l'annoncer comme terminé avant statut `live`.** Aucune migration, aucune opération Neon (stockage inchangé).
+- Étape suivante : Math rouvre l'appli après le déploiement et vérifie Mon vélo > Mes réglages vélo (SAG en mm et %, conseils avec mm). Autres vélos : débattement à ajouter plus tard, seulement si Math le demande.
+
+## 2026-11-11 (~13h30) — SAG en mm : code prêt sur la branche (depuis fusionné, voir ci-dessus), EN ATTENTE de l'accord de Math pour fusionner
 - Branche `reprise/2026-11-11-sag-mm` (tête `992e47e`), NON fusionnée, rien déployé. Fichiers : `main.py`, `.github/workflows/maillons-check.yml`.
 - Fait (CUBE seulement, débattement 140 mm devant et derrière) : affichage « 20 (≈ 28 mm) » à côté du SAG en % ; en modification, ligne « SAG (mm) » liée au champ « SAG (%) » dans les deux sens ; encadrés de conseil « SAG visé 15 à 20 % (21 à 28 mm) » et « 25 à 30 % (35 à 42 mm) ». Stockage inchangé (%), champs en mm non enregistrés. Autres vélos : % seulement.
 - Tests : CI GitHub de la branche en SUCCÈS (run `43014021493`), avec un nouveau test navigateur (affichage, liaison mm/%, enregistrement sans les champs mm, autre vélo sans mm) ; le test des conseils de pression a continué de passer. Essais locaux avec un faux serveur aussi.
