@@ -150,6 +150,12 @@
 ---
 
 
+## 2026-11-11 (08h35) — Mon compte : poids et pressions de suspension — OBJECTIF et DÉBUT DU CODE (rien sur main hors cette note)
+- Demande de Math (11/11/2026) : dans Mon compte, poids de la personne et poids du sac (défaut 2,5 kg), pour donner des pressions de fourche et d'amortisseur selon ces deux équipements. Math choisit de COMMENCER PAR LE CUBE (Fox) ; les autres vélos plus tard, un modèle à la fois, aucun chiffre inventé pour un modèle sans tableau.
+- Sources Fox lues (WebFetch, résumés) : manuel 36mm 2026 (tech.ridefox.com/bike/owners-manuals/3089) : tableau « Suggested Starting Points » par poids, colonnes standard et « E-Bike+ » (ex. 82-86 kg : 94 / 104 psi), SAG 15–20 %, ±10 psi permis, max 120 psi. Manuel amortisseur Float 2024 (…/2932) : PAS de tableau ; départ = psi égal au poids en livres, SAG 25–30 %, « varie beaucoup selon la marque du vélo ». Le tableau et la règle sont des POINTS DE DÉPART ; un tableau propre à Cube pour le ONE44 n'a pas été trouvé.
+- Plan : colonnes `personnes.poids_kg`, `poids_sac_kg` ; `/api/moi` et `PUT /api/moi/profil` étendus (champs absents = inchangés) ; champs Poids et Poids du sac dans Mon compte ; ligne « Conseil de départ » sous Fourche et Amortisseur de « Mes réglages vélo » (CUBE : Fox 36 + Float ; autres vélos seulement si la fiche nomme une Fox 36 / Fox Float) ; sans poids : invitation à le renseigner.
+- Branche prévue : `reprise/2026-11-11-poids-pressions`, fusion seulement avec l'accord explicite de Math. Rien déployé, aucune opération Neon.
+
 ## 2026-11-11 (~07h56) — Essai de Math confirmé : l'en-tête de Mon compte marche en ligne
 - Math a confirmé (11/11/2026) : « C'est bon ça marche » après le déploiement de la PR #42 (détail non précisé ; Render non vérifié par Claude, mais le retour de Math indique que c'était déployé).
 - Rien d'ouvert côté code. Prochaines pistes de Math pour Mon compte, à ne faire que s'il le demande : résumé de ses vélos et kilomètres, sécurité (appareils connectés, déconnexion partout).
