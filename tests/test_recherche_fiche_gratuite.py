@@ -1,4 +1,9 @@
 """Tests ciblés de la recherche gratuite des fiches vélo."""
+import sys
+from pathlib import Path
+
+# Le script est lancé depuis tests/ : ajouter la racine du dépôt pour importer main.py.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import main
 
 
