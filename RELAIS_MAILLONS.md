@@ -150,6 +150,10 @@
 ---
 
 
+## 2026-11-11 (~07h56) — Essai de Math confirmé : l'en-tête de Mon compte marche en ligne
+- Math a confirmé (11/11/2026) : « C'est bon ça marche » après le déploiement de la PR #42 (détail non précisé ; Render non vérifié par Claude, mais le retour de Math indique que c'était déployé).
+- Rien d'ouvert côté code. Prochaines pistes de Math pour Mon compte, à ne faire que s'il le demande : résumé de ses vélos et kilomètres, sécurité (appareils connectés, déconnexion partout).
+
 ## 2026-11-11 (~07h55) — PR #42 FUSIONNÉE : Mon compte, en-tête (photo, prénom, nom, e-mail, membre depuis, version)
 - Fusion faite avec l'accord explicite de Math (11/11/2026, « Fusionne »). Commit de fusion sur `main` : `ab94689bdb9240817a973ea3a1cfedb9062a8e93`. Après fusion, Claude a seulement revérifié que `main` contient les routes `/api/moi/photo` et que `main.py` compile ; le CI ne tourne pas sur `main`.
 - **Déploiement Render NON vérifié : ne pas l'annoncer comme terminé avant statut `live`.** Aucune opération Neon (la migration ajoute 3 colonnes vides au démarrage).
