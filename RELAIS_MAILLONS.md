@@ -150,7 +150,12 @@
 ---
 
 
-## 2026-11-11 (~07h50) — Mon compte, en-tête : code prêt sur la branche, EN ATTENTE de l'accord de Math pour fusionner
+## 2026-11-11 (~07h55) — PR #42 FUSIONNÉE : Mon compte, en-tête (photo, prénom, nom, e-mail, membre depuis, version)
+- Fusion faite avec l'accord explicite de Math (11/11/2026, « Fusionne »). Commit de fusion sur `main` : `ab94689bdb9240817a973ea3a1cfedb9062a8e93`. Après fusion, Claude a seulement revérifié que `main` contient les routes `/api/moi/photo` et que `main.py` compile ; le CI ne tourne pas sur `main`.
+- **Déploiement Render NON vérifié : ne pas l'annoncer comme terminé avant statut `live`.** Aucune opération Neon (la migration ajoute 3 colonnes vides au démarrage).
+- Étape suivante : Math rouvre l'appli après le déploiement, ouvre Mon compte, essaie une vraie photo depuis son téléphone et dit ce qui est à ajuster. Puis, à son choix : résumé de ses vélos/kilomètres, sécurité et appareils connectés.
+
+## 2026-11-11 (~07h50) — Mon compte, en-tête : code prêt sur la branche (depuis fusionné, voir ci-dessus)
 - Branche `reprise/2026-11-10-mon-compte-en-tete` (tête `24b8736`), NON fusionnée, rien déployé. Fichiers : `main.py`, `.github/workflows/maillons-check.yml`.
 - Fait : colonnes `personnes.prenom`, `nom_famille`, `photo` (migration automatique) ; `/api/moi` renvoie en plus prenom, nom_famille, email, cree_le, photo, version ; routes PUT `/api/moi/profil`, PUT et DELETE `/api/moi/photo` (propres à la personne connectée) ; `VERSION_APPLI = "2026-11-10"` (+ début du commit Render si la variable existe) ; page Mon compte : photo ronde, nom complet, « Connecté : nom d'utilisateur », e-mail, « Membre depuis le … », boutons Changer/Retirer la photo, champs Prénom et Nom, version en bas ; la photo remplace le bonhomme de l'en-tête (réduite à 256 px carrés sur le téléphone). Mot de passe, connexion, déconnexion, Personnes inchangés.
 - Tests : CI GitHub de la branche en SUCCÈS (run `42974603426`), dont 2 nouveaux tests (serveur ; navigateur) ; 2 tests existants adaptés (liste des routes sans vélo ; /api/moi comparé sur id, nom, est_admin). Deux premiers runs échoués pour ces raisons-là, corrigées. Essai local aussi, avec un faux serveur (fastapi absent ici).
