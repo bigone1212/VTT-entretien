@@ -6023,3 +6023,117 @@ jobs:
           print("OK: poids dans Mon compte et conseils de pression de la fourche et de l'amortisseur dans un vrai navigateur")
           PY
           PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_pressions.py"
+      - name: Tester le SAG en mm et en % (réglages du vélo et conseils) dans un vrai navigateur
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-sag-mm-nav-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_sag_mm.py" <<'PY'
+          import json
+
+          from playwright.sync_api import sync_playwright
+
+          import main
+
+          html = main.accueil()
+          JETON = "ses_sag"
+          moi = {"id": 1, "nom": "Math", "est_admin": False, "prenom": "", "nom_famille": "", "email": "", "cree_le": "2026-10-04T08:00:00Z",
+                 "photo": None, "poids_kg": 80.0, "poids_sac_kg": 2.5, "version": "v"}
+          VELOS = [{"id": 1, "nom": "CUBE", "type": "vtt_electrique", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0,
+                    "sorties_a_verifier": 0, "fiche_composants": None}]
+          valeurs = {"fourche_sag": "20", "amorto_sag": "30"}
+          envoyes = []
+
+
+          def api(route, request):
+              u = request.url.split("?")[0].replace("http://localhost", "")
+              if u == "/api/moi" and request.method == "GET":
+                  return route.fulfill(json=moi)
+              if u == "/api/velos":
+                  return route.fulfill(json=VELOS)
+              if u == "/api/mes-reglages" and request.method == "GET":
+                  return route.fulfill(json={"valeurs": valeurs, "maj_le": "2026-11-11"})
+              if u == "/api/mes-reglages" and request.method == "POST":
+                  envoyes.append(json.loads(request.post_data)["valeurs"])
+                  return route.fulfill(json={"statut": "success", "maj_le": "2026-11-11"})
+              if u == "/api/etat":
+                  return route.fulfill(json={"km_total": 0, "composants": []})
+              if u == "/api/reglages":
+                  return route.fulfill(json={"terrain_route": 1, "terrain_mixte": 1.2, "terrain_chemin": 1.5, "terrain_sentier": 2, "poids_denivele": 1})
+              return route.fulfill(json=[])
+
+
+          with sync_playwright() as p:
+              nav = p.chromium.launch()
+              ctx = nav.new_context(viewport={"width": 390, "height": 800})
+              ctx.route("**/localhost/api/**", api)
+              ctx.route(lambda u: not u.startswith("http://localhost/"), lambda r: r.abort())
+              ctx.add_init_script("if (!sessionStorage.getItem('__i')) { sessionStorage.setItem('__i', '1'); sessionStorage.setItem('vtt_code', '" + JETON + "'); }")
+              pg = ctx.new_page()
+              erreurs = []
+              pg.on("pageerror", lambda e: erreurs.append(str(e)[:200]))
+              pg.route("http://localhost/", lambda r: r.fulfill(body=html, content_type="text/html; charset=utf-8"))
+              pg.goto("http://localhost/#reglages")
+              pg.wait_for_timeout(1500)
+
+              def lignes():
+                  return pg.eval_on_selector_all("#mrContenu .mr-ligne", "els => els.map(e => e.textContent.trim())")
+
+              def ouvrir():
+                  pg.evaluate("document.querySelector('#mrContenu').closest('.mr-repliable').classList.add('ouverte')")
+
+              def conseils():
+                  return pg.eval_on_selector_all("#mrContenu .mr-conseil b", "els => els.map(e => e.textContent.trim())")
+
+              # Affichage : le SAG en % est suivi des mm, et les conseils donnent aussi les mm.
+              l = lignes()
+              assert any(x == "SAG (%)20 (≈ 28 mm)" for x in l), l
+              assert any(x == "SAG (%)30 (≈ 42 mm)" for x in l), l
+              c = conseils()
+              assert "SAG visé 15 à 20 % (21 à 28 mm)" in c[0] and "99 psi" in c[0], c
+              assert "SAG visé 25 à 30 % (35 à 42 mm)" in c[1] and "182 psi" in c[1], c
+
+              # Modification : une ligne « SAG (mm) » liée au champ « SAG (%) », dans les deux sens.
+              pg.evaluate("modifierReglagesVelo()")
+              ouvrir()
+              pg.wait_for_timeout(300)
+              assert pg.input_value("#mr-fourche_sag") == "20" and pg.input_value("#mr-fourche_sag-mm") == "28"
+              assert pg.input_value("#mr-amorto_sag") == "30" and pg.input_value("#mr-amorto_sag-mm") == "42"
+              pg.fill("#mr-fourche_sag-mm", "35")
+              assert pg.input_value("#mr-fourche_sag") == "25", pg.input_value("#mr-fourche_sag")
+              pg.fill("#mr-fourche_sag", "15")
+              assert pg.input_value("#mr-fourche_sag-mm") == "21", pg.input_value("#mr-fourche_sag-mm")
+              pg.fill("#mr-amorto_sag-mm", "37,8")
+              assert pg.input_value("#mr-amorto_sag") == "27", pg.input_value("#mr-amorto_sag")
+              pg.fill("#mr-amorto_sag", "")
+              assert pg.input_value("#mr-amorto_sag-mm") == ""
+              pg.fill("#mr-amorto_sag", "abc")
+              assert pg.input_value("#mr-amorto_sag-mm") == ""
+
+              # Enregistrement : seuls les champs habituels partent, en %, sans les champs en mm.
+              pg.fill("#mr-amorto_sag", "28")
+              pg.evaluate("enregistrerReglagesVelo()")
+              pg.wait_for_timeout(600)
+              assert envoyes, "aucun enregistrement envoyé"
+              assert envoyes[-1]["fourche_sag"] == "15" and envoyes[-1]["amorto_sag"] == "28", envoyes[-1]
+              assert not [k for k in envoyes[-1] if k.endswith("-mm") or k.endswith("_mm")], envoyes[-1]
+
+              # Un autre vélo (débattement inconnu) : % seulement, aucun mm inventé.
+              VELOS[0] = dict(VELOS[0], id=5, nom="Autre", type="vtt_electrique", fiche_composants=json.dumps(
+                  [{"categorie": "fourche", "nom": "Fox 36 Rhythm"}, {"categorie": "amortisseur", "nom": "Fox Float DPS"}]))
+              pg.evaluate("sessionStorage.setItem('maillons_velo_id', '5')")
+              pg.reload()
+              pg.wait_for_timeout(1500)
+              pg.evaluate("location.hash = '#reglages'")
+              pg.wait_for_timeout(500)
+              assert "mm" not in " ".join(lignes()), lignes()
+              assert all("mm" not in x for x in conseils()) and len(conseils()) == 2, conseils()
+              pg.evaluate("modifierReglagesVelo()")
+              pg.wait_for_timeout(300)
+              assert pg.query_selector("#mr-fourche_sag-mm") is None and pg.query_selector("#mr-amorto_sag-mm") is None
+              nav.close()
+
+          assert not erreurs, erreurs
+          print("OK: SAG en % et en mm dans les réglages du vélo et les conseils (CUBE), % seulement ailleurs")
+          PY
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_sag_mm.py"
