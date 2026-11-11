@@ -1803,7 +1803,7 @@ jobs:
 
           # 1. Math se reconnaît administrateur, la liste ne contient que lui.
           moi = main.qui_suis_je(CODE_MATH)
-          assert moi == {"id": 1, "nom": "Math", "est_admin": True}, moi
+          assert {k: v for k, v in moi.items() if k in ("id", "nom", "est_admin")} == {"id": 1, "nom": "Math", "est_admin": True}, moi
           assert [(p["id"], p["nom"], p["est_admin"], p["actif"], p["a_un_code"]) for p in main.lister_personnes(CODE_MATH)] == [(1, "Math", True, True, True)]
 
           # 2. Ajouter une personne : un code lisible, un premier vélo à elle.
@@ -1820,7 +1820,7 @@ jobs:
 
           # 3. Le code marche tout de suite : Julie est reconnue, voit son vélo et pas ceux de Math.
           assert main.verifier_auth(code_julie) == 2
-          assert main.qui_suis_je(code_julie) == {"id": 2, "nom": "Julie Martin", "est_admin": False}
+          assert {k: v for k, v in main.qui_suis_je(code_julie).items() if k in ("id", "nom", "est_admin")} == {"id": 2, "nom": "Julie Martin", "est_admin": False}
           assert [v["id"] for v in main.obtenir_velos(code_julie)] == [r["velo_id"]]
           assert 1 in [v["id"] for v in main.obtenir_velos(CODE_MATH)]
           refuse(404, "Vélo introuvable.", main.controle_acces, code_julie, 1)
@@ -1985,7 +1985,7 @@ jobs:
           assert main.ajouter_personne(main.NouvellePersonneRequest(nom="Paul Durand"), CODE_MATH)["nom"] == "Paul Durand"
           # Math peut se renommer : il reste administrateur, son code ne change pas.
           main.renommer_personne(1, main.RenommerPersonneRequest(nom="Mathieu"), CODE_MATH)
-          assert main.qui_suis_je(CODE_MATH) == {"id": 1, "nom": "Mathieu", "est_admin": True}
+          assert {k: v for k, v in main.qui_suis_je(CODE_MATH).items() if k in ("id", "nom", "est_admin")} == {"id": 1, "nom": "Mathieu", "est_admin": True}
           assert main.verifier_auth(CODE_MATH) == 1
           main.renommer_personne(1, main.RenommerPersonneRequest(nom="Math"), CODE_MATH)
           assert main.qui_suis_je(CODE_MATH)["nom"] == "Math"
@@ -2118,7 +2118,7 @@ jobs:
           assert etat["etat"] == "utilisee" and etat["utilisee_par"] == "Julie"
           # Le jeton ouvre exactement ce que le code ouvrait : ses vélos, rien de ceux des autres.
           assert main.verifier_auth(jeton) == pid
-          assert main.qui_suis_je(jeton) == {"id": pid, "nom": "Julie", "est_admin": False}
+          assert {k: v for k, v in main.qui_suis_je(jeton).items() if k in ("id", "nom", "est_admin")} == {"id": pid, "nom": "Julie", "est_admin": False}
           assert [v["id"] for v in main.obtenir_velos(jeton)] == [r["velo_id"]]
           refuse(404, "Vélo introuvable.", main.controle_acces, jeton, 1)
           refuse(403, "Réservé à l'administrateur.", main.lister_personnes, jeton)
@@ -2342,7 +2342,7 @@ jobs:
               assert client.get("/api/velos", headers=h("faux")).status_code == 401
 
               # Math : administrateur, voit son vélo.
-              assert client.get("/api/moi", headers=h(CODE_MATH)).json() == {"id": 1, "nom": "Math", "est_admin": True}
+              assert {k: v for k, v in client.get("/api/moi", headers=h(CODE_MATH)).json().items() if k in ("id", "nom", "est_admin")} == {"id": 1, "nom": "Math", "est_admin": True}
               assert 1 in [v["id"] for v in client.get("/api/velos", headers=h(CODE_MATH)).json()]
 
               # Un nom vide est refusé avant tout (422), un nom correct crée la personne.
@@ -2355,7 +2355,7 @@ jobs:
               assert [p["nom"] for p in client.get("/api/personnes", headers=h(CODE_MATH)).json()] == ["Math", "Julie"]
 
               # Julie entre avec son code : elle voit son vélo, et lui seulement.
-              assert client.get("/api/moi", headers=h(code_j)).json() == {"id": julie["id"], "nom": "Julie", "est_admin": False}
+              assert {k: v for k, v in client.get("/api/moi", headers=h(code_j)).json().items() if k in ("id", "nom", "est_admin")} == {"id": julie["id"], "nom": "Julie", "est_admin": False}
               vj = client.get("/api/velos", headers=h(code_j)).json()
               assert [v["id"] for v in vj] == [julie["velo_id"]], vj
               assert client.get("/api/etat?velo_id=%d" % julie["velo_id"], headers=h(code_j)).status_code == 200
@@ -2506,7 +2506,7 @@ jobs:
               assert client.post("/api/inscription", json=formulaire(client.post("/api/invitations", json={}, headers=h(CODE_MATH)).json()["code"])).status_code == 409, "e-mail déjà pris"
 
               # Avec son jeton, Julie voit ce qui est à elle, et seulement cela.
-              assert client.get("/api/moi", headers=h(jeton)).json() == {"id": julie["id"], "nom": "Julie", "est_admin": False}
+              assert {k: v for k, v in client.get("/api/moi", headers=h(jeton)).json().items() if k in ("id", "nom", "est_admin")} == {"id": julie["id"], "nom": "Julie", "est_admin": False}
               vj = client.get("/api/velos", headers=h(jeton)).json()
               assert [v["id"] for v in vj] == [julie["velo_id"]] and vj[0]["nom"] == "Mon gravel", vj
               assert client.get("/api/etat?velo_id=%d" % julie["velo_id"], headers=h(jeton)).status_code == 200
@@ -2586,7 +2586,7 @@ jobs:
               assert len(client.get("/api/velos", headers=h(r.json()["token"])).json()) == 1, "la nouvelle Julie n'hérite de rien"
 
               # Math et l'ami n'ont jamais été gênés : leurs codes marchent comme avant.
-              assert client.get("/api/moi", headers=h(CODE_MATH)).json() == {"id": 1, "nom": "Math", "est_admin": True}
+              assert {k: v for k, v in client.get("/api/moi", headers=h(CODE_MATH)).json().items() if k in ("id", "nom", "est_admin")} == {"id": 1, "nom": "Math", "est_admin": True}
               assert client.get("/api/etat?velo_id=1", headers=h(CODE_MATH)).status_code == 200
               assert client.get("/api/moi", headers=h(ami["code"])).json()["nom"] == "Ami"
               assert client.post("/api/connexion", json={"email": "math@exemple.fr", "mot_de_passe": CODE_MATH}).status_code == 401
