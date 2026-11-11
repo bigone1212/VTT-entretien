@@ -5977,7 +5977,10 @@ jobs:
               pg.goto("http://localhost/#reglages"); pg.wait_for_timeout(1500)
               conseils=lambda: pg.eval_on_selector_all("#mrContenu .mr-conseil", "els => els.map(e => e.textContent.trim())")
               c=conseils(); print("sans poids:", c)
-              assert len(c)==2 and all("Renseigne ton poids dans Mon compte" in x for x in c)
+              # Sans poids noté : 85 kg par défaut + sac 2,5 kg = 87,5 kg, avec la mention du poids par défaut.
+              assert len(c)==2 and "104 psi (7,2 bar)" in c[0] and "193 psi (13,3 bar)" in c[1], c
+              aides=pg.eval_on_selector_all("#mrContenu .mr-conseil span", "els => els.map(e => e.textContent.trim())")
+              assert len(aides)==2 and all("85 kg par défaut" in x and "note le tien dans Mon compte" in x for x in aides), aides
               pg.evaluate("location.hash='#compte'"); pg.wait_for_timeout(400)
               assert pg.input_value("#profilPoids")=="" and pg.input_value("#profilPoidsSac")=="2,5"
               for bad,msg in (("abc","entre 30 et 250"),("20","entre 30 et 250")):
@@ -6002,12 +6005,12 @@ jobs:
               pg.fill("#profilPoids","40"); pg.click("#formProfil button[type=submit]"); pg.wait_for_timeout(400)
               pg.evaluate("location.hash='#reglages'"); pg.wait_for_timeout(400)
               c=conseils(); print("40 kg:", c); assert "hors du tableau Fox" in c[0] and "94 psi" in c[1]
-              # effacer le poids : retour à l'invitation
+              # effacer le poids : retour au poids par défaut
               pg.evaluate("location.hash='#compte'"); pg.wait_for_timeout(300)
               pg.fill("#profilPoids",""); pg.click("#formProfil button[type=submit]"); pg.wait_for_timeout(400)
               assert appels[-1]["poids_kg"] is None
               pg.evaluate("location.hash='#reglages'"); pg.wait_for_timeout(400)
-              assert all("Renseigne ton poids" in x for x in conseils())
+              assert "104 psi" in conseils()[0] and "193 psi" in conseils()[1], conseils()
               # vélo non Fox : aucun conseil
               VELOS[0]=dict(VELOS[0], id=5, nom="Gravel", type="gravel", fiche_composants=json.dumps([{"categorie":"fourche","nom":"RockShox Pike"},{"categorie":"amortisseur","nom":"RockShox Deluxe"}]))
               pg.reload(); pg.wait_for_timeout(1500); pg.evaluate("sessionStorage.setItem('maillons_velo_id','5')"); pg.reload(); pg.wait_for_timeout(1500)
@@ -6126,7 +6129,7 @@ jobs:
               pg.wait_for_timeout(1500)
               pg.evaluate("location.hash = '#reglages'")
               pg.wait_for_timeout(500)
-              assert "mm" not in " ".join(lignes()), lignes()
+              assert "≈" not in " ".join(lignes()), lignes()
               assert all("mm" not in x for x in conseils()) and len(conseils()) == 2, conseils()
               pg.evaluate("modifierReglagesVelo()")
               pg.wait_for_timeout(300)
@@ -6137,3 +6140,250 @@ jobs:
           print("OK: SAG en % et en mm dans les réglages du vélo et les conseils (CUBE), % seulement ailleurs")
           PY
           PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_sag_mm.py"
+      - name: Tester les pressions et le SAG en mm de tous les vélos (réglages trouvés par l'IA) dans un vrai navigateur
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-suspension-nav-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_suspension_ia.py" <<'PY'
+          import json
+
+          from playwright.sync_api import sync_playwright
+
+          import main
+
+          html = main.accueil()
+          JETON = "ses_susp"
+          moi = {"id": 3, "nom": "Julie", "est_admin": False, "prenom": "", "nom_famille": "", "email": "", "cree_le": "2026-10-04T08:00:00Z",
+                 "photo": None, "poids_kg": 80.0, "poids_sac_kg": 2.5, "version": "v"}
+          INFOS = {
+              "fourche": {"modele": "RockShox Pike Select", "debattement_mm": 150, "sag_min": 15, "sag_max": 20,
+                          "tableau": [{"kg": 60, "psi": 60}, {"kg": 70, "psi": 70}, {"kg": 80, "psi": 80}, {"kg": 90, "psi": 90}],
+                          "source": "https://exemple.com/pike"},
+              "amortisseur": {"modele": "RockShox Deluxe Select", "debattement_mm": 140, "sag_min": 25, "sag_max": 30,
+                              "formule": {"psi_par_kg": 2.2, "psi_fixe": 0}, "source": "https://exemple.com/deluxe"},
+          }
+          VELOS = [{"id": 5, "nom": "Enduro", "type": "enduro", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0,
+                    "fiche_composants": json.dumps([{"categorie": "fourche", "nom": "RockShox Pike Select"}, {"categorie": "amortisseur", "nom": "RockShox Deluxe Select"}]),
+                    "suspension_infos": json.dumps(INFOS)}]
+          valeurs = {"fourche_sag": "20"}
+          appels = []
+          refus_suspension = {"oui": False}
+
+
+          def api(route, request):
+              u = request.url.split("?")[0].replace("http://localhost", "")
+              m = request.method
+              if u == "/api/moi" and m == "GET":
+                  return route.fulfill(json=moi)
+              if u == "/api/velos" and m == "GET":
+                  return route.fulfill(json=VELOS)
+              if u == "/api/velos" and m == "POST":
+                  appels.append(("creer", json.loads(request.post_data)))
+                  return route.fulfill(json={"statut": "success", "velo_id": 9})
+              if u.endswith("/suspension") and m == "PUT":
+                  appels.append(("suspension", u, json.loads(request.post_data)))
+                  if refus_suspension["oui"]:
+                      return route.fulfill(status=400, json={"detail": "Je n'ai rien d'utilisable dans ces réglages de suspension."})
+                  return route.fulfill(json={"statut": "success"})
+              if u == "/api/mes-reglages" and m == "GET":
+                  return route.fulfill(json={"valeurs": valeurs, "maj_le": "2026-11-11"})
+              if u == "/api/etat":
+                  return route.fulfill(json={"km_total": 0, "composants": []})
+              if u == "/api/reglages":
+                  return route.fulfill(json={"terrain_route": 1, "terrain_mixte": 1.2, "terrain_chemin": 1.5, "terrain_sentier": 2, "poids_denivele": 1})
+              return route.fulfill(json=[])
+
+
+          REPONSE_IA = """```json
+          {"marque": "Trek", "modele": "Fuel EXe 9.7", "annee": 2025, "type": "vtt_electrique",
+           "composants": [{"categorie": "fourche", "nom": "Fox Rhythm 36", "source": "https://exemple.com/fiche"}],
+           "reglages_suspension": {
+             "fourche": {"modele": "Fox Rhythm 36", "debattement_mm": 150, "sag_min": 15, "sag_max": 20,
+                         "tableau": [{"kg": 60, "psi": 75}, {"kg": 75, "psi": 88}, {"kg": 90, "psi": 101}],
+                         "source": "https://exemple.com/tableau"},
+             "amortisseur": null}}
+          ```"""
+
+          with sync_playwright() as p:
+              nav = p.chromium.launch()
+              ctx = nav.new_context(viewport={"width": 390, "height": 800})
+              ctx.route("**/localhost/api/**", api)
+              ctx.route(lambda u: not u.startswith("http://localhost/"), lambda r: r.abort())
+              ctx.add_init_script("if (!sessionStorage.getItem('__i')) { sessionStorage.setItem('__i', '1'); sessionStorage.setItem('vtt_code', '" + JETON + "'); sessionStorage.setItem('maillons_velo_id', '5'); }")
+              pg = ctx.new_page()
+              erreurs = []
+              pg.on("pageerror", lambda e: erreurs.append(str(e)[:200]))
+              pg.route("http://localhost/", lambda r: r.fulfill(body=html, content_type="text/html; charset=utf-8"))
+              pg.goto("http://localhost/#reglages")
+              pg.wait_for_timeout(1500)
+
+              def conseils():
+                  return pg.eval_on_selector_all("#mrContenu .mr-conseil b", "els => els.map(e => e.textContent.trim())")
+
+              def aides():
+                  return pg.eval_on_selector_all("#mrContenu .mr-conseil span", "els => els.map(e => e.textContent.trim())")
+
+              def liens():
+                  return pg.eval_on_selector_all("#mrContenu .mr-conseil a", "els => els.map(e => e.getAttribute('href') + '|' + e.textContent.trim())")
+
+              def lignes():
+                  return pg.eval_on_selector_all("#mrContenu .mr-ligne", "els => els.map(e => e.textContent.trim())")
+
+              def recharger():
+                  pg.reload()
+                  pg.wait_for_timeout(1500)
+                  pg.evaluate("location.hash = '#reglages'")
+                  pg.wait_for_timeout(500)
+
+              # 1) Vélo avec les réglages trouvés par l'IA : tableau (calcul entre deux lignes) et formule.
+              c = conseils()
+              print("IA 82,5 kg:", c)
+              assert "83 psi (5,7 bar)" in c[0] and "SAG visé 15 à 20 % (22,5 à 30 mm)" in c[0], c
+              assert "182 psi (12,5 bar)" in c[1] and "SAG visé 25 à 30 % (35 à 42 mm)" in c[1], c
+              a = aides()
+              assert "trouvé par ton IA pour RockShox Pike Select (tableau du constructeur)" in a[0] and "À vérifier avec la source" in a[0], a
+              assert "trouvé par ton IA pour RockShox Deluxe Select (règle du constructeur)" in a[1], a
+              assert liens() == ["https://exemple.com/pike|Voir la source", "https://exemple.com/deluxe|Voir la source"], liens()
+              assert "85 kg par défaut" not in " ".join(a)
+              assert "SAG (%)20 (≈ 30 mm)" in lignes(), lignes()
+
+              # 2) Le débattement noté à la main passe avant celui de l'IA.
+              valeurs["fourche_debattement"] = "160"
+              recharger()
+              c = conseils()
+              assert "SAG visé 15 à 20 % (24 à 32 mm)" in c[0], c
+              assert "SAG (%)20 (≈ 32 mm)" in lignes(), lignes()
+              del valeurs["fourche_debattement"]
+
+              # 3) Hors du tableau : pas de chiffre pour la fourche, la formule continue pour l'amortisseur.
+              moi["poids_kg"] = 40.0
+              recharger()
+              c = conseils()
+              assert c[0] == "Conseil de pression" and "hors du tableau trouvé par ton IA (60 à 90 kg)" in aides()[0], (c, aides())
+              assert "94 psi" in c[1], c
+              assert liens()[0] == "https://exemple.com/pike|Voir la source"
+
+              # 4) Sans poids noté : 85 kg par défaut + sac, avec la mention.
+              moi["poids_kg"] = None
+              recharger()
+              c = conseils()
+              assert "88 psi (6,1 bar)" in c[0] and "193 psi" in c[1], c
+              assert all("85 kg par défaut" in x and "note le tien dans Mon compte" in x for x in aides()), aides()
+
+              # 5) Un vélo sans réglages trouvés (et sans Fox connue) : aucun conseil ; réglages inutilisables : aucun conseil.
+              moi["poids_kg"] = 80.0
+              VELOS[0] = dict(VELOS[0], suspension_infos=None)
+              recharger()
+              assert conseils() == [], conseils()
+              VELOS[0] = dict(VELOS[0], suspension_infos=json.dumps({"fourche": {"modele": "X", "debattement_mm": 150}, "amortisseur": "n'importe quoi"}))
+              recharger()
+              assert conseils() == [], conseils()
+              VELOS[0] = dict(VELOS[0], suspension_infos="pas du json")
+              recharger()
+              assert conseils() == [], conseils()
+
+              # 6) Débattement écrit dans le nom de la fourche (3 chiffres), sans réglages de l'IA : SAG en mm, mais pas de pression.
+              VELOS[0] = dict(VELOS[0], suspension_infos=None,
+                              fiche_composants=json.dumps([{"categorie": "fourche", "nom": "RockShox Lyrik Ultimate 160 mm"}]))
+              recharger()
+              assert "SAG (%)20 (≈ 32 mm)" in lignes(), lignes()
+              assert conseils() == [], conseils()
+
+              # 7) La demande à l'IA réclame aussi les réglages de suspension, sans inventer.
+              demande = pg.evaluate("texteDemandeIA('Trek Fuel EXe 9.7 2025')")
+              for morceau in ("Réponds UNIQUEMENT avec un bloc JSON", "reglages_suspension", "debattement_mm", "sag_min", "tableau", "formule", "psi_par_kg",
+                              "Ne devine jamais une pression", "au moins 3 lignes", "CE vélo"):
+                  assert morceau in demande, morceau
+              assert '"reglages_suspension"' in demande and '"formule"' in demande and '"tableau"' in demande
+
+              # 8) Réponse de l'IA collée : composants lus + réglages de suspension reçus, puis gardés avec le nouveau vélo.
+              pg.evaluate("document.getElementById('reponseIA').value = " + json.dumps(REPONSE_IA))
+              pg.evaluate("document.getElementById('boutonRemplirFicheIA').click()")
+              pg.wait_for_timeout(300)
+              message = pg.eval_on_selector("#messageIA", "e => e.textContent")
+              assert "Réglages de suspension reçus (fourche)" in message, message
+              pg.evaluate("""() => {
+                  const f = document.getElementById('formAjouterVelo');
+                  f.elements.nom.value = 'Trek';
+                  f.elements.type.value = 'vtt_electrique';
+                  f.requestSubmit();
+              }""")
+              pg.wait_for_timeout(1000)
+              creer = [x for x in appels if x[0] == "creer"]
+              susp = [x for x in appels if x[0] == "suspension"]
+              assert creer and susp, appels
+              assert susp[-1][1] == "/api/velos/9/suspension", susp[-1][1]
+              corps = susp[-1][2]["suspension_infos"]
+              assert corps["fourche"]["debattement_mm"] == 150 and len(corps["fourche"]["tableau"]) == 3 and corps["amortisseur"] is None, corps
+              texte = pg.eval_on_selector("#messageMesVelos", "e => e.textContent")
+              assert "Réglages de suspension gardés." in texte, texte
+
+              # 9) Sans réponse de l'IA : rien n'est envoyé pour la suspension. Et un refus du serveur est dit, sans perdre le vélo.
+              nb = len(susp)
+              pg.evaluate("""() => {
+                  const f = document.getElementById('formAjouterVelo');
+                  f.elements.nom.value = 'Sans IA';
+                  f.elements.type.value = 'gravel';
+                  f.requestSubmit();
+              }""")
+              pg.wait_for_timeout(800)
+              assert len([x for x in appels if x[0] == "suspension"]) == nb, "aucun envoi attendu sans réponse de l'IA"
+              refus_suspension["oui"] = True
+              pg.evaluate("document.getElementById('reponseIA').value = " + json.dumps(REPONSE_IA))
+              pg.evaluate("document.getElementById('boutonRemplirFicheIA').click()")
+              pg.evaluate("""() => {
+                  const f = document.getElementById('formAjouterVelo');
+                  f.elements.nom.value = 'Refus';
+                  f.elements.type.value = 'vtt';
+                  f.requestSubmit();
+              }""")
+              pg.wait_for_timeout(1000)
+              texte = pg.eval_on_selector("#messageMesVelos", "e => e.textContent")
+              assert "Les réglages de suspension n’ont pas été gardés" in texte and "rien d'utilisable" in texte, texte
+              nav.close()
+
+          assert not erreurs, erreurs
+          print("OK: suspension de tous les vélos : demande à l'IA, réglages gardés, pression calculée au poids de la personne (85 kg par défaut), SAG en mm")
+          PY
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_suspension_ia.py"
+      - name: Tester l'enregistrement des réglages de suspension d'un vélo côté serveur
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-suspension-serveur-test.db
+          CODE_ACCES: c
+        run: |
+          python - <<'PY'
+          import os
+          import json
+          os.environ.setdefault("CODE_ACCES", "c")
+          if os.path.exists(S+"t10.db"): os.remove(S+"t10.db")
+          import main
+          from fastapi import HTTPException
+          N=main.nettoyer_suspension_infos
+          bon={"fourche":{"modele":"RockShox Pike","debattement_mm":140,"sag_min":15,"sag_max":20,
+            "tableau":[{"kg":80,"psi":80},{"kg":60,"psi":60},{"kg":70,"psi":70}],"source":"https://exemple.com/pike"},
+            "amortisseur":{"modele":"Deluxe","debattement_mm":"140","formule":{"psi_par_kg":2.2,"psi_fixe":0},"source":"javascript:alert(1)"}}
+          r=N(bon); print(json.dumps(r,ensure_ascii=False))
+          assert [x["kg"] for x in r["fourche"]["tableau"]]==[60,70,80] and r["fourche"]["debattement_mm"]==140.0
+          assert "debattement_mm" not in r["amortisseur"] and r["amortisseur"]["formule"]=={"psi_par_kg":2.2,"psi_fixe":0.0} and "source" not in r["amortisseur"]
+          assert N(None) is None and N([]) is None and N({}) is None and N({"fourche":"x"}) is None
+          # tableau invalide (pression qui baisse, doublons, trop court) : écarté, formule prise à la place
+          assert "tableau" not in N({"fourche":{"tableau":[{"kg":60,"psi":90},{"kg":70,"psi":70},{"kg":80,"psi":60}],"formule":{"psi_par_kg":2}}})["fourche"]
+          assert "tableau" not in N({"fourche":{"tableau":[{"kg":60,"psi":60},{"kg":60,"psi":61},{"kg":80,"psi":80}],"debattement_mm":150}})["fourche"]
+          assert N({"fourche":{"tableau":[{"kg":60,"psi":60},{"kg":70,"psi":70}]}}) is None
+          # valeurs absurdes
+          assert N({"fourche":{"debattement_mm":5000,"sag_min":15,"sag_max":10,"tableau":[{"kg":-5,"psi":1}]}}) is None
+          assert N({"fourche":{"debattement_mm":True}}) is None
+          # route : accès, 404, effacement
+          H="c"
+          vid=main.obtenir_ou_creer_premier_velo() if False else 1
+          r=main.enregistrer_suspension_velo(vid, main.SuspensionInfosRequest(suspension_infos=bon), H); assert r["suspension_infos"]["fourche"]["modele"]=="RockShox Pike"
+          try: main.enregistrer_suspension_velo(vid, main.SuspensionInfosRequest(suspension_infos={"fourche":{"debattement_mm":9999}}), H); raise SystemExit("400 attendu")
+          except HTTPException as e: assert e.status_code==400
+          try: main.enregistrer_suspension_velo(999, main.SuspensionInfosRequest(suspension_infos=bon), H); raise SystemExit("404/403 attendu")
+          except HTTPException as e: assert e.status_code in (403,404), e.status_code
+          try: main.enregistrer_suspension_velo(vid, main.SuspensionInfosRequest(suspension_infos=bon), "mauvais"); raise SystemExit("401 attendu")
+          except HTTPException as e: assert e.status_code in (401,403)
+          r=main.enregistrer_suspension_velo(vid, main.SuspensionInfosRequest(), H); assert r["suspension_infos"] is None
+          print("SUSPENSION SERVEUR OK")
+          PY
