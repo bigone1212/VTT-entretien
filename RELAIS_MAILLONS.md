@@ -150,6 +150,14 @@
 ---
 
 
+## 2026-11-11 (18h15) — Suspension de TOUS les vélos : PR #45 FUSIONNÉE (merge 3ed8183)
+
+- Pressions fourche/amortisseur au poids de la personne (85 kg par défaut + sac 2,5 kg), SAG en mm, champ « Débattement (mm) » à la main (prioritaire).
+- La demande « Copier la demande » réclame aussi `reglages_suspension` ; la réponse est contrôlée par le serveur (`PUT /api/velos/{id}/suspension`, colonne `velos.suspension_infos`) et gardée à l'enregistrement du vélo. Le CUBE garde ses tableaux Fox lus à la main.
+- Testé : validation serveur, test navigateur complet (demande IA, réponse collée, enregistrement, calculs, 85 kg par défaut, source), contrôle GitHub vert (run 43064568453).
+- NON vérifié : Render (déploiement), téléphone, vraie réponse d'une IA, migration Neon (ajoute une colonne vide).
+- À faire par Math : attendre Render, rouvrir l'appli, refaire « Copier la demande » pour les vélos déjà enregistrés.
+
 ## 2026-11-11 (13h30) — Suspension de TOUS les vélos (pressions + SAG en mm) : OBJECTIF, DÉCISIONS, DÉBUT DU CODE (rien sur main hors cette note)
 - Demande de Math (11/11/2026) : étendre pressions et SAG en mm à tous les vélos. Il veut récupérer les données de suspension AU MOMENT où il ajoute un vélo (par « Copier la demande » à son IA, flux déjà en place : l'appli n'a PAS d'IA côté serveur) et partir sur 85 kg par défaut quand la personne n'a pas noté son poids. Méthode validée par Math (« Oui je suis ok »).
 - Plan : (1) la demande à l'IA réclame aussi `reglages_suspension` par fourche/amortisseur : modèle, débattement (mm), SAG visé (% min/max), tableau [{kg, psi}] publié par la marque OU formule {psi_par_kg, psi_fixe}, source (adresse) ; null si introuvable ; (2) la réponse est contrôlée côté téléphone ET côté serveur (valeurs plausibles) puis rangée avec le vélo : nouvelle colonne `velos.suspension_infos` (TEXT JSON) via une route `PUT /api/velos/{id}/suspension`, rendue par `/api/velos` ; (3) conseil = interpolation du tableau au poids de la personne connectée (+ sac) ; hors tableau : pas de chiffre ; étiqueté « trouvé par ton IA » avec le lien de la source ; (4) poids absent : 85 kg par défaut, mention visible (vaut aussi pour le CUBE) ; (5) débattement : champ « Débattement (mm) » saisi à la main (nouvelles clés de réglages `fourche_debattement`, `amorto_debattement`) PRIORITAIRE, puis celui de l'IA, puis 140 mm du CUBE, puis un « NNN mm » écrit dans le nom du composant, sinon rien. Le CUBE garde les tableaux Fox lus à la main.
