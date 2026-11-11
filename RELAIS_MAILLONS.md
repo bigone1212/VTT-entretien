@@ -150,6 +150,11 @@
 ---
 
 
+## 2026-11-11 (13h30) — Suspension de TOUS les vélos (pressions + SAG en mm) : OBJECTIF, DÉCISIONS, DÉBUT DU CODE (rien sur main hors cette note)
+- Demande de Math (11/11/2026) : étendre pressions et SAG en mm à tous les vélos. Il veut récupérer les données de suspension AU MOMENT où il ajoute un vélo (par « Copier la demande » à son IA, flux déjà en place : l'appli n'a PAS d'IA côté serveur) et partir sur 85 kg par défaut quand la personne n'a pas noté son poids. Méthode validée par Math (« Oui je suis ok »).
+- Plan : (1) la demande à l'IA réclame aussi `reglages_suspension` par fourche/amortisseur : modèle, débattement (mm), SAG visé (% min/max), tableau [{kg, psi}] publié par la marque OU formule {psi_par_kg, psi_fixe}, source (adresse) ; null si introuvable ; (2) la réponse est contrôlée côté téléphone ET côté serveur (valeurs plausibles) puis rangée avec le vélo : nouvelle colonne `velos.suspension_infos` (TEXT JSON) via une route `PUT /api/velos/{id}/suspension`, rendue par `/api/velos` ; (3) conseil = interpolation du tableau au poids de la personne connectée (+ sac) ; hors tableau : pas de chiffre ; étiqueté « trouvé par ton IA » avec le lien de la source ; (4) poids absent : 85 kg par défaut, mention visible (vaut aussi pour le CUBE) ; (5) débattement : champ « Débattement (mm) » saisi à la main (nouvelles clés de réglages `fourche_debattement`, `amorto_debattement`) PRIORITAIRE, puis celui de l'IA, puis 140 mm du CUBE, puis un « NNN mm » écrit dans le nom du composant, sinon rien. Le CUBE garde les tableaux Fox lus à la main.
+- Branche prévue : `reprise/2026-11-11-suspension-tous-velos`, fusion seulement avec l'accord explicite de Math. Rien déployé, aucune opération Neon (migration : ajout d'une colonne vide).
+
 ## 2026-11-11 (~13h05) — PR #44 FUSIONNÉE : SAG aussi en mm (CUBE)
 - Fusion faite avec l'accord explicite de Math (11/11/2026, « Fusionne »). Commit de fusion sur `main` : `12ba4a2e64c5ebe62681e39df10008ac095608a0`. Après fusion, Claude a seulement revérifié que `main` contient le code (`debattementMm`) et que `main.py` compile ; le CI ne tourne pas sur `main`.
 - **Déploiement Render NON vérifié : ne pas l'annoncer comme terminé avant statut `live`.** Aucune migration, aucune opération Neon (stockage inchangé).
