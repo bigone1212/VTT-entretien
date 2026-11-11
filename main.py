@@ -17860,7 +17860,7 @@ def recherche_fiche_velo(data: RechercheFicheVeloRequest, x_code_acces: Optional
                     continue
                 candidats.append({"titre": titre[:180], "url": cible})
                 ajoutes_moteur += 1
-                # On garde plusieurs résultats de chaque moteur pour croiser les sources.
+                # On garde plusieurs résultats de chaque moteur pour croiser les sources (jusqu'à 10 candidats).
                 if ajoutes_moteur >= 5:
                     break
 
