@@ -150,6 +150,13 @@
 ---
 
 
+## 2026-11-11 (~07h50) — Mon compte, en-tête : code prêt sur la branche, EN ATTENTE de l'accord de Math pour fusionner
+- Branche `reprise/2026-11-10-mon-compte-en-tete` (tête `24b8736`), NON fusionnée, rien déployé. Fichiers : `main.py`, `.github/workflows/maillons-check.yml`.
+- Fait : colonnes `personnes.prenom`, `nom_famille`, `photo` (migration automatique) ; `/api/moi` renvoie en plus prenom, nom_famille, email, cree_le, photo, version ; routes PUT `/api/moi/profil`, PUT et DELETE `/api/moi/photo` (propres à la personne connectée) ; `VERSION_APPLI = "2026-11-10"` (+ début du commit Render si la variable existe) ; page Mon compte : photo ronde, nom complet, « Connecté : nom d'utilisateur », e-mail, « Membre depuis le … », boutons Changer/Retirer la photo, champs Prénom et Nom, version en bas ; la photo remplace le bonhomme de l'en-tête (réduite à 256 px carrés sur le téléphone). Mot de passe, connexion, déconnexion, Personnes inchangés.
+- Tests : CI GitHub de la branche en SUCCÈS (run `42974603426`), dont 2 nouveaux tests (serveur ; navigateur) ; 2 tests existants adaptés (liste des routes sans vélo ; /api/moi comparé sur id, nom, est_admin). Deux premiers runs échoués pour ces raisons-là, corrigées. Essai local aussi, avec un faux serveur (fastapi absent ici).
+- Non testé : Render, téléphone, vraie photo prise au téléphone, base Neon existante (la migration ajoute 3 colonnes vides). Déploiement Render non vérifié.
+- Étape suivante : Math regarde et dit s'il veut fusionner (puis rouvrir l'appli après le déploiement Render). Ensuite, au choix de Math : résumé de ses vélos/kilomètres, sécurité et appareils connectés.
+
 ## 2026-11-10 (18h30) — Mon compte : en-tête, DÉCISIONS DE MATH et DÉBUT DU CODE (rien d'enregistré sur main hors cette note)
 - Accord de Math sur le périmètre de la première étape (en-tête de Mon compte) : photo de profil ronde (remplace aussi le bonhomme de l'en-tête), « nom d'utilisateur » = le champ `nom` actuel renommé (reste utilisé dans « Bienvenue » et la liste Personnes), PRÉNOM et NOM en plus (facultatifs, modifiables), e-mail affiché non modifiable, « membre depuis » (cree_le), version de l'appli en petit en bas de page. PAS d'adresse (décision : donnée inutile).
 - Les personnes déjà inscrites gardent leur nom comme nom d'utilisateur ; prénom et nom vides au départ.
