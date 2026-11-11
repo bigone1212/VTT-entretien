@@ -150,6 +150,10 @@
 ---
 
 
+## 2026-11-11 (~13h) — SAG aussi en mm : OBJECTIF et DÉBUT DU CODE (rien sur main hors cette note)
+- Demande de Math (11/11/2026) : le SAG « en mm et en % ». Choix confirmé : % ET mm. Plan retenu : stockage INCHANGÉ (le champ `fourche_sag` / `amorto_sag` reste en %, aucune migration) ; débattement connu seulement pour le CUBE (vélo n° 1 : 140 mm devant, 140 mm derrière, d'après sa fiche) ; encadrés de conseil : « SAG visé 15 à 20 % (21 à 28 mm) » et « 25 à 30 % (35 à 42 mm) » ; en affichage : « 25 (≈ 35 mm) » ; en modification : une ligne « SAG (mm) » liée au champ % dans les deux sens. Autres vélos : % seulement, rien d'inventé.
+- Branche prévue : `reprise/2026-11-11-sag-mm`, fusion seulement avec l'accord explicite de Math. Rien déployé, aucune opération Neon.
+
 ## 2026-11-11 (~12h40) — PR #43 FUSIONNÉE : poids et pressions de suspension
 - Fusion faite avec l'accord explicite de Math (11/11/2026, « Fusionne »). Commit de fusion sur `main` : `10838ceb85ae4cf56d8a494a57607058f0958bd5`. Après fusion, Claude a seulement revérifié que `main` contient le code (poids_sac_kg) et que `main.py` compile ; le CI ne tourne pas sur `main`.
 - **Déploiement Render NON vérifié : ne pas l'annoncer comme terminé avant statut `live`.** Aucune opération Neon (la migration ajoute 2 colonnes vides au démarrage).
