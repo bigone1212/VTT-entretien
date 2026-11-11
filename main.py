@@ -17346,9 +17346,9 @@ def produits_structures(html_page):
 
 LIBELLES_COMPOSANTS_VELO = {
     "cadre": ("cadre", ("frame", "cadre")),
-    "fourche": ("fourche", ("fork", "fourche")),
-    "amortisseur": ("amortisseur", ("shock", "rear shock", "amortisseur", "suspension arriere")),
-    "tige_de_selle": ("tige_de_selle", ("seatpost", "seat post", "tige de selle")),
+    "fourche": ("fourche", ("fork", "front fork", "fourche")),
+    "amortisseur": ("amortisseur", ("shock", "rear shock", "rear suspension", "shock absorber", "amortisseur", "suspension arriere")),
+    "tige_de_selle": ("tige_de_selle", ("seatpost", "seat post", "dropper post", "dropper seatpost", "tige de selle")),
     "freins": ("freins", ("brake", "brakes", "frein", "freins", "freinage", "brakeset", "braking")),
     "etriers": ("etriers", ("brake caliper", "caliper", "etrier", "étrier")),
     "plaquettes": ("plaquettes", ("brake pad", "brake pads", "plaquette", "plaquettes")),
@@ -17364,7 +17364,10 @@ LIBELLES_COMPOSANTS_VELO = {
     "poignees": ("poignees", ("grips", "poignees", "poignées")),
     "jeu_direction": ("jeu_direction", ("headset", "jeu de direction")),
     "moyeux": ("moyeux", ("hub", "hubs", "moyeu", "moyeux")),
+    "jantes": ("jantes", ("rim", "rims", "rimset", "jante", "jantes")),
     "chargeur": ("chargeur", ("charger", "chargeur")),
+    "ecran": ("ecran", ("display", "screen", "controller", "remote", "display unit", "ecran", "écran", "commande", "console")),
+    "guide_chaine": ("guide_chaine", ("chain guide", "chainguide", "guide chaine", "guide-chaîne")),
     "roues": ("roues", ("wheelset", "wheel", "wheels", "roue", "roues")),
     "pneus": ("pneus", ("tire", "tires", "tyre", "tyres", "pneu", "pneus")),
     "selle": ("selle", ("saddle", "selle")),
@@ -17838,21 +17841,28 @@ def recherche_fiche_velo(data: RechercheFicheVeloRequest, x_code_acces: Optional
                     if href and titre:
                         resultats.append((titre, html_lib.unescape(href.group(1))))
 
+            ajoutes_moteur = 0
             for titre, cible in resultats:
                 cible = html_lib.unescape(cible)
                 parsed = urllib.parse.urlparse(cible)
-                if parsed.scheme not in ("http", "https") or not parsed.hostname:
+                # DuckDuckGo renvoie parfois une redirection /l/?uddg=... :
+                # on conserve directement l'adresse réelle de la fiche.
+                if (parsed.hostname or "").lower().endswith("duckduckgo.com") and parsed.path.startswith("/l/"):
+                    cible = urllib.parse.parse_qs(parsed.query).get("uddg", [None])[0] or cible
+                    parsed = urllib.parse.urlparse(cible)
+                domaine = (parsed.hostname or "").lower()
+                if parsed.scheme not in ("http", "https") or not domaine:
                     continue
-                if any(item["url"] == cible for item in candidats):
+                if (domaine == "duckduckgo.com" or domaine.endswith(".duckduckgo.com")
+                        or domaine == "bing.com" or domaine.endswith(".bing.com")):
+                    continue
+                if any(item["url"].rstrip("/").casefold() == cible.rstrip("/").casefold() for item in candidats):
                     continue
                 candidats.append({"titre": titre[:180], "url": cible})
-                if len(candidats) >= 5:
+                ajoutes_moteur += 1
+                # On garde plusieurs résultats de chaque moteur pour croiser les sources (jusqu'à 10 candidats).
+                if ajoutes_moteur >= 5:
                     break
-
-            # Le second moteur n'est utile que si le premier échoue ou ne fournit
-            # aucun lien exploitable.
-            if candidats:
-                break
 
         if not candidats:
             if len(moteurs_en_echec) == len(moteurs):

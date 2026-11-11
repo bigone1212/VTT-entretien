@@ -13,6 +13,7 @@ on:
       - "gpx_import.py"
       - "requirements.txt"
       - ".github/workflows/maillons-check.yml"
+      - "tests/**"
   pull_request:
     branches:
       - main
@@ -79,6 +80,8 @@ jobs:
           PY
       - name: Installer les dépendances de l'application
         run: pip install -r requirements.txt
+      - name: Tester l'agrégation des moteurs de recherche gratuits et les composants complémentaires
+        run: python tests/test_recherche_fiche_gratuite.py
       - name: Tester la recherche de fiche et l'adaptation des freins
         run: |
           python - <<'PY'
@@ -5605,19 +5608,24 @@ jobs:
             <item><title>Fiche constructeur Bing</title><link>https://constructeur.example/fiche-bing</link></item>
           </channel></rss>"""
 
-          # DuckDuckGo répond : ses résultats sont utilisés sans appeler Bing.
+          # DuckDuckGo et Bing répondent : les deux listes sont fusionnées sans doublon.
           appels = []
-          def ddg_ok(url, accepte):
+          def ddg_et_bing(url, accepte):
               appels.append(url)
               if "duckduckgo.com" in url:
                   return "text/html", page_ddg.encode(), url
-              raise AssertionError("Bing ne devait pas être appelé")
-          main.telecharger_lien = ddg_ok
+              if "bing.com/search" in url:
+                  return "application/rss+xml", rss_bing.encode(), url
+              raise AssertionError("URL inattendue : " + url)
+          main.telecharger_lien = ddg_et_bing
           resultat = main.recherche_fiche_velo(
               main.RechercheFicheVeloRequest(recherche="Cube Stereo Hybrid"), None
           )
-          assert resultat["candidats"] == [{"titre": "Fiche constructeur", "url": url_ddg}], resultat
-          assert len(appels) == 1 and "duckduckgo.com" in appels[0], appels
+          assert resultat["candidats"] == [
+              {"titre": "Fiche constructeur", "url": url_ddg},
+              {"titre": "Fiche constructeur Bing", "url": url_bing}
+          ], resultat
+          assert len(appels) == 2 and "duckduckgo.com" in appels[0] and "bing.com/search" in appels[1], appels
 
           # DuckDuckGo échoue : Bing RSS prend le relais.
           appels = []
@@ -5666,7 +5674,7 @@ jobs:
               assert "Aucune fiche trouvée" in erreur.detail, erreur.detail
           assert len(appels) == 2, appels
 
-          print("OK : DDG prioritaire, Bing de secours, erreurs réseau distinguées de l'absence de résultats.")
+          print("OK : résultats DDG + Bing agrégés, Bing seul en secours, erreurs réseau distinguées de l'absence de résultats.")
           PY
       - name: Vérifier la conservation de la nomenclature technique par vélo
         env:
