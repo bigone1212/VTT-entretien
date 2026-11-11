@@ -150,7 +150,12 @@
 ---
 
 
-## 2026-11-11 (~09h) — Poids et pressions : code prêt sur la branche, EN ATTENTE de l'accord de Math pour fusionner
+## 2026-11-11 (~12h40) — PR #43 FUSIONNÉE : poids et pressions de suspension
+- Fusion faite avec l'accord explicite de Math (11/11/2026, « Fusionne »). Commit de fusion sur `main` : `10838ceb85ae4cf56d8a494a57607058f0958bd5`. Après fusion, Claude a seulement revérifié que `main` contient le code (poids_sac_kg) et que `main.py` compile ; le CI ne tourne pas sur `main`.
+- **Déploiement Render NON vérifié : ne pas l'annoncer comme terminé avant statut `live`.** Aucune opération Neon (la migration ajoute 2 colonnes vides au démarrage).
+- Étape suivante : Math rouvre l'appli après le déploiement, saisit son poids dans Mon compte, regarde les conseils dans Mon vélo > Mes réglages vélo et les compare à son SAG réel ; dire ce qui est à ajuster. Autres vélos : à faire un modèle à la fois, seulement avec un tableau fiable.
+
+## 2026-11-11 (~09h) — Poids et pressions : code prêt sur la branche (depuis fusionné, voir ci-dessus), EN ATTENTE de l'accord de Math pour fusionner
 - Branche `reprise/2026-11-11-poids-pressions` (tête `03b2b86`), NON fusionnée, rien déployé. Fichiers : `main.py`, `.github/workflows/maillons-check.yml`.
 - Fait : colonnes `personnes.poids_kg`, `poids_sac_kg` ; `/api/moi` les renvoie (sac par défaut 2,5) ; `PUT /api/moi/profil` : champ absent = inchangé, vide = effacé, poids 30–250 kg, sac 0–30 kg ; champs « Mon poids (kg) » et « Poids du sac (kg) » dans Mon compte ; sous Fourche et Amortisseur de « Mes réglages vélo », encadré « Conseil de départ » : fourche = tableau Fox 36 (colonne E-Bike+ si le type du vélo est électrique), amortisseur = règle Fox (psi = poids en livres) ; ex. 80 kg + 2,5 kg → 99 psi (6,8 bar) et 182 psi (12,5 bar). Affiché pour le CUBE (vélo n° 1 : Fox 36 Float AWL, Fox Float Rhythm RC) et pour les autres vélos seulement si leur fiche nomme une Fox 36 / Fox Float ; sinon rien. Sans poids : invitation à le renseigner dans Mon compte. Au-dessus ou au-dessous du tableau Fox (54 à 113 kg) : message « hors tableau », pas de chiffre pour la fourche.
 - Tests : CI GitHub de la branche en SUCCÈS (run `42981137362`), avec un test serveur étendu et un nouveau test navigateur ; un premier run avait échoué sur un test, corrigé (un champ absent n'efface plus prénom et nom). Essais locaux avec un faux serveur aussi.
