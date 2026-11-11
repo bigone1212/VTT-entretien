@@ -150,6 +150,13 @@
 ---
 
 
+## 2026-11-11 (~13h30) — SAG en mm : code prêt sur la branche, EN ATTENTE de l'accord de Math pour fusionner
+- Branche `reprise/2026-11-11-sag-mm` (tête `992e47e`), NON fusionnée, rien déployé. Fichiers : `main.py`, `.github/workflows/maillons-check.yml`.
+- Fait (CUBE seulement, débattement 140 mm devant et derrière) : affichage « 20 (≈ 28 mm) » à côté du SAG en % ; en modification, ligne « SAG (mm) » liée au champ « SAG (%) » dans les deux sens ; encadrés de conseil « SAG visé 15 à 20 % (21 à 28 mm) » et « 25 à 30 % (35 à 42 mm) ». Stockage inchangé (%), champs en mm non enregistrés. Autres vélos : % seulement.
+- Tests : CI GitHub de la branche en SUCCÈS (run `43014021493`), avec un nouveau test navigateur (affichage, liaison mm/%, enregistrement sans les champs mm, autre vélo sans mm) ; le test des conseils de pression a continué de passer. Essais locaux avec un faux serveur aussi.
+- Non testé : Render, téléphone. Déploiement Render non vérifié.
+- Étape suivante : Math dit s'il veut fusionner.
+
 ## 2026-11-11 (~13h) — SAG aussi en mm : OBJECTIF et DÉBUT DU CODE (rien sur main hors cette note)
 - Demande de Math (11/11/2026) : le SAG « en mm et en % ». Choix confirmé : % ET mm. Plan retenu : stockage INCHANGÉ (le champ `fourche_sag` / `amorto_sag` reste en %, aucune migration) ; débattement connu seulement pour le CUBE (vélo n° 1 : 140 mm devant, 140 mm derrière, d'après sa fiche) ; encadrés de conseil : « SAG visé 15 à 20 % (21 à 28 mm) » et « 25 à 30 % (35 à 42 mm) » ; en affichage : « 25 (≈ 35 mm) » ; en modification : une ligne « SAG (mm) » liée au champ % dans les deux sens. Autres vélos : % seulement, rien d'inventé.
 - Branche prévue : `reprise/2026-11-11-sag-mm`, fusion seulement avec l'accord explicite de Math. Rien déployé, aucune opération Neon.
