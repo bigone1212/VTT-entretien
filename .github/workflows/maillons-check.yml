@@ -5763,6 +5763,23 @@ jobs:
               assert client.put("/api/moi/photo", headers=MATH, json={"photo": jpeg}).status_code == 200
               assert client.get("/api/moi", headers=MATH).json()["photo"] == jpeg
 
+              # Poids : absents au départ (sac à 2,5 par défaut), enregistrés, arrondis, effaçables ; absent = inchangé.
+              assert moi["poids_kg"] is None and moi["poids_sac_kg"] == 2.5, moi
+              r = client.put("/api/moi/profil", headers=MATH, json={"prenom": "Mathieu", "poids_kg": 82.46, "poids_sac_kg": 3})
+              assert r.status_code == 200 and r.json()["poids_kg"] == 82.5 and r.json()["poids_sac_kg"] == 3.0, r.text
+              moi = client.get("/api/moi", headers=MATH).json()
+              assert moi["poids_kg"] == 82.5 and moi["poids_sac_kg"] == 3.0, moi
+              assert client.put("/api/moi/profil", headers=MATH, json={"prenom": "Mathieu"}).status_code == 200
+              moi = client.get("/api/moi", headers=MATH).json()
+              assert moi["poids_kg"] == 82.5 and moi["poids_sac_kg"] == 3.0, "un champ absent ne doit rien effacer"
+              for mauvais in ({"poids_kg": 10}, {"poids_kg": 400}, {"poids_sac_kg": -1}, {"poids_sac_kg": 99}, {"poids_kg": "beaucoup"}):
+                  assert client.put("/api/moi/profil", headers=MATH, json=mauvais).status_code == 422, mauvais
+              assert client.get("/api/moi", headers=MATH).json()["poids_kg"] == 82.5
+              assert client.put("/api/moi/profil", headers=MATH, json={"poids_kg": None, "poids_sac_kg": None}).status_code == 200
+              moi = client.get("/api/moi", headers=MATH).json()
+              assert moi["poids_kg"] is None and moi["poids_sac_kg"] == 2.5, moi
+              client.put("/api/moi/profil", headers=MATH, json={"poids_kg": 70})
+
               # Une autre personne ne voit ni le profil ni la photo de Math, et change le sien sans toucher à celui de Math.
               nouvelle = client.post("/api/personnes", headers=MATH, json={"nom": "Julie"}).json()
               JULIE = {"x-code-acces": nouvelle["code"]}
@@ -5774,6 +5791,7 @@ jobs:
               assert client.get("/api/moi", headers=JULIE).json()["photo"] is None
               moi = client.get("/api/moi", headers=MATH).json()
               assert moi["prenom"] == "Mathieu" and moi["photo"] == jpeg, moi
+              assert moi["poids_kg"] == 70.0 and julie["poids_kg"] is None, "le poids de Math reste à Math"
 
               # Retirer la photo de Math et vider son prénom.
               assert client.delete("/api/moi/photo", headers=MATH).status_code == 200
@@ -5883,7 +5901,7 @@ jobs:
               # Prénom et nom : envoyés tels quels, le nom complet remplace le nom d'utilisateur dans le titre.
               pg.fill("#profilPrenom", "Julie"); pg.fill("#profilNomFamille", "Martin")
               pg.click("#formProfil button[type=submit]"); pg.wait_for_timeout(500)
-              assert appels[-1] == ("profil", {"prenom": "Julie", "nom_famille": "Martin"}), appels[-1]
+              assert appels[-1] == ("profil", {"prenom": "Julie", "nom_famille": "Martin", "poids_kg": None, "poids_sac_kg": None}), appels[-1]
               assert texte(pg, "#messageProfil") == "Profil enregistré." and texte(pg, "#compteNomComplet") == "Julie Martin"
               assert texte(pg, "#compteIdentite") == "Connecté : Julie"
 
@@ -5919,3 +5937,87 @@ jobs:
           print("OK: en-tête de Mon compte (photo, prénom, nom, e-mail, date, version) dans un vrai navigateur")
           PY
           PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_compte_profil.py"
+      - name: Tester le poids et les conseils de pression (fourche, amortisseur) dans un vrai navigateur
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-pressions-nav-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_pressions.py" <<'PY'
+          import json
+          from playwright.sync_api import sync_playwright
+
+          import main
+
+          html = main.accueil()
+          J="ses_t"
+          moi={"id":1,"nom":"Math","est_admin":False,"prenom":"","nom_famille":"","email":"","cree_le":"2026-10-04T08:00:00Z","photo":None,"poids_kg":None,"poids_sac_kg":2.5,"version":"v"}
+          VELOS=[{"id":1,"nom":"CUBE","type":"vtt_electrique","actif":1,"km_total":0,"km_frac":0,"a_photo":0,"sorties_a_verifier":0,"fiche_composants":None}]
+          appels=[]
+          def api(route, request):
+              u=request.url.split("?")[0].replace("http://localhost","")
+              if u=="/api/moi" and request.method=="GET": return route.fulfill(json=moi)
+              if u=="/api/moi/profil" and request.method=="PUT":
+                  d=json.loads(request.post_data); appels.append(d)
+                  if "poids_kg" in d: moi["poids_kg"]=d["poids_kg"]
+                  if "poids_sac_kg" in d: moi["poids_sac_kg"]=2.5 if d["poids_sac_kg"] is None else d["poids_sac_kg"]
+                  return route.fulfill(json={"statut":"success","prenom":d["prenom"],"nom_famille":d["nom_famille"],"poids_kg":moi["poids_kg"],"poids_sac_kg":moi["poids_sac_kg"]})
+              if u=="/api/velos": return route.fulfill(json=VELOS)
+              if u=="/api/mes-reglages": return route.fulfill(json={"valeurs":{},"maj_le":None})
+              if u=="/api/etat": return route.fulfill(json={"km_total":0,"composants":[]})
+              if u=="/api/reglages": return route.fulfill(json={"terrain_route":1,"terrain_mixte":1.2,"terrain_chemin":1.5,"terrain_sentier":2,"poids_denivele":1})
+              return route.fulfill(json=[])
+          with sync_playwright() as p:
+              b=p.chromium.launch(); ctx=b.new_context(viewport={"width":390,"height":800})
+              ctx.route("**/localhost/api/**", api); ctx.route(lambda u: not u.startswith("http://localhost/"), lambda r: r.abort())
+              ctx.add_init_script("if(!sessionStorage.getItem('__i')){sessionStorage.setItem('__i','1');sessionStorage.setItem('vtt_code','%s');}"%J)
+              pg=ctx.new_page(); err=[]; pg.on("pageerror", lambda e: err.append(str(e)[:200]))
+              pg.route("http://localhost/", lambda r: r.fulfill(body=html, content_type="text/html; charset=utf-8"))
+              pg.goto("http://localhost/#reglages"); pg.wait_for_timeout(1500)
+              conseils=lambda: pg.eval_on_selector_all("#mrContenu .mr-conseil", "els => els.map(e => e.textContent.trim())")
+              c=conseils(); print("sans poids:", c)
+              assert len(c)==2 and all("Renseigne ton poids dans Mon compte" in x for x in c)
+              pg.evaluate("location.hash='#compte'"); pg.wait_for_timeout(400)
+              assert pg.input_value("#profilPoids")=="" and pg.input_value("#profilPoidsSac")=="2,5"
+              for bad,msg in (("abc","entre 30 et 250"),("20","entre 30 et 250")):
+                  pg.fill("#profilPoids",bad); pg.click("#formProfil button[type=submit]"); pg.wait_for_timeout(200)
+                  assert msg in pg.inner_text("#messageProfil"), pg.inner_text("#messageProfil")
+              pg.fill("#profilPoids","80"); pg.fill("#profilPoidsSac","31"); pg.click("#formProfil button[type=submit]"); pg.wait_for_timeout(200)
+              assert "entre 0 et 30" in pg.inner_text("#messageProfil"); assert not appels
+              pg.fill("#profilPoidsSac","2,5"); pg.click("#formProfil button[type=submit]"); pg.wait_for_timeout(500)
+              assert appels[-1]["poids_kg"]==80.0 and appels[-1]["poids_sac_kg"]==2.5, appels[-1]
+              assert pg.inner_text("#messageProfil")=="Profil enregistré."
+              pg.evaluate("location.hash='#reglages'"); pg.wait_for_timeout(500)
+              c=conseils(); print("80 kg + 2,5:", c)
+              assert "99 psi (6,8 bar)" in c[0] and "SAG visé 15 à 20 %" in c[0] and "E-Bike+" in c[0] and "82,5 kg" in c[0]
+              assert "182 psi (12,5 bar)" in c[1] and "SAG visé 25 à 30 %" in c[1]
+              # poids à la virgule, autre tranche : 95 + 2,5 = 97,5 kg = 214,9 lb -> tranche 210 -> E-Bike+ 113
+              pg.evaluate("location.hash='#compte'"); pg.wait_for_timeout(300)
+              pg.fill("#profilPoids","95,0"); pg.click("#formProfil button[type=submit]"); pg.wait_for_timeout(400)
+              pg.evaluate("location.hash='#reglages'"); pg.wait_for_timeout(400)
+              c=conseils(); print("95 kg:", c); assert "113 psi (7,8 bar)" in c[0] and "215 psi (14,8 bar)" in c[1], c
+              # hors tableau (en bas) : 40 + 2,5
+              pg.evaluate("location.hash='#compte'"); pg.wait_for_timeout(300)
+              pg.fill("#profilPoids","40"); pg.click("#formProfil button[type=submit]"); pg.wait_for_timeout(400)
+              pg.evaluate("location.hash='#reglages'"); pg.wait_for_timeout(400)
+              c=conseils(); print("40 kg:", c); assert "hors du tableau Fox" in c[0] and "94 psi" in c[1]
+              # effacer le poids : retour à l'invitation
+              pg.evaluate("location.hash='#compte'"); pg.wait_for_timeout(300)
+              pg.fill("#profilPoids",""); pg.click("#formProfil button[type=submit]"); pg.wait_for_timeout(400)
+              assert appels[-1]["poids_kg"] is None
+              pg.evaluate("location.hash='#reglages'"); pg.wait_for_timeout(400)
+              assert all("Renseigne ton poids" in x for x in conseils())
+              # vélo non Fox : aucun conseil
+              VELOS[0]=dict(VELOS[0], id=5, nom="Gravel", type="gravel", fiche_composants=json.dumps([{"categorie":"fourche","nom":"RockShox Pike"},{"categorie":"amortisseur","nom":"RockShox Deluxe"}]))
+              pg.reload(); pg.wait_for_timeout(1500); pg.evaluate("sessionStorage.setItem('maillons_velo_id','5')"); pg.reload(); pg.wait_for_timeout(1500)
+              pg.evaluate("location.hash='#reglages'"); pg.wait_for_timeout(400)
+              print("RockShox:", conseils()); assert conseils()==[]
+              # Fox 36 / Fox Float dans la fiche d'un autre vélo (non électrique) : colonne standard
+              moi["poids_kg"]=80.0
+              VELOS[0]=dict(VELOS[0], fiche_composants=json.dumps([{"categorie":"fourche","nom":"Fox 36 Rhythm"},{"categorie":"amortisseur","nom":"Fox Float DPS"}]))
+              pg.reload(); pg.wait_for_timeout(1500); pg.evaluate("location.hash='#reglages'"); pg.wait_for_timeout(500)
+              c=conseils(); print("Fox autre vélo:", c); assert "89 psi" in c[0] and "standard" in c[0] and "182 psi" in c[1], c
+              print("erreurs JS:", err); assert not err
+              b.close()
+          print("OK: poids dans Mon compte et conseils de pression de la fourche et de l'amortisseur dans un vrai navigateur")
+          PY
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_pressions.py"

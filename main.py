@@ -842,6 +842,9 @@ def init_db():
     ajouter_colonne(cursor, "personnes", "prenom", "TEXT")
     ajouter_colonne(cursor, "personnes", "nom_famille", "TEXT")
     ajouter_colonne(cursor, "personnes", "photo", "TEXT")
+    # Poids de la personne et du sac (kg) : servent aux pressions conseillées de la suspension.
+    ajouter_colonne(cursor, "personnes", "poids_kg", "REAL")
+    ajouter_colonne(cursor, "personnes", "poids_sac_kg", "REAL")
 
     # Sessions : un jeton aléatoire remis à la connexion ; seule son empreinte est gardée.
     cursor.execute("""
@@ -1669,6 +1672,15 @@ def accueil():
             }
             #formProfil { margin-bottom: 12px; }
             #messageProfil { margin: 8px 0 0; }
+            .mr-conseil {
+                margin: 8px 0 2px;
+                padding: 8px 10px;
+                border-radius: 10px;
+                background: rgba(var(--ac-rgb),0.10);
+                font-size: 0.85rem;
+            }
+            .mr-conseil b { display: block; }
+            .mr-conseil span { display: block; margin-top: 2px; color: var(--text-muted); }
             .compte-version { margin: 14px 0 0; text-align: center; font-size: 0.75rem; }
 
             .km-pill {
@@ -4851,6 +4863,11 @@ def accueil():
                 <input id="profilPrenom" type="text" autocomplete="given-name" maxlength="60" placeholder="Facultatif">
                 <label for="profilNomFamille">Nom</label>
                 <input id="profilNomFamille" type="text" autocomplete="family-name" maxlength="60" placeholder="Facultatif">
+                <label for="profilPoids">Mon poids (kg)</label>
+                <input id="profilPoids" type="text" inputmode="decimal" maxlength="6" placeholder="Ex. : 80">
+                <label for="profilPoidsSac">Poids du sac (kg)</label>
+                <input id="profilPoidsSac" type="text" inputmode="decimal" maxlength="6" placeholder="2,5">
+                <p class="form-help">Ces deux poids servent à calculer les pressions conseillées de ta fourche et de ton amortisseur. Toi seul les vois.</p>
                 <button type="submit" class="btn-primary" style="width:100%; margin-top:8px;">Enregistrer mon profil</button>
                 <p class="form-help" id="messageProfil" aria-live="polite"></p>
             </form>
@@ -5502,6 +5519,7 @@ def accueil():
             });
 
             let veloActifId = Number(sessionStorage.getItem('maillons_velo_id')) || 1;
+            let profilMoi = null;
             let velosDisponibles = [];
             const fetchOriginal = window.fetch.bind(window);
 
@@ -7427,6 +7445,13 @@ def accueil():
             });
 
             // ----- Mon compte : photo, prénom, nom, e-mail, version -----
+            // Lit un poids écrit à la française ou à l'anglaise : vide = null, illisible = NaN.
+            function lireNombreKg(texte) {
+                const t = String(texte || '').trim().replace(',', '.');
+                if (t === '') return null;
+                return /^[0-9]+([.][0-9]+)?$/.test(t) ? Number(t) : NaN;
+            }
+
             function dateLongue(texte) {
                 const d = new Date(texte);
                 if (!texte || isNaN(d.getTime())) return '';
@@ -7471,7 +7496,13 @@ def accueil():
                 const nomFamille = document.getElementById('profilNomFamille');
                 if (document.activeElement !== prenom) prenom.value = m.prenom || '';
                 if (document.activeElement !== nomFamille) nomFamille.value = m.nom_famille || '';
+                const poids = document.getElementById('profilPoids');
+                const poidsSac = document.getElementById('profilPoidsSac');
+                if (document.activeElement !== poids) poids.value = typeof m.poids_kg === 'number' ? String(m.poids_kg).replace('.', ',') : '';
+                if (document.activeElement !== poidsSac) poidsSac.value = typeof m.poids_sac_kg === 'number' ? String(m.poids_sac_kg).replace('.', ',') : '';
                 afficherPhotoCompte(m.photo || '');
+                profilMoi = moi || null;
+                rafraichirConseilsSuspension();
             }
 
             // Réduit la photo de profil : carré centré de 256 px, en JPEG.
@@ -7553,13 +7584,25 @@ def accueil():
                 event.preventDefault();
                 const message = document.getElementById('messageProfil');
                 message.textContent = '';
+                const poidsLu = lireNombreKg(document.getElementById('profilPoids').value);
+                const poidsSacLu = lireNombreKg(document.getElementById('profilPoidsSac').value);
+                if (Number.isNaN(poidsLu) || (poidsLu !== null && (poidsLu < 30 || poidsLu > 250))) {
+                    message.textContent = 'Ton poids doit être un nombre entre 30 et 250 kg.';
+                    return;
+                }
+                if (Number.isNaN(poidsSacLu) || (poidsSacLu !== null && (poidsSacLu < 0 || poidsSacLu > 30))) {
+                    message.textContent = 'Le poids du sac doit être un nombre entre 0 et 30 kg.';
+                    return;
+                }
                 try {
                     const res = await fetch('/api/moi/profil', {
                         method: 'PUT',
                         headers: getHeaders(),
                         body: JSON.stringify({
                             prenom: document.getElementById('profilPrenom').value,
-                            nom_famille: document.getElementById('profilNomFamille').value
+                            nom_famille: document.getElementById('profilNomFamille').value,
+                            poids_kg: poidsLu,
+                            poids_sac_kg: poidsSacLu
                         })
                     });
                     let data = null;
@@ -7570,6 +7613,12 @@ def accueil():
                     }
                     const nomComplet = [data.prenom, data.nom_famille].filter(Boolean).join(' ');
                     document.getElementById('compteNomComplet').textContent = nomComplet || (document.getElementById('compteIdentite').textContent || '').replace('Connecté : ', '');
+                    if (profilMoi) {
+                        profilMoi.poids_kg = typeof data.poids_kg === 'number' ? data.poids_kg : null;
+                        profilMoi.poids_sac_kg = typeof data.poids_sac_kg === 'number' ? data.poids_sac_kg : 2.5;
+                        document.getElementById('profilPoidsSac').value = String(profilMoi.poids_sac_kg).replace('.', ',');
+                    }
+                    rafraichirConseilsSuspension();
                     message.textContent = 'Profil enregistré.';
                 } catch (e) {
                     message.textContent = 'Erreur de connexion.';
@@ -7891,15 +7940,75 @@ def accueil():
                 }
             });
 
+            // Tableau Fox 36 (manuel 2026, « Suggested Starting Points ») :
+            // [début de tranche en livres (tranches de 10 lb), psi standard, psi E-Bike+].
+            const FOX36_PSI = [
+                [120, 66, 71], [130, 70, 76], [140, 74, 81], [150, 78, 85], [160, 82, 90], [170, 86, 95], [180, 89, 99],
+                [190, 94, 104], [200, 99, 109], [210, 105, 113], [220, 109, 115], [230, 113, 117], [240, 117, 120]
+            ];
+
+            function nomComposantVelo(velo, categorie) {
+                if (!velo) return '';
+                // Le CUBE (vélo n° 1) a une fiche fixe : Fox 36 Float AWL devant, Fox Float Rhythm RC derrière.
+                if (Number(velo.id) === 1) return categorie === 'fourche' ? 'Fox 36 Float AWL' : 'Fox Float Rhythm RC';
+                let liste = [];
+                try { liste = JSON.parse(velo.fiche_composants || '[]'); } catch (e) { liste = []; }
+                if (!Array.isArray(liste)) return '';
+                const c = liste.find(x => x && x.categorie === categorie && x.nom);
+                return c ? String(c.nom) : '';
+            }
+
+            // Conseil de pression de départ pour la fourche ou l'amortisseur du vélo affiché.
+            // Seulement pour les modèles dont on connaît un tableau ou une règle Fox ; sinon rien.
+            function conseilSuspension(role) {
+                const velo = velosDisponibles.find(v => Number(v.id) === Number(veloActifId)) || null;
+                const nom = nomComposantVelo(velo, role);
+                const fox = /fox/i.test(nom);
+                const connu = role === 'fourche' ? (fox && /36/.test(nom)) : (fox && /float/i.test(nom));
+                if (!connu) return null;
+                const poids = profilMoi && typeof profilMoi.poids_kg === 'number' ? profilMoi.poids_kg : null;
+                if (poids === null) {
+                    return { titre: 'Conseil de pression', aide: 'Renseigne ton poids dans Mon compte pour avoir un conseil de départ.' };
+                }
+                const sac = profilMoi && typeof profilMoi.poids_sac_kg === 'number' ? profilMoi.poids_sac_kg : 2.5;
+                const total = poids + sac;
+                const livres = total * 2.20462;
+                const enBar = psi => (psi * 0.0689476).toFixed(1).replace('.', ',');
+                const poidsTexte = total.toFixed(1).replace('.', ',') + ' kg (toi + sac)';
+                if (role === 'fourche') {
+                    const rang = Math.floor((livres - 120) / 10);
+                    if (livres < 120 || rang >= FOX36_PSI.length) {
+                        return { titre: 'Conseil de pression', aide: 'Avec ' + poidsTexte + ', tu es hors du tableau Fox (54 à 113 kg) : pas de conseil.' };
+                    }
+                    const electrique = String((velo && velo.type) || '').indexOf('electrique') >= 0;
+                    const psi = FOX36_PSI[rang][electrique ? 2 : 1];
+                    return {
+                        titre: 'Conseil de départ : ' + psi + ' psi (' + enBar(psi) + ' bar) · SAG visé 15 à 20 %',
+                        aide: poidsTexte + ' · tableau Fox 36 ' + (electrique ? 'E-Bike+' : 'standard') + '. Ajuste de 10 psi au plus pour atteindre ton SAG.'
+                    };
+                }
+                const psiAmorto = Math.round(livres);
+                return {
+                    titre: 'Conseil de départ : ' + psiAmorto + ' psi (' + enBar(psiAmorto) + ' bar) · SAG visé 25 à 30 %',
+                    aide: poidsTexte + ' · règle générale Fox (psi = poids en livres). Le cadre peut demander une autre pression : ajuste avec ton SAG.'
+                };
+            }
+
+            function rafraichirConseilsSuspension() {
+                try {
+                    if (!mrEdition) afficherReglagesVelo();
+                } catch (e) { /* la page des réglages n'est pas encore prête */ }
+            }
+
             const MR_GROUPES = [
                 { titre: '🚲 Mon vélo', champs: [
                     ['taille_cadre', 'Taille du cadre'] ] },
                 { titre: '🛞 Pneus', champs: [
                     ['pneu_av', 'Avant (bar)'], ['pneu_ar', 'Arrière (bar)'] ] },
-                { titre: '🔱 Fourche', champs: [
+                { titre: '🔱 Fourche', conseil: 'fourche', champs: [
                     ['fourche_psi', 'Pression (psi)'], ['fourche_sag', 'SAG (%)'],
                     ['fourche_detente', 'Détente (clics)'], ['fourche_bagues', 'Bagues de volume'] ] },
-                { titre: '🌀 Amortisseur', champs: [
+                { titre: '🌀 Amortisseur', conseil: 'amortisseur', champs: [
                     ['amorto_psi', 'Pression (psi)'], ['amorto_sag', 'SAG (%)'],
                     ['amorto_detente', 'Détente (clics)'], ['amorto_bagues', 'Bagues de volume'] ] },
                 { titre: '📝 Remarque', champs: [
@@ -8166,6 +8275,18 @@ def accueil():
                         }
                         bloc.appendChild(ligne);
                     });
+                    const conseil = g.conseil ? conseilSuspension(g.conseil) : null;
+                    if (conseil) {
+                        const boite = document.createElement('div');
+                        boite.className = 'mr-conseil';
+                        const titre = document.createElement('b');
+                        titre.textContent = conseil.titre;
+                        boite.appendChild(titre);
+                        const aide = document.createElement('span');
+                        aide.textContent = conseil.aide;
+                        boite.appendChild(aide);
+                        bloc.appendChild(boite);
+                    }
                     zone.appendChild(bloc);
                 });
 
@@ -15721,7 +15842,7 @@ def qui_suis_je(x_code_acces: Optional[str] = Header(default=None)):
     cursor = conn.cursor()
     try:
         cursor.execute(
-            "SELECT nom, est_admin, prenom, nom_famille, email, cree_le, photo FROM personnes WHERE id = ?",
+            "SELECT nom, est_admin, prenom, nom_famille, email, cree_le, photo, poids_kg, poids_sac_kg FROM personnes WHERE id = ?",
             (personne_id,)
         )
         ligne = cursor.fetchone()
@@ -15730,11 +15851,16 @@ def qui_suis_je(x_code_acces: Optional[str] = Header(default=None)):
             "prenom": ligne[2] or "", "nom_famille": ligne[3] or "",
             "email": ligne[4] or "", "cree_le": ligne[5] or "",
             "photo": ligne[6] or None,
+            "poids_kg": ligne[7],
+            "poids_sac_kg": POIDS_SAC_DEFAUT_KG if ligne[8] is None else ligne[8],
             "version": version_appli(),
         }
     finally:
         conn.close()
 
+
+# Poids du sac par défaut (kg), tant que la personne n'a pas donné le sien.
+POIDS_SAC_DEFAUT_KG = 2.5
 
 # Date de la dernière évolution visible de l'appli (à mettre à jour avec les changements).
 VERSION_APPLI = "2026-11-10"
@@ -15749,6 +15875,9 @@ def version_appli():
 class ProfilRequest(BaseModel):
     prenom: str = Field(default="", max_length=60)
     nom_famille: str = Field(default="", max_length=60)
+    # Poids : absent = inchangé ; null = effacé.
+    poids_kg: Optional[float] = Field(default=None, ge=30, le=250)
+    poids_sac_kg: Optional[float] = Field(default=None, ge=0, le=30)
 
 
 class PhotoProfilRequest(BaseModel):
@@ -15757,10 +15886,13 @@ class PhotoProfilRequest(BaseModel):
 
 @app.put("/api/moi/profil")
 def enregistrer_profil(data: ProfilRequest, x_code_acces: Optional[str] = Header(default=None)):
-    """Prénom et nom de la personne connectée (facultatifs, peuvent être vidés)."""
+    """Prénom, nom, poids et poids du sac de la personne connectée (tout est facultatif)."""
     personne_id = verifier_auth(x_code_acces)
     prenom = " ".join(data.prenom.split())
     nom_famille = " ".join(data.nom_famille.split())
+    envoyes = getattr(data, "model_fields_set", None)
+    if envoyes is None:
+        envoyes = data.__fields_set__
     conn = db.connect()
     cursor = conn.cursor()
     try:
@@ -15768,8 +15900,15 @@ def enregistrer_profil(data: ProfilRequest, x_code_acces: Optional[str] = Header
             "UPDATE personnes SET prenom = ?, nom_famille = ? WHERE id = ?",
             (prenom or None, nom_famille or None, personne_id)
         )
+        reponse = {"statut": "success", "prenom": prenom, "nom_famille": nom_famille}
+        for champ in ("poids_kg", "poids_sac_kg"):
+            if champ in envoyes:
+                valeur = getattr(data, champ)
+                valeur = None if valeur is None else round(float(valeur), 1)
+                cursor.execute("UPDATE personnes SET " + champ + " = ? WHERE id = ?", (valeur, personne_id))
+                reponse[champ] = POIDS_SAC_DEFAUT_KG if (champ == "poids_sac_kg" and valeur is None) else valeur
         conn.commit()
-        return {"statut": "success", "prenom": prenom, "nom_famille": nom_famille}
+        return reponse
     except Exception:
         conn.rollback()
         raise
