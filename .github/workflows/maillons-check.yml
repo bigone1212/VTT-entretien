@@ -6593,3 +6593,50 @@ jobs:
           print("OK: boutons et champs de la fenêtre d'ajout de vélo au style de l'application (sombre et clair)")
           PY
           PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_design_velo.py"
+      - name: Tester le style du bouton « Modifier cette fiche » en bas de la fiche technique (sombre et clair)
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-modifier-fiche-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_modifier_fiche.py" <<'PY'
+          import json
+          from urllib.parse import urlparse
+          from playwright.sync_api import sync_playwright
+          import main
+
+          html = main.accueil()
+          V = [{"id": 1, "nom": "Mon CUBE", "type": "vtt_electrique", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0}]
+
+
+          def api(r):
+              u = urlparse(r.request.url).path
+              c = V if u == "/api/velos" else ({"km_total": 0, "composants": []} if u == "/api/etat" else ({"valeurs": {}, "maj_le": None} if u == "/api/mes-reglages" else []))
+              r.fulfill(status=200, content_type="application/json", body=json.dumps(c))
+
+
+          with sync_playwright() as p:
+              nav = p.chromium.launch()
+              for theme in ("dark", "light"):
+                  ctx = nav.new_context(viewport={"width": 390, "height": 900}, color_scheme=theme)
+                  ctx.route("**/localhost/api/**", api)
+                  ctx.route(lambda u: not u.startswith("http://localhost/"), lambda r: r.abort())
+                  ctx.add_init_script("sessionStorage.setItem('vtt_code','t');")
+                  pg = ctx.new_page()
+                  pg.route("http://localhost/", lambda r: r.fulfill(status=200, content_type="text/html", body=html))
+                  pg.goto("http://localhost/#reglages")
+                  pg.wait_for_timeout(1200)
+                  pg.evaluate("document.getElementById('page-reglages').style.display = 'block'; document.querySelectorAll('details.fiche-technique-velo').forEach(d => { d.style.display = ''; d.open = true; })")
+                  pg.wait_for_timeout(300)
+                  for id in ("btnModifierFicheCube", "btnModifierFicheVelo"):
+                      r = pg.evaluate("""(id) => { const e = document.getElementById(id), s = getComputedStyle(e), b = e.getBoundingClientRect();
+                          return { h: Math.round(b.height), w: Math.round(b.width), radius: parseFloat(s.borderTopLeftRadius), bord: s.borderTopColor, couleur: s.color, texte: e.textContent.trim() }; }""", id)
+                      print(theme, id, r)
+                      assert r["radius"] >= 20 and r["texte"] == "Modifier cette fiche", r
+                      if id == "btnModifierFicheCube":
+                          assert r["h"] >= 44 and r["w"] > 250, r
+                      assert r["bord"] == r["couleur"], r
+                  ctx.close()
+              nav.close()
+          print("OK: bouton « Modifier cette fiche » au style « Ajouter une photo » (contour turquoise, pilule)")
+          PY
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_modifier_fiche.py"
