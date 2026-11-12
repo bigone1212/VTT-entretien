@@ -6286,7 +6286,17 @@ jobs:
               assert conseils() == [], conseils()
               VELOS[0] = dict(VELOS[0], suspension_infos=json.dumps({"fourche": {"modele": "X", "debattement_mm": 150}, "amortisseur": "n'importe quoi"}))
               recharger()
-              assert conseils() == [], conseils()
+              assert conseils() == ["Pas de pression trouvée · Débattement : 150 mm"], conseils()
+              assert liens() == [], liens()
+              # Cas réel (réponse de ChatGPT pour le Trek Powerfly 7) : débattement, SAG et source, mais aucun tableau de pressions.
+              VELOS[0] = dict(VELOS[0], fiche_composants=json.dumps([{"categorie": "fourche", "nom": "RockShox 35 Gold RL"}]),
+                              suspension_infos=json.dumps({"fourche": {"modele": "RockShox 35 Gold RL DebonAir", "debattement_mm": 120, "sag_min": 10, "sag_max": 20,
+                                                                       "source": "https://www.sram.com/fr/service/models/fs-35g-rl-a2"}, "amortisseur": None}))
+              recharger()
+              assert conseils() == ["Pas de pression trouvée · SAG visé 10 à 20 % (12 à 24 mm)"], conseils()
+              assert "n’a pas trouvé de tableau de pressions pour RockShox 35 Gold RL DebonAir" in aides()[0], aides()
+              assert liens() == ["https://www.sram.com/fr/service/models/fs-35g-rl-a2|Voir la source"], liens()
+              assert "SAG (%)20 (≈ 24 mm)" in lignes(), lignes()
               VELOS[0] = dict(VELOS[0], suspension_infos="pas du json")
               recharger()
               assert conseils() == [], conseils()
@@ -6301,7 +6311,7 @@ jobs:
               # 7) La demande à l'IA réclame aussi les réglages de suspension, sans inventer.
               demande = pg.evaluate("texteDemandeIA('Trek Fuel EXe 9.7 2025')")
               for morceau in ("Réponds UNIQUEMENT avec un bloc JSON", "reglages_suspension", "debattement_mm", "sag_min", "tableau", "formule", "psi_par_kg",
-                              "Ne devine jamais une pression", "au moins 3 lignes", "CE vélo"):
+                              "Ne devine jamais une pression", "au moins 3 lignes", "CE vélo", "Les pressions sont IMPORTANTES", "de 60 à 110 kg", "mets null pour ce composant"):
                   assert morceau in demande, morceau
               assert '"reglages_suspension"' in demande and '"formule"' in demande and '"tableau"' in demande
 
