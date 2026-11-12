@@ -150,6 +150,13 @@
 ---
 
 
+## 2026-11-12 (22h35) — Photos : tout par le menu des trois petits points, PR #54 FUSIONNÉE
+
+- Retirés de la page : boutons de l'image vide (`btnAjouterPhotoVelo`, `btnPhotoVeloLien`) et « + Ajouter une photo » de la galerie (reste le message « 6 photos maximum »).
+- Menu (8 entrées) : « Ajouter une photo » / « Ajouter des photos » (galerie ; la 1re devient la principale), « Changer la photo principale » (grisé sans photo), « Photo depuis un lien… ». Nouvelle fonction `choisirPhotosGalerie`.
+- Testé : anciens tests adaptés (envois de photo par le menu, 8 entrées), test des doublons, contrôle GitHub vert (run 43265412763).
+- NON vérifié : Render, vrai téléphone.
+
 ## 2026-11-12 (17h45) — Doublons fiche du vélo / menu trois petits points, PR #53 FUSIONNÉE
 
 - Retirés de la fiche : boutons « Modifier cette fiche » (`btnModifierFicheCube`, `btnModifierFicheVelo`) et « Depuis un lien » de la galerie (le style de la PR #52 pour ce bouton disparaît donc). Gardés : « + Ajouter une photo » de la galerie, et les 2 boutons de l'espace « Pas encore de photo ».
