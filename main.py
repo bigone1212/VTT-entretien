@@ -4291,7 +4291,11 @@ def accueil():
                 color: var(--text-muted);
                 font-size: 0.72rem;
                 line-height: 1.25;
+                overflow-wrap: anywhere;
+                word-break: break-word;
             }
+
+            .ftv-libelle a { overflow-wrap: anywhere; word-break: break-all; }
 
             .ftv-valeur {
                 display: block;
