@@ -150,6 +150,12 @@
 ---
 
 
+## 2026-11-12 (16h50) — Bouton « Modifier cette fiche » au style « Ajouter une photo », PR #52 FUSIONNÉE
+
+- Apparence seulement (CSS) : `#btnModifierFicheCube` et `#btnModifierFicheVelo` en pilule à contour turquoise (comme `.photo-velo-bouton`), 44 px de haut.
+- Testé : capture + test navigateur sombre/clair (bouton du CUBE mesuré ; celui des autres vélos non affiché dans le test, style seul vérifié), contrôle GitHub vert (run 43247976277).
+- NON vérifié : Render, vrai téléphone.
+
 ## 2026-11-12 (11h50) — Design de la fenêtre « Ajouter un vélo », PR #51 FUSIONNÉE
 
 - Apparence seulement (CSS `dialog.fenetre-velo …`) : boutons en pilule avec dégradé turquoise (Rechercher, Envoyer à mon IA, Créer), « Remplir la fiche » en contour, champs au fond uniforme (autofill neutralisé), bloc « Chercher avec mon IA » en encadré, libellés plus nets. Aucun changement de fonctionnement.
