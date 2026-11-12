@@ -2583,6 +2583,9 @@ def accueil():
             .hist-entete { position: relative; display: flex; align-items: center; min-height: 44px; padding-right: 84px; }
             .hist-entete h2 { margin: 0; }
             .photo-velo-bouton { border: 1px solid var(--accent); background: var(--card-bg); color: var(--accent); font-weight: 700; padding: 8px 16px; border-radius: 999px; cursor: pointer; font-size: 14px; }
+            #btnModifierFicheCube, #btnModifierFicheVelo { display: flex; align-items: center; justify-content: center; min-height: 44px; border: 1px solid var(--accent); background: var(--card-bg); color: var(--accent); font-weight: 700; font-size: 14px; padding: 8px 16px; border-radius: 999px; cursor: pointer; box-sizing: border-box; transition: background 0.15s, transform 0.15s; }
+            #btnModifierFicheCube:hover, #btnModifierFicheVelo:hover { background: rgba(var(--ac2-rgb), 0.1); }
+            #btnModifierFicheCube:active, #btnModifierFicheVelo:active { transform: translateY(1px); }
             #blocAjouterVelo { position: relative; }
             #blocAjouterVelo > .mr-titre { padding-right: 44px; min-height: 36px; }
             #blocAjouterVelo .menu-sortie-btn { top: 8px; right: 8px; }
