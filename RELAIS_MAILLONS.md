@@ -150,6 +150,14 @@
 ---
 
 
+## 2026-11-12 (10h05) — Bouton « Envoyer à mon IA » (copie + partage), PR #50 FUSIONNÉE
+
+- `copierDemandeIA` copie la demande ET ouvre `navigator.share` ; repli : copie seule (ordinateur, partage annulé), texte mis dans la zone de réponse si la copie échoue. Textes des 3 étapes réécrits. Id du bouton inchangé (`boutonCopierDemandeIA`).
+- Testé : navigateur avec faux partage (4 cas), contrôle GitHub vert (run 43186591482).
+- NON vérifié : Render, vrai menu de partage d'un téléphone.
+- Étape 2 prévue (pas commencée) : refonte du DESIGN de l'onglet « Mon vélo » sans toucher au fonctionnement (règle 4).
+- À faire par Math : attendre Render, rouvrir l'appli, tester le bouton sur le téléphone.
+
 ## 2026-11-12 (09h20) — Fiche technique : adresses qui dépassaient sur téléphone, PR #49 FUSIONNÉE
 
 - Correction d'apparence seulement (CSS) : `.ftv-libelle` et ses liens passent à la ligne (overflow-wrap / word-break).
