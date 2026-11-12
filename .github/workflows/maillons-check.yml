@@ -6465,3 +6465,75 @@ jobs:
           print("OK: les adresses de la fiche technique ne dépassent plus de leur case sur téléphone")
           PY
           PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_debord.py"
+      - name: Tester le bouton « Envoyer à mon IA » (copie + fenêtre de partage) dans un vrai navigateur
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-partage-ia-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_partage_ia.py" <<'PY'
+          import json
+          from urllib.parse import urlparse
+          from playwright.sync_api import sync_playwright
+          import main
+
+          html = main.accueil()
+          V = [{"id": 1, "nom": "Mon CUBE", "type": "vtt_electrique", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0}]
+          MOI = {"id": 1, "nom": "Math", "est_admin": False, "prenom": "", "nom_famille": "", "email": "", "cree_le": "2026-10-04T08:00:00Z",
+                 "photo": None, "poids_kg": 80.0, "poids_sac_kg": 2.5, "version": "v"}
+          erreurs = []
+
+
+          def api(r):
+              u = urlparse(r.request.url)
+              corps = V if u.path == "/api/velos" else ({"km_total": 0, "composants": []} if u.path == "/api/etat" else (
+                  {"valeurs": {}, "maj_le": None} if u.path == "/api/mes-reglages" else (MOI if u.path == "/api/moi" else [])))
+              r.fulfill(status=200, content_type="application/json", body=json.dumps(corps))
+
+
+          def essai(nav, partage_js, copie_js):
+              ctx = nav.new_context(viewport={"width": 390, "height": 900}, permissions=[])
+              ctx.route("**/localhost/api/**", api)
+              ctx.route(lambda u: not u.startswith("http://localhost/"), lambda r: r.abort())
+              ctx.add_init_script("sessionStorage.setItem('vtt_code','t'); window.__copie = null; window.__partage = null; " + copie_js + partage_js)
+              page = ctx.new_page()
+              page.on("pageerror", lambda e: erreurs.append(str(e)[:200]))
+              page.route("http://localhost/", lambda r: r.fulfill(status=200, content_type="text/html", body=html))
+              page.goto("http://localhost/")
+              page.wait_for_timeout(1200)
+              page.evaluate("document.getElementById('veloRechercheFiche').value = 'Trek Powerfly 7 2022'; document.getElementById('boutonCopierDemandeIA').click()")
+              page.wait_for_timeout(500)
+              res = {"copie": page.evaluate("window.__copie"), "partage": page.evaluate("window.__partage"),
+                     "message": page.eval_on_selector("#messageIA", "e => e.textContent.trim()"),
+                     "bouton": page.eval_on_selector("#boutonCopierDemandeIA", "e => e.textContent.trim()")}
+              ctx.close()
+              return res
+
+
+          COPIE_OK = "Object.defineProperty(navigator, 'clipboard', {value: {writeText: async t => { window.__copie = t; }}, configurable: true});"
+          with sync_playwright() as p:
+              nav = p.chromium.launch()
+              # 1) Partage disponible : copie + fenêtre de partage avec le même texte.
+              r = essai(nav, "navigator.share = async d => { window.__partage = d; };", COPIE_OK)
+              print("1)", r["message"])
+              assert r["bouton"] == "Envoyer à mon IA", r
+              assert r["copie"] and "Trek Powerfly 7 2022" in r["copie"] and "reglages_suspension" in r["copie"], r
+              assert r["partage"] and r["partage"]["text"] == r["copie"] and r["partage"]["title"], r
+              assert "copiée et partagée" in r["message"], r
+              # 2) Partage annulé par la personne : le texte reste copié.
+              r = essai(nav, "navigator.share = async d => { const e = new Error('annulé'); e.name = 'AbortError'; throw e; };", COPIE_OK)
+              print("2)", r["message"])
+              assert r["copie"] and "partage annulé" in r["message"], r
+              # 3) Pas de partage (ordinateur) : copie seule.
+              r = essai(nav, "Object.defineProperty(navigator, 'share', {value: undefined, configurable: true});", COPIE_OK)
+              print("3)", r["message"])
+              assert r["copie"] and r["partage"] is None and "Demande copiée. Colle-la maintenant" in r["message"], r
+              # 4) Partage possible mais copie impossible : le partage a lieu quand même, et la demande est mise de côté dans la zone de réponse.
+              r = essai(nav, "navigator.share = async d => { window.__partage = d; };",
+                        "Object.defineProperty(navigator, 'clipboard', {value: {writeText: async t => { throw new Error('refus'); }}, configurable: true}); document.execCommand = () => false;")
+              print("4)", r["message"])
+              assert r["partage"] and "La copie automatique a échoué" in r["message"], r
+              nav.close()
+          assert not erreurs, erreurs
+          print("OK: bouton « Envoyer à mon IA » : copie + fenêtre de partage, avec repli sans partage")
+          PY
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_partage_ia.py"
