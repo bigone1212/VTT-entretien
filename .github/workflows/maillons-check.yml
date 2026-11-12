@@ -3429,13 +3429,13 @@ jobs:
               page.click("#veloMenuZone button[aria-label='Actions du vélo']")
               items = page.eval_on_selector_all("#veloMenuZone [role=menuitem]", "os => os.map(o => [o.textContent.trim(), o.disabled])")
               print(items)
-              assert ["Changer la photo", False] in items and ["Supprimer la photo", False] in items, items
+              assert ["Changer la photo principale", False] in items and ["Supprimer la photo", False] in items, items
               page.click("#veloMenuZone [role=menuitem]:has-text('Supprimer la photo')"); page.wait_for_timeout(1000)
               assert dialogues and "Gravel test" in dialogues[0] and base["photo"] is None
               assert vis("#photoVeloACompleter") and not vis(".bike-img")
               page.click("#veloMenuZone button[aria-label='Actions du vélo']")
               items = page.eval_on_selector_all("#veloMenuZone [role=menuitem]", "os => os.map(o => [o.textContent.trim(), o.disabled])")
-              assert ["Ajouter une photo", False] in items and ["Supprimer la photo", True] in items, items
+              assert ["Ajouter la photo principale", False] in items and ["Supprimer la photo", True] in items, items
               # Le CUBE garde sa photo d'origine
               page.keyboard.press("Escape")
               page.select_option("#selectVelo", "1"); page.wait_for_timeout(800)
@@ -3850,7 +3850,7 @@ jobs:
               auto = json.loads(page.locator("#nouveauVeloFicheComposants").input_value())
               assert [x["categorie"] for x in auto] == ["fourche"], auto
               page.keyboard.press("Escape"); page.wait_for_timeout(200)
-              page.click("#btnModifierFicheVelo"); page.wait_for_timeout(300)
+              page.evaluate("modifierFicheVelo()"); page.wait_for_timeout(300)
               # L'édition recharge la nomenclature déjà enregistrée du vélo,
               # pas la sélection encore non enregistrée dans le formulaire.
               assert json.loads(page.locator("#nouveauVeloFicheComposants").input_value()) == json.loads(V[1]["fiche_composants"])
@@ -3864,8 +3864,8 @@ jobs:
               assert "Aucun composant renseigné" in txt("#ficheAutreEquipement"), txt("#ficheAutreEquipement")
               assert page.locator("#ficheAutreEquipement .ftv-item").count() == 0
               assert txt("#ficheAutreMarque") == "Non renseignée" and txt("#ficheAutreNom") == "Route simple"
-              # Le bouton ouvre toujours le formulaire de modification (comportement inchangé)
-              page.click("#btnModifierFicheVelo"); page.wait_for_timeout(500)
+              # La modification de la fiche (menu des trois petits points) ouvre toujours le formulaire
+              page.evaluate("modifierFicheVelo()"); page.wait_for_timeout(500)
               assert txt("#titreFormVelo") == "Modifier la fiche du vélo" and page.eval_on_selector("#fenetreVelo", "e => e.open")
               page.keyboard.press("Escape"); page.wait_for_timeout(200)
               assert txt("#titreFormVelo") == "Ajouter un vélo"
@@ -4907,8 +4907,8 @@ jobs:
               pg.fill("#nouveauVeloNom", "Mon CUBE Stereo"); pg.click("#boutonCreerVelo"); pg.wait_for_timeout(700)
               assert len(puts) == 1 and puts[0]["nom"] == "Mon CUBE Stereo", puts
               assert not pg.eval_on_selector("#fenetreVelo", "e => e.open")
-              pg.evaluate("document.getElementById('ficheTechniqueCube').open = true"); assert pg.is_visible("#btnModifierFicheCube")
-              pg.click("#btnModifierFicheCube"); pg.wait_for_timeout(400)
+              pg.evaluate("document.getElementById('ficheTechniqueCube').open = true"); assert pg.locator("#btnModifierFicheCube, #btnModifierFicheVelo").count() == 0
+              pg.click("#listeMesVelos .velo-ligne:nth-child(1) .velo-ligne-tete .menu-sortie-btn"); pg.click("[role=menuitem]:has-text('Modifier la fiche')"); pg.wait_for_timeout(400)
               assert pg.eval_on_selector("#fenetreVelo", "e => e.open") and pg.input_value("#nouveauVeloNom") == "Mon CUBE"
               pg.keyboard.press("Escape")
               # Menu du Gravel (pas affiché) : « Modifier la fiche » le rend actif et ouvre la fenêtre
@@ -6593,12 +6593,12 @@ jobs:
           print("OK: boutons et champs de la fenêtre d'ajout de vélo au style de l'application (sombre et clair)")
           PY
           PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_design_velo.py"
-      - name: Tester le style du bouton « Modifier cette fiche » en bas de la fiche technique (sombre et clair)
+      - name: Tester qu'il n'y a plus de doublons entre la fiche du vélo et le menu des trois petits points
         env:
-          SQLITE_PATH: ${{ runner.temp }}/maillons-modifier-fiche-test.db
+          SQLITE_PATH: ${{ runner.temp }}/maillons-doublons-test.db
           CODE_ACCES: test
         run: |
-          cat > "$RUNNER_TEMP/test_modifier_fiche.py" <<'PY'
+          cat > "$RUNNER_TEMP/test_doublons.py" <<'PY'
           import json
           from urllib.parse import urlparse
           from playwright.sync_api import sync_playwright
@@ -6616,27 +6616,34 @@ jobs:
 
           with sync_playwright() as p:
               nav = p.chromium.launch()
-              for theme in ("dark", "light"):
-                  ctx = nav.new_context(viewport={"width": 390, "height": 900}, color_scheme=theme)
-                  ctx.route("**/localhost/api/**", api)
-                  ctx.route(lambda u: not u.startswith("http://localhost/"), lambda r: r.abort())
-                  ctx.add_init_script("sessionStorage.setItem('vtt_code','t');")
-                  pg = ctx.new_page()
-                  pg.route("http://localhost/", lambda r: r.fulfill(status=200, content_type="text/html", body=html))
-                  pg.goto("http://localhost/#reglages")
-                  pg.wait_for_timeout(1200)
-                  pg.evaluate("document.getElementById('page-reglages').style.display = 'block'; document.querySelectorAll('details.fiche-technique-velo').forEach(d => { d.style.display = ''; d.open = true; })")
-                  pg.wait_for_timeout(300)
-                  for id in ("btnModifierFicheCube", "btnModifierFicheVelo"):
-                      r = pg.evaluate("""(id) => { const e = document.getElementById(id), s = getComputedStyle(e), b = e.getBoundingClientRect();
-                          return { h: Math.round(b.height), w: Math.round(b.width), radius: parseFloat(s.borderTopLeftRadius), bord: s.borderTopColor, couleur: s.color, texte: e.textContent.trim() }; }""", id)
-                      print(theme, id, r)
-                      assert r["radius"] >= 20 and r["texte"] == "Modifier cette fiche", r
-                      if id == "btnModifierFicheCube":
-                          assert r["h"] >= 44 and r["w"] > 250, r
-                      assert r["bord"] == r["couleur"], r
-                  ctx.close()
+              ctx = nav.new_context(viewport={"width": 390, "height": 900})
+              ctx.route("**/localhost/api/**", api)
+              ctx.route(lambda u: not u.startswith("http://localhost/"), lambda r: r.abort())
+              ctx.add_init_script("sessionStorage.setItem('vtt_code','t');")
+              pg = ctx.new_page()
+              erreurs = []
+              pg.on("pageerror", lambda e: erreurs.append(str(e)[:200]))
+              pg.route("http://localhost/", lambda r: r.fulfill(status=200, content_type="text/html", body=html))
+              pg.goto("http://localhost/#reglages")
+              pg.wait_for_timeout(1200)
+              # Plus de bouton « Modifier cette fiche » dans la fiche technique
+              assert pg.locator("#btnModifierFicheCube, #btnModifierFicheVelo").count() == 0
+              assert "Modifier cette fiche" not in pg.evaluate("document.body.textContent")
+              # La galerie ne propose plus que l'ajout de photos (pas de « Depuis un lien » en double du menu)
+              textes = pg.eval_on_selector_all(".galerie-ajout .photo-velo-bouton", "els => els.map(e => e.textContent.trim())")
+              assert textes == ["+ Ajouter une photo"], textes
+              # Le menu des trois petits points garde tout, avec la photo principale clairement nommée
+              pg.click("#listeMesVelos .velo-ligne:nth-child(1) .velo-ligne-tete .menu-sortie-btn")
+              items = pg.eval_on_selector_all("[role=menuitem]", "os => os.map(o => o.textContent.trim())")
+              print(items)
+              assert any(x.startswith("Modifier la fiche de") for x in items), items
+              assert "Ajouter la photo principale" in items and "Photo depuis un lien…" in items, items
+              assert "Ajouter une photo" not in items, items
+              pg.click("[role=menuitem]:has-text('Modifier la fiche')")
+              pg.wait_for_timeout(400)
+              assert pg.eval_on_selector("#fenetreVelo", "e => e.open") and pg.eval_on_selector("#titreFormVelo", "e => e.textContent") == "Modifier la fiche du vélo"
               nav.close()
-          print("OK: bouton « Modifier cette fiche » au style « Ajouter une photo » (contour turquoise, pilule)")
+          assert not erreurs, erreurs
+          print("OK: plus de doublons entre la fiche du vélo et le menu des trois petits points")
           PY
-          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_modifier_fiche.py"
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_doublons.py"

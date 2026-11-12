@@ -2583,9 +2583,6 @@ def accueil():
             .hist-entete { position: relative; display: flex; align-items: center; min-height: 44px; padding-right: 84px; }
             .hist-entete h2 { margin: 0; }
             .photo-velo-bouton { border: 1px solid var(--accent); background: var(--card-bg); color: var(--accent); font-weight: 700; padding: 8px 16px; border-radius: 999px; cursor: pointer; font-size: 14px; }
-            #btnModifierFicheCube, #btnModifierFicheVelo { display: flex; align-items: center; justify-content: center; min-height: 44px; border: 1px solid var(--accent); background: var(--card-bg); color: var(--accent); font-weight: 700; font-size: 14px; padding: 8px 16px; border-radius: 999px; cursor: pointer; box-sizing: border-box; transition: background 0.15s, transform 0.15s; }
-            #btnModifierFicheCube:hover, #btnModifierFicheVelo:hover { background: rgba(var(--ac2-rgb), 0.1); }
-            #btnModifierFicheCube:active, #btnModifierFicheVelo:active { transform: translateY(1px); }
             #blocAjouterVelo { position: relative; }
             #blocAjouterVelo > .mr-titre { padding-right: 44px; min-height: 36px; }
             #blocAjouterVelo .menu-sortie-btn { top: 8px; right: 8px; }
@@ -4885,7 +4882,6 @@ def accueil():
                     <span><span class="ftv-libelle">Plaquettes arrière</span><span class="ftv-valeur">Shimano compatibles BR-M8120</span><span class="ftv-libelle">Référence exacte à confirmer avant achat</span></span>
                 </div>
             </div>
-            <button type="button" id="btnModifierFicheCube" onclick="modifierFicheVelo()" style="width:100%; margin: 4px 0 8px;">Modifier cette fiche</button>
             <p class="ftv-note">Caractéristiques du modèle 2025. Les équipements peuvent varier selon la version et la taille du vélo.</p>
         </details>
         <details class="fiche-technique-velo" id="ficheTechniqueAutre" style="display:none;">
@@ -4922,7 +4918,6 @@ def accueil():
                 </div>
             </div>
             <div class="ftv-grille" id="ficheAutreEquipement"></div>
-            <button type="button" id="btnModifierFicheVelo" onclick="modifierFicheVelo()" style="width:100%; margin: 4px 0 8px;">Modifier cette fiche</button>
         </details>
 
         <section class="mes-reglages mr-repliable" id="mesReglages" aria-label="Mes réglages vélo">
@@ -6211,13 +6206,7 @@ def accueil():
                         const champ = document.getElementById('galeriePhotoInput');
                         if (champ) champ.click();
                     });
-                    const depuisLien = document.createElement('button');
-                    depuisLien.type = 'button';
-                    depuisLien.className = 'photo-velo-bouton';
-                    depuisLien.textContent = 'Depuis un lien';
-                    depuisLien.addEventListener('click', () => photoDepuisLien(true));
                     ajout.appendChild(depuisFichier);
-                    ajout.appendChild(depuisLien);
                 } else {
                     const plein = document.createElement('span');
                     plein.className = 'galerie-plein';
@@ -6395,7 +6384,7 @@ def accueil():
                     const aPhoto = Number(velo.a_photo) === 1;
                     ajouterMenuPoints(zone, actif ? 'Actions du vélo' : 'Actions de « ' + court + ' »', [
                         { icone: 'crayon', texte: 'Modifier la fiche de « ' + court + ' »', action: sur(modifierFicheVelo) },
-                        { icone: 'appareil', texte: aPhoto ? 'Changer la photo' : 'Ajouter une photo', action: sur(choisirPhotoVelo) },
+                        { icone: 'appareil', texte: aPhoto ? 'Changer la photo principale' : 'Ajouter la photo principale', action: sur(choisirPhotoVelo) },
                         { icone: 'lien', texte: 'Photo depuis un lien…', action: sur(photoDepuisLien) },
                         { icone: 'poubelle', texte: 'Supprimer la photo', danger: true, desactive: !aPhoto, action: sur(supprimerPhotoVelo) },
                         { icone: 'repere', texte: 'Replacer les repères (guidon à droite)', desactive: !aPhoto, action: sur(() => placerRepresAuto(true, false)) },
@@ -6535,7 +6524,7 @@ def accueil():
                     const vide = document.createElement('p');
                     vide.className = 'ftv-note';
                     vide.style.gridColumn = '1 / -1';
-                    vide.textContent = 'Aucun composant renseigné. Touche « Modifier cette fiche » pour rechercher la fiche du vélo.';
+                    vide.textContent = 'Aucun composant renseigné. Touche les trois petits points du vélo, puis « Modifier la fiche », pour rechercher la fiche du vélo.';
                     zone.appendChild(vide);
                     return;
                 }
@@ -6720,8 +6709,6 @@ def accueil():
                     sousTitreCube.textContent = modifieParToi && titreFiche ? titreFiche : sousTitreCube.dataset.origine;
                 }
                 if (ficheGenerique) ficheGenerique.style.display = estCube ? 'none' : 'block';
-                const boutonModifierFiche = document.getElementById('btnModifierFicheVelo');
-                if (boutonModifierFiche) boutonModifierFiche.style.display = estCube ? 'none' : 'block';
                 const ficheNom = document.getElementById('ficheAutreNom');
                 const ficheType = document.getElementById('ficheAutreType');
                 const ficheMarque = document.getElementById('ficheAutreMarque');
