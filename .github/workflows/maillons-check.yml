@@ -3347,7 +3347,7 @@ jobs:
               items = page.eval_on_selector_all("#veloMenuZone [role=menuitem]", "os => os.map(o => [o.textContent.trim(), o.disabled])")
               print("menu:", items)
               noms = [i[0] for i in items]
-              assert len(items) == 7 and "Ajouter un vélo" not in noms and noms[6] == "Supprimer « Gravel test »" and not items[6][1], items
+              assert len(items) == 8 and "Ajouter un vélo" not in noms and noms[7] == "Supprimer « Gravel test »" and not items[7][1], items
               page.click("#veloMenuZone [role=menuitem]:has-text('Supprimer «')")
               page.wait_for_timeout(1500)
               assert len(dialogues) == 1 and "7 pièce" in dialogues[0] and "3 sortie" in dialogues[0] and "Gravel test" in dialogues[0], dialogues
@@ -3358,7 +3358,7 @@ jobs:
               # CUBE affiché : suppression désactivée
               page.click(bouton)
               items = page.eval_on_selector_all("#veloMenuZone [role=menuitem]", "os => os.map(o => o.disabled)")
-              assert items == [False, False, False, True, True, True, True], items
+              assert items == [False, False, True, False, True, True, True, True], items
               assert not erreurs, erreurs
               nav.close()
           print("OK menu vélo : suppression confirmée, retour au CUBE, CUBE protégé")
@@ -3416,8 +3416,10 @@ jobs:
               vis = lambda sel: page.eval_on_selector(sel, "e => getComputedStyle(e).display != 'none' && getComputedStyle(e).visibility != 'hidden'")
               assert vis("#photoVeloACompleter") and not vis(".bike-img"), "gravel sans photo : espace vide attendu"
               # Ajout par le bouton de l'espace vide
+              page.evaluate("location.hash = 'reglages'"); page.wait_for_timeout(500)
+              page.click("#veloMenuZone button[aria-label='Actions du vélo']")
               with page.expect_file_chooser() as fc:
-                  page.click("#btnAjouterPhotoVelo")
+                  page.click("#veloMenuZone [role=menuitem]:has-text('Ajouter une photo')")
               fc.value.set_files(fichier); page.wait_for_timeout(1500)
               assert len(envoyees) == 1 and envoyees[0].startswith("data:image/jpeg;base64,"), envoyees[:1]
               assert len(envoyees[0]) < 200000, len(envoyees[0])
@@ -3429,13 +3431,13 @@ jobs:
               page.click("#veloMenuZone button[aria-label='Actions du vélo']")
               items = page.eval_on_selector_all("#veloMenuZone [role=menuitem]", "os => os.map(o => [o.textContent.trim(), o.disabled])")
               print(items)
-              assert ["Changer la photo principale", False] in items and ["Supprimer la photo", False] in items, items
+              assert ["Ajouter des photos", False] in items and ["Changer la photo principale", False] in items and ["Supprimer la photo", False] in items, items
               page.click("#veloMenuZone [role=menuitem]:has-text('Supprimer la photo')"); page.wait_for_timeout(1000)
               assert dialogues and "Gravel test" in dialogues[0] and base["photo"] is None
               assert vis("#photoVeloACompleter") and not vis(".bike-img")
               page.click("#veloMenuZone button[aria-label='Actions du vélo']")
               items = page.eval_on_selector_all("#veloMenuZone [role=menuitem]", "os => os.map(o => [o.textContent.trim(), o.disabled])")
-              assert ["Ajouter la photo principale", False] in items and ["Supprimer la photo", True] in items, items
+              assert ["Ajouter une photo", False] in items and ["Changer la photo principale", True] in items and ["Supprimer la photo", True] in items, items
               # Le CUBE garde sa photo d'origine
               page.keyboard.press("Escape")
               page.select_option("#selectVelo", "1"); page.wait_for_timeout(800)
@@ -3575,8 +3577,9 @@ jobs:
               page.route("http://localhost/", lambda r: r.fulfill(status=200, content_type="text/html", body=html))
               page.goto("http://localhost/"); page.wait_for_timeout(1200)
               vis = lambda sel: page.eval_on_selector(sel, "e => getComputedStyle(e).display != 'none' && getComputedStyle(e).visibility != 'hidden'")
-              assert vis("#btnPhotoVeloLien")
-              page.click("#btnPhotoVeloLien"); page.wait_for_timeout(1500)
+              page.evaluate("location.hash = 'reglages'"); page.wait_for_timeout(500)
+              page.click("#veloMenuZone button[aria-label='Actions du vélo']")
+              page.click("#veloMenuZone [role=menuitem]:has-text('Photo depuis un lien')"); page.wait_for_timeout(1500)
               assert etat["lien"] == "https://www.exemple.fr/velo", etat["lien"]      # espaces retirés
               assert etat["photo"] and etat["photo"].startswith("data:image/jpeg;base64,")   # réduite et enregistrée
               dim = page.evaluate("() => { const i = document.querySelector('.bike-img'); return [i.naturalWidth, i.naturalHeight]; }")
@@ -3703,7 +3706,9 @@ jobs:
               def proche(a, b, tol=3): return abs(a - b) <= tol
 
               # 1) Photo 16:9 : placement automatique dès l'enregistrement (guidon à droite)
-              with page.expect_file_chooser() as fc: page.click("#btnAjouterPhotoVelo")
+              page.evaluate("location.hash = 'reglages'"); page.wait_for_timeout(500)
+              page.click("#veloMenuZone button[aria-label='Actions du vélo']")
+              with page.expect_file_chooser() as fc: page.click("#veloMenuZone [role=menuitem]:has-text('Ajouter une photo')")
               fc.value.set_files(p1); page.wait_for_timeout(2500)
               assert len(etat["envois"]) == 1, "placement automatique non lancé"
               pos = derniere(); print(pos)
@@ -4899,7 +4904,7 @@ jobs:
               # Menu du CUBE : fiche et suppression grisées
               pg.click("#listeMesVelos .velo-ligne:nth-child(1) .velo-ligne-tete .menu-sortie-btn")
               etats = pg.eval_on_selector_all("#listeMesVelos .velo-ligne:nth-child(1) .velo-ligne-tete [role=menuitem]", "e => e.map(x => [x.textContent.trim(), x.disabled])")
-              assert not etats[0][1] and etats[-1][1] and len(etats) == 7, etats
+              assert not etats[0][1] and etats[-1][1] and len(etats) == 8, etats
               # Le CUBE se modifie comme les autres vélos (mais ne se supprime pas)
               pg.click("#listeMesVelos .velo-ligne:nth-child(1) .velo-ligne-tete [role=menuitem]:has-text('Modifier la fiche')"); pg.wait_for_timeout(500)
               assert pg.eval_on_selector("#fenetreVelo", "e => e.open") and pg.input_value("#nouveauVeloNom") == "Mon CUBE"
@@ -5075,7 +5080,7 @@ jobs:
               # Supprimer une photo supplémentaire
               pg.click("#galerieVelo .galerie-point:nth-child(3)"); pg.wait_for_timeout(1200)
               pg.click("#galerieVelo .galerie-diapo:nth-child(3) .galerie-suppr"); pg.wait_for_timeout(700)
-              assert nb() == 5 and len(galeries[2]) == 4 and pg.is_visible("#galerieVelo .galerie-ajout .photo-velo-bouton")
+              assert nb() == 5 and len(galeries[2]) == 4 and not pg.is_visible("#galerieVelo .galerie-plein")
               # Vélo sans photo : la première photo devient la photo principale, la suivante va dans la galerie
               pg.click("#listeMesVelos .velo-ligne:nth-child(3) .velo-ligne-fleche"); pg.wait_for_timeout(1000)
               assert nb() == 0 and "Aucune photo" in pg.inner_text("#galerieVelo")
@@ -6630,15 +6635,13 @@ jobs:
               assert pg.locator("#btnModifierFicheCube, #btnModifierFicheVelo").count() == 0
               assert "Modifier cette fiche" not in pg.evaluate("document.body.textContent")
               # La galerie ne propose plus que l'ajout de photos (pas de « Depuis un lien » en double du menu)
-              textes = pg.eval_on_selector_all(".galerie-ajout .photo-velo-bouton", "els => els.map(e => e.textContent.trim())")
-              assert textes == ["+ Ajouter une photo"], textes
+              assert pg.locator(".galerie-ajout .photo-velo-bouton, #btnAjouterPhotoVelo, #btnPhotoVeloLien").count() == 0
               # Le menu des trois petits points garde tout, avec la photo principale clairement nommée
               pg.click("#listeMesVelos .velo-ligne:nth-child(1) .velo-ligne-tete .menu-sortie-btn")
               items = pg.eval_on_selector_all("[role=menuitem]", "os => os.map(o => o.textContent.trim())")
               print(items)
               assert any(x.startswith("Modifier la fiche de") for x in items), items
-              assert "Ajouter la photo principale" in items and "Photo depuis un lien…" in items, items
-              assert "Ajouter une photo" not in items, items
+              assert "Ajouter une photo" in items and "Photo depuis un lien…" in items, items
               pg.click("[role=menuitem]:has-text('Modifier la fiche')")
               pg.wait_for_timeout(400)
               assert pg.eval_on_selector("#fenetreVelo", "e => e.open") and pg.eval_on_selector("#titreFormVelo", "e => e.textContent") == "Modifier la fiche du vélo"

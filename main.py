@@ -4584,8 +4584,7 @@ def accueil():
             >
             <div id="photoVeloACompleter" style="display:none; position:absolute; inset:0; flex-direction:column; gap:12px; align-items:center; justify-content:center; text-align:center; padding:24px; color:#64748b; font-weight:700;">
                 <span>Pas encore de photo pour ce vélo.</span>
-                <button type="button" class="photo-velo-bouton" id="btnAjouterPhotoVelo" onclick="choisirPhotoVelo()">Ajouter une photo</button>
-                <button type="button" class="photo-velo-bouton" id="btnPhotoVeloLien" onclick="photoDepuisLien()">Photo depuis un lien</button>
+                <span style="font-size:0.85rem;">Touche les trois petits points du vélo, puis « Ajouter une photo ».</span>
             </div>
             <input type="file" id="veloPhotoInput" accept="image/*" style="display:none">
             <input type="file" id="galeriePhotoInput" accept="image/*" multiple style="display:none">
@@ -5741,6 +5740,11 @@ def accueil():
                 if (vide) vide.style.display = source ? 'none' : 'flex';
             }
 
+            function choisirPhotosGalerie() {
+                const champ = document.getElementById('galeriePhotoInput');
+                if (champ) champ.click();
+            }
+
             function choisirPhotoVelo() {
                 const champ = document.getElementById('veloPhotoInput');
                 if (champ) champ.click();
@@ -6195,25 +6199,15 @@ def accueil():
                     demarrer();
                 }
 
-                const ajout = document.createElement('div');
-                ajout.className = 'galerie-ajout';
-                if (diapos.length < MAX_PHOTOS_VELO) {
-                    const depuisFichier = document.createElement('button');
-                    depuisFichier.type = 'button';
-                    depuisFichier.className = 'photo-velo-bouton';
-                    depuisFichier.textContent = '+ Ajouter une photo';
-                    depuisFichier.addEventListener('click', () => {
-                        const champ = document.getElementById('galeriePhotoInput');
-                        if (champ) champ.click();
-                    });
-                    ajout.appendChild(depuisFichier);
-                } else {
+                if (diapos.length >= MAX_PHOTOS_VELO) {
+                    const ajout = document.createElement('div');
+                    ajout.className = 'galerie-ajout';
                     const plein = document.createElement('span');
                     plein.className = 'galerie-plein';
                     plein.textContent = '6 photos : c’est le maximum. Supprime-en une pour en ajouter.';
                     ajout.appendChild(plein);
+                    zone.appendChild(ajout);
                 }
-                zone.appendChild(ajout);
             }
 
             // Ajoute une photo : la première d'un vélo sans photo devient sa photo principale, les suivantes vont dans la galerie.
@@ -6384,7 +6378,8 @@ def accueil():
                     const aPhoto = Number(velo.a_photo) === 1;
                     ajouterMenuPoints(zone, actif ? 'Actions du vélo' : 'Actions de « ' + court + ' »', [
                         { icone: 'crayon', texte: 'Modifier la fiche de « ' + court + ' »', action: sur(modifierFicheVelo) },
-                        { icone: 'appareil', texte: aPhoto ? 'Changer la photo principale' : 'Ajouter la photo principale', action: sur(choisirPhotoVelo) },
+                        { icone: 'appareil', texte: aPhoto ? 'Ajouter des photos' : 'Ajouter une photo', action: sur(choisirPhotosGalerie) },
+                        { icone: 'appareil', texte: 'Changer la photo principale', desactive: !aPhoto, action: sur(choisirPhotoVelo) },
                         { icone: 'lien', texte: 'Photo depuis un lien…', action: sur(photoDepuisLien) },
                         { icone: 'poubelle', texte: 'Supprimer la photo', danger: true, desactive: !aPhoto, action: sur(supprimerPhotoVelo) },
                         { icone: 'repere', texte: 'Replacer les repères (guidon à droite)', desactive: !aPhoto, action: sur(() => placerRepresAuto(true, false)) },
