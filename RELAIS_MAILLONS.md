@@ -1,3 +1,15 @@
+# Mise à jour du relais — 11/11/2026 — PR #46 fusionnée (recherche gratuite des fiches vélo)
+
+- **État GitHub vérifié** : la PR #46 « Améliorer la recherche gratuite des fiches vélo » a été fusionnée dans `main` le 11/11/2026. Commit de fusion : `14d3632123a930c0878f98fddb06c13bbca50c8b`.
+- **Travail livré** : recherche croisée DuckDuckGo + Bing ; résolution des redirections DuckDuckGo ; suppression des doublons et des URL de moteurs ; extraction complétée pour les jantes, l'écran/commande, le guide-chaîne et plusieurs variantes de libellés de suspension/fourche/tige de selle. Le parcours de secours par copier-coller d'une réponse de ChatGPT/Claude est conservé.
+- **Coût** : aucune API payante, aucune clé API ni service payant ajouté. La recherche automatique gratuite ne garantit pas de trouver toutes les caractéristiques ; les résultats doivent être contrôlés et les informations incertaines confirmées avant enregistrement. Pour les composants difficiles à identifier, le copier-coller depuis ChatGPT/Claude reste disponible.
+- **Contrôles** : le workflow GitHub Actions #317 a été annoncé comme réussi (63 étapes). Cela couvre les tests automatisés prévus, pas la validation sur de vraies pages externes ni le rendu sur appareils réels.
+- **À faire** : tester une recherche réelle sur plusieurs vélos (dont le Trek Powerfly 7 2022 et le Trek Fuel EXe 9.7), vérifier les composants précis remontés et les sources ; vérifier le parcours sur ordinateur et téléphone ; noter les champs manquants ou les résultats erronés.
+- **Publication** : aucun déploiement Render n'a été déclenché ni vérifié dans le cadre de cette PR. Ne pas considérer la version en ligne comme mise à jour tant que le statut Render n'a pas été contrôlé. Ne pas lancer de déploiement sans accord explicite de Math.
+- **Périmètre préservé** : pas de modification volontaire des données, de Neon, de l'import GPX, de la cartographie, des altitudes, des filtres ou des survols 3D.
+
+---
+
 # Mise à jour du relais — 31/10/2026 — PR #22 fusionnée (chercher la fiche avec mon IA)
 
 - PR #22 : **fusionnée** avec l'accord explicite de Math le 31/10/2026 (commit de fusion `01f69796edb49316a4b4758d13f45da2679bc872`). Fichiers : `main.py`, `.github/workflows/maillons-check.yml`. Aucun changement serveur ni de données.
