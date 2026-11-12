@@ -4574,13 +4574,13 @@ def accueil():
                 <input id="veloRechercheFiche" type="text" maxlength="2000" placeholder="Ex. : EDR Easy Route ou lien de la fiche">
                 <button type="button" id="boutonRechercheFiche" style="width:100%; margin:6px 0;">Rechercher les caractéristiques</button>
                 <details id="ficheIA" style="margin:6px 0;">
-                    <summary>Pas de résultat ? Chercher avec mon IA (Claude, ChatGPT…)</summary>
+                    <summary>Chercher avec mon IA (Claude, ChatGPT…)</summary>
                     <div class="form-help">
-                        1. Touche « Copier la demande ».<br>
-                        2. Ouvre Claude, ChatGPT ou une autre IA qui sait chercher sur le web, et colle la demande.<br>
-                        3. Copie sa réponse, colle-la ci-dessous, puis touche « Remplir la fiche ».
+                        1. Touche « Envoyer à mon IA » : la demande est copiée et la fenêtre de partage s’ouvre.<br>
+                        2. Choisis Claude, ChatGPT ou une autre IA qui sait chercher sur le web.<br>
+                        3. Reviens ici, colle sa réponse ci-dessous, puis touche « Remplir la fiche ».
                     </div>
-                    <button type="button" id="boutonCopierDemandeIA" style="width:100%; margin:6px 0;">Copier la demande</button>
+                    <button type="button" id="boutonCopierDemandeIA" style="width:100%; margin:6px 0;">Envoyer à mon IA</button>
                     <label for="reponseIA">Réponse de l'IA</label>
                     <textarea id="reponseIA" rows="5" maxlength="30000" placeholder="Colle ici la réponse de l'IA"></textarea>
                     <button type="button" id="boutonRemplirFicheIA" style="width:100%; margin:6px 0;">Remplir la fiche</button>
@@ -6917,17 +6917,10 @@ def accueil():
                 return lignes.join(String.fromCharCode(10));
             }
 
-            async function copierDemandeIA() {
-                const message = document.getElementById('messageIA');
-                const sujet = sujetDemandeIA();
-                if (!sujet) {
-                    message.textContent = 'Écris d’abord le nom du vélo dans le champ « Modèle du vélo ou lien constructeur ».';
-                    return;
-                }
-                const texte = texteDemandeIA(sujet);
+            async function copierTexteSimple(texte) {
                 try {
                     await navigator.clipboard.writeText(texte);
-                    message.textContent = 'Demande copiée. Colle-la maintenant dans ton IA.';
+                    return true;
                 } catch (e) {
                     const zone = document.createElement('textarea');
                     zone.value = texte;
@@ -6939,11 +6932,40 @@ def accueil():
                     let copie = false;
                     try { copie = document.execCommand('copy'); } catch (e2) { copie = false; }
                     document.body.removeChild(zone);
-                    message.textContent = copie ? 'Demande copiée. Colle-la maintenant dans ton IA.' : 'La copie automatique a échoué. Sélectionne et copie le texte de la demande ci-dessous.';
-                    if (!copie) {
-                        const secours = document.getElementById('reponseIA');
-                        secours.value = texte;
+                    return copie;
+                }
+            }
+
+            // Un seul bouton : la demande est copiée ET la fenêtre de partage du téléphone s'ouvre
+            // (on y choisit ChatGPT, Claude…). Sans partage possible, le texte reste copié.
+            async function copierDemandeIA() {
+                const message = document.getElementById('messageIA');
+                const sujet = sujetDemandeIA();
+                if (!sujet) {
+                    message.textContent = 'Écris d’abord le nom du vélo dans le champ « Modèle du vélo ou lien constructeur ».';
+                    return;
+                }
+                const texte = texteDemandeIA(sujet);
+                const copieEnCours = copierTexteSimple(texte);
+                let partage = 'absent';
+                if (typeof navigator.share === 'function') {
+                    try {
+                        await navigator.share({ title: 'Demande pour mon IA', text: texte });
+                        partage = 'fait';
+                    } catch (e) {
+                        partage = (e && e.name === 'AbortError') ? 'annule' : 'absent';
                     }
+                }
+                const copie = await copieEnCours;
+                if (!copie) {
+                    message.textContent = 'La copie automatique a échoué. Sélectionne et copie le texte de la demande ci-dessous.';
+                    document.getElementById('reponseIA').value = texte;
+                } else if (partage === 'fait') {
+                    message.textContent = 'Demande copiée et partagée. Quand ton IA a répondu, reviens ici, colle sa réponse et touche « Remplir la fiche ».';
+                } else if (partage === 'annule') {
+                    message.textContent = 'Demande copiée (partage annulé). Tu peux la coller directement dans ton IA.';
+                } else {
+                    message.textContent = 'Demande copiée. Colle-la maintenant dans ton IA.';
                 }
             }
 
