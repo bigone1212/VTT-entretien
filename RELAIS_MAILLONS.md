@@ -150,6 +150,13 @@
 ---
 
 
+## 2026-11-12 (09h20) — Fiche technique : adresses qui dépassaient sur téléphone, PR #49 FUSIONNÉE
+
+- Correction d'apparence seulement (CSS) : `.ftv-libelle` et ses liens passent à la ligne (overflow-wrap / word-break).
+- Testé : navigateur à 320, 360 et 390 px avec une adresse très longue (reproduit avant, corrigé après), contrôle GitHub vert (run 43179784043).
+- NON vérifié : Render, vrai téléphone.
+- À faire par Math : attendre Render, rouvrir l'appli, regarder la fiche technique.
+
 ## 2026-11-12 (06h40) — Suspension : encadré sans pression + demande IA plus insistante, PR #48 FUSIONNÉE
 
 - Réglages du vélo : si l'IA donne SAG/débattement/source mais aucun tableau de pressions, un encadré « Pas de pression trouvée · SAG visé … » s'affiche avec « Voir la source » (cas réel Trek Powerfly 7, réponse ChatGPT sans tableau).
