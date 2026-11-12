@@ -150,6 +150,13 @@
 ---
 
 
+## 2026-11-12 (11h50) — Design de la fenêtre « Ajouter un vélo », PR #51 FUSIONNÉE
+
+- Apparence seulement (CSS `dialog.fenetre-velo …`) : boutons en pilule avec dégradé turquoise (Rechercher, Envoyer à mon IA, Créer), « Remplir la fiche » en contour, champs au fond uniforme (autofill neutralisé), bloc « Chercher avec mon IA » en encadré, libellés plus nets. Aucun changement de fonctionnement.
+- Testé : captures sombre et clair à 390 px, test navigateur (hauteurs, dégradés, fond des champs), contrôle GitHub vert (run 43191431369).
+- NON vérifié : Render, vrai téléphone.
+- Suite possible : le reste de l'onglet « Mon vélo » (liste des vélos, fiche technique, réglages) — Math dira ce qui le gêne.
+
 ## 2026-11-12 (10h05) — Bouton « Envoyer à mon IA » (copie + partage), PR #50 FUSIONNÉE
 
 - `copierDemandeIA` copie la demande ET ouvre `navigator.share` ; repli : copie seule (ordinateur, partage annulé), texte mis dans la zone de réponse si la copie échoue. Textes des 3 étapes réécrits. Id du bouton inchangé (`boutonCopierDemandeIA`).
