@@ -150,6 +150,13 @@
 ---
 
 
+## 2026-11-12 (17h45) — Doublons fiche du vélo / menu trois petits points, PR #53 FUSIONNÉE
+
+- Retirés de la fiche : boutons « Modifier cette fiche » (`btnModifierFicheCube`, `btnModifierFicheVelo`) et « Depuis un lien » de la galerie (le style de la PR #52 pour ce bouton disparaît donc). Gardés : « + Ajouter une photo » de la galerie, et les 2 boutons de l'espace « Pas encore de photo ».
+- Menu : « Changer/Ajouter la photo principale » (ex « Changer/Ajouter une photo »). Message « Aucun composant renseigné » renvoie vers le menu.
+- Testé : nouveau test navigateur + anciens tests adaptés, contrôle GitHub vert (run 43252708752).
+- NON vérifié : Render, vrai téléphone.
+
 ## 2026-11-12 (16h50) — Bouton « Modifier cette fiche » au style « Ajouter une photo », PR #52 FUSIONNÉE
 
 - Apparence seulement (CSS) : `#btnModifierFicheCube` et `#btnModifierFicheVelo` en pilule à contour turquoise (comme `.photo-velo-bouton`), 44 px de haut.
