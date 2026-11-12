@@ -4904,7 +4904,7 @@ jobs:
               # Menu du CUBE : fiche et suppression grisées
               pg.click("#listeMesVelos .velo-ligne:nth-child(1) .velo-ligne-tete .menu-sortie-btn")
               etats = pg.eval_on_selector_all("#listeMesVelos .velo-ligne:nth-child(1) .velo-ligne-tete [role=menuitem]", "e => e.map(x => [x.textContent.trim(), x.disabled])")
-              assert not etats[0][1] and etats[-1][1] and len(etats) == 7, etats
+              assert not etats[0][1] and etats[-1][1] and len(etats) == 8, etats
               # Le CUBE se modifie comme les autres vélos (mais ne se supprime pas)
               pg.click("#listeMesVelos .velo-ligne:nth-child(1) .velo-ligne-tete [role=menuitem]:has-text('Modifier la fiche')"); pg.wait_for_timeout(500)
               assert pg.eval_on_selector("#fenetreVelo", "e => e.open") and pg.input_value("#nouveauVeloNom") == "Mon CUBE"
