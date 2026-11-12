@@ -150,6 +150,14 @@
 ---
 
 
+## 2026-11-12 (06h40) — Suspension : encadré sans pression + demande IA plus insistante, PR #48 FUSIONNÉE
+
+- Réglages du vélo : si l'IA donne SAG/débattement/source mais aucun tableau de pressions, un encadré « Pas de pression trouvée · SAG visé … » s'affiche avec « Voir la source » (cas réel Trek Powerfly 7, réponse ChatGPT sans tableau).
+- « Copier la demande » insiste sur les tableaux de pressions du constructeur (60 à 110 kg), null si introuvable.
+- Testé : navigateur (cas réel Trek, anciens cas), contrôle GitHub vert (run 43161583322).
+- NON vérifié : Render, téléphone, qu'une IA trouve réellement les tableaux.
+- À faire par Math : attendre Render, rouvrir l'appli, refaire « Copier la demande » pour le Trek puis coller la réponse et enregistrer.
+
 ## 2026-11-11 (18h15) — Suspension de TOUS les vélos : PR #45 FUSIONNÉE (merge 3ed8183)
 
 - Pressions fourche/amortisseur au poids de la personne (85 kg par défaut + sac 2,5 kg), SAG en mm, champ « Débattement (mm) » à la main (prioritaire).
