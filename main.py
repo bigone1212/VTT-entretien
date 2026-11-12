@@ -6904,6 +6904,8 @@ def accueil():
                     'Soit « tableau » : les lignes {kg, psi} copiées du tableau publié par le constructeur de la suspension (poids du pilote équipé en kg, au moins 3 lignes, pour l’usage de CE vélo, électrique ou non).',
                     'Soit, seulement s’il n’y a pas de tableau mais une règle publiée, « formule » : {psi_par_kg, psi_fixe}, avec psi = psi_fixe + psi_par_kg × poids en kg.',
                     'Ne devine jamais une pression : s’il n’y a ni tableau ni règle publiés par le constructeur, ne mets ni tableau ni formule.',
+                    'Les pressions sont IMPORTANTES : pour la fourche et pour l’amortisseur de CE vélo, ouvre la page du constructeur de la suspension (SRAM / RockShox, Fox, Marzocchi, Suntour, etc.) et recopie son tableau de pressions par poids, de 60 à 110 kg environ, par pas de 5 ou 10 kg. Ne te contente pas du débattement et du SAG.',
+                    'Si tu ne trouves vraiment pas le tableau, mets null pour ce composant (ou garde seulement debattement_mm, sag_min, sag_max et source), sans rien inventer.',
                     'Dans categorie, « ecran » veut dire la commande et l’écran du moteur électrique (par exemple Bosch Purion), « guide_chaine » le guide-chaîne, « jantes » les jantes.',
                     'Exemple de format :',
                     JSON.stringify(exemple, null, 2)
@@ -8087,7 +8089,22 @@ def accueil():
                 const infos = foxConnu ? null : infosSuspensionVelo(velo, role);
                 const calculable = !!infos && ((Array.isArray(infos.tableau) && infos.tableau.length >= 3)
                     || (!!infos.formule && typeof infos.formule.psi_par_kg === 'number'));
-                if (!foxConnu && !calculable) return null;
+                if (!foxConnu && !calculable) {
+                    if (!infos) return null;
+                    const sMin = typeof infos.sag_min === 'number' ? infos.sag_min : null;
+                    const sMax = typeof infos.sag_max === 'number' ? infos.sag_max : null;
+                    const dSans = debattementMm(role);
+                    const lienSans = adresseWebSure(infos.source);
+                    if (sMin === null && sMax === null && !dSans && !lienSans) return null;
+                    const txtSag = sMin !== null && sMax !== null
+                        ? 'SAG visé ' + sMin + ' à ' + sMax + ' %' + (dSans ? ' (' + mmDepuisPourcent(sMin, dSans) + ' à ' + mmDepuisPourcent(sMax, dSans) + ' mm)' : '')
+                        : (dSans ? 'Débattement : ' + dSans + ' mm' : 'Réglages trouvés par ton IA');
+                    return {
+                        titre: 'Pas de pression trouvée · ' + txtSag,
+                        aide: 'Ton IA n’a pas trouvé de tableau de pressions' + (infos.modele ? ' pour ' + infos.modele : '') + '. Regarde le tableau du constructeur (lien ci-dessous), ou refais la demande à ton IA.',
+                        source: lienSans
+                    };
+                }
                 const poidsNote = profilMoi && typeof profilMoi.poids_kg === 'number' ? profilMoi.poids_kg : null;
                 const poids = poidsNote === null ? POIDS_PAR_DEFAUT_KG : poidsNote;
                 const sac = profilMoi && typeof profilMoi.poids_sac_kg === 'number' ? profilMoi.poids_sac_kg : 2.5;
