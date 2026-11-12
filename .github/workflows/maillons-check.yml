@@ -6537,3 +6537,59 @@ jobs:
           print("OK: bouton « Envoyer à mon IA » : copie + fenêtre de partage, avec repli sans partage")
           PY
           PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_partage_ia.py"
+      - name: Tester le style des boutons et des champs de la fenêtre d'ajout de vélo (sombre et clair)
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-design-velo-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_design_velo.py" <<'PY'
+          import json
+          from urllib.parse import urlparse
+          from playwright.sync_api import sync_playwright
+          import main
+
+          html = main.accueil()
+          V = [{"id": 1, "nom": "Mon CUBE", "type": "vtt_electrique", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0}]
+
+
+          def api(r):
+              u = urlparse(r.request.url).path
+              c = V if u == "/api/velos" else ({"km_total": 0, "composants": []} if u == "/api/etat" else ({"valeurs": {}, "maj_le": None} if u == "/api/mes-reglages" else []))
+              r.fulfill(status=200, content_type="application/json", body=json.dumps(c))
+
+
+          with sync_playwright() as p:
+              nav = p.chromium.launch()
+              for theme in ("dark", "light"):
+                  ctx = nav.new_context(viewport={"width": 390, "height": 900}, color_scheme=theme)
+                  ctx.route("**/localhost/api/**", api)
+                  ctx.route(lambda u: not u.startswith("http://localhost/"), lambda r: r.abort())
+                  ctx.add_init_script("sessionStorage.setItem('vtt_code','t');")
+                  pg = ctx.new_page()
+                  pg.route("http://localhost/", lambda r: r.fulfill(status=200, content_type="text/html", body=html))
+                  pg.goto("http://localhost/#reglages")
+                  pg.wait_for_timeout(1200)
+                  pg.evaluate("document.getElementById('fenetreVelo').showModal(); document.getElementById('ficheIA').open = true")
+                  pg.wait_for_timeout(300)
+                  r = pg.evaluate("""() => {
+                      const stl = id => getComputedStyle(document.getElementById(id));
+                      const sortie = {};
+                      ['boutonRechercheFiche', 'boutonCopierDemandeIA', 'boutonRemplirFicheIA', 'boutonCreerVelo'].forEach(id => {
+                          const s = stl(id), b = document.getElementById(id).getBoundingClientRect();
+                          sortie[id] = { h: Math.round(b.height), radius: parseFloat(s.borderTopLeftRadius), degrade: s.backgroundImage.indexOf('gradient') >= 0 };
+                      });
+                      const champ = stl('nouveauVeloNom'), modele = stl('veloRechercheFiche');
+                      sortie.memeFond = champ.backgroundColor === modele.backgroundColor;
+                      return sortie;
+                  }""")
+                  print(theme, r)
+                  for id in ("boutonRechercheFiche", "boutonCopierDemandeIA", "boutonRemplirFicheIA", "boutonCreerVelo"):
+                      assert r[id]["h"] >= 44 and r[id]["radius"] >= 20, (id, r[id])
+                  assert r["boutonRechercheFiche"]["degrade"] and r["boutonCopierDemandeIA"]["degrade"] and r["boutonCreerVelo"]["degrade"], r
+                  assert not r["boutonRemplirFicheIA"]["degrade"], r
+                  assert r["memeFond"], "les champs doivent avoir la même couleur de fond"
+                  ctx.close()
+              nav.close()
+          print("OK: boutons et champs de la fenêtre d'ajout de vélo au style de l'application (sombre et clair)")
+          PY
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_design_velo.py"
