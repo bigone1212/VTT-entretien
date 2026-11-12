@@ -6404,3 +6404,64 @@ jobs:
           r=main.enregistrer_suspension_velo(vid, main.SuspensionInfosRequest(), H); assert r["suspension_infos"] is None
           print("SUSPENSION SERVEUR OK")
           PY
+      - name: Tester que les adresses de la fiche technique ne dépassent pas de leur case sur téléphone
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/maillons-debord-nav-test.db
+          CODE_ACCES: test
+        run: |
+          cat > "$RUNNER_TEMP/test_debord.py" <<'PY'
+          import json
+          from playwright.sync_api import sync_playwright
+          import main
+
+          html = main.accueil()
+          moi = {"id": 1, "nom": "Math", "est_admin": False, "prenom": "", "nom_famille": "", "email": "", "cree_le": "2026-10-04T08:00:00Z",
+                 "photo": None, "poids_kg": 80.0, "poids_sac_kg": 2.5, "version": "v"}
+          LONG = "https://www.pianetamountainbike-super-long-nom-de-site-internet.co.uk/e-bike/63477"
+          comp = [{"categorie": c, "nom": "Bontrager Line 30 Tubeless Ready", "source": LONG} for c in ("cadre", "fourche", "freins", "roues", "pneus", "selle")]
+          VELOS = [{"id": 5, "nom": "Trek", "type": "vtt_electrique", "actif": 1, "km_total": 0, "km_frac": 0, "a_photo": 0, "sorties_a_verifier": 0,
+                    "moteur": "Bosch CX", "batterie": "625 Wh", "freins": "disque_hydraulique", "suspension": "avant", "tubeless": "tubeless", "transmission": "chaine",
+                    "fiche_composants": json.dumps(comp), "suspension_infos": None}]
+
+          def api(route, request):
+              u = request.url.split("?")[0].replace("http://localhost", "")
+              if u == "/api/moi": return route.fulfill(json=moi)
+              if u == "/api/velos": return route.fulfill(json=VELOS)
+              if u == "/api/mes-reglages": return route.fulfill(json={"valeurs": {}, "maj_le": None})
+              if u == "/api/etat": return route.fulfill(json={"km_total": 0, "composants": []})
+              return route.fulfill(json=[])
+
+          with sync_playwright() as p:
+              nav = p.chromium.launch()
+              for largeur in (320, 360, 390):
+                  ctx = nav.new_context(viewport={"width": largeur, "height": 800})
+                  ctx.route("**/localhost/api/**", api)
+                  ctx.route(lambda u: not u.startswith("http://localhost/"), lambda r: r.abort())
+                  ctx.add_init_script("if (!sessionStorage.getItem('__i')) { sessionStorage.setItem('__i', '1'); sessionStorage.setItem('vtt_code', 'ses'); sessionStorage.setItem('maillons_velo_id', '5'); }")
+                  pg = ctx.new_page()
+                  pg.route("http://localhost/", lambda r: r.fulfill(body=html, content_type="text/html; charset=utf-8"))
+                  pg.goto("http://localhost/#reglages")
+                  pg.wait_for_timeout(1500)
+                  pg.evaluate("document.querySelectorAll('details.fiche-technique-velo').forEach(d => { d.style.display = ''; d.open = true; })")
+                  pg.wait_for_timeout(300)
+                  res = pg.evaluate("""() => {
+                      const fuites = [];
+                      document.querySelectorAll('#ficheAutreEquipement .ftv-item').forEach(it => {
+                          const r = it.getBoundingClientRect();
+                          it.querySelectorAll('.ftv-libelle, .ftv-valeur, a').forEach(e => {
+                              const b = e.getBoundingClientRect();
+                              if (b.right > r.right + 1 || e.scrollWidth > e.clientWidth + 1 && e.tagName !== 'A') fuites.push(e.textContent.slice(0, 40) + ' ' + Math.round(b.right) + '>' + Math.round(r.right));
+                          });
+                      });
+                      return { n: document.querySelectorAll('#ficheAutreEquipement .ftv-item').length, fuites: fuites,
+                               page: document.documentElement.scrollWidth, vue: window.innerWidth };
+                  }""")
+                  print(largeur, res)
+                  assert res["n"] >= 6, res
+                  assert not res["fuites"], res
+                  assert res["page"] <= res["vue"], res
+                  ctx.close()
+              nav.close()
+          print("OK: les adresses de la fiche technique ne dépassent plus de leur case sur téléphone")
+          PY
+          PYTHONPATH="$PWD" python "$RUNNER_TEMP/test_debord.py"
