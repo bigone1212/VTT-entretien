@@ -3347,7 +3347,7 @@ jobs:
               items = page.eval_on_selector_all("#veloMenuZone [role=menuitem]", "os => os.map(o => [o.textContent.trim(), o.disabled])")
               print("menu:", items)
               noms = [i[0] for i in items]
-              assert len(items) == 7 and "Ajouter un vélo" not in noms and noms[6] == "Supprimer « Gravel test »" and not items[6][1], items
+              assert len(items) == 8 and "Ajouter un vélo" not in noms and noms[7] == "Supprimer « Gravel test »" and not items[7][1], items
               page.click("#veloMenuZone [role=menuitem]:has-text('Supprimer «')")
               page.wait_for_timeout(1500)
               assert len(dialogues) == 1 and "7 pièce" in dialogues[0] and "3 sortie" in dialogues[0] and "Gravel test" in dialogues[0], dialogues
