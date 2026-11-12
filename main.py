@@ -1760,6 +1760,108 @@ def accueil():
                 background: rgba(4, 12, 16, 0.62);
             }
 
+            /* ---- Fenêtres de vélo : champs, boutons et bloc « mon IA » au style de l'application ---- */
+            dialog.fenetre-velo label {
+                display: block;
+                margin: 6px 0 5px;
+                color: var(--text-muted);
+                font-size: 0.82rem;
+                font-weight: 700;
+                letter-spacing: 0.02em;
+            }
+
+            dialog.fenetre-velo input,
+            dialog.fenetre-velo select,
+            dialog.fenetre-velo textarea {
+                background-color: var(--field);
+                color: var(--strong);
+                border: 1px solid var(--field-line);
+                border-radius: 14px;
+                padding: 11px 12px;
+                box-sizing: border-box;
+                transition: border-color 0.15s, box-shadow 0.15s;
+            }
+
+            dialog.fenetre-velo input:focus,
+            dialog.fenetre-velo select:focus,
+            dialog.fenetre-velo textarea:focus {
+                border-color: var(--accent);
+                box-shadow: 0 0 0 3px rgba(var(--ac2-rgb), 0.22);
+            }
+
+            dialog.fenetre-velo input:-webkit-autofill,
+            dialog.fenetre-velo input:-webkit-autofill:focus {
+                -webkit-box-shadow: 0 0 0 100px var(--field) inset;
+                -webkit-text-fill-color: var(--strong);
+                caret-color: var(--strong);
+            }
+
+            dialog.fenetre-velo form button,
+            dialog.fenetre-velo form button.btn-primary {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 100%;
+                min-height: 46px;
+                padding: 10px 18px;
+                font: inherit;
+                font-size: 0.95rem;
+                font-weight: 800;
+                border-radius: 999px;
+                cursor: pointer;
+                color: var(--strong);
+                background: var(--field);
+                border: 1px solid var(--field-line);
+                transition: transform 0.15s, box-shadow 0.15s, filter 0.15s;
+            }
+
+            dialog.fenetre-velo form button:active { transform: translateY(1px); }
+
+            dialog.fenetre-velo form button#boutonRechercheFiche,
+            dialog.fenetre-velo form button#boutonCopierDemandeIA,
+            dialog.fenetre-velo form button#boutonCreerVelo,
+            dialog.fenetre-velo form button.btn-primary {
+                color: var(--on-accent);
+                border: none;
+                background: var(--accent);
+                background: linear-gradient(135deg, var(--ac1), color-mix(in srgb, var(--ac1) 62%, var(--ac2)));
+                box-shadow: 0 6px 16px rgba(var(--ac2-rgb), 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+            }
+
+            dialog.fenetre-velo form button#boutonRechercheFiche:hover,
+            dialog.fenetre-velo form button#boutonCopierDemandeIA:hover,
+            dialog.fenetre-velo form button#boutonCreerVelo:hover,
+            dialog.fenetre-velo form button.btn-primary:hover { filter: brightness(1.06); }
+
+            dialog.fenetre-velo form button#boutonRemplirFicheIA {
+                color: var(--accent);
+                background: transparent;
+                border: 1.5px solid var(--accent);
+            }
+
+            dialog.fenetre-velo form details#ficheIA {
+                margin: 10px 0;
+                padding: 4px 14px 12px;
+                background: rgba(var(--ac2-rgb), 0.08);
+                border: 1px solid var(--field-line);
+                border-radius: 16px;
+            }
+
+            dialog.fenetre-velo form details#ficheIA summary {
+                padding: 10px 0;
+                color: var(--strong);
+                font-size: 0.95rem;
+                font-weight: 800;
+                cursor: pointer;
+            }
+
+            dialog.fenetre-velo form details#ficheIA .form-help {
+                margin: 2px 0 10px;
+                line-height: 1.55;
+            }
+
+            dialog.fenetre-velo form details#ficheIA button { margin: 6px 0 10px; }
+
             .fenetre-velo-entete {
                 display: flex;
                 align-items: center;
