@@ -1,3 +1,18 @@
+# Mise à jour du relais — 13/11/2026 — premier essai de rendu 3D des parcours (en cours)
+
+- Demande de Math : rendre les cartes et les survols des sorties VTT plus beaux et immersifs, sans chercher à reproduire Journey AI et sans abonnement payant. Conserver les fonctions déjà présentes.
+- Branche de travail créée depuis `main` : `reprise/2026-11-13-animation-3d-gpx`. Aucun changement sur `main`, aucune PR, aucune fusion, aucun déploiement.
+- Vérification du code existant : Maillons avait déjà MapLibre, un relief 3D AWS Terrain Tiles, une caméra animée, les fonds satellite/plan, les couleurs de pente/terrain et l'enregistrement WebM. Ne pas reconstruire ces fonctions.
+- Premier essai enregistré sur la branche, fichier `main.py` uniquement (commit `32dc2c134cd6654deef4a83e50fc65178c5c8671`) :
+  - relief un peu plus accentué (exaggeration 1.1 → 1.35) ;
+  - ajout d'un ombrage de relief (couche hillshade) ;
+  - tracé plus visible avec un halo turquoise discret, contour renforcé et ligne principale légèrement épaissie.
+- Ces changements sont un prototype à vérifier visuellement : ils ne sont pas encore validés sur navigateur, téléphone ou Render. Le workflow GitHub doit être vérifié après le commit.
+- Aucun changement de données, aucune opération Neon, aucun déploiement.
+- Étape suivante : vérifier le CI GitHub ; examiner le rendu et corriger si l'ombrage ou le halo nuit à la lisibilité. Demander à Math de tester la branche avant toute PR/fusion. Aucune fusion ni aucun déploiement sans son accord explicite.
+
+---
+
 # Mise à jour du relais — 31/10/2026 — PR #22 fusionnée (chercher la fiche avec mon IA)
 
 - PR #22 : **fusionnée** avec l'accord explicite de Math le 31/10/2026 (commit de fusion `01f69796edb49316a4b4758d13f45da2679bc872`). Fichiers : `main.py`, `.github/workflows/maillons-check.yml`. Aucun changement serveur ni de données.
