@@ -4583,6 +4583,7 @@ def accueil():
                     <div class="v3d-cinema-stat" id="v3dCinemaAltitudeBloc"><strong id="v3dCinemaAltitude">—</strong><span>Altitude</span></div>
                     <div class="v3d-cinema-stat" id="v3dCinemaVitesseBloc"><strong id="v3dCinemaVitesse">—</strong><span>Vitesse</span></div>
                     <div class="v3d-cinema-stat"><strong id="v3dCinemaVitesseMax">—</strong><span>Vitesse max</span></div>
+                    <div class="v3d-cinema-stat"><strong id="v3dCinemaVitesseMoyenne">—</strong><span>Vitesse moyenne</span></div>
                 </div>
                 <div class="v3d-cinema-profil">
                     <div class="v3d-cinema-profil-titre">PROFIL DU PARCOURS</div>
@@ -13102,7 +13103,7 @@ def accueil():
                 fond: 'sat', enregistreur: null, morceaux: [], titre: '',
                 nomParcours: '', dateParcours: '', cinema: false,
                 canvasVideo: null, ctxVideo: null, rafVideo: 0, fluxVideo: null, videoActif: false,
-                denivelePlus: 0, altitudeDisponible: false, altitudes: [], deniveleCum: [], vitesses: [], vitesseMax: null,
+                denivelePlus: 0, altitudeDisponible: false, altitudes: [], deniveleCum: [], vitesses: [], vitesseMax: null, vitesseMoyenne: null,
                 dureeBase: 60, prete: false, compteImages: 0,
                 tps: [], decalage: 0, alts: [], surfaces: '', pentes: [], mode: 'pente', autres: [], voirAutres: false, photos: [], marqueurs: [], reperes: [], panneauxPente: [], repereVisibles: true, prochaine: 0, sortieId: 0, minuteur: 0
             };
@@ -13214,13 +13215,18 @@ def accueil():
                     return secondes > 0 ? ((v3d.cum[i] - v3d.cum[i - 1]) / secondes) * 3.6 : null;
                 });
                 const vitessesValides = v3d.vitesses.filter(x => x !== null && isFinite(x) && x <= 150);
-                v3d.vitesseMax = vitessesValides.length ? Math.max(...vitessesValides) : null;
+                v3d.vitesseMax = vitessesValides.reduce((max, x) => Math.max(max, x), 0) || null;
+                const tempsTotal = v3d.tps.length > 1 && v3d.tps[0] !== null && v3d.tps[v3d.tps.length - 1] !== null
+                    ? v3d.tps[v3d.tps.length - 1] - v3d.tps[0] : 0;
+                v3d.vitesseMoyenne = tempsTotal > 0 ? (v3d.total / tempsTotal) * 3.6 : null;
                 const altitudesValides = v3d.altitudes.filter(a => a !== null && isFinite(a));
                 if (altitudesValides.length >= 2) {
                     const minAlt = Math.min(...altitudesValides);
                     const maxAlt = Math.max(...altitudesValides);
                     const amplitude = Math.max(1, maxAlt - minAlt);
+                    const pas = Math.max(1, Math.ceil(v3d.altitudes.length / 240));
                     const pointsProfil = v3d.altitudes.map((a, i) => {
+                        if (i % pas !== 0 && i !== v3d.altitudes.length - 1) return null;
                         if (a === null || !isFinite(a)) return null;
                         const x = 12 + (v3d.cum[i] / Math.max(1, v3d.total)) * 336;
                         const y = 60 - ((a - minAlt) / amplitude) * 48;
@@ -13531,8 +13537,13 @@ def accueil():
                 document.getElementById('v3dCinemaNom').textContent = v3d.nomParcours || 'Sortie VTT';
                 document.getElementById('v3dCinemaDate').textContent = v3d.dateParcours || '';
                 const distance = v3d.f * v3d.total;
-                const index = Math.max(0, Math.min(v3d.cum.length - 1, v3d.cum.findIndex((x, i) => i > 0 && x >= distance) < 0 ? v3d.cum.length - 1 : v3d.cum.findIndex((x, i) => i > 0 && x >= distance)));
-                const avant = Math.max(0, index - 1);
+                let bas = 0, haut = v3d.cum.length - 1;
+                while (haut - bas > 1) {
+                    const milieu = (bas + haut) >> 1;
+                    if (v3d.cum[milieu] <= distance) bas = milieu; else haut = milieu;
+                }
+                const avant = bas;
+                const index = haut;
                 const segment = v3d.cum[index] - v3d.cum[avant];
                 const part = segment > 0 ? Math.max(0, Math.min(1, (distance - v3d.cum[avant]) / segment)) : 0;
                 const interp = (liste) => liste[index] !== null && liste[index] !== undefined && liste[avant] !== null && liste[avant] !== undefined
@@ -13552,6 +13563,7 @@ def accueil():
                 blocVitesse.style.display = v3d.vitesses.some(x => x !== null) ? '' : 'none';
                 document.getElementById('v3dCinemaVitesse').textContent = vitesse === null ? '—' : vitesse.toFixed(1).replace('.', ',') + ' km/h';
                 document.getElementById('v3dCinemaVitesseMax').textContent = v3d.vitesseMax === null ? '—' : Math.round(v3d.vitesseMax) + ' km/h';
+                document.getElementById('v3dCinemaVitesseMoyenne').textContent = v3d.vitesseMoyenne === null ? '—' : v3d.vitesseMoyenne.toFixed(1).replace('.', ',') + ' km/h';
                 document.getElementById('v3dCinemaProfilCurseur').setAttribute('cx', (12 + Math.max(0, Math.min(1, v3d.f)) * 336).toFixed(1));
                 document.getElementById('v3dCinemaBarre').style.width = (Math.max(0, Math.min(1, v3d.f)) * 100) + '%';
             }
