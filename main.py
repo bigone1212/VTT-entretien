@@ -13455,7 +13455,7 @@ def accueil():
                     let genre = 'lieu', rang = 6, portee = 2200;
                     if (/sommet|peak|mountain|montagne|hill|colline|crête|crete|ridge/.test(texte)) {
                         genre = 'sommet'; rang = 4; portee = 2200;
-                    } else if (/col\b|pass|saddle|mountain_pass/.test(texte)) {
+                    } else if (/col\\b|pass|saddle|mountain_pass/.test(texte)) {
                         genre = 'col'; rang = 2; portee = 900;
                     } else if (/lieu.?dit|locality|hamlet|hameau|isolated_dwelling/.test(texte)) {
                         genre = 'village'; rang = 5; portee = 3500;
