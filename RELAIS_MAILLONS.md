@@ -1,3 +1,12 @@
+# Complément — 13/11/2026 — gestion complète du repère Vmax temporaire
+
+- Petite correction de robustesse après relecture : le repère Vmax temporaire est également conservé dans la liste générale des repères. Il sera ainsi correctement supprimé lors du rechargement d'un parcours et respectera le bouton « Repères ».
+- Aucun changement sur sa durée d'affichage ni sur les calculs.
+- Commit applicatif : `a8eb760947b9f9277b1c3d1202116a9ac62ca385`.
+- Aucun déploiement déclenché. Attendre l'accord explicite de Math avant le déploiement sur Maillons test.
+
+---
+
 # Nouvelle évolution — 13/11/2026 — apparition temporaire du repère Vmax
 
 - Retour de Math : le repère « Vmax » ne doit pas rester affiché pendant tout le survol ; il doit apparaître brièvement au passage du point où la vitesse maximale est atteinte, comme les repères de pente.
