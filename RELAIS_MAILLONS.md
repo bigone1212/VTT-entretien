@@ -1,3 +1,13 @@
+# Nouvelle évolution — 13/11/2026 — apparition temporaire du repère Vmax
+
+- Retour de Math : le repère « Vmax » ne doit pas rester affiché pendant tout le survol ; il doit apparaître brièvement au passage du point où la vitesse maximale est atteinte, comme les repères de pente.
+- Dans `main.py`, le repère Vmax utilise désormais le même mécanisme de visibilité temporaire que les repères de pente. Il apparaît autour du point de vitesse maximale pendant une courte fenêtre d'environ 2,5 secondes au rythme de lecture courant, puis disparaît.
+- Le calcul de la vitesse maximale, son emplacement GPS et le style aérien ne changent pas. Les repères de pente et les autres éléments restent inchangés.
+- Commit applicatif : `85ca81b2365dc556679c02f813d106d759f18f38`.
+- Aucun déploiement déclenché. Attendre l'accord explicite de Math avant de déployer sur Maillons test. Ne pas fusionner la PR #57, ne pas modifier `main`, ne pas toucher à la production ni à Neon.
+
+---
+
 # Nouvelle évolution — 13/11/2026 — repères aériens de pente et de vitesse maximale
 
 - Retour de Math après essai : les repères de pente doivent être plus lisibles, avec une écriture plus grande et sans cadre ; il souhaite le même traitement pour la vitesse maximale.
