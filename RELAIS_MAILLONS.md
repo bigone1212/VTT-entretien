@@ -1,3 +1,15 @@
+# Mise à jour du relais — 13/11/2026 — PR #57 ouverte pour le mode Cinéma GPX
+
+- À la demande de Math, ouverture de la PR #57 : https://github.com/bigone1212/VTT-entretien/pull/57
+- Titre : « Enrichir le mode Cinéma des parcours GPX ». Cible : `main`. Branche source : `reprise/2026-11-13-animation-3d-gpx`.
+- GitHub indique la PR ouverte, non fusionnée et actuellement fusionnable (`mergeable_state: clean`). Ne pas fusionner sans le feu vert explicite de Math.
+- Les workflows GitHub Actions déclenchés par les derniers commits étaient encore en cours au dernier contrôle (runs 43430734203, 43430763337 et 43430816235). Ne pas annoncer leur succès avant vérification de leur conclusion.
+- La PR décrit les statistiques du mode Cinéma (distance, D+ progressif, altitude, vitesses) et le profil altimétrique synchronisé. Le diff de la PR porte sur `main.py` et ce fichier de relais uniquement.
+- Aucun test visuel réel sur Render/téléphone avec un GPX n'a été effectué à ce stade. Aucun déploiement Render déclenché, aucune opération Neon.
+- Production `main` inchangée ; PR ouverte uniquement pour revue. Étape suivante : confirmer les workflows, puis déployer uniquement sur Maillons test pour validation visuelle avant toute fusion. Aucun déploiement production ni aucune fusion sans accord explicite de Math.
+
+---
+
 # Mise à jour du relais — 13/11/2026 — statistiques et profil animé du mode Cinéma
 
 - À la demande de Math, enrichissement du tableau de bord cinéma sur la branche `reprise/2026-11-13-animation-3d-gpx`.
