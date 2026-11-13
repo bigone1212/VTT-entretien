@@ -2694,21 +2694,6 @@ def accueil():
                 background: var(--accent);
             }
 
-            .galerie-suppr {
-                position: absolute;
-                top: 8px;
-                left: 8px;
-                width: 30px;
-                height: 30px;
-                padding: 0;
-                border: none;
-                border-radius: 50%;
-                font-size: 20px;
-                line-height: 1;
-                color: #ffffff;
-                background: rgba(15, 23, 42, 0.62);
-                cursor: pointer;
-            }
 
             .galerie-pied { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
 
@@ -5860,9 +5845,12 @@ def accueil():
             }
 
             // Galerie (onglet Mon vélo) : seulement les photos autres que la principale.
-            function actionsGalerieVelo(aPrincipale) {
+            // photoAffichee = la photo montrée en ce moment (null ou principale : on ne la supprime pas ici).
+            function actionsGalerieVelo(aPrincipale, photoAffichee) {
+                const supprimable = !!photoAffichee && !!photoAffichee.extra;
                 return [
-                    { icone: 'appareil', texte: aPrincipale ? 'Ajouter des photos' : 'Ajouter des photos (photo principale d’abord)', desactive: !aPrincipale, action: choisirPhotosGalerie }
+                    { icone: 'appareil', texte: aPrincipale ? 'Ajouter des photos' : 'Ajouter des photos (photo principale d’abord)', desactive: !aPrincipale, action: choisirPhotosGalerie },
+                    { icone: 'poubelle', texte: 'Supprimer cette photo', danger: true, desactive: !supprimable, action: () => { if (supprimable) supprimerPhotoGalerie(photoAffichee); } }
                 ];
             }
 
@@ -6225,7 +6213,12 @@ def accueil():
                 const zoneMenuPhoto = document.createElement('div');
                 zoneMenuPhoto.className = 'menu-photo-zone';
                 zone.appendChild(zoneMenuPhoto);
-                monterMenuPhoto(zoneMenuPhoto, actionsGalerieVelo(!!principale));
+                let photoAffichee = diapos.length ? diapos[0] : null;
+                const majMenuGalerie = () => {
+                    if (zoneMenuPhoto.querySelector('[aria-expanded="true"]')) return;
+                    monterMenuPhoto(zoneMenuPhoto, actionsGalerieVelo(!!principale, photoAffichee));
+                };
+                majMenuGalerie();
 
                 const piste = document.createElement('div');
                 piste.className = 'galerie-piste';
@@ -6249,15 +6242,6 @@ def accueil():
                         badge.className = 'galerie-badge';
                         badge.textContent = 'Principale';
                         diapo.appendChild(badge);
-                    }
-                    if (d.extra) {
-                        const croix = document.createElement('button');
-                        croix.type = 'button';
-                        croix.className = 'galerie-suppr';
-                        croix.setAttribute('aria-label', 'Supprimer la photo ' + (i + 1));
-                        croix.textContent = '×';
-                        croix.addEventListener('click', () => supprimerPhotoGalerie(d));
-                        diapo.appendChild(croix);
                     }
                     piste.appendChild(diapo);
                     return diapo;
@@ -6299,7 +6283,7 @@ def accueil():
                         if (diaporamaReduit()) return;
                         zone.minuteurDiaporama = setInterval(() => {
                             if (!document.body.contains(zone)) { clearInterval(zone.minuteurDiaporama); zone.minuteurDiaporama = 0; return; }
-                            if (enPause || document.hidden) return;
+                            if (enPause || document.hidden || zoneMenuPhoto.querySelector('[aria-expanded="true"]')) return;
                             aller(rang + 1, true);
                         }, delaiDiaporama);
                     };
@@ -6308,6 +6292,8 @@ def accueil():
                         elementsDiapos.forEach((el, i) => el.classList.toggle('actif', i === rang));
                         marqueurs.forEach((p, i) => p.classList.toggle('actif', i === rang));
                         compteur.textContent = (rang + 1) + ' / ' + diapos.length;
+                        photoAffichee = diapos[rang];
+                        majMenuGalerie();
                         if (!automatique) demarrer();
                     };
                     precedent.addEventListener('click', () => aller(rang - 1));

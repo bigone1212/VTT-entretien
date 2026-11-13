@@ -1,3 +1,12 @@
+# Complément — 13/11/2026 — intégration de la PR #58 dans la branche de test
+
+- La PR #58 est fusionnée dans `main` : suppression des photos supplémentaires depuis le menu de la galerie, sans croix sur les photos.
+- Cette évolution est également reportée dans la branche de test complète, avec ses vérifications navigateur mises à jour.
+- La branche de test reste basée sur les fonctionnalités de `main` et ajoute le mode Cinéma ainsi que les repères géographiques IGN/OSM.
+- Aucun déploiement Render, aucune modification de `main`, aucune fusion de la PR #57.
+
+---
+
 # Mise à jour — 13/11/2026 — branche de test complète (préparation)
 
 - Branche créée depuis le dernier `main` (PR #56 et toutes les évolutions précédentes conservées).
