@@ -9,6 +9,7 @@
   - fusion et dédoublonnage des noms IGN/OSM ; affichage distinct des sommets, cols, villages et autres lieux ;
   - la recherche IGN reste active même lorsque l'emprise du parcours est trop grande pour Overpass.
 - Commits applicatifs : `ba0ed4a3427b513293ccda57d14631aab88cabbf`, `008f73edd27960aef66075aff4797f1135f4993e`, `11581b79323693394e0869b22ea89448ab1359dd`.
+- Correction de l'échappement JavaScript dans la chaîne HTML Python : commit `efc2ce3710ce0009186c6fa5fd48c168507bbb38`.
 - Seuls `main.py` et ce fichier de relais sont modifiés pour cette évolution. Aucun changement à `main`, aucune opération Neon, aucune fusion et aucun déploiement déclenché.
 - À faire : vérifier le workflow GitHub Actions de cette branche, puis tester avec un véritable GPX sur Maillons test. Vérifier en particulier le format réel des réponses IGN, la pertinence des noms affichés et la charge réseau sur les parcours longs. Aucun résultat visuel réel ne doit être annoncé avant ce test.
 - Ne pas fusionner la PR #57, ne pas modifier sa branche, ne pas déployer en production. Le service Render test est actuellement rattaché à `reprise/2026-11-13-animation-3d-gpx` ; il faudra explicitement le basculer vers cette branche de travail avant de tester, puis déployer uniquement avec l'accord de Math.
