@@ -1,3 +1,13 @@
+# Tâche en cours — 13/11/2026 — rétablir la recherche complémentaire des lieux
+
+- Retour utilisateur après déploiement : l'interface semble n'afficher que la bibliothèque et trop peu de lieux-dits.
+- Inspection de `main.py` sur la branche de test : `chercherLieuxV3d()` retourne immédiatement les résultats serveur dès que le statut est `termine`, même si la liste est vide ou pauvre ; la recherche directe OSM/IGN du navigateur n'est alors jamais exécutée.
+- Le cache navigateur utilise la clé `maillons-v3d-lieux-v2` et peut donc réutiliser les anciennes listes sans relancer les recherches. Le serveur et le navigateur plafonnent également les résultats à 18.
+- Correction ciblée prévue sur la branche existante : fusionner les résultats pré-calculés avec les recherches directes OSM/IGN, invalider l'ancien cache par changement de version de clé, augmenter raisonnablement la limite de lieux et conserver les coordonnées sources. Préserver la lecture 3D, les filtres et le fonctionnement de la bibliothèque.
+- Aucun changement sur `main`, aucune nouvelle branche, aucune fusion, aucune opération Neon. Déploiement test non autorisé à ce stade ; demander l'accord de Math après vérifications.
+
+---
+
 # Mise à jour — 13/11/2026 — ajout WFS IGN (à vérifier)
 
 - Commit `a505db912908577b06b49e4f0113a71388d0cc27` sur la branche de test existante : ajout d'une recherche WFS directe dans les couches IGN `BDTOPO_V3:lieu_dit_non_habite` et `BDCARTO_V5:lieu_dit_non_habite`, en complément du géocodage inverse IGN déjà présent et d'Overpass.
