@@ -3422,7 +3422,7 @@ def accueil():
             .v3d-cinema-barre { height: 3px; margin-top: 15px; overflow: hidden; background: rgba(255,255,255,0.28); }
             .v3d-cinema-barre > span { display: block; width: 0; height: 100%; background: #65e6d4; box-shadow: 0 0 10px #65e6d4; transition: width 0.12s linear; }
             @media (max-width: 600px) {
-                .v3d-cinema-hud { top: 72px; left: 12px; max-width: calc(100vw - 24px); padding: 12px 14px; }
+                .v3d-cinema-hud { top: auto; bottom: 18px; left: 12px; max-width: calc(100vw - 24px); padding: 12px 14px; }
                 .v3d-cinema-stats { gap: 18px; margin-top: 11px; }
                 .v3d-cinema-stat strong { font-size: 1.05rem; }
             }
