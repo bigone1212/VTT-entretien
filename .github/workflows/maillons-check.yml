@@ -1493,7 +1493,7 @@ jobs:
 
 
           def importer(code, debut, velo_id=None, nom="Sortie"):
-              return main.importer_sortie(main.ImportGpxRequest(gpx=gpx(debut, 10.0, nom)), velo_id=velo_id, x_code_acces=code)
+              return main.importer_sortie(main.ImportGpxRequest(gpx=gpx(debut, 10.0, nom)), background_tasks=main.BackgroundTasks(), velo_id=velo_id, x_code_acces=code)
 
 
           # ---------------------------------------------------------------------------
@@ -2929,7 +2929,7 @@ jobs:
 
 
           def importer(debut, km, velo_id=None, nom="Sortie test"):
-              return main.importer_sortie(main.ImportGpxRequest(gpx=gpx(debut, km, nom)), velo_id=velo_id, x_code_acces=CODE)
+              return main.importer_sortie(main.ImportGpxRequest(gpx=gpx(debut, km, nom)), background_tasks=main.BackgroundTasks(), velo_id=velo_id, x_code_acces=CODE)
 
 
           def refuse(code, fonction, *a, **k):
