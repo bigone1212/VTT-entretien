@@ -13525,14 +13525,14 @@ def accueil():
                     const p = v3d.pts[Math.round(i * (n - 1) / 7)];
                     echantillon.push(p.map(x => Number(x).toFixed(4)).join(','));
                 }
-                return 'maillons-v3d-lieux-v2-' + String(v3d.sortieId) + '-' + n + '-' + echantillon.join('|');
+                return 'maillons-v3d-lieux-v3-' + String(v3d.sortieId) + '-' + n + '-' + echantillon.join('|');
             }
             function lireCacheLieuxV3d() {
                 try {
                     const brut = localStorage.getItem(cleCacheLieuxV3d());
                     if (!brut) return null;
                     const lieux = JSON.parse(brut);
-                    if (!Array.isArray(lieux) || !lieux.length || lieux.length > 18) return null;
+                    if (!Array.isArray(lieux) || !lieux.length || lieux.length > 60) return null;
                     if (lieux.some(l => !l || typeof l.nom !== 'string' || !Array.isArray(l.coord)
                         || l.coord.length !== 2 || !Number.isFinite(l.coord[0]) || !Number.isFinite(l.coord[1])
                         || !Number.isFinite(l.d))) return null;
@@ -13553,14 +13553,14 @@ def accueil():
                     console.info('Survol 3D : noms de lieux chargés depuis la mémoire de cet appareil', cache.length);
                     return cache;
                 }
+                let lieuxPrepares = [];
                 try {
                     const res = await fetch('/api/sorties/' + encodeURIComponent(v3d.sortieId) + '/lieux?velo_id=' + encodeURIComponent(veloActifId || 1), { headers: getHeaders() });
                     if (res.ok) {
                         const prepares = await res.json();
                         if (prepares.statut === 'termine' && Array.isArray(prepares.lieux)) {
-                            v3d.lieuxEtat = 'ok';
-                            if (prepares.lieux.length) enregistrerCacheLieuxV3d(prepares.lieux);
-                            return prepares.lieux;
+                            lieuxPrepares = prepares.lieux;
+                            console.info('Survol 3D : lieux déjà préparés sur le serveur', lieuxPrepares.length);
                         }
                     }
                 } catch (e) { console.warn('Noms pré-calculés indisponibles, recherche directe conservée.', e); }
@@ -13592,10 +13592,13 @@ def accueil():
                 }));
                 const out=[];
                 const ajouter = l => {
+                    if (!l || typeof l.nom !== 'string' || !Array.isArray(l.coord) || l.coord.length !== 2) return;
                     const doublon = out.some(x => x.nom.toLocaleLowerCase() === l.nom.toLocaleLowerCase()
                         && distanceM(x.coord, l.coord) < 600);
                     if (!doublon) out.push(l);
                 };
+                // Les résultats pré-calculés et ceux de la recherche directe sont complémentaires.
+                lieuxPrepares.forEach(ajouter);
                 if (data && Array.isArray(data.elements)) {
                     console.info('Survol 3D : objets OpenStreetMap reçus', data.elements.length);
                     for (const e of data.elements) {
@@ -13629,7 +13632,7 @@ def accueil():
                 out.sort((a,b)=>a.rang-b.rang||a.ec-b.ec);
                 const gardes = [];
                 for (const l of out) {
-                    if (gardes.length >= 18) break;
+                    if (gardes.length >= 60) break;
                     if (gardes.every(g => !(g.nom.toLocaleLowerCase() === l.nom.toLocaleLowerCase()
                         && distanceM(g.coord, l.coord) < 600))) gardes.push(l);
                 }
@@ -19969,7 +19972,7 @@ def preparer_lieux_sortie(sortie_id):
                 raise RuntimeError("Les services cartographiques sont indisponibles ; la recherche sera reprise.")
             lieux.sort(key=lambda x:(x["rang"],x["ec"])); retenus=[]
             for l in lieux:
-                if len(retenus)>=18: break
+                if len(retenus)>=60: break
                 if any(x["nom"].casefold()==l["nom"].casefold() and distance(tuple(x["coord"]),tuple(l["coord"]))<600 for x in retenus): continue
                 idx=min(range(len(points)),key=lambda i:distance(l["coord"],points[i])); cumul=sum(distance(points[i-1],points[i]) for i in range(1,idx+1))
                 l["d"]=round(cumul,1); retenus.append(l)
