@@ -13232,7 +13232,7 @@ def accueil():
                         const y = 60 - ((a - minAlt) / amplitude) * 48;
                         return x.toFixed(1) + ',' + y.toFixed(1);
                     }).filter(Boolean).join(' ');
-                    const cheminProfil = pointsProfil.trim().split(/\\s+/).map((point, i) => (i ? 'L' : 'M') + point.replace(',', ' ')).join(' ');
+                    const cheminProfil = pointsProfil.trim().split(/\s+/).map((point, i) => (i ? 'L' : 'M') + point.replace(',', ' ')).join(' ');
                     const ligneProfil = document.getElementById('v3dCinemaProfilLigne');
                     const ligneParcourue = document.getElementById('v3dCinemaProfilParcouru');
                     ligneProfil.setAttribute('d', cheminProfil);
