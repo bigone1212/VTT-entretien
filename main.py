@@ -13005,7 +13005,7 @@ def accueil():
             const VITESSES = [1, 2, 4];
 
             const v3d = {
-                carte: null, pts: [], cum: [], total: 0, f: 0, jouer: false,
+                carte: null, pts: [], cum: [], total: 0, f: 0, jouer: false, centreCamera: null,
                 vitesse: 1, inclinaison: 60, cap: 0, dernier: 0, raf: 0,
                 fond: 'sat', enregistreur: null, morceaux: [], titre: '',
                 dureeBase: 60, prete: false, compteImages: 0,
@@ -13425,6 +13425,17 @@ def accueil():
 
                 const d = v3d.f * v3d.total;
                 const centre = pointA(d);
+                // Filtre aussi le déplacement du centre : la caméra ne reproduit pas chaque angle du GPX.
+                if (brusque || !v3d.centreCamera) {
+                    v3d.centreCamera = centre.slice();
+                } else {
+                    const facteurCentre = 1 - Math.exp(-dt * 5);
+                    v3d.centreCamera = [
+                        v3d.centreCamera[0] + (centre[0] - v3d.centreCamera[0]) * facteurCentre,
+                        v3d.centreCamera[1] + (centre[1] - v3d.centreCamera[1]) * facteurCentre
+                    ];
+                    if (v3d.f >= 1) v3d.centreCamera = centre.slice();
+                }
                 const avance = Math.min(350, Math.max(180, v3d.total * 0.02));
                 const devant = pointA(Math.min(v3d.total, d + avance));
                 const arriere = pointA(Math.max(0, d - avance * 0.5));
@@ -13461,7 +13472,7 @@ def accueil():
                 }
 
                 carte.jumpTo({
-                    center: centre,
+                    center: v3d.centreCamera,
                     bearing: v3d.cap,
                     pitch: v3d.inclinaison,
                     zoom: 14.6,
