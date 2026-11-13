@@ -13911,7 +13911,7 @@ def accueil():
                 v3d.compteImages = 0;
                 v3d.titre = (sortie.debut || '').slice(0, 10);
                 v3d.nomParcours = sortie.nom || 'Sortie VTT';
-                v3d.dateParcours = jour;
+                v3d.dateParcours = new Date(sortie.debut).toLocaleDateString('fr-FR');
                 v3d.cinema = false;
                 v3d.sortieId = sortie.id;
                 v3d.photos = placerPhotos(sortie);
