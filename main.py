@@ -13386,12 +13386,27 @@ def accueil():
                 enr.classList.toggle('enreg', en_cours);
             }
 
-            function dessinerAvancement() {
+            // Met à jour le point mobile à chaque image pour qu'il glisse le long du GPX.
+            function dessinerPositionV3d(d) {
+                const carte = v3d.carte;
+                if (!carte || !v3d.prete) return;
+                const pos = pointA(d);
+                const srcPos = carte.getSource('v3d-pos');
+                if (srcPos) {
+                    srcPos.setData({
+                        type: 'Feature',
+                        geometry: { type: 'Point', coordinates: pos }
+                    });
+                }
+            }
+
+            function dessinerAvancement(positionDejaMiseAJour) {
                 const carte = v3d.carte;
                 if (!carte || !v3d.prete) return;
 
                 const d = v3d.f * v3d.total;
                 const pos = pointA(d);
+                if (!positionDejaMiseAJour) dessinerPositionV3d(d);
                 const fait = [];
                 for (let i = 0; i < v3d.pts.length && v3d.cum[i] <= d; i++) {
                     fait.push(v3d.pts[i]);
@@ -13403,13 +13418,6 @@ def accueil():
                     srcFait.setData({
                         type: 'Feature',
                         geometry: { type: 'LineString', coordinates: fait.length > 1 ? fait : [pos, pos] }
-                    });
-                }
-                const srcPos = carte.getSource('v3d-pos');
-                if (srcPos) {
-                    srcPos.setData({
-                        type: 'Feature',
-                        geometry: { type: 'Point', coordinates: pos }
                     });
                 }
                 document.getElementById('v3dProgres').value = String(Math.round(v3d.f * 1000));
@@ -13429,14 +13437,14 @@ def accueil():
                 if (brusque || !v3d.centreCamera) {
                     v3d.centreCamera = centre.slice();
                 } else {
-                    const facteurCentre = 1 - Math.exp(-dt * 5);
+                    const facteurCentre = 1 - Math.exp(-dt * 3);
                     v3d.centreCamera = [
                         v3d.centreCamera[0] + (centre[0] - v3d.centreCamera[0]) * facteurCentre,
                         v3d.centreCamera[1] + (centre[1] - v3d.centreCamera[1]) * facteurCentre
                     ];
                     if (v3d.f >= 1) v3d.centreCamera = centre.slice();
                 }
-                const avance = Math.min(350, Math.max(180, v3d.total * 0.02));
+                const avance = Math.min(700, Math.max(450, v3d.total * 0.035));
                 const devant = pointA(Math.min(v3d.total, d + avance));
                 const arriere = pointA(Math.max(0, d - avance * 0.5));
                 let cible = v3d.cap;
@@ -13447,7 +13455,7 @@ def accueil():
                 if (brusque) {
                     v3d.cap = cible;
                 } else {
-                    const facteur = 1 - Math.exp(-dt * 1.6);
+                    const facteur = 1 - Math.exp(-dt * 0.9);
                     v3d.cap = (v3d.cap + ecartAngle(cible, v3d.cap) * facteur + 360) % 360;
                 }
 
@@ -13504,10 +13512,11 @@ def accueil():
                 verifierPhotosV3d(avant, v3d.f * v3d.total);
 
                 placerCamera(dt, false);
+                // Le point mobile est actualisé à chaque image ; seule la ligne complète
+                // et les informations de progression restent limitées à une image sur quatre.
+                dessinerPositionV3d(v3d.f * v3d.total);
                 v3d.compteImages++;
-                // La caméra avance à chaque image, mais la ligne GeoJSON du parcours
-                // est plus coûteuse à recalculer : on la rafraîchit moins souvent.
-                if (v3d.compteImages % 4 === 0 || v3d.f >= 1) dessinerAvancement();
+                if (v3d.compteImages % 4 === 0 || v3d.f >= 1) dessinerAvancement(true);
 
                 if (v3d.f >= 1) {
                     v3d.jouer = false;
