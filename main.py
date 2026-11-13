@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException, Header, BackgroundTasks
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 import base64
@@ -1150,6 +1150,19 @@ def init_db():
     migrer_composants_v2(cursor)
     mettre_a_niveau_velos(cursor)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS bibliotheque_lieux_geo (
+            cle TEXT PRIMARY KEY, nom TEXT NOT NULL, genre TEXT, rang INTEGER DEFAULT 9,
+            lon DOUBLE PRECISION NOT NULL, lat DOUBLE PRECISION NOT NULL, altitude DOUBLE PRECISION,
+            source TEXT, maj_le TEXT
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS recherche_lieux_gpx (
+            sortie_id INTEGER PRIMARY KEY, velo_id INTEGER NOT NULL, statut TEXT NOT NULL DEFAULT 'en_attente',
+            lieux_json TEXT, tentatives INTEGER DEFAULT 0, erreur TEXT, maj_le TEXT
+        )
+    """)
     conn.commit()
     conn.close()
 
@@ -13540,6 +13553,17 @@ def accueil():
                     console.info('Survol 3D : noms de lieux chargés depuis la mémoire de cet appareil', cache.length);
                     return cache;
                 }
+                try {
+                    const res = await fetch('/api/sorties/' + encodeURIComponent(v3d.sortieId) + '/lieux?velo_id=' + encodeURIComponent(veloActifId || 1), { headers: getHeaders() });
+                    if (res.ok) {
+                        const prepares = await res.json();
+                        if (prepares.statut === 'termine' && Array.isArray(prepares.lieux)) {
+                            v3d.lieuxEtat = 'ok';
+                            if (prepares.lieux.length) enregistrerCacheLieuxV3d(prepares.lieux);
+                            return prepares.lieux;
+                        }
+                    }
+                } catch (e) { console.warn('Noms pré-calculés indisponibles, recherche directe conservée.', e); }
                 const lons = v3d.pts.map(p => p[0]), lats = v3d.pts.map(p => p[1]), marge = 0.012;
                 const sud = Math.min(...lats)-marge, nord = Math.max(...lats)+marge, ouest = Math.min(...lons)-marge, est = Math.max(...lons)+marge;
                 const zoneValide = nord-sud <= 0.6 && est-ouest <= 0.8;
@@ -19712,9 +19736,95 @@ def retirer_composant(
         conn.close()
 
 
+
+# Préparation anticipée des noms géographiques des sorties GPX.
+def preparer_lieux_sortie(sortie_id):
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT trace FROM sorties WHERE id = ?", (sortie_id,))
+        ligne = cursor.fetchone()
+        if ligne is None: return
+        try: trace = json.loads(ligne[0] or "[]")
+        except (TypeError, ValueError): trace = []
+        points = []
+        for p in trace:
+            try:
+                lat, lon = float(p[0]), float(p[1])
+                if -90 <= lat <= 90 and -180 <= lon <= 180: points.append((lon, lat))
+            except (TypeError, ValueError, IndexError): pass
+        cursor.execute("UPDATE recherche_lieux_gpx SET statut = ?, tentatives = COALESCE(tentatives, 0) + 1, erreur = NULL WHERE sortie_id = ?", ("en_cours", sortie_id))
+        conn.commit()
+        lieux = []
+        if len(points) >= 2:
+            lons = [p[0] for p in points]; lats = [p[1] for p in points]; marge = 0.012
+            sud, nord, ouest, est = min(lats)-marge, max(lats)+marge, min(lons)-marge, max(lons)+marge
+            elements = []
+            if nord-sud <= 0.6 and est-ouest <= 0.8:
+                q = '[out:json][timeout:25];(nwr["place"~"^(city|town|village|hamlet|isolated_dwelling|suburb|locality|neighbourhood)$"]["name"](%s,%s,%s,%s);nwr["natural"~"^(peak|hill|ridge)$"]["name"](%s,%s,%s,%s);nwr["mountain_pass"="yes"]["name"](%s,%s,%s,%s);nwr["natural"="saddle"]["name"](%s,%s,%s,%s);nwr["tourism"="viewpoint"]["name"](%s,%s,%s,%s););out center tags;' % ((sud,ouest,nord,est)*5)
+                body = urllib.parse.urlencode({"data": q}).encode("utf-8")
+                for base in ("https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter", "https://overpass.kumi.systems/api/interpreter"):
+                    try:
+                        req = urllib.request.Request(base, data=body, headers={"Content-Type":"application/x-www-form-urlencoded", "User-Agent":"Maillons/1.0"})
+                        with urllib.request.urlopen(req, timeout=28) as response: elements = json.loads(response.read().decode("utf-8")).get("elements", [])
+                        break
+                    except Exception: continue
+            refs = points[::max(1, len(points)//500)]
+            def distance(a,b):
+                x=(a[0]-b[0])*111320*math.cos(math.radians((a[1]+b[1])/2)); y=(a[1]-b[1])*110540
+                return math.hypot(x,y)
+            for e in elements:
+                tags=e.get("tags") or {}; nom=str(tags.get("name") or "").strip(); c=e.get("center") or {}
+                try: lon=float(e.get("lon",c.get("lon"))); lat=float(e.get("lat",c.get("lat")))
+                except (TypeError,ValueError): continue
+                if not nom: continue
+                place=tags.get("place"); nat=tags.get("natural")
+                if place in ("city","town","village","hamlet","isolated_dwelling","suburb","locality","neighbourhood"):
+                    genre="village" if place in ("village","hamlet","isolated_dwelling","locality") else "ville"
+                    rang={"city":1,"town":2,"suburb":3,"village":4,"hamlet":5,"isolated_dwelling":6,"locality":7,"neighbourhood":8}.get(place,4); portee=5000
+                elif nat in ("peak","hill","ridge"): genre,rang,portee="sommet",4,2200
+                elif tags.get("mountain_pass")=="yes" or nat=="saddle": genre,rang,portee="col",2,900
+                elif tags.get("tourism")=="viewpoint": genre,rang,portee="lieu",6,1800
+                else: continue
+                ec=min(distance((lon,lat),p) for p in refs)
+                if ec>portee: continue
+                alt=None
+                try: alt=float(str(tags.get("ele","")).replace(",","."))
+                except ValueError: pass
+                lieux.append({"nom":nom,"genre":genre,"rang":rang,"ec":round(ec,1),"coord":[lon,lat],"alt":alt})
+                cle=hashlib.sha256((unicodedata.normalize("NFKD",nom).casefold()+"|"+str(round(lon,4))+"|"+str(round(lat,4))).encode()).hexdigest()
+                cursor.execute("""INSERT INTO bibliotheque_lieux_geo (cle,nom,genre,rang,lon,lat,altitude,source,maj_le) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT (cle) DO UPDATE SET nom=excluded.nom,genre=excluded.genre,rang=excluded.rang,altitude=excluded.altitude,maj_le=excluded.maj_le""", (cle,nom,genre,rang,lon,lat,alt,"OpenStreetMap",datetime.now(timezone.utc).isoformat()))
+            lieux.sort(key=lambda x:(x["rang"],x["ec"])); retenus=[]
+            for l in lieux:
+                if len(retenus)>=18: break
+                if any(x["nom"].casefold()==l["nom"].casefold() and distance(tuple(x["coord"]),tuple(l["coord"]))<600 for x in retenus): continue
+                idx=min(range(len(points)),key=lambda i:distance(l["coord"],points[i])); cumul=sum(distance(points[i-1],points[i]) for i in range(1,idx+1))
+                l["d"]=round(cumul,1); retenus.append(l)
+            lieux=retenus
+        cursor.execute("UPDATE recherche_lieux_gpx SET statut = ?, lieux_json = ?, erreur = NULL, maj_le = ? WHERE sortie_id = ?", ("termine",json.dumps(lieux,ensure_ascii=False),datetime.now(timezone.utc).isoformat(),sortie_id))
+        conn.commit()
+    except Exception as exc:
+        try: cursor.execute("UPDATE recherche_lieux_gpx SET statut = ?, erreur = ?, maj_le = ? WHERE sortie_id = ?", ("en_attente",str(exc)[:500],datetime.now(timezone.utc).isoformat(),sortie_id)); conn.commit()
+        except Exception: conn.rollback()
+    finally: conn.close()
+
+def reprendre_lieux_en_attente():
+    conn=db.connect(); cursor=conn.cursor()
+    try:
+        cursor.execute("UPDATE recherche_lieux_gpx SET statut = ? WHERE statut = ?", ("en_attente","en_cours"))
+        cursor.execute("SELECT sortie_id FROM recherche_lieux_gpx WHERE statut = ? ORDER BY maj_le", ("en_attente",))
+        ids=[int(x[0]) for x in cursor.fetchall()]; conn.commit()
+    finally: conn.close()
+    for sortie_id in ids: preparer_lieux_sortie(sortie_id)
+
+@app.on_event("startup")
+def reprendre_lieux_au_demarrage():
+    reprendre_lieux_en_attente()
+
 @app.post("/api/sorties/import")
 def importer_sortie(
     data: ImportGpxRequest,
+    background_tasks: BackgroundTasks,
     velo_id: Optional[int] = None,
     x_code_acces: Optional[str] = Header(default=None)
 ):
@@ -19867,6 +19977,10 @@ def importer_sortie(
             1 if automatique else 0
         ))
 
+        cursor.execute("SELECT id FROM sorties WHERE velo_id = ? AND debut = ?", (velo_id, s["debut"]))
+        ligne_sortie = cursor.fetchone()
+        sortie_id = int(ligne_sortie[0])
+        cursor.execute("INSERT INTO recherche_lieux_gpx (sortie_id, velo_id, statut, tentatives, maj_le) VALUES (?, ?, ?, 0, ?) ON CONFLICT (sortie_id) DO UPDATE SET statut=excluded.statut, erreur=NULL, maj_le=excluded.maj_le", (sortie_id, velo_id, "en_attente", datetime.now(timezone.utc).isoformat()))
         if compte:
             km_total = ajuster_km_total(cursor, s["distance_km"], velo_id)
         else:
@@ -19874,9 +19988,12 @@ def importer_sortie(
             km_total = cursor.fetchone()[0]
 
         conn.commit()
+        background_tasks.add_task(preparer_lieux_sortie, sortie_id)
 
         return {
             "statut": "success",
+            "sortie_id": sortie_id,
+            "preparation_lieux": "en_attente",
             "nom": nom,
             "debut": s["debut"],
             "distance_km": s["distance_km"],
@@ -19895,6 +20012,22 @@ def importer_sortie(
     finally:
         conn.close()
 
+
+
+@app.get("/api/sorties/{sortie_id}/lieux")
+def obtenir_lieux_prepares(sortie_id: int, velo_id: int = 1, x_code_acces: Optional[str] = Header(default=None)):
+    controle_acces(x_code_acces, velo_id)
+    conn=db.connect(); cursor=conn.cursor()
+    try:
+        cursor.execute("SELECT id FROM sorties WHERE id = ? AND velo_id = ?", (sortie_id,velo_id))
+        if cursor.fetchone() is None: raise HTTPException(status_code=404, detail="Sortie introuvable.")
+        cursor.execute("SELECT statut,lieux_json,erreur FROM recherche_lieux_gpx WHERE sortie_id = ?", (sortie_id,))
+        row=cursor.fetchone()
+        if row is None: return {"statut":"absent","lieux":[]}
+        try: lieux=json.loads(row[1] or "[]")
+        except (TypeError,ValueError): lieux=[]
+        return {"statut":row[0],"lieux":lieux,"erreur":row[2]}
+    finally: conn.close()
 
 @app.post("/api/sorties/{sortie_id}/verifier")
 def confirmer_velo_sortie(
