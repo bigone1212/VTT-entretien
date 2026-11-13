@@ -4588,9 +4588,11 @@ def accueil():
                 <div class="v3d-cinema-profil">
                     <div class="v3d-cinema-profil-titre">PROFIL DU PARCOURS</div>
                     <svg viewBox="0 0 360 70" preserveAspectRatio="none" role="img" aria-label="Profil altimétrique du parcours">
-                        <path id="v3dCinemaProfilLigne" d="M12 60 L348 60" fill="none" stroke="rgba(255,255,255,0.34)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-                        <path id="v3dCinemaProfilParcouru" d="M12 60 L348 60" fill="none" stroke="#65e6d4" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
-                        <line x1="12" y1="8" x2="12" y2="62" stroke="rgba(255,255,255,0.22)" stroke-width="1"/>
+                        <path id="v3dCinemaProfilZoneRestante" d="M12 64 L12 60 L348 60 L348 64 Z" fill="rgba(235,242,246,0.24)" stroke="none"/>
+                        <path id="v3dCinemaProfilZoneParcourue" d="M12 64 L12 60 L12 64 Z" fill="rgba(101,230,212,0.48)" stroke="none"/>
+                        <path id="v3dCinemaProfilLigne" d="M12 60 L348 60" fill="none" stroke="rgba(245,249,252,0.82)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path id="v3dCinemaProfilParcouru" d="M12 60 L348 60" fill="none" stroke="#65e6d4" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <line x1="12" y1="8" x2="12" y2="64" stroke="rgba(255,255,255,0.22)" stroke-width="1"/>
                     </svg>
                 </div>
                 <div class="v3d-cinema-barre"><span id="v3dCinemaBarre"></span></div>
@@ -13235,10 +13237,17 @@ def accueil():
                     const cheminProfil = pointsProfil.trim().split(/\\s+/).map((point, i) => (i ? 'L' : 'M') + point.replace(',', ' ')).join(' ');
                     const ligneProfil = document.getElementById('v3dCinemaProfilLigne');
                     const ligneParcourue = document.getElementById('v3dCinemaProfilParcouru');
+                    const zoneRestante = document.getElementById('v3dCinemaProfilZoneRestante');
+                    const debutProfil = { x: 12, y: 60 };
                     ligneProfil.setAttribute('d', cheminProfil);
                     ligneParcourue.setAttribute('d', cheminProfil);
-                    v3d.profilLongueur = ligneParcourue.getTotalLength();
+                    v3d.profilLongueur = ligneProfil.getTotalLength();
+                    const pointDebut = ligneProfil.getPointAtLength(0);
+                    const pointFin = ligneProfil.getPointAtLength(v3d.profilLongueur);
+                    const suiteProfil = cheminProfil.replace(/^M[^L]+/, '');
+                    zoneRestante.setAttribute('d', 'M' + pointDebut.x + ' 64 L' + pointDebut.x + ' ' + pointDebut.y + suiteProfil + ' L' + pointFin.x + ' 64 Z');
                     ligneParcourue.style.opacity = '0';
+                    document.getElementById('v3dCinemaProfilZoneParcourue').style.opacity = '0';
                 } else {
                     document.querySelector('.v3d-cinema-profil').style.display = 'none';
                 }
@@ -13570,11 +13579,36 @@ def accueil():
                 document.getElementById('v3dCinemaVitesse').textContent = vitesse === null ? '—' : vitesse.toFixed(1).replace('.', ',') + ' km/h';
                 document.getElementById('v3dCinemaVitesseMax').textContent = v3d.vitesseMax === null ? '—' : Math.round(v3d.vitesseMax) + ' km/h';
                 document.getElementById('v3dCinemaVitesseMoyenne').textContent = v3d.vitesseMoyenne === null ? '—' : v3d.vitesseMoyenne.toFixed(1).replace('.', ',') + ' km/h';
+                const ligneProfil = document.getElementById('v3dCinemaProfilLigne');
                 const ligneParcourue = document.getElementById('v3dCinemaProfilParcouru');
-                if (ligneParcourue && v3d.profilLongueur > 0) {
-                    const avanceProfil = v3d.profilLongueur * Math.max(0, Math.min(1, v3d.f));
+                const zoneParcourue = document.getElementById('v3dCinemaProfilZoneParcourue');
+                if (ligneProfil && ligneParcourue && zoneParcourue && v3d.profilLongueur > 0) {
+                    const progression = Math.max(0, Math.min(1, v3d.f));
+                    const xCible = 12 + 336 * progression;
+                    let bas = 0, haut = v3d.profilLongueur;
+                    for (let n = 0; n < 12; n++) {
+                        const milieu = (bas + haut) / 2;
+                        if (ligneProfil.getPointAtLength(milieu).x < xCible) bas = milieu;
+                        else haut = milieu;
+                    }
+                    const avanceProfil = (bas + haut) / 2;
                     ligneParcourue.setAttribute('stroke-dasharray', avanceProfil.toFixed(2) + ' ' + v3d.profilLongueur.toFixed(2));
-                    ligneParcourue.style.opacity = avanceProfil > 0.5 ? '1' : '0';
+                    ligneParcourue.style.opacity = progression > 0.001 ? '1' : '0';
+                    if (progression > 0.001) {
+                        const debut = ligneProfil.getPointAtLength(0);
+                        const fin = ligneProfil.getPointAtLength(avanceProfil);
+                        const nombrePoints = Math.max(2, Math.ceil(avanceProfil / 5));
+                        let zone = 'M' + debut.x.toFixed(2) + ' 64 L' + debut.x.toFixed(2) + ' ' + debut.y.toFixed(2);
+                        for (let n = 1; n <= nombrePoints; n++) {
+                            const p = ligneProfil.getPointAtLength(avanceProfil * n / nombrePoints);
+                            zone += ' L' + p.x.toFixed(2) + ' ' + p.y.toFixed(2);
+                        }
+                        zone += ' L' + fin.x.toFixed(2) + ' 64 Z';
+                        zoneParcourue.setAttribute('d', zone);
+                        zoneParcourue.style.opacity = '1';
+                    } else {
+                        zoneParcourue.style.opacity = '0';
+                    }
                 }
                 document.getElementById('v3dCinemaBarre').style.width = (Math.max(0, Math.min(1, v3d.f)) * 100) + '%';
             }
