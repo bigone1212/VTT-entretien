@@ -1,3 +1,15 @@
+# Nouvelle évolution — 13/11/2026 — repères aériens de pente et de vitesse maximale
+
+- Retour de Math après essai : les repères de pente doivent être plus lisibles, avec une écriture plus grande et sans cadre ; il souhaite le même traitement pour la vitesse maximale.
+- Dans `main.py`, les repères de pente deviennent des textes blancs plus grands, avec ombre pour le contraste, sans cartouche. Le point turquoise et le trait fin de rappel restent présents.
+- Ajout d'un repère « Vmax XX km/h » au point du parcours où la vitesse maximale calculée est atteinte. Il n'apparaît que si le GPX contient des horodatages permettant le calcul d'une vitesse valide. Le repère utilise le même style aérien, sans cadre.
+- Les calculs de vitesse, le seuil anti-valeurs aberrantes (150 km/h), le relief, le profil, le déplacement de caméra et les autres fonctions restent inchangés.
+- Seul `main.py` a été modifié pour cette évolution. Commit : `ac00ea5f520484a45271c227467f51f1202d67f5`.
+- Aucun test navigateur/visuel réalisé à ce stade. Le contrôle GitHub doit être vérifié avant de proposer un nouveau test.
+- Aucun déploiement déclenché. Ne pas déployer avant l'accord explicite de Math pour cette nouvelle version. Ne pas fusionner la PR #57, ne pas modifier `main`, ne pas toucher à la production ni à Neon.
+
+---
+
 # Nouvelle évolution — 13/11/2026 — profil cinéma épuré et repères de pente
 
 - À la demande de Math, suppression de la petite barre turquoise située sous le profil altimétrique : le remplissage de la surface (gris pour le parcours restant, turquoise pour la partie parcourue) donne déjà l'information de progression.
