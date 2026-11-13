@@ -1009,3 +1009,12 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - Tâche en cours : vérifier le workflow GitHub, puis déployer uniquement sur Render test après validation automatique.
 
 - Résultat du workflow GitHub `43511103831` sur le commit applicatif `60f43fc3a547810dca03563d168fb000d521af8a` : échec dans l'étape de test multi-vélos, avec `TypeError: importer_sortie() missing 1 required positional argument: 'background_tasks'`. Le même échec exact est présent sur le commit de base `688d637` (workflow `43509325125`) : il est antérieur à cet enrichissement OSM et ne vient pas de la modification géographique. La syntaxe Python, le chargement initial, l'installation et les étapes précédentes sont passés. Ne pas déployer tant que ce blocage n'est pas traité ou explicitement accepté.
+
+
+## 13/11/2026 — correction du test d'import GPX
+
+- Le test d'intégration appelait `importer_sortie()` sans fournir le paramètre obligatoire `background_tasks`. Les journaux ont confirmé que le même défaut était présent avant l'enrichissement OSM.
+- Correction limitée à `.github/workflows/maillons-check.yml` : le test fournit maintenant `main.BackgroundTasks()`, sans modifier le fonctionnement de l'application.
+- Commit : `089126d8c72d8a1ee71c4223149443fe80428e0c`. Vérification GitHub Actions en cours.
+- Render test toujours configuré sur cette branche avec auto-déploiement désactivé. Ne déclencher le déploiement test qu'après succès du workflow. Aucun changement sur `main`, aucune opération Neon ni base de production.
+- Tâche en cours : attendre et examiner le résultat du workflow, puis déployer uniquement sur `maillons-test-2026` si les contrôles passent.
