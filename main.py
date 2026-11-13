@@ -3380,16 +3380,22 @@ def accueil():
             }
 
             .vue3d.cinema .v3d-haut {
+                z-index: 7;
                 background: linear-gradient(rgba(0,0,0,0.48), rgba(0,0,0,0));
             }
 
-            .vue3d.cinema .v3d-haut > strong,
-            .vue3d.cinema #v3dCinema { display: none; }
+            .vue3d.cinema .v3d-haut > strong { display: none; }
+            .vue3d.cinema #v3dCinema {
+                display: inline-flex;
+                pointer-events: auto;
+                position: relative;
+                z-index: 8;
+            }
 
             .v3d-cinema-hud {
                 position: absolute;
                 z-index: 4;
-                top: 86px;
+                bottom: 28px;
                 left: 24px;
                 max-width: min(440px, calc(100vw - 48px));
                 padding: 17px 21px 16px;
