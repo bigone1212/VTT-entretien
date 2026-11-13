@@ -13598,7 +13598,7 @@ def accueil():
                 if(v3d.lieuxEtat==='panne') { messageV3d('Noms de lieux indisponibles : le serveur OpenStreetMap ne répond pas.'); setTimeout(()=>messageV3d(''),6000); }
                 lieux.forEach(l=>{
                     const el=document.createElement('div'); el.className='v3d-lieu'+(['sommet','col'].includes(l.genre)?' v3d-lieu-haut':'');
-                    const ic=l.genre==='sommet'?'⛰️':l.genre==='col'?'🏔️':'🏘️';
+                    const ic=l.genre==='sommet'?'⛰️':l.genre==='col'?'🏔️':l.genre==='lieu'?'📍':'🏘️';
                     el.textContent=ic+' '+l.nom+(Number.isFinite(l.alt)&&['sommet','col'].includes(l.genre)?' · '+fmtAltitude(l.alt).complet:'');
                     v3d.reperes.push(new window.maplibregl.Marker({element:el,anchor:'bottom'}).setLngLat(l.coord).addTo(carte));
                 });
