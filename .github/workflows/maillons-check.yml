@@ -1603,6 +1603,8 @@ jobs:
                       args[nom] = code
                   elif nom == "velo_id":
                       args[nom] = velo_id
+                  elif nom == "background_tasks":
+                      args[nom] = main.BackgroundTasks()
                   elif isinstance(ann, type) and issubclass(ann, main.BaseModel):
                       fabrique = getattr(ann, "model_construct", None) or ann.construct
                       args[nom] = fabrique()
