@@ -1,3 +1,20 @@
+# Nouvelle évolution — 13/11/2026 — enrichissement des noms de lieux GPX (en test)
+
+- Demande de Math : améliorer fortement l'identification des villes, villages, lieux-dits, sommets, collines et cols pendant le survol 3D, car les noms actuels sont trop souvent absents ou imprécis.
+- Pour préserver la PR #57 et sa branche, travail isolé sur la nouvelle branche `reprise/2026-11-13-reperes-geographiques`, créée depuis le dernier commit de `reprise/2026-11-13-animation-3d-gpx` (`6df3ffd67c9b0d6fbc4013b55faa01a8c15d8a78`). La PR #57 et sa branche source ne sont pas modifiées.
+- Recherche documentée : l'API officielle de géocodage inversé de la Géoplateforme IGN utilise notamment les points d'intérêt (POI) issus de la BD TOPO, avec des lieux nommés actualisés trimestriellement. Documentation consultée : https://github.com/IGNF/cartes.gouv.fr-documentation/blob/main/content/fr/guides-utilisateur/utiliser-les-services-de-la-geoplateforme/geocodage.md
+- Dans `main.py` :
+  - ajout d'une recherche complémentaire des POI IGN le long du parcours, par échantillons géographiques et avec filtrage par distance réelle au tracé ;
+  - conservation d'OpenStreetMap en parallèle, avec ajout de types naturels (collines/crêtes) et points de vue ;
+  - fusion et dédoublonnage des noms IGN/OSM ; affichage distinct des sommets, cols, villages et autres lieux ;
+  - la recherche IGN reste active même lorsque l'emprise du parcours est trop grande pour Overpass.
+- Commits applicatifs : `ba0ed4a3427b513293ccda57d14631aab88cabbf`, `008f73edd27960aef66075aff4797f1135f4993e`, `11581b79323693394e0869b22ea89448ab1359dd`.
+- Seuls `main.py` et ce fichier de relais sont modifiés pour cette évolution. Aucun changement à `main`, aucune opération Neon, aucune fusion et aucun déploiement déclenché.
+- À faire : vérifier le workflow GitHub Actions de cette branche, puis tester avec un véritable GPX sur Maillons test. Vérifier en particulier le format réel des réponses IGN, la pertinence des noms affichés et la charge réseau sur les parcours longs. Aucun résultat visuel réel ne doit être annoncé avant ce test.
+- Ne pas fusionner la PR #57, ne pas modifier sa branche, ne pas déployer en production. Le service Render test est actuellement rattaché à `reprise/2026-11-13-animation-3d-gpx` ; il faudra explicitement le basculer vers cette branche de travail avant de tester, puis déployer uniquement avec l'accord de Math.
+
+---
+
 # Complément — 13/11/2026 — gestion complète du repère Vmax temporaire
 
 - Petite correction de robustesse après relecture : le repère Vmax temporaire est également conservé dans la liste générale des repères. Il sera ainsi correctement supprimé lors du rechargement d'un parcours et respectera le bouton « Repères ».
