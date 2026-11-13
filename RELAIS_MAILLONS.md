@@ -7,7 +7,7 @@
   - caméra plus calme : lissage du centre réduit de 5 à 3, lissage du cap de 1,6 à 0,9 et regard porté plus loin (450 à 700 m) pour éviter les changements de direction trop fréquents.
 - Relief, angle de vue, tracé GPX d'origine, données d'altitude, filtres, fonds et autres fonctions inchangés. Aucun faux point GPS ajouté.
 - Commit de `main.py` : f5c89cd5f57775eb5374d5953bd512a1dd6e11d9.
-- Aucun test navigateur/téléphone effectué et aucun déploiement de cette itération. Aucun changement sur `main), aucune PR/fusion, aucune opération Neon.
+- Aucun test navigateur/téléphone effectué et aucun déploiement de cette itération. Aucun changement sur `main`, aucune PR/fusion, aucune opération Neon.
 - Étape suivante : vérifier le diff et demander à Math s'il souhaite déployer cette version sur Maillons test uniquement.
 
 ---
