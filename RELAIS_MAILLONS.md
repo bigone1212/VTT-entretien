@@ -1020,3 +1020,5 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - Tâche en cours : attendre et examiner le résultat du workflow, puis déployer uniquement sur `maillons-test-2026` si les contrôles passent.
 
 - Après correction du paramètre `background_tasks`, le test d'import GPX passe. Le run `43511512397` a ensuite révélé un deuxième défaut ancien du contrôle statique : le gestionnaire `@app.on_event("startup")` était compté à tort comme une route HTTP et réclamait un contrôle de vélo. Correction limitée au workflow : les événements `on_event` sont exclus du recensement des routes. Commit `2e2125ffdaaf5a39bf451a39e925f8710411c836`; nouveau contrôle en cours. Aucune modification du code applicatif dans ces corrections de tests.
+
+- Le run `43511732071` a passé la correction du recensement des routes, puis a révélé que le test générique de cloisonnement n'acceptait pas non plus le paramètre `background_tasks` de `importer_sortie`. Ajout de sa création dans le générateur d'arguments du test (`main.BackgroundTasks()`), toujours sans changer `main.py`. Commit `6932d37779d84300dc9198a36d6fb734c99752f9`; nouveau workflow en attente.
