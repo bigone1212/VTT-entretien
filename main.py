@@ -13492,7 +13492,11 @@ def accueil():
                     if (indexMax >= 0) {
                         const libelle='Vmax '+Math.round(v3d.vitesseMax)+' km/h';
                         const marqueurMax=new window.maplibregl.Marker({element:elementRepereAerienV3d(libelle,16),anchor:'bottom-left'}).setLngLat(pointA(v3d.cum[indexMax])).addTo(carte);
-                        v3d.reperes.push(marqueurMax);
+                        v3d.panneauxPente.push({
+                            marqueur: marqueurMax,
+                            debut: v3d.cum[indexMax],
+                            fin: v3d.cum[indexMax] + (v3d.total / Math.max(1, v3d.dureeBase) * v3d.vitesse) * 1.5
+                        });
                     }
                 }
                 majVisibiliteReperesV3d(); majBoutonsV3d();
