@@ -1,3 +1,14 @@
+# Nouvelle évolution — 13/11/2026 — surface du profil altimétrique
+
+- À la suite du retour de Math, le profil cinéma ne se limite plus à une ligne colorée : toute la surface sous le profil est remplie.
+- La surface du parcours restant est gris clair translucide ; la surface déjà parcourue se superpose en turquoise translucide. La ligne de profil reste visible au-dessus du remplissage.
+- La limite de couleur suit la distance parcourue (axe horizontal du profil), et non la longueur géométrique de la courbe, pour rester synchronisée avec le déplacement GPX.
+- Modifications faites uniquement dans `main.py`, sur la branche `reprise/2026-11-13-animation-3d-gpx`. Aucun changement sur `main`, aucune fusion, aucune modification Neon.
+- Cette version n'a pas encore été déployée sur Render. Le déploiement précédent reste la version à surface non remplie. Attendre l'accord de Math avant de déployer cette nouvelle variante sur Maillons test.
+- Aucun test visuel navigateur/téléphone réalisé pour cette nouvelle variante.
+
+---
+
 # État du test — 13/11/2026 — profil cinéma coloré déployé
 
 - La version corrigée a été déployée sur le service Render de test `maillons-test-2026`.
