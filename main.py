@@ -19831,6 +19831,75 @@ def preparer_lieux_sortie(sortie_id):
                     except Exception:
                         continue
 
+            # 1 bis) Recherche vectorielle directe dans les couches IGN WFS.
+            # Contrairement au géocodage inverse, GetFeature renvoie les objets
+            # nommés présents dans l'emprise ; leur position d'origine est conservée.
+            # Les emprises suivent le parcours par tronçons pour éviter une grande
+            # boîte englobante et les réponses trop volumineuses.
+            wfs_layers = (
+                ("BDTOPO_V3:lieu_dit_non_habite", "IGN-BD-TOPO"),
+                ("BDCARTO_V5:lieu_dit_non_habite", "IGN-BD-CARTO"),
+            )
+            pas_wfs = max(1, int(math.ceil(total / 10000))) if total else 1
+            for debut_idx in range(0, len(points), max(2, int(len(points) / min(12, max(1, pas_wfs))) or 2)):
+                fin_idx = min(len(points), debut_idx + max(2, int(len(points) / min(12, max(1, pas_wfs))) or 2))
+                troncon = points[debut_idx:fin_idx]
+                if len(troncon) < 2:
+                    continue
+                marge_lat = 200 / 110540
+                milieu_lat = sum(p[1] for p in troncon) / len(troncon)
+                marge_lon = 200 / max(1, 111320 * math.cos(math.radians(milieu_lat)))
+                bbox = (
+                    min(p[0] for p in troncon) - marge_lon,
+                    min(p[1] for p in troncon) - marge_lat,
+                    max(p[0] for p in troncon) + marge_lon,
+                    max(p[1] for p in troncon) + marge_lat,
+                )
+                for couche, source_wfs in wfs_layers:
+                    try:
+                        params_wfs = urllib.parse.urlencode({
+                            "SERVICE": "WFS",
+                            "VERSION": "2.0.0",
+                            "REQUEST": "GetFeature",
+                            "TYPENAMES": couche,
+                            "SRSNAME": "CRS:84",
+                            "BBOX": ",".join(f"{v:.7f}" for v in bbox) + ",CRS:84",
+                            "COUNT": "1000",
+                            "OUTPUTFORMAT": "application/json",
+                        })
+                        req = urllib.request.Request(
+                            "https://data.geopf.fr/wfs/ows?" + params_wfs,
+                            headers={"User-Agent": "Maillons/1.0", "Accept": "application/geo+json, application/json"}
+                        )
+                        with urllib.request.urlopen(req, timeout=12) as response:
+                            donnees_wfs = json.loads(response.read().decode("utf-8"))
+                        api_ok = True
+                        for feature in donnees_wfs.get("features", []):
+                            prop = feature.get("properties") or {}
+                            geom = feature.get("geometry") or {}
+                            coord = geom.get("coordinates")
+                            if geom.get("type") != "Point" or not isinstance(coord, list) or len(coord) < 2:
+                                continue
+                            try:
+                                lon, lat = float(coord[0]), float(coord[1])
+                            except (TypeError, ValueError):
+                                continue
+                            nom = str(prop.get("toponyme") or prop.get("nom") or prop.get("name") or prop.get("libelle") or prop.get("label") or "").strip()
+                            if not nom:
+                                continue
+                            # Distance calculée sur les points du GPX, sans déplacer le POI.
+                            pas_distance = max(1, len(points) // 3000)
+                            ec = min(distance((lon, lat), p) for p in points[::pas_distance])
+                            if ec > 200:
+                                continue
+                            lieux.append({
+                                "nom": nom, "genre": "village", "rang": 5,
+                                "ec": round(ec, 1), "coord": [lon, lat],
+                                "alt": None, "source": source_wfs
+                            })
+                    except Exception:
+                        continue
+
             # 2) OpenStreetMap complète les noms absents de l'IGN.
             if nord-sud <= 0.6 and est-ouest <= 0.8:
                 q = '[out:json][timeout:25];(nwr["place"~"^(city|town|village|hamlet|isolated_dwelling|suburb|locality|neighbourhood)$"]["name"](%s,%s,%s,%s);nwr["natural"~"^(peak|hill|ridge)$"]["name"](%s,%s,%s,%s);nwr["mountain_pass"="yes"]["name"](%s,%s,%s,%s);nwr["natural"="saddle"]["name"](%s,%s,%s,%s);nwr["tourism"="viewpoint"]["name"](%s,%s,%s,%s);nwr["waterway"~"^(river|canal|stream)$"]["name"](%s,%s,%s,%s);nwr["natural"~"^(water|wood|wetland|beach|cliff|cave_entrance)$"]["name"](%s,%s,%s,%s);nwr["leisure"~"^(park|nature_reserve)$"]["name"](%s,%s,%s,%s);nwr["boundary"="protected_area"]["name"](%s,%s,%s,%s);nwr["historic"]["name"](%s,%s,%s,%s);nwr["tourism"~"^(attraction|museum)$"]["name"](%s,%s,%s,%s););out center tags;' % ((sud,ouest,nord,est)*11)
@@ -19870,7 +19939,7 @@ def preparer_lieux_sortie(sortie_id):
                 cursor.execute("""INSERT INTO bibliotheque_lieux_geo (cle,nom,genre,rang,lon,lat,altitude,source,maj_le) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT (cle) DO UPDATE SET nom=excluded.nom,genre=excluded.genre,rang=excluded.rang,altitude=excluded.altitude,source=excluded.source,maj_le=excluded.maj_le""", (cle,nom,genre,rang,lon,lat,alt,"OpenStreetMap",datetime.now(timezone.utc).isoformat()))
             # Enregistre les lieux IGN en premier dans la bibliothèque commune.
             for l in lieux:
-                if l.get("source") != "IGN": continue
+                if not str(l.get("source", "")).startswith("IGN"): continue
                 lon, lat = l["coord"]
                 cle=hashlib.sha256((unicodedata.normalize("NFKD",l["nom"]).casefold()+"|"+str(round(lon,4))+"|"+str(round(lat,4))).encode()).hexdigest()
                 cursor.execute("""INSERT INTO bibliotheque_lieux_geo (cle,nom,genre,rang,lon,lat,altitude,source,maj_le) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT (cle) DO UPDATE SET nom=excluded.nom,genre=excluded.genre,rang=excluded.rang,altitude=excluded.altitude,source=excluded.source,maj_le=excluded.maj_le""", (cle,l["nom"],l["genre"],l["rang"],lon,lat,l.get("alt"),"IGN",datetime.now(timezone.utc).isoformat()))
