@@ -1,3 +1,12 @@
+# Complément du relais — 13/11/2026 — échappement du code intégré
+
+- Le journal du premier déploiement de la nouvelle version a signalé un avertissement Python sur l'expression régulière insérée dans le HTML.
+- Le double échappement est rétabli dans la chaîne HTML Python afin que le navigateur reçoive bien l'expression JavaScript attendue sans avertissement Python.
+- Commit correctif de `main.py` : `1e62d052bc59b884cf71f7494aceea28fbef3da8`.
+- Le déploiement suivant doit viser le dernier commit de cette branche. Aucun changement sur `main`, aucune fusion et aucune opération Neon.
+
+---
+
 # Complément du relais — 13/11/2026 — correction du tracé SVG
 
 - Contrôle du code après le premier envoi : correction de l'expression qui découpe les coordonnées du profil en points SVG, pour garantir que chaque point est bien séparé.
