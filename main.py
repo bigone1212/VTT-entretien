@@ -3416,15 +3416,24 @@ def accueil():
             .v3d-cinema-marque { color: #65e6d4; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.19em; }
             .v3d-cinema-nom { margin-top: 7px; font-size: clamp(1.05rem, 2.2vw, 1.65rem); font-weight: 750; line-height: 1.15; text-shadow: 0 2px 8px rgba(0,0,0,0.5); }
             .v3d-cinema-date { margin-top: 5px; color: rgba(255,255,255,0.72); font-size: 0.78rem; letter-spacing: 0.06em; }
-            .v3d-cinema-stats { display: flex; gap: 25px; margin-top: 16px; }
-            .v3d-cinema-stat strong { display: block; font-size: 1.25rem; font-variant-numeric: tabular-nums; }
-            .v3d-cinema-stat span { display: block; margin-top: 2px; color: rgba(255,255,255,0.7); font-size: 0.65rem; letter-spacing: 0.12em; text-transform: uppercase; }
-            .v3d-cinema-barre { height: 3px; margin-top: 15px; overflow: hidden; background: rgba(255,255,255,0.28); }
+            .v3d-cinema-stats { display: flex; flex-wrap: wrap; gap: 12px 20px; margin-top: 13px; }
+            .v3d-cinema-stat { min-width: 62px; }
+            .v3d-cinema-stat strong { display: block; font-size: 1.12rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+            .v3d-cinema-stat span { display: block; margin-top: 2px; color: rgba(255,255,255,0.7); font-size: 0.61rem; letter-spacing: 0.09em; text-transform: uppercase; }
+            .v3d-cinema-profil { margin-top: 12px; }
+            .v3d-cinema-profil-titre { color: rgba(255,255,255,0.65); font-size: 0.58rem; letter-spacing: 0.14em; margin-bottom: 2px; }
+            .v3d-cinema-profil svg { display: block; width: 100%; height: 54px; overflow: visible; }
+            .v3d-cinema-barre { height: 3px; margin-top: 10px; overflow: hidden; background: rgba(255,255,255,0.28); }
             .v3d-cinema-barre > span { display: block; width: 0; height: 100%; background: #65e6d4; box-shadow: 0 0 10px #65e6d4; transition: width 0.12s linear; }
             @media (max-width: 600px) {
                 .v3d-cinema-hud { top: auto; bottom: 18px; left: 12px; max-width: calc(100vw - 24px); padding: 12px 14px; }
-                .v3d-cinema-stats { gap: 18px; margin-top: 11px; }
-                .v3d-cinema-stat strong { font-size: 1.05rem; }
+                .v3d-cinema-hud { max-height: min(42vh, 310px); overflow: hidden; }
+                .v3d-cinema-stats { gap: 9px 13px; margin-top: 9px; }
+                .v3d-cinema-stat { min-width: 54px; }
+                .v3d-cinema-stat strong { font-size: 0.94rem; }
+                .v3d-cinema-stat span { font-size: 0.54rem; }
+                .v3d-cinema-profil { margin-top: 8px; }
+                .v3d-cinema-profil svg { height: 42px; }
             }
 
             .v3d-bas {
@@ -4570,7 +4579,18 @@ def accueil():
                 <div class="v3d-cinema-date" id="v3dCinemaDate"></div>
                 <div class="v3d-cinema-stats">
                     <div class="v3d-cinema-stat"><strong id="v3dCinemaDistance">0,0 km</strong><span>Distance</span></div>
-                    <div class="v3d-cinema-stat" id="v3dCinemaDeniveleBloc"><strong id="v3dCinemaDenivele">D+ 0 m</strong><span>Dénivelé positif</span></div>
+                    <div class="v3d-cinema-stat" id="v3dCinemaDeniveleBloc"><strong id="v3dCinemaDenivele">D+ 0 m</strong><span>D+ cumulé</span></div>
+                    <div class="v3d-cinema-stat" id="v3dCinemaAltitudeBloc"><strong id="v3dCinemaAltitude">—</strong><span>Altitude</span></div>
+                    <div class="v3d-cinema-stat" id="v3dCinemaVitesseBloc"><strong id="v3dCinemaVitesse">—</strong><span>Vitesse</span></div>
+                    <div class="v3d-cinema-stat"><strong id="v3dCinemaVitesseMax">—</strong><span>Vitesse max</span></div>
+                </div>
+                <div class="v3d-cinema-profil">
+                    <div class="v3d-cinema-profil-titre">PROFIL DU PARCOURS</div>
+                    <svg viewBox="0 0 360 70" preserveAspectRatio="none" role="img" aria-label="Profil altimétrique du parcours">
+                        <polyline id="v3dCinemaProfilLigne" points="12,60 348,60" fill="none" stroke="rgba(101,230,212,0.8)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        <line x1="12" y1="8" x2="12" y2="62" stroke="rgba(255,255,255,0.22)" stroke-width="1"/>
+                        <circle id="v3dCinemaProfilCurseur" cx="12" cy="60" r="4" fill="#65e6d4" stroke="#fff" stroke-width="1.5"/>
+                    </svg>
                 </div>
                 <div class="v3d-cinema-barre"><span id="v3dCinemaBarre"></span></div>
             </div>
@@ -13082,7 +13102,7 @@ def accueil():
                 fond: 'sat', enregistreur: null, morceaux: [], titre: '',
                 nomParcours: '', dateParcours: '', cinema: false,
                 canvasVideo: null, ctxVideo: null, rafVideo: 0, fluxVideo: null, videoActif: false,
-                denivelePlus: 0, altitudeDisponible: false,
+                denivelePlus: 0, altitudeDisponible: false, altitudes: [], deniveleCum: [], vitesses: [], vitesseMax: null,
                 dureeBase: 60, prete: false, compteImages: 0,
                 tps: [], decalage: 0, alts: [], surfaces: '', pentes: [], mode: 'pente', autres: [], voirAutres: false, photos: [], marqueurs: [], reperes: [], panneauxPente: [], repereVisibles: true, prochaine: 0, sortieId: 0, minuteur: 0
             };
@@ -13170,14 +13190,24 @@ def accueil():
                 const altitudes = profil
                     ? profil.alt
                     : valides.map(p => (typeof p[3] === 'number' && isFinite(p[3]) ? p[3] : null));
+                v3d.altitudes = altitudes;
                 v3d.altitudeDisponible = altitudes.filter(a => a !== null).length >= 2;
                 v3d.denivelePlus = 0;
+                v3d.deniveleCum = [0];
                 for (let i = 1; i < altitudes.length; i++) {
-                    if (altitudes[i] !== null && altitudes[i - 1] !== null) {
-                        v3d.denivelePlus += Math.max(0, altitudes[i] - altitudes[i - 1]);
-                    }
+                    const a = altitudes[i - 1], b = altitudes[i];
+                    const gain = a !== null && b !== null ? Math.max(0, b - a) : 0;
+                    v3d.denivelePlus += gain;
+                    v3d.deniveleCum.push(v3d.denivelePlus);
                 }
-                v3d.tps = valides.map(p => (typeof p[2] === 'number' ? p[2] : null));
+                v3d.tps = valides.map(p => (typeof p[2] === 'number' && isFinite(p[2]) ? p[2] : null));
+                v3d.vitesses = pts.map((_, i) => {
+                    if (i === 0 || v3d.tps[i] === null || v3d.tps[i - 1] === null) return null;
+                    const secondes = v3d.tps[i] - v3d.tps[i - 1];
+                    return secondes > 0 ? ((v3d.cum[i] - v3d.cum[i - 1]) / secondes) * 3.6 : null;
+                });
+                const vitessesValides = v3d.vitesses.filter(x => x !== null && isFinite(x) && x <= 150);
+                v3d.vitesseMax = vitessesValides.length ? Math.max(...vitessesValides) : null;
                 v3d.pentes = profil ? profil.pentes : [];
                 v3d.pts = pts;
                 v3d.cum = [0];
@@ -13185,6 +13215,21 @@ def accueil():
                     v3d.cum.push(v3d.cum[i - 1] + distanceM(pts[i - 1], pts[i]));
                 }
                 v3d.total = v3d.cum[v3d.cum.length - 1];
+                const altitudesValides = v3d.altitudes.filter(a => a !== null && isFinite(a));
+                if (altitudesValides.length >= 2) {
+                    const minAlt = Math.min(...altitudesValides);
+                    const maxAlt = Math.max(...altitudesValides);
+                    const amplitude = Math.max(1, maxAlt - minAlt);
+                    const pointsProfil = v3d.altitudes.map((a, i) => {
+                        if (a === null || !isFinite(a)) return null;
+                        const x = 12 + (v3d.cum[i] / Math.max(1, v3d.total)) * 336;
+                        const y = 60 - ((a - minAlt) / amplitude) * 48;
+                        return x.toFixed(1) + ',' + y.toFixed(1);
+                    }).filter(Boolean).join(' ');
+                    document.getElementById('v3dCinemaProfilLigne').setAttribute('points', pointsProfil);
+                } else {
+                    document.querySelector('.v3d-cinema-profil').style.display = 'none';
+                }
                 // Ralentit le survol pour limiter les grands déplacements visibles entre deux images.
                 v3d.dureeBase = Math.min(240, Math.max(75, (v3d.total / 1000) * 8));
             }
@@ -13485,11 +13530,29 @@ def accueil():
                 hud.setAttribute('aria-hidden', v3d.cinema ? 'false' : 'true');
                 document.getElementById('v3dCinemaNom').textContent = v3d.nomParcours || 'Sortie VTT';
                 document.getElementById('v3dCinemaDate').textContent = v3d.dateParcours || '';
-                document.getElementById('v3dCinemaDistance').textContent =
-                    fmtDistance(v3d.f * v3d.total / 1000, 1).complet;
+                const distance = v3d.f * v3d.total;
+                const index = Math.max(0, Math.min(v3d.cum.length - 1, v3d.cum.findIndex((x, i) => i > 0 && x >= distance) < 0 ? v3d.cum.length - 1 : v3d.cum.findIndex((x, i) => i > 0 && x >= distance)));
+                const avant = Math.max(0, index - 1);
+                const segment = v3d.cum[index] - v3d.cum[avant];
+                const part = segment > 0 ? Math.max(0, Math.min(1, (distance - v3d.cum[avant]) / segment)) : 0;
+                const interp = (liste) => liste[index] !== null && liste[index] !== undefined && liste[avant] !== null && liste[avant] !== undefined
+                    ? liste[avant] + (liste[index] - liste[avant]) * part
+                    : (liste[index] ?? liste[avant] ?? null);
+                document.getElementById('v3dCinemaDistance').textContent = fmtDistance(distance / 1000, 1).complet;
                 const denivele = document.getElementById('v3dCinemaDeniveleBloc');
                 denivele.style.display = v3d.altitudeDisponible ? '' : 'none';
-                document.getElementById('v3dCinemaDenivele').textContent = 'D+ ' + Math.round(v3d.denivelePlus) + ' m';
+                const dplus = interp(v3d.deniveleCum);
+                document.getElementById('v3dCinemaDenivele').textContent = 'D+ ' + Math.round(dplus || 0) + ' m';
+                const altitude = interp(v3d.altitudes);
+                const blocAltitude = document.getElementById('v3dCinemaAltitudeBloc');
+                blocAltitude.style.display = v3d.altitudeDisponible ? '' : 'none';
+                document.getElementById('v3dCinemaAltitude').textContent = altitude === null ? '—' : Math.round(altitude) + ' m';
+                const vitesse = interp(v3d.vitesses);
+                const blocVitesse = document.getElementById('v3dCinemaVitesseBloc');
+                blocVitesse.style.display = v3d.vitesses.some(x => x !== null) ? '' : 'none';
+                document.getElementById('v3dCinemaVitesse').textContent = vitesse === null ? '—' : vitesse.toFixed(1).replace('.', ',') + ' km/h';
+                document.getElementById('v3dCinemaVitesseMax').textContent = v3d.vitesseMax === null ? '—' : Math.round(v3d.vitesseMax) + ' km/h';
+                document.getElementById('v3dCinemaProfilCurseur').setAttribute('cx', (12 + Math.max(0, Math.min(1, v3d.f)) * 336).toFixed(1));
                 document.getElementById('v3dCinemaBarre').style.width = (Math.max(0, Math.min(1, v3d.f)) * 100) + '%';
             }
 
