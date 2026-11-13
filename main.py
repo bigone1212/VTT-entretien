@@ -2639,6 +2639,18 @@ def accueil():
 
             .galerie-velo { margin: 8px 0 4px; }
 
+            /* Menu trois points posé en haut à droite de la photo (onglets Entretien et Mon vélo) */
+            .menu-photo-zone { position: relative; height: 0; width: 100%; max-width: 600px; margin: 0 auto; z-index: 25; }
+            .galerie-velo .menu-photo-zone { max-width: none; }
+            :root.paysage #menuPhotoEntretien { max-width: none; width: min(100%, 900px, calc((100vh - 24px) * 16 / 9)); }
+            .menu-photo-zone .menu-sortie-btn,
+            #blocAjouterVelo .velo-ligne .menu-photo-zone .menu-sortie-btn { top: 8px; right: 8px; color: #ffffff; background: rgba(0, 0, 0, 0.5); }
+            .menu-photo-zone .menu-sortie-btn:hover, .menu-photo-zone .menu-sortie-btn[aria-expanded="true"],
+            #blocAjouterVelo .velo-ligne .menu-photo-zone .menu-sortie-btn:hover,
+            #blocAjouterVelo .velo-ligne .menu-photo-zone .menu-sortie-btn[aria-expanded="true"] { color: #ffffff; background: rgba(0, 0, 0, 0.72); }
+            .menu-photo-zone .menu-sortie, #blocAjouterVelo .velo-ligne .menu-photo-zone .menu-sortie { top: 50px; right: 8px; }
+            .menu-photo-zone .menu-sortie.vers-haut, #blocAjouterVelo .velo-ligne .menu-photo-zone .menu-sortie.vers-haut { top: auto; bottom: 8px; }
+
             .galerie-piste {
                 position: relative;
                 height: 200px;
@@ -2685,7 +2697,7 @@ def accueil():
             .galerie-suppr {
                 position: absolute;
                 top: 8px;
-                right: 8px;
+                left: 8px;
                 width: 30px;
                 height: 30px;
                 padding: 0;
@@ -4576,6 +4588,7 @@ def accueil():
             <button type="button" role="tab" id="modeVerifs" aria-selected="false"></button>
         </div>
 
+        <div class="menu-photo-zone" id="menuPhotoEntretien"></div>
         <div class="bike-container">
             <img
                 src="https://shop.roulezjeunesse.com/cdn/shop/files/CubeStereoHybridONE44EXC8001.jpg?v=1736521382&width=1220"
@@ -4644,7 +4657,7 @@ def accueil():
                 <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="16" r="3.5"/><circle cx="18" cy="16" r="3.5"/><path d="M6 16l4-7h5l3 7M10 9l3 7M9 6h3"/></svg><span>Mes vélos</span></strong>
                 <div id="ajoutVeloMenuZone"></div>
             </div>
-            <p class="form-help">Touche un vélo ou sa flèche pour déplier sa fiche technique et ses réglages. Ses trois petits points donnent sa fiche, sa photo ou sa suppression ; ceux d'en haut ajoutent un vélo.</p>
+            <p class="form-help">Touche un vélo ou sa flèche pour déplier sa fiche technique et ses réglages. Ses trois petits points donnent sa fiche ou sa suppression ; ceux de la photo gèrent la photo ; ceux d'en haut ajoutent un vélo.</p>
             <ul class="liste-mes-velos" id="listeMesVelos"></ul>
             <p class="form-help" id="messageMesVelos" aria-live="polite"></p>
         </section>
@@ -5738,6 +5751,27 @@ def accueil():
                     photo.style.visibility = source ? 'visible' : 'hidden';
                 }
                 if (vide) vide.style.display = source ? 'none' : 'flex';
+                monterMenuPhoto(document.getElementById('menuPhotoEntretien'));
+            }
+
+            // Menu de la photo (trois points en haut à droite) : tout ce qui concerne la photo du vélo affiché.
+            function actionsPhotoVelo() {
+                const velo = velosDisponibles.find(v => Number(v.id) === veloActifId);
+                const aPhoto = !!velo && Number(velo.a_photo) === 1;
+                return [
+                    { icone: 'appareil', texte: aPhoto ? 'Ajouter des photos' : 'Ajouter une photo', action: choisirPhotosGalerie },
+                    { icone: 'appareil', texte: 'Changer la photo principale', desactive: !aPhoto, action: choisirPhotoVelo },
+                    { icone: 'lien', texte: 'Photo depuis un lien…', action: photoDepuisLien },
+                    { icone: 'poubelle', texte: 'Supprimer la photo', danger: true, desactive: !aPhoto, action: supprimerPhotoVelo },
+                    { icone: 'repere', texte: 'Replacer les repères (guidon à droite)', desactive: !aPhoto, action: () => placerRepresAuto(true, false) },
+                    { icone: 'repere', texte: 'Replacer les repères (guidon à gauche)', desactive: !aPhoto, action: () => placerRepresAuto(false, false) }
+                ];
+            }
+
+            function monterMenuPhoto(zone) {
+                if (!zone) return;
+                zone.replaceChildren();
+                ajouterMenuPoints(zone, 'Actions de la photo', actionsPhotoVelo());
             }
 
             function choisirPhotosGalerie() {
@@ -6090,6 +6124,10 @@ def accueil():
                 if (principale) diapos.push({ src: principale, extra: false, position: -1 });
                 (galeriesVelos[id] || []).forEach((src, i) => diapos.push({ src: src, extra: true, position: i }));
                 zone.replaceChildren();
+                const zoneMenuPhoto = document.createElement('div');
+                zoneMenuPhoto.className = 'menu-photo-zone';
+                zone.appendChild(zoneMenuPhoto);
+                monterMenuPhoto(zoneMenuPhoto);
 
                 const piste = document.createElement('div');
                 piste.className = 'galerie-piste';
@@ -6312,6 +6350,7 @@ def accueil():
                 dernierVeloMonte = veloActifId;
                 zoneAjout.replaceChildren();
                 liste.replaceChildren();
+                monterMenuPhoto(document.getElementById('menuPhotoEntretien'));
                 ajouterMenuPoints(zoneAjout, 'Ajouter un vélo', [
                     { icone: 'plus', texte: 'Ajouter un vélo', action: ouvrirCreationVelo }
                 ]);
@@ -6375,15 +6414,8 @@ def accueil():
                         ligne.appendChild(corps);
                     }
                     liste.appendChild(ligne);
-                    const aPhoto = Number(velo.a_photo) === 1;
                     ajouterMenuPoints(zone, actif ? 'Actions du vélo' : 'Actions de « ' + court + ' »', [
                         { icone: 'crayon', texte: 'Modifier la fiche de « ' + court + ' »', action: sur(modifierFicheVelo) },
-                        { icone: 'appareil', texte: aPhoto ? 'Ajouter des photos' : 'Ajouter une photo', action: sur(choisirPhotosGalerie) },
-                        { icone: 'appareil', texte: 'Changer la photo principale', desactive: !aPhoto, action: sur(choisirPhotoVelo) },
-                        { icone: 'lien', texte: 'Photo depuis un lien…', action: sur(photoDepuisLien) },
-                        { icone: 'poubelle', texte: 'Supprimer la photo', danger: true, desactive: !aPhoto, action: sur(supprimerPhotoVelo) },
-                        { icone: 'repere', texte: 'Replacer les repères (guidon à droite)', desactive: !aPhoto, action: sur(() => placerRepresAuto(true, false)) },
-                        { icone: 'repere', texte: 'Replacer les repères (guidon à gauche)', desactive: !aPhoto, action: sur(() => placerRepresAuto(false, false)) },
                         { icone: 'poubelle', texte: 'Supprimer « ' + court + ' »', danger: true, desactive: estCube, action: sur(supprimerVelo) }
                     ]);
                 });
