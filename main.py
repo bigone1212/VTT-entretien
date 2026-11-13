@@ -13424,7 +13424,7 @@ def accueil():
 
                 const d = v3d.f * v3d.total;
                 const centre = pointA(d);
-                const avance = Math.min(600, Math.max(120, v3d.total * 0.03));
+                const avance = Math.min(350, Math.max(180, v3d.total * 0.02));
                 const devant = pointA(Math.min(v3d.total, d + avance));
                 const arriere = pointA(Math.max(0, d - avance * 0.5));
                 let cible = v3d.cap;
@@ -13435,7 +13435,7 @@ def accueil():
                 if (brusque) {
                     v3d.cap = cible;
                 } else {
-                    const facteur = 1 - Math.exp(-dt * 2.5);
+                    const facteur = 1 - Math.exp(-dt * 1.6);
                     v3d.cap = (v3d.cap + ecartAngle(cible, v3d.cap) * facteur + 360) % 360;
                 }
 
