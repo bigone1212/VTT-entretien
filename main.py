@@ -3423,8 +3423,6 @@ def accueil():
             .v3d-cinema-profil { margin-top: 12px; }
             .v3d-cinema-profil-titre { color: rgba(255,255,255,0.65); font-size: 0.58rem; letter-spacing: 0.14em; margin-bottom: 2px; }
             .v3d-cinema-profil svg { display: block; width: 100%; height: 54px; overflow: visible; }
-            .v3d-cinema-barre { height: 3px; margin-top: 10px; overflow: hidden; background: rgba(255,255,255,0.28); }
-            .v3d-cinema-barre > span { display: block; width: 0; height: 100%; background: #65e6d4; box-shadow: 0 0 10px #65e6d4; transition: width 0.12s linear; }
             @media (max-width: 600px) {
                 .v3d-cinema-hud { top: auto; bottom: 18px; left: 12px; max-width: calc(100vw - 24px); padding: 12px 14px; }
                 .v3d-cinema-hud { max-height: min(42vh, 310px); overflow: hidden; }
@@ -3515,8 +3513,8 @@ def accueil():
                 box-shadow: 0 2px 8px rgba(0,0,0,0.5);
             }
 
-            .v3d-panneau { width: 48px; height: 44px; filter: drop-shadow(0 2px 3px rgba(0,0,0,.65)); }
-            .v3d-panneau svg { width: 48px; height: 44px; display: block; }
+            .v3d-pente-repere { width: 72px; height: 42px; overflow: visible; filter: drop-shadow(0 2px 4px rgba(0,0,0,.65)); }
+            .v3d-pente-repere svg { width: 72px; height: 42px; display: block; overflow: visible; }
             .v3d-lieu { padding: 4px 7px; border-radius: 6px; color: #fff; background: rgba(15,23,42,.88); border: 1px solid rgba(255,255,255,.8); font-size: 12px; font-weight: 700; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,.45); }
             .v3d-lieu-haut { background: rgba(20,83,45,.92); }
             .v3d-cache { display: none !important; }
@@ -4595,7 +4593,6 @@ def accueil():
                         <line x1="12" y1="8" x2="12" y2="64" stroke="rgba(255,255,255,0.22)" stroke-width="1"/>
                     </svg>
                 </div>
-                <div class="v3d-cinema-barre"><span id="v3dCinemaBarre"></span></div>
             </div>
             <div class="v3d-legende" id="v3dLegende"></div>
             <div class="v3d-photo" id="v3dPhoto" style="display:none;">
@@ -13101,7 +13098,7 @@ def accueil():
 
             const v3d = {
                 carte: null, pts: [], cum: [], total: 0, f: 0, jouer: false, centreCamera: null,
-                vitesse: 1, inclinaison: 60, cap: 0, dernier: 0, raf: 0,
+                vitesse: 1, inclinaison: 45, cap: 0, dernier: 0, raf: 0,
                 fond: 'sat', enregistreur: null, morceaux: [], titre: '',
                 nomParcours: '', dateParcours: '', cinema: false,
                 canvasVideo: null, ctxVideo: null, rafVideo: 0, fluxVideo: null, videoActif: false,
@@ -13397,10 +13394,13 @@ def accueil():
                 }
                 return liste;
             }
-            function elementPanneauV3d(valeur, signe) {
-                const el = document.createElement('div'); el.className = 'v3d-panneau';
-                el.setAttribute('aria-label', 'Pente de ' + Math.round(valeur) + ' %');
-                el.innerHTML = '<svg viewBox="0 0 48 44" aria-hidden="true"><polygon points="24,3 45,40 3,40" fill="white" stroke="#dc2626" stroke-width="4.5" stroke-linejoin="round"/><path d="' + (signe > 0 ? 'M17 27 L31 27 L31 18 Z' : 'M17 18 L17 27 L31 27 Z') + '" fill="#111827"/><text x="24" y="37" text-anchor="middle" font-size="11" font-weight="800" fill="#111827">' + Math.round(valeur) + '%</text></svg>';
+            function elementReperePenteV3d(valeur, signe) {
+                const el = document.createElement('div');
+                el.className = 'v3d-pente-repere';
+                const pente = Math.round(valeur);
+                const libelle = (signe > 0 ? '+' : '−') + pente + ' %';
+                el.setAttribute('aria-label', 'Pente de ' + libelle);
+                el.innerHTML = '<svg viewBox="0 0 72 42" aria-hidden="true"><path d="M7 34 L28 13" fill="none" stroke="rgba(255,255,255,.95)" stroke-width="1.8" stroke-linecap="round"/><circle cx="7" cy="34" r="4.5" fill="#65e6d4" stroke="#fff" stroke-width="1.8"/><rect x="25" y="2" width="44" height="22" rx="7" fill="rgba(15,23,42,.94)" stroke="rgba(255,255,255,.9)" stroke-width="1"/><text x="47" y="17" text-anchor="middle" font-size="11" font-weight="800" fill="#fff">' + libelle + '</text></svg>';
                 return el;
             }
             async function chercherLieuxV3d() {
@@ -13479,7 +13479,7 @@ def accueil():
                 const carte=v3d.carte; viderReperesV3d();
                 const raides=tronconsRaidesV3d(15), liste=raides.length?raides:tronconsRaidesV3d(10).sort((a,b)=>b.valeur-a.valeur).slice(0,3);
                 liste.sort((a,b)=>b.valeur-a.valeur).slice(0,8).forEach(t=>{
-                    const m=new window.maplibregl.Marker({element:elementPanneauV3d(t.valeur,t.signe),anchor:'bottom'}).setLngLat(pointA(t.debut)).addTo(carte);
+                    const m=new window.maplibregl.Marker({element:elementReperePenteV3d(t.valeur,t.signe),anchor:'bottom-left'}).setLngLat(pointA(t.debut)).addTo(carte);
                     v3d.reperes.push(m);
                     v3d.panneauxPente.push({marqueur:m,debut:t.debut,fin:t.fin});
                 });
@@ -13609,7 +13609,6 @@ def accueil():
                         zoneParcourue.style.opacity = '0';
                     }
                 }
-                document.getElementById('v3dCinemaBarre').style.width = (Math.max(0, Math.min(1, v3d.f)) * 100) + '%';
             }
 
             // Met à jour le point mobile à chaque image pour qu'il glisse le long du GPX.
