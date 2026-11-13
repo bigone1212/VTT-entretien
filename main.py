@@ -13663,13 +13663,13 @@ def accueil():
                     maxzoom: 15,
                     attribution: 'Relief : AWS Terrain Tiles'
                 });
-                carte.setTerrain({ source: 'dem', exaggeration: 1.35 });
+                carte.setTerrain({ source: 'dem', exaggeration: 1.7 });
                 carte.addLayer({
                     id: 'v3d-relief-ombres',
                     type: 'hillshade',
                     source: 'dem',
                     paint: {
-                        'hillshade-exaggeration': 0.28,
+                        'hillshade-exaggeration': 0.42,
                         'hillshade-shadow-color': '#263746',
                         'hillshade-highlight-color': '#f4f0df',
                         'hillshade-accent-color': '#526b72'
