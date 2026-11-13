@@ -1,3 +1,13 @@
+# Mise à jour du relais — 13/11/2026 — panneau cinéma mobile compact
+
+- Après le test sur téléphone, le panneau cinéma occupait presque toute la hauteur. Cause identifiée dans la règle CSS mobile : `top: 72px` restait défini en même temps que le `bottom: 28px` de la règle générale, ce qui étirait le panneau.
+- Correction ciblée dans `main.py` : en petit écran, `top: auto` et `bottom: 18px`. Le panneau reprend ainsi sa hauteur naturelle, tout en restant en bas à gauche. Aucun changement au GPX, à la carte, au relief, à la caméra ou aux autres fonctions.
+- Commit de `main.py` : 1ac246cd98dcbeca385de1af3ba17bdd35600994.
+- Aucun test navigateur/téléphone effectué. Aucun déploiement déclenché. Production `main` inchangée.
+- Étape suivante : faire vérifier le diff, puis demander l'accord de Math avant déploiement sur Maillons test uniquement.
+
+---
+
 # Mise à jour du relais — 13/11/2026 — correction du bouton et de la disposition cinéma
 
 - Retour de Math après essai Render : l'habillage recouvrait des informations de la carte et le bouton « Mode Cinéma » devenait inaccessible.
