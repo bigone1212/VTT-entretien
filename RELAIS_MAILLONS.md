@@ -903,3 +903,10 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - Le premier essai du nouveau contrôle JavaScript (40379448708) a échoué à cause d'une expression de recherche trop échappée dans le test, avant d'atteindre les tests d'application. Le contrôle a été corrigé et le run final 40379653916 passe entièrement.
 - Vérification visuelle réelle dans un navigateur sur ordinateur/téléphone : **non réalisée** faute d'outil navigateur disponible dans cette session. La validation actuelle reste statique et automatique; elle ne prouve pas le rendu visuel ni les interactions en situation réelle.
 - Aucun déploiement déclenché. Ne pas toucher à main. La PR #7 reste brouillon et non fusionnée; GitHub signalait encore un état de fusion dirty car main a une mise à jour distincte du fichier de relais. Réconcilier ce fichier avant toute fusion future, avec l'accord explicite de Math.
+\n## 2026-11-13 (11h55) — Menu de la photo en haut à droite de la photo, PR #55 FUSIONNÉE
+
+- Nouveau menu trois points sur la photo : onglet Entretien (`#menuPhotoEntretien`, avant `.bike-container`) et galerie de l'onglet Mon vélo (`.menu-photo-zone` en tête de `#galerieVelo`). Fonctions `actionsPhotoVelo()` / `monterMenuPhoto()`. Contenu : Ajouter une photo/des photos, Changer la photo principale, Photo depuis un lien…, Supprimer la photo, Replacer les repères (droite/gauche).
+- Menu du vélo (liste) réduit à : Modifier la fiche, Supprimer le vélo. Texte d'aide mis à jour. Croix de suppression de la galerie passée à gauche (`.galerie-suppr { left: 8px }`).
+- Testé : captures, nouveau test navigateur (position, menu non coupé, contenus), anciens tests adaptés, contrôle GitHub vert (run 43407582786).
+- NON vérifié : Render, vrai téléphone.
+
