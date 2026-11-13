@@ -3513,8 +3513,8 @@ def accueil():
                 box-shadow: 0 2px 8px rgba(0,0,0,0.5);
             }
 
-            .v3d-pente-repere { width: 72px; height: 42px; overflow: visible; filter: drop-shadow(0 2px 4px rgba(0,0,0,.65)); }
-            .v3d-pente-repere svg { width: 72px; height: 42px; display: block; overflow: visible; }
+            .v3d-pente-repere { height: 52px; overflow: visible; filter: drop-shadow(0 2px 4px rgba(0,0,0,.9)); pointer-events: none; }
+            .v3d-pente-repere svg { height: 52px; display: block; overflow: visible; }
             .v3d-lieu { padding: 4px 7px; border-radius: 6px; color: #fff; background: rgba(15,23,42,.88); border: 1px solid rgba(255,255,255,.8); font-size: 12px; font-weight: 700; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,.45); }
             .v3d-lieu-haut { background: rgba(20,83,45,.92); }
             .v3d-cache { display: none !important; }
@@ -13394,13 +13394,13 @@ def accueil():
                 }
                 return liste;
             }
-            function elementReperePenteV3d(valeur, signe) {
+            function elementRepereAerienV3d(libelle, taille = 18) {
                 const el = document.createElement('div');
                 el.className = 'v3d-pente-repere';
-                const pente = Math.round(valeur);
-                const libelle = (signe > 0 ? '+' : '−') + pente + ' %';
-                el.setAttribute('aria-label', 'Pente de ' + libelle);
-                el.innerHTML = '<svg viewBox="0 0 72 42" aria-hidden="true"><path d="M7 34 L28 13" fill="none" stroke="rgba(255,255,255,.95)" stroke-width="1.8" stroke-linecap="round"/><circle cx="7" cy="34" r="4.5" fill="#65e6d4" stroke="#fff" stroke-width="1.8"/><rect x="25" y="2" width="44" height="22" rx="7" fill="rgba(15,23,42,.94)" stroke="rgba(255,255,255,.9)" stroke-width="1"/><text x="47" y="17" text-anchor="middle" font-size="11" font-weight="800" fill="#fff">' + libelle + '</text></svg>';
+                const largeur = Math.max(96, Math.ceil(libelle.length * taille * 0.64 + 38));
+                el.style.width = largeur + 'px';
+                el.setAttribute('aria-label', libelle);
+                el.innerHTML = '<svg viewBox="0 0 ' + largeur + ' 52" width="' + largeur + '" aria-hidden="true"><path d="M0 50 L23 19" fill="none" stroke="rgba(255,255,255,.98)" stroke-width="1.8" stroke-linecap="round"/><circle cx="0" cy="50" r="4.5" fill="#65e6d4" stroke="#fff" stroke-width="1.8"/><text x="29" y="24" dominant-baseline="middle" font-size="' + taille + '" font-weight="900" fill="#fff" stroke="rgba(5,15,25,.9)" stroke-width="3.5" stroke-linejoin="round" paint-order="stroke">' + libelle + '</text></svg>';
                 return el;
             }
             async function chercherLieuxV3d() {
@@ -13479,10 +13479,22 @@ def accueil():
                 const carte=v3d.carte; viderReperesV3d();
                 const raides=tronconsRaidesV3d(15), liste=raides.length?raides:tronconsRaidesV3d(10).sort((a,b)=>b.valeur-a.valeur).slice(0,3);
                 liste.sort((a,b)=>b.valeur-a.valeur).slice(0,8).forEach(t=>{
-                    const m=new window.maplibregl.Marker({element:elementReperePenteV3d(t.valeur,t.signe),anchor:'bottom-left'}).setLngLat(pointA(t.debut)).addTo(carte);
+                    const libelle=(t.signe>0?'+':'−')+Math.round(t.valeur)+' %';
+                    const m=new window.maplibregl.Marker({element:elementRepereAerienV3d(libelle,19),anchor:'bottom-left'}).setLngLat(pointA(t.debut)).addTo(carte);
                     v3d.reperes.push(m);
                     v3d.panneauxPente.push({marqueur:m,debut:t.debut,fin:t.fin});
                 });
+                if (v3d.vitesseMax !== null) {
+                    let indexMax = -1;
+                    v3d.vitesses.forEach((v,i) => {
+                        if (v !== null && isFinite(v) && v <= 150 && (indexMax < 0 || v > v3d.vitesses[indexMax])) indexMax = i;
+                    });
+                    if (indexMax >= 0) {
+                        const libelle='Vmax '+Math.round(v3d.vitesseMax)+' km/h';
+                        const marqueurMax=new window.maplibregl.Marker({element:elementRepereAerienV3d(libelle,16),anchor:'bottom-left'}).setLngLat(pointA(v3d.cum[indexMax])).addTo(carte);
+                        v3d.reperes.push(marqueurMax);
+                    }
+                }
                 majVisibiliteReperesV3d(); majBoutonsV3d();
                 let lieux=[];
                 const rech=document.getElementById('v3dRecherche');
