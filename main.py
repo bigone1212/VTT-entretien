@@ -13130,7 +13130,7 @@ def accueil():
                 canvasVideo: null, ctxVideo: null, rafVideo: 0, fluxVideo: null, videoActif: false,
                 denivelePlus: 0, altitudeDisponible: false, altitudes: [], deniveleCum: [], vitesses: [], vitesseMax: null, vitesseMoyenne: null, profilLongueur: 0,
                 dureeBase: 60, prete: false, compteImages: 0,
-                tps: [], decalage: 0, alts: [], surfaces: '', pentes: [], mode: 'pente', autres: [], voirAutres: false, photos: [], marqueurs: [], reperes: [], panneauxPente: [], repereVisibles: true, prochaine: 0, sortieId: 0, minuteur: 0
+                tps: [], decalage: 0, alts: [], surfaces: '', pentes: [], mode: 'pente', autres: [], voirAutres: false, photos: [], marqueurs: [], reperes: [], panneauxPente: [], panneauxLieux: [], repereVisibles: true, prochaine: 0, sortieId: 0, minuteur: 0
             };
 
             function chargerScript(url) {
@@ -13505,8 +13505,41 @@ def accueil():
                 return lieux;
             }
 
+            function cleCacheLieuxV3d() {
+                const n = v3d.pts.length;
+                const echantillon = [];
+                for (let i = 0; i < 8; i++) {
+                    const p = v3d.pts[Math.round(i * (n - 1) / 7)];
+                    echantillon.push(p.map(x => Number(x).toFixed(4)).join(','));
+                }
+                return 'maillons-v3d-lieux-v2-' + String(v3d.sortieId) + '-' + n + '-' + echantillon.join('|');
+            }
+            function lireCacheLieuxV3d() {
+                try {
+                    const brut = localStorage.getItem(cleCacheLieuxV3d());
+                    if (!brut) return null;
+                    const lieux = JSON.parse(brut);
+                    if (!Array.isArray(lieux) || !lieux.length || lieux.length > 18) return null;
+                    if (lieux.some(l => !l || typeof l.nom !== 'string' || !Array.isArray(l.coord)
+                        || l.coord.length !== 2 || !Number.isFinite(l.coord[0]) || !Number.isFinite(l.coord[1])
+                        || !Number.isFinite(l.d))) return null;
+                    return lieux;
+                } catch (e) {
+                    return null;
+                }
+            }
+            function enregistrerCacheLieuxV3d(lieux) {
+                if (!Array.isArray(lieux) || !lieux.length) return;
+                try { localStorage.setItem(cleCacheLieuxV3d(), JSON.stringify(lieux)); } catch (e) {}
+            }
             async function chercherLieuxV3d() {
                 if (v3d.pts.length < 2) return [];
+                const cache = lireCacheLieuxV3d();
+                if (cache) {
+                    v3d.lieuxEtat = 'ok';
+                    console.info('Survol 3D : noms de lieux chargés depuis la mémoire de cet appareil', cache.length);
+                    return cache;
+                }
                 const lons = v3d.pts.map(p => p[0]), lats = v3d.pts.map(p => p[1]), marge = 0.012;
                 const sud = Math.min(...lats)-marge, nord = Math.max(...lats)+marge, ouest = Math.min(...lons)-marge, est = Math.max(...lons)+marge;
                 const zoneValide = nord-sud <= 0.6 && est-ouest <= 0.8;
@@ -13570,22 +13603,53 @@ def accueil():
                     console.warn('Recherche IGN des lieux indisponible', e);
                 }
                 out.sort((a,b)=>a.rang-b.rang||a.ec-b.ec);
-                const gardes=[];
-                for(const l of out) { if(gardes.length>=18) break; if(gardes.every(g=>distanceM(g.coord,l.coord)>=600)) gardes.push(l); }
+                const gardes = [];
+                for (const l of out) {
+                    if (gardes.length >= 18) break;
+                    if (gardes.every(g => g.nom.toLocaleLowerCase() !== l.nom.toLocaleLowerCase()
+                        && distanceM(g.coord, l.coord) >= 600)) gardes.push(l);
+                }
+                // Chaque lieu est rattaché au point du GPX le plus proche : le texte apparaîtra sur le trajet.
+                for (const l of gardes) {
+                    let meilleureDistance = Infinity, meilleurIndex = 0;
+                    for (let i = 0; i < v3d.pts.length; i++) {
+                        const ecart = distanceM(l.coord, v3d.pts[i]);
+                        if (ecart < meilleureDistance) {
+                            meilleureDistance = ecart;
+                            meilleurIndex = i;
+                        }
+                    }
+                    l.ec = meilleureDistance;
+                    l.d = v3d.cum[meilleurIndex] || 0;
+                }
                 v3d.lieuxEtat = gardes.length ? 'ok' : (data ? 'vide' : 'panne');
+                enregistrerCacheLieuxV3d(gardes);
                 return gardes;
             }
             function viderReperesV3d() {
-                v3d.reperes.forEach(m=>m.remove()); v3d.reperes=[];
-                v3d.panneauxPente=[];
+                v3d.reperes.forEach(m => m.remove());
+                v3d.reperes = [];
+                v3d.panneauxPente = [];
+                v3d.panneauxLieux = [];
             }
             function majVisibiliteReperesV3d() {
                 const d = v3d.f * v3d.total;
                 const avanceParSeconde = v3d.total / Math.max(1, v3d.dureeBase) * v3d.vitesse;
-                v3d.reperes.forEach(m=>m.getElement().classList.toggle('v3d-cache',!v3d.repereVisibles));
-                v3d.panneauxPente.forEach(p=>{
-                    const visible = v3d.repereVisibles && d >= Math.max(0,p.debut-avanceParSeconde) && d <= p.fin;
-                    p.marqueur.getElement().classList.toggle('v3d-cache',!visible);
+                const marqueursLieux = new Set(v3d.panneauxLieux.map(p => p.marqueur));
+                v3d.reperes.forEach(m => {
+                    m.getElement().classList.toggle('v3d-cache', !v3d.repereVisibles || marqueursLieux.has(m));
+                });
+                v3d.panneauxPente.forEach(p => {
+                    const visible = v3d.repereVisibles && d >= Math.max(0, p.debut - avanceParSeconde) && d <= p.fin;
+                    p.marqueur.getElement().classList.toggle('v3d-cache', !visible);
+                });
+                // Un seul nom à la fois, brièvement, au moment où le cycliste passe à proximité.
+                const fenetre = Math.max(70, avanceParSeconde * 1.1);
+                const actifs = v3d.panneauxLieux.filter(p => d >= p.d - fenetre * 0.65 && d <= p.d + fenetre * 0.9);
+                actifs.sort((a, b) => Math.abs(a.d - d) - Math.abs(b.d - d));
+                const actif = actifs[0] || null;
+                v3d.panneauxLieux.forEach(p => {
+                    p.marqueur.getElement().classList.toggle('v3d-cache', !v3d.repereVisibles || p !== actif);
                 });
             }
             async function poserReperesV3d() {
@@ -13621,13 +13685,17 @@ def accueil():
                 if(rech) rech.style.display='none';
                 if(v3d.carte!==carte) return;
                 if(v3d.lieuxEtat==='panne') { messageV3d('Noms de lieux indisponibles : les services IGN et OpenStreetMap ne répondent pas.'); setTimeout(()=>messageV3d(''),6000); }
-                lieux.forEach(l=>{
-                    const el=document.createElement('div'); el.className='v3d-lieu'+(['sommet','col'].includes(l.genre)?' v3d-lieu-haut':'');
-                    const ic=l.genre==='sommet'?'⛰️':l.genre==='col'?'🏔️':l.genre==='lieu'?'📍':'🏘️';
-                    el.textContent=ic+' '+l.nom+(Number.isFinite(l.alt)&&['sommet','col'].includes(l.genre)?' · '+fmtAltitude(l.alt).complet:'');
-                    v3d.reperes.push(new window.maplibregl.Marker({element:el,anchor:'bottom'}).setLngLat(l.coord).addTo(carte));
+                lieux.forEach(l => {
+                    const libelle = l.nom + (Number.isFinite(l.alt) && ['sommet', 'col'].includes(l.genre)
+                        ? ' · ' + fmtAltitude(l.alt).complet : '');
+                    const el = elementRepereAerienV3d(libelle, 16);
+                    const marqueur = new window.maplibregl.Marker({ element: el, anchor: 'bottom-left' })
+                        .setLngLat(pointA(l.d)).addTo(carte);
+                    v3d.reperes.push(marqueur);
+                    v3d.panneauxLieux.push({ marqueur: marqueur, d: l.d });
                 });
-                majVisibiliteReperesV3d(); majBoutonsV3d();
+                majVisibiliteReperesV3d();
+                majBoutonsV3d();
             }
 
             function messageV3d(texte) {
@@ -14262,19 +14330,23 @@ def accueil():
 
                 try {
                     v3d.carte = creerCarte(document.getElementById('carte3d'));
-                    v3d.carte.on('load', () => {
-                        if (!v3d.carte) return;
+                    v3d.carte.on('load', async () => {
+                        const carteChargee = v3d.carte;
+                        if (!carteChargee) return;
                         installerCouches();
                         poserMarqueursV3d();
-                        poserReperesV3d();
                         majLegendeV3d();
                         majBoutonsV3d();
                         vueEnsemble();
+                        messageV3d('Préparation des noms de lieux et des repères…');
+                        await poserReperesV3d();
+                        if (v3d.carte !== carteChargee) return;
                         v3d.prete = true;
                         v3d.cap = capEntre(v3d.pts[0], pointA(Math.min(v3d.total, 300)));
                         messageV3d(v3d.photos.length
                             ? `Appuie sur Lecture pour lancer le survol (${v3d.photos.length} photo(s) placée(s) sur le parcours).`
                             : 'Appuie sur Lecture pour lancer le survol.');
+                        majBoutonsV3d();
                         dessinerAvancement();
                     });
                     v3d.carte.on('error', (e) => console.error(e && e.error ? e.error : e));
