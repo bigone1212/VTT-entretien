@@ -19838,7 +19838,7 @@ def preparer_lieux_sortie(sortie_id):
             # boîte englobante et les réponses trop volumineuses.
             wfs_layers = (
                 ("BDTOPO_V3:lieu_dit_non_habite", "IGN-BD-TOPO"),
-                ("BDCARTO_V5:lieu_dit_non_habite", "IGN-BD-CARTO"),
+                ("BDCARTOV5_BDD_WLD_WGS84G_223:lieu_dit_non_habite", "IGN-BD-CARTO"),
             )
             pas_wfs = max(1, int(math.ceil(total / 10000))) if total else 1
             for debut_idx in range(0, len(points), max(2, int(len(points) / min(12, max(1, pas_wfs))) or 2)):
@@ -19873,8 +19873,12 @@ def preparer_lieux_sortie(sortie_id):
                         )
                         with urllib.request.urlopen(req, timeout=12) as response:
                             donnees_wfs = json.loads(response.read().decode("utf-8"))
+                        # Une exception OGC peut aussi être renvoyée en JSON :
+                        # on ne valide le service que si c'est une vraie FeatureCollection.
+                        if not isinstance(donnees_wfs, dict) or not isinstance(donnees_wfs.get("features"), list):
+                            continue
                         api_ok = True
-                        for feature in donnees_wfs.get("features", []):
+                        for feature in donnees_wfs["features"]:
                             prop = feature.get("properties") or {}
                             geom = feature.get("geometry") or {}
                             coord = geom.get("coordinates")
@@ -19884,7 +19888,13 @@ def preparer_lieux_sortie(sortie_id):
                                 lon, lat = float(coord[0]), float(coord[1])
                             except (TypeError, ValueError):
                                 continue
-                            nom = str(prop.get("toponyme") or prop.get("nom") or prop.get("name") or prop.get("libelle") or prop.get("label") or "").strip()
+                            nom = str(
+                                prop.get("toponyme") or prop.get("TOPONYME")
+                                or prop.get("nom") or prop.get("NOM")
+                                or prop.get("name") or prop.get("NAME")
+                                or prop.get("libelle") or prop.get("LIBELLE")
+                                or prop.get("label") or prop.get("LABEL") or ""
+                            ).strip()
                             if not nom:
                                 continue
                             # Distance calculée sur les points du GPX, sans déplacer le POI.
