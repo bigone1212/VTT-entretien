@@ -19833,7 +19833,7 @@ def preparer_lieux_sortie(sortie_id):
 
             # 2) OpenStreetMap complète les noms absents de l'IGN.
             if nord-sud <= 0.6 and est-ouest <= 0.8:
-                q = '[out:json][timeout:25];(nwr["place"~"^(city|town|village|hamlet|isolated_dwelling|suburb|locality|neighbourhood)$"]["name"](%s,%s,%s,%s);nwr["natural"~"^(peak|hill|ridge)$"]["name"](%s,%s,%s,%s);nwr["mountain_pass"="yes"]["name"](%s,%s,%s,%s);nwr["natural"="saddle"]["name"](%s,%s,%s,%s);nwr["tourism"="viewpoint"]["name"](%s,%s,%s,%s););out center tags;' % ((sud,ouest,nord,est)*5)
+                q = '[out:json][timeout:25];(nwr["place"~"^(city|town|village|hamlet|isolated_dwelling|suburb|locality|neighbourhood)$"]["name"](%s,%s,%s,%s);nwr["natural"~"^(peak|hill|ridge)$"]["name"](%s,%s,%s,%s);nwr["mountain_pass"="yes"]["name"](%s,%s,%s,%s);nwr["natural"="saddle"]["name"](%s,%s,%s,%s);nwr["tourism"="viewpoint"]["name"](%s,%s,%s,%s);nwr["waterway"~"^(river|canal|stream)$"]["name"](%s,%s,%s,%s);nwr["natural"~"^(water|wood|wetland|beach|cliff|cave_entrance)$"]["name"](%s,%s,%s,%s);nwr["leisure"~"^(park|nature_reserve)$"]["name"](%s,%s,%s,%s);nwr["boundary"="protected_area"]["name"](%s,%s,%s,%s);nwr["historic"]["name"](%s,%s,%s,%s);nwr["tourism"~"^(attraction|museum)$"]["name"](%s,%s,%s,%s););out center tags;' % ((sud,ouest,nord,est)*11)
                 body = urllib.parse.urlencode({"data": q}).encode("utf-8")
                 for base in ("https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter", "https://overpass.kumi.systems/api/interpreter"):
                     try:
@@ -19854,6 +19854,11 @@ def preparer_lieux_sortie(sortie_id):
                 elif nat in ("peak","hill","ridge"): genre,rang,portee="sommet",4,2200
                 elif tags.get("mountain_pass")=="yes" or nat=="saddle": genre,rang,portee="col",2,900
                 elif tags.get("tourism")=="viewpoint": genre,rang,portee="lieu",6,1800
+                elif tags.get("waterway") in ("river","canal","stream"): genre,rang,portee="cours_eau",7,1600
+                elif nat in ("water","wetland","beach","cliff","cave_entrance"): genre,rang,portee="lieu",7,1800
+                elif nat=="wood": genre,rang,portee="foret",8,2000
+                elif tags.get("leisure") in ("park","nature_reserve") or tags.get("boundary")=="protected_area": genre,rang,portee="lieu",6,2200
+                elif tags.get("historic") or tags.get("tourism") in ("attraction","museum"): genre,rang,portee="lieu",7,1800
                 else: continue
                 ec=min(distance((lon,lat),p) for p in refs)
                 if ec>portee: continue
