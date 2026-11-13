@@ -1,3 +1,17 @@
+# Mise à jour du relais — 13/11/2026 — point de progression fluide et caméra plus discrète
+
+- Retour de Math après le dernier déploiement : le survol est nettement meilleur, mais il souhaite moins de mouvements de caméra et un point mobile qui glisse sans sauter sur la carte.
+- Sur la branche `reprise/2026-11-13-animation-3d-gpx`, seul `main.py` est modifié pour l'application :
+  - mise à jour du point mobile à chaque image d'animation, en conservant l'interpolation le long de la distance cumulée du GPX ;
+  - actualisation de la ligne parcourue et des textes de progression toutes les quatre images pour limiter le coût de rendu ;
+  - caméra plus calme : lissage du centre réduit de 5 à 3, lissage du cap de 1,6 à 0,9 et regard porté plus loin (450 à 700 m) pour éviter les changements de direction trop fréquents.
+- Relief, angle de vue, tracé GPX d'origine, données d'altitude, filtres, fonds et autres fonctions inchangés. Aucun faux point GPS ajouté.
+- Commit de `main.py` : f5c89cd5f57775eb5374d5953bd512a1dd6e11d9.
+- Aucun test navigateur/téléphone effectué et aucun déploiement de cette itération. Aucun changement sur `main), aucune PR/fusion, aucune opération Neon.
+- Étape suivante : vérifier le diff et demander à Math s'il souhaite déployer cette version sur Maillons test uniquement.
+
+---
+
 # Mise à jour du relais — 13/11/2026 — lissage du déplacement de la caméra 3D
 
 - Après le nouvel essai sur Maillons test, Math indique que le survol est moins saccadé à 45°, mais pas encore assez fluide pour un rendu cinématographique de présentation d'étape du Tour de France.
