@@ -1,3 +1,13 @@
+# Mise à jour — 13/11/2026 — bibliothèque géographique partagée
+
+- Commit `b46163cc21e3de36999123b37100a9f2abd315a0` : réutilisation des noms déjà enregistrés dans la bibliothèque géographique commune, même si Overpass est indisponible.
+- La file d'attente persistante, la reprise des tâches interrompues à la prochaine consultation et le chargement prioritaire des noms préparés côté serveur sont dans `main.py`.
+- Render `maillons-test-2026` est bien configuré sur la branche `reprise/2026-11-13-maillons-complet-test`, en offre Free, avec déploiement automatique désactivé. Le dernier déploiement actif est toujours l'ancien commit `a0ac5a054f97b0fad84c41a23ea3e9d7816ac5a0` ; les changements ci-dessus ne sont donc pas encore en ligne.
+- Aucun résultat de vérification GitHub Actions n'est remonté par l'outil de statut consulté ; ne pas déclarer les tests réussis. Aucun test navigateur réel ni test sur Render n'a été effectué pour cette nouvelle préparation.
+- Limite connue avant validation : la préparation serveur utilise actuellement OpenStreetMap ; l'IGN reste disponible dans la recherche navigateur de secours, mais n'est pas encore intégré au traitement serveur anticipé.
+- Aucun déploiement, aucune fusion, aucune modification de `main` ou de la base de production.
+
+---
 # Mise à jour — 13/11/2026 — préparation géographique automatique (en cours)
 
 - Travail sur la seule branche `reprise/2026-11-13-maillons-complet-test`.
