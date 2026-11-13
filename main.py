@@ -13663,20 +13663,36 @@ def accueil():
                     maxzoom: 15,
                     attribution: 'Relief : AWS Terrain Tiles'
                 });
-                carte.setTerrain({ source: 'dem', exaggeration: 1.1 });
+                carte.setTerrain({ source: 'dem', exaggeration: 1.35 });
+                carte.addLayer({
+                    id: 'v3d-relief-ombres',
+                    type: 'hillshade',
+                    source: 'dem',
+                    paint: {
+                        'hillshade-exaggeration': 0.28,
+                        'hillshade-shadow-color': '#263746',
+                        'hillshade-highlight-color': '#f4f0df',
+                        'hillshade-accent-color': '#526b72'
+                    }
+                });
 
                 // Les autres parcours sont chargés uniquement au premier clic sur « Mes parcours ».
 
                 carte.addSource('v3d-trace', { type: 'geojson', data: donneesTrace() });
                 carte.addLayer({
+                    id: 'v3d-trace-halo', type: 'line', source: 'v3d-trace',
+                    layout: { 'line-cap': 'round', 'line-join': 'round' },
+                    paint: { 'line-color': '#21d4c2', 'line-width': 13, 'line-opacity': 0.42, 'line-blur': 4 }
+                });
+                carte.addLayer({
                     id: 'v3d-trace-contour', type: 'line', source: 'v3d-trace',
                     layout: { 'line-cap': 'round', 'line-join': 'round' },
-                    paint: { 'line-color': '#04231f', 'line-width': 7, 'line-opacity': 0.55 }
+                    paint: { 'line-color': '#061c22', 'line-width': 9, 'line-opacity': 0.78 }
                 });
                 carte.addLayer({
                     id: 'v3d-trace-ligne', type: 'line', source: 'v3d-trace',
                     layout: { 'line-cap': 'round', 'line-join': 'round' },
-                    paint: { 'line-color': ['get', 'c'], 'line-width': 5, 'line-opacity': 1 }
+                    paint: { 'line-color': ['get', 'c'], 'line-width': 5.5, 'line-opacity': 1 }
                 });
 
                 carte.addSource('v3d-fait', {
