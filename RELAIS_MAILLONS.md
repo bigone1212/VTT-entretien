@@ -996,3 +996,14 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - Aucun changement sur `main`, aucune fusion, aucune opération Neon et aucune modification de données.
 - Render `maillons-test-2026` a `autoDeploy=no` : le code n'est pas encore déployé. **Tâche en cours : déclencher le déploiement manuel sur le service de test uniquement, puis vérifier son statut Live et les journaux.**
 - Tests navigateur réels non effectués à ce stade ; ne pas annoncer le correctif validé avant l'essai de Math.
+
+
+# Mise à jour — 13/11/2026 — enrichissement des noms du fond CARTO / OpenStreetMap
+
+- Commit applicatif : `60f43fc3a547810dca03563d168fb000d521af8a`, uniquement dans `main.py`.
+- La deuxième carte utilise des tuiles raster CARTO Voyager, dont les noms proviennent notamment des données OpenStreetMap. Les inscriptions des images ne sont pas directement lisibles comme des données ; le serveur interroge donc les objets OSM correspondants.
+- Recherche OSM élargie aux cours d'eau, plans d'eau, forêts/bois, zones humides, plages, falaises, parcs, réserves, zones protégées, sites historiques et attractions/musées, en plus des villages, lieux-dits, sommets, cols et points de vue déjà recherchés.
+- Les coordonnées OSM d'origine sont conservées ; les lieux sont toujours filtrés selon leur distance réelle au tracé et enregistrés dans la bibliothèque géographique partagée.
+- Limite : les noms de rues et tous les libellés visuels de CARTO ne sont pas extraits automatiquement. La recherche OSM enrichie couvre les principaux objets géographiques nommés, pas une lecture OCR des tuiles.
+- Vérifications automatiques GitHub à attendre ; aucun test navigateur réel effectué à ce stade. Aucun changement sur `main`, aucun déploiement Render déclenché dans cette étape, aucune opération Neon.
+- Tâche en cours : vérifier le workflow GitHub, puis déployer uniquement sur Render test après validation automatique.
