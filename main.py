@@ -2697,7 +2697,7 @@ def accueil():
             .galerie-suppr {
                 position: absolute;
                 top: 8px;
-                right: 8px;
+                left: 8px;
                 width: 30px;
                 height: 30px;
                 padding: 0;
