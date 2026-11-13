@@ -1,3 +1,13 @@
+# Mise à jour du relais — 13/11/2026 — correction du bouton et de la disposition cinéma
+
+- Retour de Math après essai Render : l'habillage recouvrait des informations de la carte et le bouton « Mode Cinéma » devenait inaccessible.
+- Sur la branche `reprise/2026-11-13-animation-3d-gpx`, `main.py` : le bouton reste visible et cliquable en mode cinéma (libellé « Quitter cinéma ») ; l'habillage est déplacé en bas à gauche pour libérer la légende et les informations en haut de carte ; sur petit écran, marges adaptées.
+- Commit `main.py` : 02eae7e36ee21ef26fed3aad65c12094681af0f4.
+- Aucun test navigateur/téléphone effectué. Aucun déploiement de cette correction. Production `main` inchangée.
+- Étape suivante : vérifier le diff, puis demander l'accord de Math avant tout déploiement sur Maillons test uniquement.
+
+---
+
 # Mise à jour du relais — 13/11/2026 — premier mode Cinéma pour les vidéos 3D
 
 - À la demande de Math, création d'un mode Cinéma distinct du survol classique, pour rapprocher les vidéos d'une présentation d'étape cycliste.
