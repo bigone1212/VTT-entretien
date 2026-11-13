@@ -3368,6 +3368,21 @@ def accueil():
 
             .v3d-haut strong { font-size: 0.95rem; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
 
+            .vue3d.cinema .v3d-bas {
+                opacity: 0;
+                pointer-events: none;
+                transform: translateY(12px);
+                transition: opacity 0.55s ease, transform 0.55s ease;
+            }
+
+            .vue3d .v3d-bas {
+                transition: opacity 0.55s ease, transform 0.55s ease;
+            }
+
+            .vue3d.cinema .v3d-haut {
+                background: linear-gradient(rgba(0,0,0,0.48), rgba(0,0,0,0));
+            }
+
             .v3d-bas {
                 position: absolute;
                 left: 0;
@@ -4500,7 +4515,10 @@ def accueil():
             <div id="carte3d"></div>
             <div class="v3d-haut">
                 <strong id="v3dTitre"></strong>
-                <button type="button" id="v3dFermer" aria-label="Fermer"></button>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <button type="button" id="v3dCinema" aria-pressed="false">Mode Cinéma</button>
+                    <button type="button" id="v3dFermer" aria-label="Fermer"></button>
+                </div>
             </div>
             <div class="v3d-legende" id="v3dLegende"></div>
             <div class="v3d-photo" id="v3dPhoto" style="display:none;">
@@ -13008,6 +13026,9 @@ def accueil():
                 carte: null, pts: [], cum: [], total: 0, f: 0, jouer: false, centreCamera: null,
                 vitesse: 1, inclinaison: 60, cap: 0, dernier: 0, raf: 0,
                 fond: 'sat', enregistreur: null, morceaux: [], titre: '',
+                nomParcours: '', dateParcours: '', cinema: false,
+                canvasVideo: null, ctxVideo: null, rafVideo: 0, fluxVideo: null, videoActif: false,
+                denivelePlus: 0, altitudeDisponible: false,
                 dureeBase: 60, prete: false, compteImages: 0,
                 tps: [], decalage: 0, alts: [], surfaces: '', pentes: [], mode: 'pente', autres: [], voirAutres: false, photos: [], marqueurs: [], reperes: [], panneauxPente: [], repereVisibles: true, prochaine: 0, sortieId: 0, minuteur: 0
             };
@@ -13091,6 +13112,14 @@ def accueil():
                 // La trace est enregistrée en [latitude, longitude] ; la carte veut [longitude, latitude].
                 const valides = trace.filter(p => Array.isArray(p) && p.length >= 2);
                 const pts = valides.map(p => [p[1], p[0]]);
+                const altitudes = valides.map(p => (typeof p[2] === 'number' && isFinite(p[2]) ? p[2] : null));
+                v3d.altitudeDisponible = altitudes.filter(a => a !== null).length >= 2;
+                v3d.denivelePlus = 0;
+                for (let i = 1; i < altitudes.length; i++) {
+                    if (altitudes[i] !== null && altitudes[i - 1] !== null) {
+                        v3d.denivelePlus += Math.max(0, altitudes[i] - altitudes[i - 1]);
+                    }
+                }
                 v3d.tps = valides.map(p => (typeof p[2] === 'number' ? p[2] : null));
                 const profil = valides.length === trace.length ? analyserProfil(trace) : null;
                 v3d.pentes = profil ? profil.pentes : [];
@@ -13384,6 +13413,13 @@ def accueil():
                 const en_cours = !!v3d.enregistreur;
                 remplirBouton(enr, 'enreg', en_cours ? 'Arrêter et enregistrer' : 'Enregistrer');
                 enr.classList.toggle('enreg', en_cours);
+                const cinema = document.getElementById('v3dCinema');
+                if (cinema) {
+                    cinema.textContent = v3d.cinema ? 'Quitter cinéma' : 'Mode Cinéma';
+                    cinema.classList.toggle('actif', v3d.cinema);
+                    cinema.setAttribute('aria-pressed', v3d.cinema ? 'true' : 'false');
+                }
+                document.getElementById('vue3d').classList.toggle('cinema', v3d.cinema);
             }
 
             // Met à jour le point mobile à chaque image pour qu'il glisse le long du GPX.
@@ -13544,6 +13580,80 @@ def accueil():
                 majBoutonsV3d();
             }
 
+            function dessinerHabillageVideo(ctx, largeur, hauteur) {
+                const echelle = Math.min(largeur / 1920, hauteur / 1080);
+                const marge = 58 * echelle;
+                const grand = 34 * echelle;
+                const petit = 17 * echelle;
+                ctx.save();
+
+                const haut = ctx.createLinearGradient(0, 0, 0, hauteur * 0.25);
+                haut.addColorStop(0, 'rgba(4, 15, 22, 0.78)');
+                haut.addColorStop(1, 'rgba(4, 15, 22, 0)');
+                ctx.fillStyle = haut;
+                ctx.fillRect(0, 0, largeur, hauteur * 0.25);
+
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'top';
+                ctx.fillStyle = '#65e6d4';
+                ctx.font = '700 ' + petit + 'px Arial, sans-serif';
+                ctx.fillText('MAILLONS  /  CARNET VTT', marge, marge * 0.72);
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '700 ' + grand + 'px Arial, sans-serif';
+                ctx.shadowColor = 'rgba(0,0,0,0.45)';
+                ctx.shadowBlur = 8 * echelle;
+                ctx.fillText((v3d.nomParcours || 'Sortie VTT').slice(0, 64), marge, marge * 1.45, largeur * 0.78);
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = 'rgba(255,255,255,0.82)';
+                ctx.font = '500 ' + petit + 'px Arial, sans-serif';
+                ctx.fillText('SURVOL 3D  •  ' + (v3d.dateParcours || ''), marge, marge * 2.45);
+
+                const bas = ctx.createLinearGradient(0, hauteur * 0.72, 0, hauteur);
+                bas.addColorStop(0, 'rgba(4, 15, 22, 0)');
+                bas.addColorStop(1, 'rgba(4, 15, 22, 0.88)');
+                ctx.fillStyle = bas;
+                ctx.fillRect(0, hauteur * 0.72, largeur, hauteur * 0.28);
+
+                const y = hauteur - marge * 2.25;
+                const parcouru = Math.max(0, v3d.f * v3d.total / 1000);
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '700 ' + grand + 'px Arial, sans-serif';
+                ctx.fillText(parcouru.toFixed(1) + ' km', marge, y);
+                ctx.font = '500 ' + petit + 'px Arial, sans-serif';
+                ctx.fillStyle = 'rgba(255,255,255,0.82)';
+                ctx.fillText('sur ' + (v3d.total / 1000).toFixed(1) + ' km', marge, y + grand * 1.25);
+                if (v3d.altitudeDisponible) {
+                    ctx.font = '700 ' + grand + 'px Arial, sans-serif';
+                    ctx.fillStyle = '#65e6d4';
+                    ctx.fillText('D+ ' + Math.round(v3d.denivelePlus) + ' m', largeur * 0.57, y);
+                }
+
+                const barreY = hauteur - marge * 0.78;
+                ctx.fillStyle = 'rgba(255,255,255,0.35)';
+                ctx.fillRect(marge, barreY, largeur - marge * 2, 4 * echelle);
+                ctx.fillStyle = '#65e6d4';
+                ctx.fillRect(marge, barreY, (largeur - marge * 2) * Math.max(0, Math.min(1, v3d.f)), 5 * echelle);
+                ctx.textAlign = 'right';
+                ctx.font = '500 ' + Math.max(10, petit * 0.68) + 'px Arial, sans-serif';
+                ctx.fillStyle = 'rgba(255,255,255,0.72)';
+                ctx.fillText('Imagerie © Esri  •  Relief AWS Terrain Tiles  •  © OpenStreetMap', largeur - marge, hauteur - marge * 0.25);
+                ctx.restore();
+            }
+
+            function dessinerCadreVideo() {
+                if (!v3d.videoActif || !v3d.canvasVideo || !v3d.ctxVideo) return;
+                const source = v3d.carte && v3d.carte.getCanvas ? v3d.carte.getCanvas() : null;
+                if (source) {
+                    try {
+                        v3d.ctxVideo.drawImage(source, 0, 0, v3d.canvasVideo.width, v3d.canvasVideo.height);
+                        dessinerHabillageVideo(v3d.ctxVideo, v3d.canvasVideo.width, v3d.canvasVideo.height);
+                    } catch (e) {
+                        console.warn('Image vidéo momentanément indisponible', e);
+                    }
+                }
+                v3d.rafVideo = requestAnimationFrame(dessinerCadreVideo);
+            }
+
             function arreterEnregistrement(sauver) {
                 const rec = v3d.enregistreur;
                 if (!rec) return;
@@ -13569,14 +13679,33 @@ def accueil():
                     return;
                 }
 
-                const flux = canvas.captureStream(30);
-                const rec = new MediaRecorder(flux, { mimeType: type, videoBitsPerSecond: 6000000 });
+                const sortieVideo = document.createElement('canvas');
+                const facteur = Math.min(1, 1920 / canvas.width, 1920 / canvas.height);
+                sortieVideo.width = Math.max(1, Math.round(canvas.width * facteur));
+                sortieVideo.height = Math.max(1, Math.round(canvas.height * facteur));
+                const contexteVideo = sortieVideo.getContext('2d');
+                if (!contexteVideo || !sortieVideo.captureStream) {
+                    messageV3d("La création de la vidéo cinéma n'est pas prise en charge par ce navigateur.");
+                    return;
+                }
+                v3d.canvasVideo = sortieVideo;
+                v3d.ctxVideo = contexteVideo;
+                v3d.videoActif = true;
+                v3d.fluxVideo = sortieVideo.captureStream(30);
+                const rec = new MediaRecorder(v3d.fluxVideo, { mimeType: type, videoBitsPerSecond: 8000000 });
                 v3d.morceaux = [];
                 v3d.sauverVideo = false;
                 rec.ondataavailable = (e) => {
                     if (e.data && e.data.size > 0) v3d.morceaux.push(e.data);
                 };
                 rec.onstop = () => {
+                    v3d.videoActif = false;
+                    if (v3d.rafVideo) cancelAnimationFrame(v3d.rafVideo);
+                    v3d.rafVideo = 0;
+                    if (v3d.fluxVideo) v3d.fluxVideo.getTracks().forEach(p => p.stop());
+                    v3d.fluxVideo = null;
+                    v3d.canvasVideo = null;
+                    v3d.ctxVideo = null;
                     if (!v3d.sauverVideo || v3d.morceaux.length === 0) return;
                     const blob = new Blob(v3d.morceaux, { type: type });
                     const a = document.createElement('a');
@@ -13592,6 +13721,9 @@ def accueil():
 
                 v3d.enregistreur = rec;
                 v3d.f = 0;
+                v3d.cinema = true;
+                majBoutonsV3d();
+                dessinerCadreVideo();
                 rec.start(1000);
                 lectureV3d(true);
             }
@@ -13778,6 +13910,9 @@ def accueil():
                 v3d.fond = 'sat';
                 v3d.compteImages = 0;
                 v3d.titre = (sortie.debut || '').slice(0, 10);
+                v3d.nomParcours = sortie.nom || 'Sortie VTT';
+                v3d.dateParcours = jour;
+                v3d.cinema = false;
                 v3d.sortieId = sortie.id;
                 v3d.photos = placerPhotos(sortie);
                 v3d.voirAutres = false;
@@ -13833,6 +13968,10 @@ def accueil():
                 majBoutonsV3d();
 
                 bouton('v3dFermer', fermerV3d);
+                bouton('v3dCinema', () => {
+                    v3d.cinema = !v3d.cinema;
+                    majBoutonsV3d();
+                });
                 bouton('v3dReperes', () => { v3d.repereVisibles = !v3d.repereVisibles; majVisibiliteReperesV3d(); majBoutonsV3d(); });
                 bouton('v3dLecture', () => lectureV3d(!v3d.jouer));
                 bouton('v3dVitesse', () => {
