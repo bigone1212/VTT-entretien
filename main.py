@@ -3380,6 +3380,72 @@ def accueil():
 
             .v3d-haut strong { font-size: 0.95rem; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
 
+            .vue3d.cinema .v3d-bas {
+                opacity: 0;
+                pointer-events: none;
+                transform: translateY(12px);
+                transition: opacity 0.55s ease, transform 0.55s ease;
+            }
+
+            .vue3d .v3d-bas {
+                transition: opacity 0.55s ease, transform 0.55s ease;
+            }
+
+            .vue3d.cinema .v3d-haut {
+                z-index: 7;
+                background: linear-gradient(rgba(0,0,0,0.48), rgba(0,0,0,0));
+            }
+
+            .vue3d.cinema .v3d-haut > strong { display: none; }
+            .vue3d.cinema #v3dCinema {
+                display: inline-flex;
+                pointer-events: auto;
+                position: relative;
+                z-index: 8;
+            }
+
+            .v3d-cinema-hud {
+                position: absolute;
+                z-index: 4;
+                bottom: 28px;
+                left: 24px;
+                max-width: min(440px, calc(100vw - 48px));
+                padding: 17px 21px 16px;
+                color: #fff;
+                background: linear-gradient(115deg, rgba(5, 18, 25, 0.84), rgba(5, 18, 25, 0.42));
+                border: 1px solid rgba(255,255,255,0.22);
+                border-left: 3px solid #65e6d4;
+                border-radius: 4px 13px 13px 4px;
+                box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+                backdrop-filter: blur(9px);
+                opacity: 0;
+                transform: translateY(-8px);
+                transition: opacity 0.45s ease, transform 0.45s ease;
+                pointer-events: none;
+            }
+
+            .vue3d.cinema .v3d-cinema-hud { opacity: 1; transform: translateY(0); }
+            .v3d-cinema-marque { color: #65e6d4; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.19em; }
+            .v3d-cinema-nom { margin-top: 7px; font-size: clamp(1.05rem, 2.2vw, 1.65rem); font-weight: 750; line-height: 1.15; text-shadow: 0 2px 8px rgba(0,0,0,0.5); }
+            .v3d-cinema-date { margin-top: 5px; color: rgba(255,255,255,0.72); font-size: 0.78rem; letter-spacing: 0.06em; }
+            .v3d-cinema-stats { display: flex; flex-wrap: wrap; gap: 12px 20px; margin-top: 13px; }
+            .v3d-cinema-stat { min-width: 62px; }
+            .v3d-cinema-stat strong { display: block; font-size: 1.12rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+            .v3d-cinema-stat span { display: block; margin-top: 2px; color: rgba(255,255,255,0.7); font-size: 0.61rem; letter-spacing: 0.09em; text-transform: uppercase; }
+            .v3d-cinema-profil { margin-top: 12px; }
+            .v3d-cinema-profil-titre { color: rgba(255,255,255,0.65); font-size: 0.58rem; letter-spacing: 0.14em; margin-bottom: 2px; }
+            .v3d-cinema-profil svg { display: block; width: 100%; height: 54px; overflow: visible; }
+            @media (max-width: 600px) {
+                .v3d-cinema-hud { top: auto; bottom: 18px; left: 12px; max-width: calc(100vw - 24px); padding: 12px 14px; }
+                .v3d-cinema-hud { max-height: min(42vh, 310px); overflow: hidden; }
+                .v3d-cinema-stats { gap: 9px 13px; margin-top: 9px; }
+                .v3d-cinema-stat { min-width: 54px; }
+                .v3d-cinema-stat strong { font-size: 0.94rem; }
+                .v3d-cinema-stat span { font-size: 0.54rem; }
+                .v3d-cinema-profil { margin-top: 8px; }
+                .v3d-cinema-profil svg { height: 42px; }
+            }
+
             .v3d-bas {
                 position: absolute;
                 left: 0;
@@ -3459,8 +3525,8 @@ def accueil():
                 box-shadow: 0 2px 8px rgba(0,0,0,0.5);
             }
 
-            .v3d-panneau { width: 48px; height: 44px; filter: drop-shadow(0 2px 3px rgba(0,0,0,.65)); }
-            .v3d-panneau svg { width: 48px; height: 44px; display: block; }
+            .v3d-pente-repere { height: 52px; overflow: visible; filter: drop-shadow(0 2px 4px rgba(0,0,0,.9)); pointer-events: none; }
+            .v3d-pente-repere svg { height: 52px; display: block; overflow: visible; }
             .v3d-lieu { padding: 4px 7px; border-radius: 6px; color: #fff; background: rgba(15,23,42,.88); border: 1px solid rgba(255,255,255,.8); font-size: 12px; font-weight: 700; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,.45); }
             .v3d-lieu-haut { background: rgba(20,83,45,.92); }
             .v3d-cache { display: none !important; }
@@ -4512,7 +4578,33 @@ def accueil():
             <div id="carte3d"></div>
             <div class="v3d-haut">
                 <strong id="v3dTitre"></strong>
-                <button type="button" id="v3dFermer" aria-label="Fermer"></button>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <button type="button" id="v3dCinema" aria-pressed="false">Mode Cinéma</button>
+                    <button type="button" id="v3dFermer" aria-label="Fermer"></button>
+                </div>
+            </div>
+            <div class="v3d-cinema-hud" id="v3dCinemaHud" aria-hidden="true">
+                <div class="v3d-cinema-marque">MAILLONS · CARNET VTT</div>
+                <div class="v3d-cinema-nom" id="v3dCinemaNom"></div>
+                <div class="v3d-cinema-date" id="v3dCinemaDate"></div>
+                <div class="v3d-cinema-stats">
+                    <div class="v3d-cinema-stat"><strong id="v3dCinemaDistance">0,0 km</strong><span>Distance</span></div>
+                    <div class="v3d-cinema-stat" id="v3dCinemaDeniveleBloc"><strong id="v3dCinemaDenivele">D+ 0 m</strong><span>D+ cumulé</span></div>
+                    <div class="v3d-cinema-stat" id="v3dCinemaAltitudeBloc"><strong id="v3dCinemaAltitude">—</strong><span>Altitude</span></div>
+                    <div class="v3d-cinema-stat" id="v3dCinemaVitesseBloc"><strong id="v3dCinemaVitesse">—</strong><span>Vitesse</span></div>
+                    <div class="v3d-cinema-stat"><strong id="v3dCinemaVitesseMax">—</strong><span>Vitesse max</span></div>
+                    <div class="v3d-cinema-stat"><strong id="v3dCinemaVitesseMoyenne">—</strong><span>Vitesse moyenne</span></div>
+                </div>
+                <div class="v3d-cinema-profil">
+                    <div class="v3d-cinema-profil-titre">PROFIL DU PARCOURS</div>
+                    <svg viewBox="0 0 360 70" preserveAspectRatio="none" role="img" aria-label="Profil altimétrique du parcours">
+                        <path id="v3dCinemaProfilZoneRestante" d="M12 64 L12 60 L348 60 L348 64 Z" fill="rgba(235,242,246,0.24)" stroke="none"/>
+                        <path id="v3dCinemaProfilZoneParcourue" d="M12 64 L12 60 L12 64 Z" fill="rgba(101,230,212,0.48)" stroke="none"/>
+                        <path id="v3dCinemaProfilLigne" d="M12 60 L348 60" fill="none" stroke="rgba(245,249,252,0.82)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path id="v3dCinemaProfilParcouru" d="M12 60 L348 60" fill="none" stroke="#65e6d4" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <line x1="12" y1="8" x2="12" y2="64" stroke="rgba(255,255,255,0.22)" stroke-width="1"/>
+                    </svg>
+                </div>
             </div>
             <div class="v3d-legende" id="v3dLegende"></div>
             <div class="v3d-photo" id="v3dPhoto" style="display:none;">
@@ -13045,9 +13137,12 @@ def accueil():
             const VITESSES = [1, 2, 4];
 
             const v3d = {
-                carte: null, pts: [], cum: [], total: 0, f: 0, jouer: false,
-                vitesse: 1, inclinaison: 60, cap: 0, dernier: 0, raf: 0,
+                carte: null, pts: [], cum: [], total: 0, f: 0, jouer: false, centreCamera: null,
+                vitesse: 1, inclinaison: 45, cap: 0, dernier: 0, raf: 0,
                 fond: 'sat', enregistreur: null, morceaux: [], titre: '',
+                nomParcours: '', dateParcours: '', cinema: false,
+                canvasVideo: null, ctxVideo: null, rafVideo: 0, fluxVideo: null, videoActif: false,
+                denivelePlus: 0, altitudeDisponible: false, altitudes: [], deniveleCum: [], vitesses: [], vitesseMax: null, vitesseMoyenne: null, profilLongueur: 0,
                 dureeBase: 60, prete: false, compteImages: 0,
                 tps: [], decalage: 0, alts: [], surfaces: '', pentes: [], mode: 'pente', autres: [], voirAutres: false, photos: [], marqueurs: [], reperes: [], panneauxPente: [], repereVisibles: true, prochaine: 0, sortieId: 0, minuteur: 0
             };
@@ -13131,8 +13226,21 @@ def accueil():
                 // La trace est enregistrée en [latitude, longitude] ; la carte veut [longitude, latitude].
                 const valides = trace.filter(p => Array.isArray(p) && p.length >= 2);
                 const pts = valides.map(p => [p[1], p[0]]);
-                v3d.tps = valides.map(p => (typeof p[2] === 'number' ? p[2] : null));
                 const profil = valides.length === trace.length ? analyserProfil(trace) : null;
+                const altitudes = profil
+                    ? profil.alt
+                    : valides.map(p => (typeof p[3] === 'number' && isFinite(p[3]) ? p[3] : null));
+                v3d.altitudes = altitudes;
+                v3d.altitudeDisponible = altitudes.filter(a => a !== null).length >= 2;
+                v3d.denivelePlus = 0;
+                v3d.deniveleCum = [0];
+                for (let i = 1; i < altitudes.length; i++) {
+                    const a = altitudes[i - 1], b = altitudes[i];
+                    const gain = a !== null && b !== null ? Math.max(0, b - a) : 0;
+                    v3d.denivelePlus += gain;
+                    v3d.deniveleCum.push(v3d.denivelePlus);
+                }
+                v3d.tps = valides.map(p => (typeof p[2] === 'number' && isFinite(p[2]) ? p[2] : null));
                 v3d.pentes = profil ? profil.pentes : [];
                 v3d.pts = pts;
                 v3d.cum = [0];
@@ -13140,7 +13248,47 @@ def accueil():
                     v3d.cum.push(v3d.cum[i - 1] + distanceM(pts[i - 1], pts[i]));
                 }
                 v3d.total = v3d.cum[v3d.cum.length - 1];
-                v3d.dureeBase = Math.min(180, Math.max(45, (v3d.total / 1000) * 5));
+                v3d.vitesses = pts.map((_, i) => {
+                    if (i === 0 || v3d.tps[i] === null || v3d.tps[i - 1] === null) return null;
+                    const secondes = v3d.tps[i] - v3d.tps[i - 1];
+                    return secondes > 0 ? ((v3d.cum[i] - v3d.cum[i - 1]) / secondes) * 3.6 : null;
+                });
+                const vitessesValides = v3d.vitesses.filter(x => x !== null && isFinite(x) && x <= 150);
+                v3d.vitesseMax = vitessesValides.reduce((max, x) => Math.max(max, x), 0) || null;
+                const tempsTotal = v3d.tps.length > 1 && v3d.tps[0] !== null && v3d.tps[v3d.tps.length - 1] !== null
+                    ? v3d.tps[v3d.tps.length - 1] - v3d.tps[0] : 0;
+                v3d.vitesseMoyenne = tempsTotal > 0 ? (v3d.total / tempsTotal) * 3.6 : null;
+                const altitudesValides = v3d.altitudes.filter(a => a !== null && isFinite(a));
+                if (altitudesValides.length >= 2) {
+                    const minAlt = Math.min(...altitudesValides);
+                    const maxAlt = Math.max(...altitudesValides);
+                    const amplitude = Math.max(1, maxAlt - minAlt);
+                    const pas = Math.max(1, Math.ceil(v3d.altitudes.length / 240));
+                    const pointsProfil = v3d.altitudes.map((a, i) => {
+                        if (i % pas !== 0 && i !== v3d.altitudes.length - 1) return null;
+                        if (a === null || !isFinite(a)) return null;
+                        const x = 12 + (v3d.cum[i] / Math.max(1, v3d.total)) * 336;
+                        const y = 60 - ((a - minAlt) / amplitude) * 48;
+                        return x.toFixed(1) + ',' + y.toFixed(1);
+                    }).filter(Boolean).join(' ');
+                    const cheminProfil = pointsProfil.trim().split(/\\s+/).map((point, i) => (i ? 'L' : 'M') + point.replace(',', ' ')).join(' ');
+                    const ligneProfil = document.getElementById('v3dCinemaProfilLigne');
+                    const ligneParcourue = document.getElementById('v3dCinemaProfilParcouru');
+                    const zoneRestante = document.getElementById('v3dCinemaProfilZoneRestante');
+                    ligneProfil.setAttribute('d', cheminProfil);
+                    ligneParcourue.setAttribute('d', cheminProfil);
+                    v3d.profilLongueur = ligneProfil.getTotalLength();
+                    const pointDebut = ligneProfil.getPointAtLength(0);
+                    const pointFin = ligneProfil.getPointAtLength(v3d.profilLongueur);
+                    const suiteProfil = cheminProfil.replace(/^M[^L]+/, '');
+                    zoneRestante.setAttribute('d', 'M' + pointDebut.x + ' 64 L' + pointDebut.x + ' ' + pointDebut.y + suiteProfil + ' L' + pointFin.x + ' 64 Z');
+                    ligneParcourue.style.opacity = '0';
+                    document.getElementById('v3dCinemaProfilZoneParcourue').style.opacity = '0';
+                } else {
+                    document.querySelector('.v3d-cinema-profil').style.display = 'none';
+                }
+                // Ralentit le survol pour limiter les grands déplacements visibles entre deux images.
+                v3d.dureeBase = Math.min(240, Math.max(75, (v3d.total / 1000) * 8));
             }
 
             // Distance (en mètres, le long du parcours) correspondant à un instant.
@@ -13286,22 +13434,101 @@ def accueil():
                 }
                 return liste;
             }
-            function elementPanneauV3d(valeur, signe) {
-                const el = document.createElement('div'); el.className = 'v3d-panneau';
-                el.setAttribute('aria-label', 'Pente de ' + Math.round(valeur) + ' %');
-                el.innerHTML = '<svg viewBox="0 0 48 44" aria-hidden="true"><polygon points="24,3 45,40 3,40" fill="white" stroke="#dc2626" stroke-width="4.5" stroke-linejoin="round"/><path d="' + (signe > 0 ? 'M17 27 L31 27 L31 18 Z' : 'M17 18 L17 27 L31 27 Z') + '" fill="#111827"/><text x="24" y="37" text-anchor="middle" font-size="11" font-weight="800" fill="#111827">' + Math.round(valeur) + '%</text></svg>';
+            function elementRepereAerienV3d(libelle, taille = 18) {
+                const el = document.createElement('div');
+                el.className = 'v3d-pente-repere';
+                const largeur = Math.max(96, Math.ceil(libelle.length * taille * 0.64 + 38));
+                el.style.width = largeur + 'px';
+                el.setAttribute('aria-label', libelle);
+                el.innerHTML = '<svg viewBox="0 0 ' + largeur + ' 52" width="' + largeur + '" aria-hidden="true"><path d="M0 50 L23 19" fill="none" stroke="rgba(255,255,255,.98)" stroke-width="1.8" stroke-linecap="round"/><circle cx="0" cy="50" r="4.5" fill="#65e6d4" stroke="#fff" stroke-width="1.8"/><text x="29" y="24" dominant-baseline="middle" font-size="' + taille + '" font-weight="900" fill="#fff" stroke="rgba(5,15,25,.9)" stroke-width="3.5" stroke-linejoin="round" paint-order="stroke">' + libelle + '</text></svg>';
                 return el;
             }
+            async function chercherLieuxIGNV3d(dist) {
+                if (!v3d.total || v3d.total <= 0) return [];
+                const nombre = Math.min(36, Math.max(1, Math.ceil(v3d.total / 2500)));
+                const pas = v3d.total / nombre;
+                const rayon = Math.max(1200, Math.min(3500, pas * 0.72));
+                const resultats = [];
+                for (let i = 0; i < nombre; i += 4) {
+                    const appels = [];
+                    for (let j = i; j < Math.min(nombre, i + 4); j++) {
+                        const coord = pointA(Math.min(v3d.total, (j + 0.5) * pas));
+                        const zone = { type: 'Circle', coordinates: [coord[0], coord[1]], radius: rayon };
+                        const params = new URLSearchParams({
+                            index: 'poi',
+                            searchgeom: JSON.stringify(zone),
+                            lon: String(coord[0]),
+                            lat: String(coord[1]),
+                            limit: '20'
+                        });
+                        appels.push((async () => {
+                            const ctl = new AbortController();
+                            const timer = setTimeout(() => ctl.abort(), 9000);
+                            try {
+                                const res = await fetch('https://data.geopf.fr/geocodage/reverse?' + params.toString(), { signal: ctl.signal });
+                                if (!res.ok) throw new Error('IGN HTTP ' + res.status);
+                                return await res.json();
+                            } finally {
+                                clearTimeout(timer);
+                            }
+                        })());
+                    }
+                    const reponses = await Promise.allSettled(appels);
+                    reponses.forEach(r => {
+                        if (r.status === 'fulfilled' && r.value && Array.isArray(r.value.features)) {
+                            resultats.push(...r.value.features);
+                        }
+                    });
+                }
+                const lieux = [];
+                for (const f of resultats) {
+                    const p = f && f.properties ? f.properties : {};
+                    const geom = f && f.geometry ? f.geometry.coordinates : null;
+                    if (!Array.isArray(geom) || geom.length < 2) continue;
+                    const lon = Number(geom[0]), lat = Number(geom[1]);
+                    if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+                    const nom = String(p.name || p.label || p.toponyme || p.nom || p.title || '').trim();
+                    if (!nom) continue;
+                    const categorie = String([p.category, p.type, p.nature, p.kind, p._type, p.description].filter(Boolean).join(' ')).toLowerCase();
+                    const texte = (categorie + ' ' + nom).toLowerCase();
+                    let genre = 'lieu', rang = 6, portee = 2200;
+                    if (/sommet|peak|mountain|montagne|hill|colline|crête|crete|ridge/.test(texte)) {
+                        genre = 'sommet'; rang = 4; portee = 2200;
+                    } else if (/col\\b|pass|saddle|mountain_pass/.test(texte)) {
+                        genre = 'col'; rang = 2; portee = 900;
+                    } else if (/lieu.?dit|locality|hamlet|hameau|isolated_dwelling/.test(texte)) {
+                        genre = 'village'; rang = 5; portee = 3500;
+                    } else if (/village|commune|town|city|municipality/.test(texte)) {
+                        genre = 'village'; rang = 4; portee = 5000;
+                    }
+                    const ec = dist(lon, lat);
+                    if (ec > portee) continue;
+                    const doublon = lieux.some(l => l.nom.toLocaleLowerCase() === nom.toLocaleLowerCase()
+                        && distanceM(l.coord, [lon, lat]) < 600);
+                    if (doublon) continue;
+                    const altitude = Number(p.ele || p.altitude || p.z);
+                    lieux.push({
+                        nom: nom,
+                        genre: genre,
+                        rang: rang,
+                        ec: ec,
+                        coord: [lon, lat],
+                        alt: Number.isFinite(altitude) ? altitude : NaN
+                    });
+                }
+                return lieux;
+            }
+
             async function chercherLieuxV3d() {
                 if (v3d.pts.length < 2) return [];
                 const lons = v3d.pts.map(p => p[0]), lats = v3d.pts.map(p => p[1]), marge = 0.012;
                 const sud = Math.min(...lats)-marge, nord = Math.max(...lats)+marge, ouest = Math.min(...lons)-marge, est = Math.max(...lons)+marge;
-                if (nord-sud > 0.6 || est-ouest > 0.8) return [];
+                const zoneValide = nord-sud <= 0.6 && est-ouest <= 0.8;
                 const zone = '('+sud+','+ouest+','+nord+','+est+')';
-                const q = '[out:json][timeout:35];(nwr["place"~"^(city|town|village|hamlet|isolated_dwelling|suburb|locality|neighbourhood)$"]["name"]'+zone+';nwr["natural"="peak"]["name"]'+zone+';nwr["mountain_pass"="yes"]["name"]'+zone+';nwr["natural"="saddle"]["name"]'+zone+';);out center tags;';
+                const q = '[out:json][timeout:35];(nwr["place"~"^(city|town|village|hamlet|isolated_dwelling|suburb|locality|neighbourhood)$"]["name"]'+zone+';nwr["natural"~"^(peak|hill|ridge)$"]["name"]'+zone+';nwr["mountain_pass"="yes"]["name"]'+zone+';nwr["natural"="saddle"]["name"]'+zone+';nwr["tourism"="viewpoint"]["name"]'+zone+';);out center tags;';
                 let data = null;
                 let derniereErreur = null;
-                for (const base of ['https://overpass-api.de/api/interpreter','https://overpass.private.coffee/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter']) {
+                if (zoneValide) for (const base of ['https://overpass-api.de/api/interpreter','https://overpass.private.coffee/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter']) {
                     try {
                         const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 20000);
                         const res = await fetch(base, {
@@ -13316,39 +13543,50 @@ def accueil():
                         console.warn('Recherche de lieux OSM :', derniereErreur);
                     } catch(e) { derniereErreur = String(e); console.warn('Repères OpenStreetMap indisponibles', e); }
                 }
-                if (!data || !Array.isArray(data.elements)) {
-                    console.warn('Aucun résultat exploitable pour les lieux du survol 3D.', derniereErreur || 'réponse vide');
-                    v3d.lieuxEtat = 'panne';
-                    return [];
-                }
-                v3d.lieuxEtat = data.elements.length ? 'ok' : 'vide';
-                console.info('Survol 3D : objets OpenStreetMap reçus', data.elements.length);
                 const ref = v3d.pts.filter((_,i)=>i%Math.max(1,Math.floor(v3d.pts.length/500))===0);
                 const dist = (lon,lat) => Math.min(...ref.map(p => {
                     const x=(lon-p[0])*111320*Math.cos(lat*Math.PI/180), y=(lat-p[1])*110540; return Math.hypot(x,y);
                 }));
-                const out=[], seen=new Set();
-                for (const e of data.elements) {
-                    if (!e.tags||!e.tags.name) continue;
-                    const lon = Number.isFinite(e.lon) ? e.lon : e.center && e.center.lon;
-                    const lat = Number.isFinite(e.lat) ? e.lat : e.center && e.center.lat;
-                    if (!Number.isFinite(lon)||!Number.isFinite(lat)) continue;
-                    let genre='',rang=9,portee=5000;
-                    if (['city','town','village','hamlet','isolated_dwelling','suburb','locality'].includes(e.tags.place)) {
-                        genre=['hamlet','isolated_dwelling','locality'].includes(e.tags.place)?'village':(e.tags.place==='village'?'village':'ville');
-                        rang={city:1,town:2,suburb:3,village:4,hamlet:5,isolated_dwelling:6,locality:7}[e.tags.place] ?? 4;
-                        portee=5000;
+                const out=[];
+                const ajouter = l => {
+                    const doublon = out.some(x => x.nom.toLocaleLowerCase() === l.nom.toLocaleLowerCase()
+                        && distanceM(x.coord, l.coord) < 600);
+                    if (!doublon) out.push(l);
+                };
+                if (data && Array.isArray(data.elements)) {
+                    console.info('Survol 3D : objets OpenStreetMap reçus', data.elements.length);
+                    for (const e of data.elements) {
+                        if (!e.tags||!e.tags.name) continue;
+                        const lon = Number.isFinite(e.lon) ? e.lon : e.center && e.center.lon;
+                        const lat = Number.isFinite(e.lat) ? e.lat : e.center && e.center.lat;
+                        if (!Number.isFinite(lon)||!Number.isFinite(lat)) continue;
+                        let genre='',rang=9,portee=5000;
+                        if (['city','town','village','hamlet','isolated_dwelling','suburb','locality','neighbourhood'].includes(e.tags.place)) {
+                            genre=['hamlet','isolated_dwelling','locality'].includes(e.tags.place)?'village':(e.tags.place==='village'?'village':'ville');
+                            rang={city:1,town:2,suburb:3,village:4,hamlet:5,isolated_dwelling:6,locality:7,neighbourhood:8}[e.tags.place] ?? 4;
+                            portee=5000;
+                        } else if (['peak','hill','ridge'].includes(e.tags.natural)) { genre='sommet'; rang=4; portee=2200; }
+                        else if(e.tags.mountain_pass==='yes'||e.tags.natural==='saddle') {genre='col';rang=2;portee=900;}
+                        else if(e.tags.tourism==='viewpoint') {genre='lieu';rang=6;portee=1800;}
+                        else continue;
+                        const ec=dist(lon,lat);
+                        if(ec>portee) continue;
+                        ajouter({nom:e.tags.name,genre,rang,ec,coord:[lon,lat],alt:parseFloat(e.tags.ele)});
                     }
-                    else if(e.tags.natural==='peak') {genre='sommet';rang=4;portee=1500;}
-                    else if(e.tags.mountain_pass==='yes'||e.tags.natural==='saddle') {genre='col';rang=2;portee=500;}
-                    else continue;
-                    const ec=dist(lon,lat), key=e.tags.name.toLowerCase()+genre;
-                    if(ec>portee||seen.has(key)) continue;
-                    seen.add(key); out.push({nom:e.tags.name,genre,rang,ec,coord:[lon,lat],alt:parseInt(e.tags.ele,10)});
+                } else if (derniereErreur) {
+                    console.warn('OpenStreetMap indisponible ; la recherche IGN reste active.', derniereErreur);
+                }
+                try {
+                    const lieuxIGN = await chercherLieuxIGNV3d(dist);
+                    lieuxIGN.forEach(ajouter);
+                    console.info('Survol 3D : lieux IGN reçus', lieuxIGN.length);
+                } catch (e) {
+                    console.warn('Recherche IGN des lieux indisponible', e);
                 }
                 out.sort((a,b)=>a.rang-b.rang||a.ec-b.ec);
                 const gardes=[];
                 for(const l of out) { if(gardes.length>=18) break; if(gardes.every(g=>distanceM(g.coord,l.coord)>=600)) gardes.push(l); }
+                v3d.lieuxEtat = gardes.length ? 'ok' : (data ? 'vide' : 'panne');
                 return gardes;
             }
             function viderReperesV3d() {
@@ -13368,10 +13606,27 @@ def accueil():
                 const carte=v3d.carte; viderReperesV3d();
                 const raides=tronconsRaidesV3d(15), liste=raides.length?raides:tronconsRaidesV3d(10).sort((a,b)=>b.valeur-a.valeur).slice(0,3);
                 liste.sort((a,b)=>b.valeur-a.valeur).slice(0,8).forEach(t=>{
-                    const m=new window.maplibregl.Marker({element:elementPanneauV3d(t.valeur,t.signe),anchor:'bottom'}).setLngLat(pointA(t.debut)).addTo(carte);
+                    const libelle=(t.signe>0?'+':'−')+Math.round(t.valeur)+' %';
+                    const m=new window.maplibregl.Marker({element:elementRepereAerienV3d(libelle,19),anchor:'bottom-left'}).setLngLat(pointA(t.debut)).addTo(carte);
                     v3d.reperes.push(m);
                     v3d.panneauxPente.push({marqueur:m,debut:t.debut,fin:t.fin});
                 });
+                if (v3d.vitesseMax !== null) {
+                    let indexMax = -1;
+                    v3d.vitesses.forEach((v,i) => {
+                        if (v !== null && isFinite(v) && v <= 150 && (indexMax < 0 || v > v3d.vitesses[indexMax])) indexMax = i;
+                    });
+                    if (indexMax >= 0) {
+                        const libelle='Vmax '+Math.round(v3d.vitesseMax)+' km/h';
+                        const marqueurMax=new window.maplibregl.Marker({element:elementRepereAerienV3d(libelle,16),anchor:'bottom-left'}).setLngLat(pointA(v3d.cum[indexMax])).addTo(carte);
+                        v3d.reperes.push(marqueurMax);
+                        v3d.panneauxPente.push({
+                            marqueur: marqueurMax,
+                            debut: v3d.cum[indexMax],
+                            fin: v3d.cum[indexMax] + (v3d.total / Math.max(1, v3d.dureeBase) * v3d.vitesse) * 1.5
+                        });
+                    }
+                }
                 majVisibiliteReperesV3d(); majBoutonsV3d();
                 let lieux=[];
                 const rech=document.getElementById('v3dRecherche');
@@ -13379,10 +13634,10 @@ def accueil():
                 try { lieux=await chercherLieuxV3d(); } catch(e) { console.warn(e); }
                 if(rech) rech.style.display='none';
                 if(v3d.carte!==carte) return;
-                if(v3d.lieuxEtat==='panne') { messageV3d('Noms de lieux indisponibles : le serveur OpenStreetMap ne répond pas.'); setTimeout(()=>messageV3d(''),6000); }
+                if(v3d.lieuxEtat==='panne') { messageV3d('Noms de lieux indisponibles : les services IGN et OpenStreetMap ne répondent pas.'); setTimeout(()=>messageV3d(''),6000); }
                 lieux.forEach(l=>{
                     const el=document.createElement('div'); el.className='v3d-lieu'+(['sommet','col'].includes(l.genre)?' v3d-lieu-haut':'');
-                    const ic=l.genre==='sommet'?'⛰️':l.genre==='col'?'🏔️':'🏘️';
+                    const ic=l.genre==='sommet'?'⛰️':l.genre==='col'?'🏔️':l.genre==='lieu'?'📍':'🏘️';
                     el.textContent=ic+' '+l.nom+(Number.isFinite(l.alt)&&['sommet','col'].includes(l.genre)?' · '+fmtAltitude(l.alt).complet:'');
                     v3d.reperes.push(new window.maplibregl.Marker({element:el,anchor:'bottom'}).setLngLat(l.coord).addTo(carte));
                 });
@@ -13423,14 +13678,104 @@ def accueil():
                 const en_cours = !!v3d.enregistreur;
                 remplirBouton(enr, 'enreg', en_cours ? 'Arrêter et enregistrer' : 'Enregistrer');
                 enr.classList.toggle('enreg', en_cours);
+                const cinema = document.getElementById('v3dCinema');
+                if (cinema) {
+                    cinema.textContent = v3d.cinema ? 'Quitter cinéma' : 'Mode Cinéma';
+                    cinema.classList.toggle('actif', v3d.cinema);
+                    cinema.setAttribute('aria-pressed', v3d.cinema ? 'true' : 'false');
+                }
+                document.getElementById('vue3d').classList.toggle('cinema', v3d.cinema);
+                majHabillageCinemaV3d();
             }
 
-            function dessinerAvancement() {
+            function majHabillageCinemaV3d() {
+                const hud = document.getElementById('v3dCinemaHud');
+                if (!hud) return;
+                hud.setAttribute('aria-hidden', v3d.cinema ? 'false' : 'true');
+                document.getElementById('v3dCinemaNom').textContent = v3d.nomParcours || 'Sortie VTT';
+                document.getElementById('v3dCinemaDate').textContent = v3d.dateParcours || '';
+                const distance = v3d.f * v3d.total;
+                let bas = 0, haut = v3d.cum.length - 1;
+                while (haut - bas > 1) {
+                    const milieu = (bas + haut) >> 1;
+                    if (v3d.cum[milieu] <= distance) bas = milieu; else haut = milieu;
+                }
+                const avant = bas;
+                const index = haut;
+                const segment = v3d.cum[index] - v3d.cum[avant];
+                const part = segment > 0 ? Math.max(0, Math.min(1, (distance - v3d.cum[avant]) / segment)) : 0;
+                const interp = (liste) => liste[index] !== null && liste[index] !== undefined && liste[avant] !== null && liste[avant] !== undefined
+                    ? liste[avant] + (liste[index] - liste[avant]) * part
+                    : (liste[index] ?? liste[avant] ?? null);
+                document.getElementById('v3dCinemaDistance').textContent = fmtDistance(distance / 1000, 1).complet;
+                const denivele = document.getElementById('v3dCinemaDeniveleBloc');
+                denivele.style.display = v3d.altitudeDisponible ? '' : 'none';
+                const dplus = interp(v3d.deniveleCum);
+                document.getElementById('v3dCinemaDenivele').textContent = 'D+ ' + Math.round(dplus || 0) + ' m';
+                const altitude = interp(v3d.altitudes);
+                const blocAltitude = document.getElementById('v3dCinemaAltitudeBloc');
+                blocAltitude.style.display = v3d.altitudeDisponible ? '' : 'none';
+                document.getElementById('v3dCinemaAltitude').textContent = altitude === null ? '—' : Math.round(altitude) + ' m';
+                const vitesse = interp(v3d.vitesses);
+                const blocVitesse = document.getElementById('v3dCinemaVitesseBloc');
+                blocVitesse.style.display = v3d.vitesses.some(x => x !== null) ? '' : 'none';
+                document.getElementById('v3dCinemaVitesse').textContent = vitesse === null ? '—' : vitesse.toFixed(1).replace('.', ',') + ' km/h';
+                document.getElementById('v3dCinemaVitesseMax').textContent = v3d.vitesseMax === null ? '—' : Math.round(v3d.vitesseMax) + ' km/h';
+                document.getElementById('v3dCinemaVitesseMoyenne').textContent = v3d.vitesseMoyenne === null ? '—' : v3d.vitesseMoyenne.toFixed(1).replace('.', ',') + ' km/h';
+                const ligneProfil = document.getElementById('v3dCinemaProfilLigne');
+                const ligneParcourue = document.getElementById('v3dCinemaProfilParcouru');
+                const zoneParcourue = document.getElementById('v3dCinemaProfilZoneParcourue');
+                if (ligneProfil && ligneParcourue && zoneParcourue && v3d.profilLongueur > 0) {
+                    const progression = Math.max(0, Math.min(1, v3d.f));
+                    const xCible = 12 + 336 * progression;
+                    let bas = 0, haut = v3d.profilLongueur;
+                    for (let n = 0; n < 12; n++) {
+                        const milieu = (bas + haut) / 2;
+                        if (ligneProfil.getPointAtLength(milieu).x < xCible) bas = milieu;
+                        else haut = milieu;
+                    }
+                    const avanceProfil = (bas + haut) / 2;
+                    ligneParcourue.setAttribute('stroke-dasharray', avanceProfil.toFixed(2) + ' ' + v3d.profilLongueur.toFixed(2));
+                    ligneParcourue.style.opacity = progression > 0.001 ? '1' : '0';
+                    if (progression > 0.001) {
+                        const debut = ligneProfil.getPointAtLength(0);
+                        const fin = ligneProfil.getPointAtLength(avanceProfil);
+                        const nombrePoints = Math.max(2, Math.ceil(avanceProfil / 5));
+                        let zone = 'M' + debut.x.toFixed(2) + ' 64 L' + debut.x.toFixed(2) + ' ' + debut.y.toFixed(2);
+                        for (let n = 1; n <= nombrePoints; n++) {
+                            const p = ligneProfil.getPointAtLength(avanceProfil * n / nombrePoints);
+                            zone += ' L' + p.x.toFixed(2) + ' ' + p.y.toFixed(2);
+                        }
+                        zone += ' L' + fin.x.toFixed(2) + ' 64 Z';
+                        zoneParcourue.setAttribute('d', zone);
+                        zoneParcourue.style.opacity = '1';
+                    } else {
+                        zoneParcourue.style.opacity = '0';
+                    }
+                }
+            }
+
+            // Met à jour le point mobile à chaque image pour qu'il glisse le long du GPX.
+            function dessinerPositionV3d(d) {
+                const carte = v3d.carte;
+                if (!carte || !v3d.prete) return;
+                const pos = pointA(d);
+                const srcPos = carte.getSource('v3d-pos');
+                if (srcPos) {
+                    srcPos.setData({
+                        type: 'Feature',
+                        geometry: { type: 'Point', coordinates: pos }
+                    });
+                }
+            }
+
+            function dessinerAvancement(positionDejaMiseAJour) {
                 const carte = v3d.carte;
                 if (!carte || !v3d.prete) return;
 
                 const d = v3d.f * v3d.total;
                 const pos = pointA(d);
+                if (!positionDejaMiseAJour) dessinerPositionV3d(d);
                 const fait = [];
                 for (let i = 0; i < v3d.pts.length && v3d.cum[i] <= d; i++) {
                     fait.push(v3d.pts[i]);
@@ -13444,16 +13789,10 @@ def accueil():
                         geometry: { type: 'LineString', coordinates: fait.length > 1 ? fait : [pos, pos] }
                     });
                 }
-                const srcPos = carte.getSource('v3d-pos');
-                if (srcPos) {
-                    srcPos.setData({
-                        type: 'Feature',
-                        geometry: { type: 'Point', coordinates: pos }
-                    });
-                }
                 document.getElementById('v3dProgres').value = String(Math.round(v3d.f * 1000));
                 document.getElementById('v3dInfo').textContent =
                     `${fmtDistance(d / 1000, 1).complet} sur ${fmtDistance(v3d.total / 1000, 1).complet}`;
+                majHabillageCinemaV3d();
                 majVisibiliteReperesV3d();
             }
 
@@ -13464,7 +13803,18 @@ def accueil():
 
                 const d = v3d.f * v3d.total;
                 const centre = pointA(d);
-                const avance = Math.min(600, Math.max(120, v3d.total * 0.03));
+                // Filtre aussi le déplacement du centre : la caméra ne reproduit pas chaque angle du GPX.
+                if (brusque || !v3d.centreCamera) {
+                    v3d.centreCamera = centre.slice();
+                } else {
+                    const facteurCentre = 1 - Math.exp(-dt * 3);
+                    v3d.centreCamera = [
+                        v3d.centreCamera[0] + (centre[0] - v3d.centreCamera[0]) * facteurCentre,
+                        v3d.centreCamera[1] + (centre[1] - v3d.centreCamera[1]) * facteurCentre
+                    ];
+                    if (v3d.f >= 1) v3d.centreCamera = centre.slice();
+                }
+                const avance = Math.min(700, Math.max(450, v3d.total * 0.035));
                 const devant = pointA(Math.min(v3d.total, d + avance));
                 const arriere = pointA(Math.max(0, d - avance * 0.5));
                 let cible = v3d.cap;
@@ -13475,7 +13825,7 @@ def accueil():
                 if (brusque) {
                     v3d.cap = cible;
                 } else {
-                    const facteur = 1 - Math.exp(-dt * 2.5);
+                    const facteur = 1 - Math.exp(-dt * 0.9);
                     v3d.cap = (v3d.cap + ecartAngle(cible, v3d.cap) * facteur + 360) % 360;
                 }
 
@@ -13500,7 +13850,7 @@ def accueil():
                 }
 
                 carte.jumpTo({
-                    center: centre,
+                    center: v3d.centreCamera,
                     bearing: v3d.cap,
                     pitch: v3d.inclinaison,
                     zoom: 14.6,
@@ -13532,10 +13882,11 @@ def accueil():
                 verifierPhotosV3d(avant, v3d.f * v3d.total);
 
                 placerCamera(dt, false);
+                // Le point mobile est actualisé à chaque image ; seule la ligne complète
+                // et les informations de progression restent limitées à une image sur quatre.
+                dessinerPositionV3d(v3d.f * v3d.total);
                 v3d.compteImages++;
-                // La caméra avance à chaque image, mais la ligne GeoJSON du parcours
-                // est plus coûteuse à recalculer : on la rafraîchit moins souvent.
-                if (v3d.compteImages % 4 === 0 || v3d.f >= 1) dessinerAvancement();
+                if (v3d.compteImages % 4 === 0 || v3d.f >= 1) dessinerAvancement(true);
 
                 if (v3d.f >= 1) {
                     v3d.jouer = false;
@@ -13563,6 +13914,80 @@ def accueil():
                 majBoutonsV3d();
             }
 
+            function dessinerHabillageVideo(ctx, largeur, hauteur) {
+                const echelle = Math.min(largeur / 1920, hauteur / 1080);
+                const marge = 58 * echelle;
+                const grand = 34 * echelle;
+                const petit = 17 * echelle;
+                ctx.save();
+
+                const haut = ctx.createLinearGradient(0, 0, 0, hauteur * 0.25);
+                haut.addColorStop(0, 'rgba(4, 15, 22, 0.78)');
+                haut.addColorStop(1, 'rgba(4, 15, 22, 0)');
+                ctx.fillStyle = haut;
+                ctx.fillRect(0, 0, largeur, hauteur * 0.25);
+
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'top';
+                ctx.fillStyle = '#65e6d4';
+                ctx.font = '700 ' + petit + 'px Arial, sans-serif';
+                ctx.fillText('MAILLONS  /  CARNET VTT', marge, marge * 0.72);
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '700 ' + grand + 'px Arial, sans-serif';
+                ctx.shadowColor = 'rgba(0,0,0,0.45)';
+                ctx.shadowBlur = 8 * echelle;
+                ctx.fillText((v3d.nomParcours || 'Sortie VTT').slice(0, 64), marge, marge * 1.45, largeur * 0.78);
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = 'rgba(255,255,255,0.82)';
+                ctx.font = '500 ' + petit + 'px Arial, sans-serif';
+                ctx.fillText('SURVOL 3D  •  ' + (v3d.dateParcours || ''), marge, marge * 2.45);
+
+                const bas = ctx.createLinearGradient(0, hauteur * 0.72, 0, hauteur);
+                bas.addColorStop(0, 'rgba(4, 15, 22, 0)');
+                bas.addColorStop(1, 'rgba(4, 15, 22, 0.88)');
+                ctx.fillStyle = bas;
+                ctx.fillRect(0, hauteur * 0.72, largeur, hauteur * 0.28);
+
+                const y = hauteur - marge * 2.25;
+                const parcouru = Math.max(0, v3d.f * v3d.total / 1000);
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '700 ' + grand + 'px Arial, sans-serif';
+                ctx.fillText(parcouru.toFixed(1) + ' km', marge, y);
+                ctx.font = '500 ' + petit + 'px Arial, sans-serif';
+                ctx.fillStyle = 'rgba(255,255,255,0.82)';
+                ctx.fillText('sur ' + (v3d.total / 1000).toFixed(1) + ' km', marge, y + grand * 1.25);
+                if (v3d.altitudeDisponible) {
+                    ctx.font = '700 ' + grand + 'px Arial, sans-serif';
+                    ctx.fillStyle = '#65e6d4';
+                    ctx.fillText('D+ ' + Math.round(v3d.denivelePlus) + ' m', largeur * 0.57, y);
+                }
+
+                const barreY = hauteur - marge * 0.78;
+                ctx.fillStyle = 'rgba(255,255,255,0.35)';
+                ctx.fillRect(marge, barreY, largeur - marge * 2, 4 * echelle);
+                ctx.fillStyle = '#65e6d4';
+                ctx.fillRect(marge, barreY, (largeur - marge * 2) * Math.max(0, Math.min(1, v3d.f)), 5 * echelle);
+                ctx.textAlign = 'right';
+                ctx.font = '500 ' + Math.max(10, petit * 0.68) + 'px Arial, sans-serif';
+                ctx.fillStyle = 'rgba(255,255,255,0.72)';
+                ctx.fillText('Imagerie © Esri  •  Relief AWS Terrain Tiles  •  © OpenStreetMap', largeur - marge, hauteur - marge * 0.25);
+                ctx.restore();
+            }
+
+            function dessinerCadreVideo() {
+                if (!v3d.videoActif || !v3d.canvasVideo || !v3d.ctxVideo) return;
+                const source = v3d.carte && v3d.carte.getCanvas ? v3d.carte.getCanvas() : null;
+                if (source) {
+                    try {
+                        v3d.ctxVideo.drawImage(source, 0, 0, v3d.canvasVideo.width, v3d.canvasVideo.height);
+                        dessinerHabillageVideo(v3d.ctxVideo, v3d.canvasVideo.width, v3d.canvasVideo.height);
+                    } catch (e) {
+                        console.warn('Image vidéo momentanément indisponible', e);
+                    }
+                }
+                v3d.rafVideo = requestAnimationFrame(dessinerCadreVideo);
+            }
+
             function arreterEnregistrement(sauver) {
                 const rec = v3d.enregistreur;
                 if (!rec) return;
@@ -13588,14 +14013,33 @@ def accueil():
                     return;
                 }
 
-                const flux = canvas.captureStream(30);
-                const rec = new MediaRecorder(flux, { mimeType: type, videoBitsPerSecond: 6000000 });
+                const sortieVideo = document.createElement('canvas');
+                const facteur = Math.min(1, 1920 / canvas.width, 1920 / canvas.height);
+                sortieVideo.width = Math.max(1, Math.round(canvas.width * facteur));
+                sortieVideo.height = Math.max(1, Math.round(canvas.height * facteur));
+                const contexteVideo = sortieVideo.getContext('2d');
+                if (!contexteVideo || !sortieVideo.captureStream) {
+                    messageV3d("La création de la vidéo cinéma n'est pas prise en charge par ce navigateur.");
+                    return;
+                }
+                v3d.canvasVideo = sortieVideo;
+                v3d.ctxVideo = contexteVideo;
+                v3d.videoActif = true;
+                v3d.fluxVideo = sortieVideo.captureStream(30);
+                const rec = new MediaRecorder(v3d.fluxVideo, { mimeType: type, videoBitsPerSecond: 8000000 });
                 v3d.morceaux = [];
                 v3d.sauverVideo = false;
                 rec.ondataavailable = (e) => {
                     if (e.data && e.data.size > 0) v3d.morceaux.push(e.data);
                 };
                 rec.onstop = () => {
+                    v3d.videoActif = false;
+                    if (v3d.rafVideo) cancelAnimationFrame(v3d.rafVideo);
+                    v3d.rafVideo = 0;
+                    if (v3d.fluxVideo) v3d.fluxVideo.getTracks().forEach(p => p.stop());
+                    v3d.fluxVideo = null;
+                    v3d.canvasVideo = null;
+                    v3d.ctxVideo = null;
                     if (!v3d.sauverVideo || v3d.morceaux.length === 0) return;
                     const blob = new Blob(v3d.morceaux, { type: type });
                     const a = document.createElement('a');
@@ -13611,6 +14055,9 @@ def accueil():
 
                 v3d.enregistreur = rec;
                 v3d.f = 0;
+                v3d.cinema = true;
+                majBoutonsV3d();
+                dessinerCadreVideo();
                 rec.start(1000);
                 lectureV3d(true);
             }
@@ -13646,6 +14093,8 @@ def accueil():
                     zoom: 12,
                     pitch: 45,
                     maxPitch: 85,
+                    // Nécessaire pour composer les incrustations dans la vidéo exportée.
+                    preserveDrawingBuffer: true,
                     attributionControl: true
                 });
                 return carte;
@@ -13703,20 +14152,36 @@ def accueil():
                     maxzoom: 15,
                     attribution: 'Relief : AWS Terrain Tiles'
                 });
-                carte.setTerrain({ source: 'dem', exaggeration: 1.1 });
+                carte.setTerrain({ source: 'dem', exaggeration: 1.7 });
+                carte.addLayer({
+                    id: 'v3d-relief-ombres',
+                    type: 'hillshade',
+                    source: 'dem',
+                    paint: {
+                        'hillshade-exaggeration': 0.42,
+                        'hillshade-shadow-color': '#263746',
+                        'hillshade-highlight-color': '#f4f0df',
+                        'hillshade-accent-color': '#526b72'
+                    }
+                });
 
                 // Les autres parcours sont chargés uniquement au premier clic sur « Mes parcours ».
 
                 carte.addSource('v3d-trace', { type: 'geojson', data: donneesTrace() });
                 carte.addLayer({
+                    id: 'v3d-trace-halo', type: 'line', source: 'v3d-trace',
+                    layout: { 'line-cap': 'round', 'line-join': 'round' },
+                    paint: { 'line-color': '#21d4c2', 'line-width': 13, 'line-opacity': 0.42, 'line-blur': 4 }
+                });
+                carte.addLayer({
                     id: 'v3d-trace-contour', type: 'line', source: 'v3d-trace',
                     layout: { 'line-cap': 'round', 'line-join': 'round' },
-                    paint: { 'line-color': '#04231f', 'line-width': 7, 'line-opacity': 0.55 }
+                    paint: { 'line-color': '#061c22', 'line-width': 9, 'line-opacity': 0.78 }
                 });
                 carte.addLayer({
                     id: 'v3d-trace-ligne', type: 'line', source: 'v3d-trace',
                     layout: { 'line-cap': 'round', 'line-join': 'round' },
-                    paint: { 'line-color': ['get', 'c'], 'line-width': 5, 'line-opacity': 1 }
+                    paint: { 'line-color': ['get', 'c'], 'line-width': 5.5, 'line-opacity': 1 }
                 });
 
                 carte.addSource('v3d-fait', {
@@ -13781,6 +14246,9 @@ def accueil():
                 v3d.fond = 'sat';
                 v3d.compteImages = 0;
                 v3d.titre = (sortie.debut || '').slice(0, 10);
+                v3d.nomParcours = sortie.nom || 'Sortie VTT';
+                v3d.dateParcours = new Date(sortie.debut).toLocaleDateString('fr-FR');
+                v3d.cinema = false;
                 v3d.sortieId = sortie.id;
                 v3d.photos = placerPhotos(sortie);
                 v3d.voirAutres = false;
@@ -13836,6 +14304,10 @@ def accueil():
                 majBoutonsV3d();
 
                 bouton('v3dFermer', fermerV3d);
+                bouton('v3dCinema', () => {
+                    v3d.cinema = !v3d.cinema;
+                    majBoutonsV3d();
+                });
                 bouton('v3dReperes', () => { v3d.repereVisibles = !v3d.repereVisibles; majVisibiliteReperesV3d(); majBoutonsV3d(); });
                 bouton('v3dLecture', () => lectureV3d(!v3d.jouer));
                 bouton('v3dVitesse', () => {

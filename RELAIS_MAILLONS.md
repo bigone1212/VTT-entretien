@@ -1,3 +1,13 @@
+# Mise à jour — 13/11/2026 — branche de test complète (préparation)
+
+- Branche créée depuis le dernier `main` (PR #56 et toutes les évolutions précédentes conservées).
+- Mode Cinéma et ajustements GPX réintégrés depuis la PR #57, sans fusionner la PR.
+- Recherche géographique IGN + OpenStreetMap réintégrée : villages, lieux-dits, sommets, cols et points de vue.
+- Aucune modification de `main`, aucune fusion de PR #57, aucun déploiement Render et aucune opération Neon.
+- Étape suivante : vérifier les contrôles automatiques et les fichiers avant de proposer un essai sur Maillons test.
+
+---
+
 # Mise à jour du relais — 31/10/2026 — PR #22 fusionnée (chercher la fiche avec mon IA)
 
 - PR #22 : **fusionnée** avec l'accord explicite de Math le 31/10/2026 (commit de fusion `01f69796edb49316a4b4758d13f45da2679bc872`). Fichiers : `main.py`, `.github/workflows/maillons-check.yml`. Aucun changement serveur ni de données.
