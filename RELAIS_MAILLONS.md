@@ -1,3 +1,15 @@
+# Nouvelle évolution — 13/11/2026 — profil cinéma épuré et repères de pente
+
+- À la demande de Math, suppression de la petite barre turquoise située sous le profil altimétrique : le remplissage de la surface (gris pour le parcours restant, turquoise pour la partie parcourue) donne déjà l'information de progression.
+- Angle de caméra par défaut réglé à 45°. Les angles 60° et 75° restent accessibles par le bouton existant.
+- Remplacement des panneaux triangulaires de pente par des repères discrets : point turquoise à l'emplacement du parcours, trait de rappel fin et étiquette sombre affichant la pente signée (par exemple +15 % ou −15 %). Le mécanisme de détection des tronçons raides et leur visibilité pendant le survol restent inchangés.
+- Changements applicatifs limités à `main.py`, sur `reprise/2026-11-13-animation-3d-gpx`. Commit : `ade62a3d2b65291a89cdf75898ddae599a848670`.
+- Pas de déploiement de cette nouvelle itération pour le moment. Demander l'accord de Math avant de déployer sur Maillons test. Ne pas fusionner la PR #57 ni déployer en production sans accord explicite.
+- Dernière version effectivement déployée sur le service de test avant cette itération : commit `69ecef8a59e9962cc1986ed6c79c382e3f757828`, déploiement Render `dep-dbrh8d15efls73ak2n80`, statut `live`.
+- Aucun test navigateur/téléphone ni test visuel avec GPX réalisé pour cette nouvelle itération. Aucune modification de `main`, aucune fusion, aucune opération Neon.
+
+---
+
 # Nouvelle évolution — 13/11/2026 — surface du profil altimétrique
 
 - À la suite du retour de Math, le profil cinéma ne se limite plus à une ligne colorée : toute la surface sous le profil est remplie.
