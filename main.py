@@ -13606,8 +13606,8 @@ def accueil():
                 const gardes = [];
                 for (const l of out) {
                     if (gardes.length >= 18) break;
-                    if (gardes.every(g => g.nom.toLocaleLowerCase() !== l.nom.toLocaleLowerCase()
-                        && distanceM(g.coord, l.coord) >= 600)) gardes.push(l);
+                    if (gardes.every(g => !(g.nom.toLocaleLowerCase() === l.nom.toLocaleLowerCase()
+                        && distanceM(g.coord, l.coord) < 600))) gardes.push(l);
                 }
                 // Chaque lieu est rattaché au point du GPX le plus proche : le texte apparaîtra sur le trajet.
                 for (const l of gardes) {
@@ -13619,9 +13619,17 @@ def accueil():
                             meilleurIndex = i;
                         }
                     }
-                    l.ec = meilleureDistance;
-                    l.d = v3d.cum[meilleurIndex] || 0;
+                    const rayonPassage = l.genre === 'ville' ? 2500 : (l.genre === 'village' ? 1400 : 1000);
+                    if (meilleureDistance > rayonPassage) {
+                        l.d = -1;
+                    } else {
+                        l.ec = meilleureDistance;
+                        l.d = v3d.cum[meilleurIndex] || 0;
+                    }
                 }
+                const lieuxProches = gardes.filter(l => l.d >= 0);
+                gardes.length = 0;
+                gardes.push(...lieuxProches);
                 v3d.lieuxEtat = gardes.length ? 'ok' : (data ? 'vide' : 'panne');
                 enregistrerCacheLieuxV3d(gardes);
                 return gardes;
