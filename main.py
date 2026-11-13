@@ -4588,9 +4588,9 @@ def accueil():
                 <div class="v3d-cinema-profil">
                     <div class="v3d-cinema-profil-titre">PROFIL DU PARCOURS</div>
                     <svg viewBox="0 0 360 70" preserveAspectRatio="none" role="img" aria-label="Profil altimétrique du parcours">
-                        <polyline id="v3dCinemaProfilLigne" points="12,60 348,60" fill="none" stroke="rgba(101,230,212,0.8)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path id="v3dCinemaProfilLigne" d="M12 60 L348 60" fill="none" stroke="rgba(255,255,255,0.34)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path id="v3dCinemaProfilParcouru" d="M12 60 L348 60" fill="none" stroke="#65e6d4" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
                         <line x1="12" y1="8" x2="12" y2="62" stroke="rgba(255,255,255,0.22)" stroke-width="1"/>
-                        <circle id="v3dCinemaProfilCurseur" cx="12" cy="60" r="4" fill="#65e6d4" stroke="#fff" stroke-width="1.5"/>
                     </svg>
                 </div>
                 <div class="v3d-cinema-barre"><span id="v3dCinemaBarre"></span></div>
@@ -13103,7 +13103,7 @@ def accueil():
                 fond: 'sat', enregistreur: null, morceaux: [], titre: '',
                 nomParcours: '', dateParcours: '', cinema: false,
                 canvasVideo: null, ctxVideo: null, rafVideo: 0, fluxVideo: null, videoActif: false,
-                denivelePlus: 0, altitudeDisponible: false, altitudes: [], deniveleCum: [], vitesses: [], vitesseMax: null, vitesseMoyenne: null,
+                denivelePlus: 0, altitudeDisponible: false, altitudes: [], deniveleCum: [], vitesses: [], vitesseMax: null, vitesseMoyenne: null, profilLongueur: 0,
                 dureeBase: 60, prete: false, compteImages: 0,
                 tps: [], decalage: 0, alts: [], surfaces: '', pentes: [], mode: 'pente', autres: [], voirAutres: false, photos: [], marqueurs: [], reperes: [], panneauxPente: [], repereVisibles: true, prochaine: 0, sortieId: 0, minuteur: 0
             };
@@ -13232,7 +13232,13 @@ def accueil():
                         const y = 60 - ((a - minAlt) / amplitude) * 48;
                         return x.toFixed(1) + ',' + y.toFixed(1);
                     }).filter(Boolean).join(' ');
-                    document.getElementById('v3dCinemaProfilLigne').setAttribute('points', pointsProfil);
+                    const cheminProfil = pointsProfil.trim().split(/\\s+/).map((point, i) => (i ? 'L' : 'M') + point.replace(',', ' ')).join(' ');
+                    const ligneProfil = document.getElementById('v3dCinemaProfilLigne');
+                    const ligneParcourue = document.getElementById('v3dCinemaProfilParcouru');
+                    ligneProfil.setAttribute('d', cheminProfil);
+                    ligneParcourue.setAttribute('d', cheminProfil);
+                    v3d.profilLongueur = ligneParcourue.getTotalLength();
+                    ligneParcourue.style.opacity = '0';
                 } else {
                     document.querySelector('.v3d-cinema-profil').style.display = 'none';
                 }
@@ -13564,7 +13570,12 @@ def accueil():
                 document.getElementById('v3dCinemaVitesse').textContent = vitesse === null ? '—' : vitesse.toFixed(1).replace('.', ',') + ' km/h';
                 document.getElementById('v3dCinemaVitesseMax').textContent = v3d.vitesseMax === null ? '—' : Math.round(v3d.vitesseMax) + ' km/h';
                 document.getElementById('v3dCinemaVitesseMoyenne').textContent = v3d.vitesseMoyenne === null ? '—' : v3d.vitesseMoyenne.toFixed(1).replace('.', ',') + ' km/h';
-                document.getElementById('v3dCinemaProfilCurseur').setAttribute('cx', (12 + Math.max(0, Math.min(1, v3d.f)) * 336).toFixed(1));
+                const ligneParcourue = document.getElementById('v3dCinemaProfilParcouru');
+                if (ligneParcourue && v3d.profilLongueur > 0) {
+                    const avanceProfil = v3d.profilLongueur * Math.max(0, Math.min(1, v3d.f));
+                    ligneParcourue.setAttribute('stroke-dasharray', avanceProfil.toFixed(2) + ' ' + v3d.profilLongueur.toFixed(2));
+                    ligneParcourue.style.opacity = avanceProfil > 0.5 ? '1' : '0';
+                }
                 document.getElementById('v3dCinemaBarre').style.width = (Math.max(0, Math.min(1, v3d.f)) * 100) + '%';
             }
 
