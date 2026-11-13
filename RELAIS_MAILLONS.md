@@ -1,3 +1,13 @@
+# Mise à jour du relais — 13/11/2026 — relief 3D plus prononcé (à tester)
+
+- Retour de Math après le premier essai sur Render test : rendu « peut-être mieux », mais souhait d'un relief plus prononcé.
+- Sur la branche `reprise/2026-11-13-animation-3d-gpx`, seul le rendu du relief est renforcé dans `main.py` : exagération verticale MapLibre 1,35 → 1,7 ; intensité hillshade 0,28 → 0,42. Le tracé, la caméra, les filtres, les fonds et les autres fonctions restent inchangés.
+- Commit du changement : d3f3eb7ded7252436fcdb001dcc79b90dd555020.
+- Aucun changement sur `main`, aucune PR/fusion, aucune donnée Neon modifiée.
+- Déploiement Render test à effectuer puis vérification visuelle par Math. Ne pas déployer en production ni fusionner sans son accord explicite.
+
+---
+
 # Mise à jour du relais — 13/11/2026 — premier essai de rendu 3D des parcours (en cours)
 
 - Demande de Math : rendre les cartes et les survols des sorties VTT plus beaux et immersifs, sans chercher à reproduire Journey AI et sans abonnement payant. Conserver les fonctions déjà présentes.
