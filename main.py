@@ -3383,6 +3383,44 @@ def accueil():
                 background: linear-gradient(rgba(0,0,0,0.48), rgba(0,0,0,0));
             }
 
+            .vue3d.cinema .v3d-haut > strong,
+            .vue3d.cinema #v3dCinema { display: none; }
+
+            .v3d-cinema-hud {
+                position: absolute;
+                z-index: 4;
+                top: 86px;
+                left: 24px;
+                max-width: min(440px, calc(100vw - 48px));
+                padding: 17px 21px 16px;
+                color: #fff;
+                background: linear-gradient(115deg, rgba(5, 18, 25, 0.84), rgba(5, 18, 25, 0.42));
+                border: 1px solid rgba(255,255,255,0.22);
+                border-left: 3px solid #65e6d4;
+                border-radius: 4px 13px 13px 4px;
+                box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+                backdrop-filter: blur(9px);
+                opacity: 0;
+                transform: translateY(-8px);
+                transition: opacity 0.45s ease, transform 0.45s ease;
+                pointer-events: none;
+            }
+
+            .vue3d.cinema .v3d-cinema-hud { opacity: 1; transform: translateY(0); }
+            .v3d-cinema-marque { color: #65e6d4; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.19em; }
+            .v3d-cinema-nom { margin-top: 7px; font-size: clamp(1.05rem, 2.2vw, 1.65rem); font-weight: 750; line-height: 1.15; text-shadow: 0 2px 8px rgba(0,0,0,0.5); }
+            .v3d-cinema-date { margin-top: 5px; color: rgba(255,255,255,0.72); font-size: 0.78rem; letter-spacing: 0.06em; }
+            .v3d-cinema-stats { display: flex; gap: 25px; margin-top: 16px; }
+            .v3d-cinema-stat strong { display: block; font-size: 1.25rem; font-variant-numeric: tabular-nums; }
+            .v3d-cinema-stat span { display: block; margin-top: 2px; color: rgba(255,255,255,0.7); font-size: 0.65rem; letter-spacing: 0.12em; text-transform: uppercase; }
+            .v3d-cinema-barre { height: 3px; margin-top: 15px; overflow: hidden; background: rgba(255,255,255,0.28); }
+            .v3d-cinema-barre > span { display: block; width: 0; height: 100%; background: #65e6d4; box-shadow: 0 0 10px #65e6d4; transition: width 0.12s linear; }
+            @media (max-width: 600px) {
+                .v3d-cinema-hud { top: 72px; left: 12px; max-width: calc(100vw - 24px); padding: 12px 14px; }
+                .v3d-cinema-stats { gap: 18px; margin-top: 11px; }
+                .v3d-cinema-stat strong { font-size: 1.05rem; }
+            }
+
             .v3d-bas {
                 position: absolute;
                 left: 0;
@@ -4519,6 +4557,16 @@ def accueil():
                     <button type="button" id="v3dCinema" aria-pressed="false">Mode Cinéma</button>
                     <button type="button" id="v3dFermer" aria-label="Fermer"></button>
                 </div>
+            </div>
+            <div class="v3d-cinema-hud" id="v3dCinemaHud" aria-hidden="true">
+                <div class="v3d-cinema-marque">MAILLONS · CARNET VTT</div>
+                <div class="v3d-cinema-nom" id="v3dCinemaNom"></div>
+                <div class="v3d-cinema-date" id="v3dCinemaDate"></div>
+                <div class="v3d-cinema-stats">
+                    <div class="v3d-cinema-stat"><strong id="v3dCinemaDistance">0,0 km</strong><span>Distance</span></div>
+                    <div class="v3d-cinema-stat" id="v3dCinemaDeniveleBloc"><strong id="v3dCinemaDenivele">D+ 0 m</strong><span>Dénivelé positif</span></div>
+                </div>
+                <div class="v3d-cinema-barre"><span id="v3dCinemaBarre"></span></div>
             </div>
             <div class="v3d-legende" id="v3dLegende"></div>
             <div class="v3d-photo" id="v3dPhoto" style="display:none;">
@@ -13422,6 +13470,21 @@ def accueil():
                     cinema.setAttribute('aria-pressed', v3d.cinema ? 'true' : 'false');
                 }
                 document.getElementById('vue3d').classList.toggle('cinema', v3d.cinema);
+                majHabillageCinemaV3d();
+            }
+
+            function majHabillageCinemaV3d() {
+                const hud = document.getElementById('v3dCinemaHud');
+                if (!hud) return;
+                hud.setAttribute('aria-hidden', v3d.cinema ? 'false' : 'true');
+                document.getElementById('v3dCinemaNom').textContent = v3d.nomParcours || 'Sortie VTT';
+                document.getElementById('v3dCinemaDate').textContent = v3d.dateParcours || '';
+                document.getElementById('v3dCinemaDistance').textContent =
+                    fmtDistance(v3d.f * v3d.total / 1000, 1).complet;
+                const denivele = document.getElementById('v3dCinemaDeniveleBloc');
+                denivele.style.display = v3d.altitudeDisponible ? '' : 'none';
+                document.getElementById('v3dCinemaDenivele').textContent = 'D+ ' + Math.round(v3d.denivelePlus) + ' m';
+                document.getElementById('v3dCinemaBarre').style.width = (Math.max(0, Math.min(1, v3d.f)) * 100) + '%';
             }
 
             // Met à jour le point mobile à chaque image pour qu'il glisse le long du GPX.
@@ -13461,6 +13524,7 @@ def accueil():
                 document.getElementById('v3dProgres').value = String(Math.round(v3d.f * 1000));
                 document.getElementById('v3dInfo').textContent =
                     `${fmtDistance(d / 1000, 1).complet} sur ${fmtDistance(v3d.total / 1000, 1).complet}`;
+                majHabillageCinemaV3d();
                 majVisibiliteReperesV3d();
             }
 
