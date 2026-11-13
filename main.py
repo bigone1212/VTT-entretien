@@ -19766,8 +19766,9 @@ def preparer_lieux_sortie(sortie_id):
                 x=(a[0]-b[0])*111320*math.cos(math.radians((a[1]+b[1])/2)); y=(a[1]-b[1])*110540
                 return math.hypot(x,y)
 
-            # 1) IGN en priorité : points d'intérêt de la BD TOPO via la Géoplateforme.
-            # Même méthode que la recherche IGN déjà utilisée dans la lecture 3D.
+            # 1) IGN en priorité : lieux-dits BAN et toponymes BD TOPO.
+            # L'index address contient les lieux-dits de la BAN ; les catégories
+            # zone d'habitation et élément topographique couvrent ceux de la BD TOPO.
             longueur = [0.0]
             for i in range(1, len(points)):
                 longueur.append(longueur[-1] + distance(points[i-1], points[i]))
@@ -19781,11 +19782,17 @@ def preparer_lieux_sortie(sortie_id):
                     idx = min(range(len(longueur)), key=lambda k: abs(longueur[k] - cible))
                     lon, lat = points[idx]
                     zone = {"type":"Circle", "coordinates":[lon,lat], "radius":rayon}
-                    params = urllib.parse.urlencode({
-                        "index":"poi", "searchgeom":json.dumps(zone,separators=(",",":")),
-                        "lon":str(lon), "lat":str(lat), "limit":"20"
-                    })
-                    appels.append(params)
+                    communs = {
+                        "searchgeom":json.dumps(zone,separators=(",",":")),
+                        "lon":str(lon), "lat":str(lat), "limit":"50"
+                    }
+                    # Les lieux-dits de la BAN sont des localités.
+                    params_adresses = dict(communs, index="address,poi", type="locality", category="zone d'habitation")
+                    appels.append(urllib.parse.urlencode(params_adresses))
+                    # Les lieux-dits non habités, sommets, cols et reliefs sont
+                    # répertoriés dans la catégorie topographique de la BD TOPO.
+                    params_toponymes = dict(communs, index="poi", category="élément topographique ou forestier")
+                    appels.append(urllib.parse.urlencode(params_toponymes))
                 for params in appels:
                     try:
                         req = urllib.request.Request(
