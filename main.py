@@ -4657,7 +4657,7 @@ def accueil():
                 <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="16" r="3.5"/><circle cx="18" cy="16" r="3.5"/><path d="M6 16l4-7h5l3 7M10 9l3 7M9 6h3"/></svg><span>Mes vélos</span></strong>
                 <div id="ajoutVeloMenuZone"></div>
             </div>
-            <p class="form-help">Touche un vélo ou sa flèche pour déplier sa fiche technique et ses réglages. Ses trois petits points donnent sa fiche ou sa suppression ; ceux de la photo gèrent la photo ; ceux d'en haut ajoutent un vélo.</p>
+            <p class="form-help">Touche un vélo ou sa flèche pour déplier sa fiche technique et ses réglages. Ses trois petits points donnent sa fiche ou sa suppression ; ceux de la photo ajoutent des photos à sa galerie (la photo principale se gère dans l’onglet Entretien) ; ceux d'en haut ajoutent un vélo.</p>
             <ul class="liste-mes-velos" id="listeMesVelos"></ul>
             <p class="form-help" id="messageMesVelos" aria-live="polite"></p>
         </section>
@@ -5751,27 +5751,33 @@ def accueil():
                     photo.style.visibility = source ? 'visible' : 'hidden';
                 }
                 if (vide) vide.style.display = source ? 'none' : 'flex';
-                monterMenuPhoto(document.getElementById('menuPhotoEntretien'));
+                monterMenuPhoto(document.getElementById('menuPhotoEntretien'), actionsPhotoPrincipale());
             }
 
-            // Menu de la photo (trois points en haut à droite) : tout ce qui concerne la photo du vélo affiché.
-            function actionsPhotoVelo() {
+            // Photo principale (onglet Entretien) : ajout, changement, lien, suppression, repères.
+            function actionsPhotoPrincipale() {
                 const velo = velosDisponibles.find(v => Number(v.id) === veloActifId);
                 const aPhoto = !!velo && Number(velo.a_photo) === 1;
                 return [
-                    { icone: 'appareil', texte: aPhoto ? 'Ajouter des photos' : 'Ajouter une photo', action: choisirPhotosGalerie },
-                    { icone: 'appareil', texte: 'Changer la photo principale', desactive: !aPhoto, action: choisirPhotoVelo },
+                    { icone: 'appareil', texte: aPhoto ? 'Changer la photo principale' : 'Ajouter la photo principale', action: choisirPhotoVelo },
                     { icone: 'lien', texte: 'Photo depuis un lien…', action: photoDepuisLien },
-                    { icone: 'poubelle', texte: 'Supprimer la photo', danger: true, desactive: !aPhoto, action: supprimerPhotoVelo },
+                    { icone: 'poubelle', texte: 'Supprimer la photo principale', danger: true, desactive: !aPhoto, action: supprimerPhotoVelo },
                     { icone: 'repere', texte: 'Replacer les repères (guidon à droite)', desactive: !aPhoto, action: () => placerRepresAuto(true, false) },
                     { icone: 'repere', texte: 'Replacer les repères (guidon à gauche)', desactive: !aPhoto, action: () => placerRepresAuto(false, false) }
                 ];
             }
 
-            function monterMenuPhoto(zone) {
+            // Galerie (onglet Mon vélo) : seulement les photos autres que la principale.
+            function actionsGalerieVelo(aPrincipale) {
+                return [
+                    { icone: 'appareil', texte: aPrincipale ? 'Ajouter des photos' : 'Ajouter des photos (photo principale d’abord)', desactive: !aPrincipale, action: choisirPhotosGalerie }
+                ];
+            }
+
+            function monterMenuPhoto(zone, actions) {
                 if (!zone) return;
                 zone.replaceChildren();
-                ajouterMenuPoints(zone, 'Actions de la photo', actionsPhotoVelo());
+                ajouterMenuPoints(zone, 'Actions de la photo', actions);
             }
 
             function choisirPhotosGalerie() {
@@ -6127,7 +6133,7 @@ def accueil():
                 const zoneMenuPhoto = document.createElement('div');
                 zoneMenuPhoto.className = 'menu-photo-zone';
                 zone.appendChild(zoneMenuPhoto);
-                monterMenuPhoto(zoneMenuPhoto);
+                monterMenuPhoto(zoneMenuPhoto, actionsGalerieVelo(!!principale));
 
                 const piste = document.createElement('div');
                 piste.className = 'galerie-piste';
@@ -6135,7 +6141,7 @@ def accueil():
                 if (!diapos.length) {
                     const vide = document.createElement('div');
                     vide.className = 'galerie-diapo galerie-vide actif';
-                    vide.textContent = 'Aucune photo pour le moment.';
+                    vide.textContent = 'Pas de photo principale : ajoute-la dans l’onglet Entretien (trois petits points sur la photo).';
                     piste.appendChild(vide);
                 }
                 const elementsDiapos = diapos.map((d, i) => {
@@ -6152,8 +6158,7 @@ def accueil():
                         badge.textContent = 'Principale';
                         diapo.appendChild(badge);
                     }
-                    const supprimable = d.extra || Number(velo.a_photo) === 1;
-                    if (supprimable) {
+                    if (d.extra) {
                         const croix = document.createElement('button');
                         croix.type = 'button';
                         croix.className = 'galerie-suppr';
@@ -6255,7 +6260,10 @@ def accueil():
                 const velo = velosDisponibles.find(v => Number(v.id) === id);
                 if (!velo) return;
                 const principale = await photoPrincipaleVelo(velo);
-                if (!principale) { await enregistrerPhotoVelo(fichier); return; }
+                if (!principale) {
+                    if (message) message.textContent = 'Ajoute d’abord la photo principale dans l’onglet Entretien.';
+                    return;
+                }
                 if (galeriesVelos[id] === undefined) await chargerGalerieVelo(id);
                 if (1 + galeriesVelos[id].length >= MAX_PHOTOS_VELO) {
                     if (message) message.textContent = '6 photos au maximum par vélo.';
@@ -6350,7 +6358,7 @@ def accueil():
                 dernierVeloMonte = veloActifId;
                 zoneAjout.replaceChildren();
                 liste.replaceChildren();
-                monterMenuPhoto(document.getElementById('menuPhotoEntretien'));
+                monterMenuPhoto(document.getElementById('menuPhotoEntretien'), actionsPhotoPrincipale());
                 ajouterMenuPoints(zoneAjout, 'Ajouter un vélo', [
                     { icone: 'plus', texte: 'Ajouter un vélo', action: ouvrirCreationVelo }
                 ]);
