@@ -13201,13 +13201,6 @@ def accueil():
                     v3d.deniveleCum.push(v3d.denivelePlus);
                 }
                 v3d.tps = valides.map(p => (typeof p[2] === 'number' && isFinite(p[2]) ? p[2] : null));
-                v3d.vitesses = pts.map((_, i) => {
-                    if (i === 0 || v3d.tps[i] === null || v3d.tps[i - 1] === null) return null;
-                    const secondes = v3d.tps[i] - v3d.tps[i - 1];
-                    return secondes > 0 ? ((v3d.cum[i] - v3d.cum[i - 1]) / secondes) * 3.6 : null;
-                });
-                const vitessesValides = v3d.vitesses.filter(x => x !== null && isFinite(x) && x <= 150);
-                v3d.vitesseMax = vitessesValides.length ? Math.max(...vitessesValides) : null;
                 v3d.pentes = profil ? profil.pentes : [];
                 v3d.pts = pts;
                 v3d.cum = [0];
@@ -13215,6 +13208,13 @@ def accueil():
                     v3d.cum.push(v3d.cum[i - 1] + distanceM(pts[i - 1], pts[i]));
                 }
                 v3d.total = v3d.cum[v3d.cum.length - 1];
+                v3d.vitesses = pts.map((_, i) => {
+                    if (i === 0 || v3d.tps[i] === null || v3d.tps[i - 1] === null) return null;
+                    const secondes = v3d.tps[i] - v3d.tps[i - 1];
+                    return secondes > 0 ? ((v3d.cum[i] - v3d.cum[i - 1]) / secondes) * 3.6 : null;
+                });
+                const vitessesValides = v3d.vitesses.filter(x => x !== null && isFinite(x) && x <= 150);
+                v3d.vitesseMax = vitessesValides.length ? Math.max(...vitessesValides) : null;
                 const altitudesValides = v3d.altitudes.filter(a => a !== null && isFinite(a));
                 if (altitudesValides.length >= 2) {
                     const minAlt = Math.min(...altitudesValides);
