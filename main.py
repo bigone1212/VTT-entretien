@@ -13238,7 +13238,6 @@ def accueil():
                     const ligneProfil = document.getElementById('v3dCinemaProfilLigne');
                     const ligneParcourue = document.getElementById('v3dCinemaProfilParcouru');
                     const zoneRestante = document.getElementById('v3dCinemaProfilZoneRestante');
-                    const debutProfil = { x: 12, y: 60 };
                     ligneProfil.setAttribute('d', cheminProfil);
                     ligneParcourue.setAttribute('d', cheminProfil);
                     v3d.profilLongueur = ligneProfil.getTotalLength();
