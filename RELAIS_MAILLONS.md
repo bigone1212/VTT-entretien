@@ -1,3 +1,15 @@
+# Mise à jour — 13/11/2026 — ajout WFS IGN (à vérifier)
+
+- Commit `a505db912908577b06b49e4f0113a71388d0cc27` sur la branche de test existante : ajout d'une recherche WFS directe dans les couches IGN `BDTOPO_V3:lieu_dit_non_habite` et `BDCARTO_V5:lieu_dit_non_habite`, en complément du géocodage inverse IGN déjà présent et d'Overpass.
+- Les requêtes sont découpées le long du GPX, avec une emprise de 200 m autour de chaque tronçon ; les objets ponctuels ne sont retenus que si leur coordonnée d'origine est à 200 m ou moins du tracé. Les coordonnées ne sont pas déplacées.
+- Les résultats des deux couches WFS sont enregistrés dans la bibliothèque géographique partagée comme sources IGN.
+- Les services WFS sont publics ; documentation IGN : `https://data.geopf.fr/wfs/ows`, WFS 2.0.0, limite publiée de 30 requêtes/seconde. Référence couche BD CARTO repérée dans le catalogue IGN : `BDCARTO_V5:lieu_dit_non_habite`.
+- **À vérifier** : nom exact de couche WFS BD CARTO dans le service courant, structure des attributs et réponses réelles ; disponibilité réseau depuis Render ; temps de traitement sur un GPX réel. Les erreurs d'une couche sont ignorées pour préserver les sources déjà en place.
+- GitHub Actions déclenché par le push ; résultat à contrôler. Aucun déploiement Render déclenché. Aucun changement de `main`, aucune fusion, aucune opération sur Neon.
+- Geofabrik : ses PBF régionaux sont des extractions OSM quotidiennes, mais leur téléchargement/traitement à chaque import GPX serait trop lourd pour Render Free ; à évaluer plutôt comme source de préchargement régional. GeoNames reste à évaluer comme complément, pas encore intégré.
+
+---
+
 # Tâche en cours — 13/11/2026 — enrichissement des lieux-dits
 
 - Accord de Math : ajouter des sources complémentaires pour trouver davantage de lieux-dits, en priorité les couches vectorielles IGN BD TOPO et BD CARTO, puis étudier un enrichissement OSM par extractions Geofabrik et GeoNames.
