@@ -1,3 +1,16 @@
+# Mise à jour du relais — 13/11/2026 — statistiques et profil animé du mode Cinéma
+
+- À la demande de Math, enrichissement du tableau de bord cinéma sur la branche `reprise/2026-11-13-animation-3d-gpx`.
+- `main.py` : le HUD affiche maintenant la distance parcourue, le D+ cumulé jusqu'au point courant (au lieu du D+ total affiché dès le départ), l'altitude, la vitesse instantanée, la vitesse maximale du GPX et la vitesse moyenne calculée à partir des horodatages.
+- Ajout d'un profil altimétrique SVG qui se remplit/se déplace avec le curseur synchronisé au point sur la carte. Profil réduit à environ 240 points pour limiter le coût de rendu. Le profil et les données d'altitude sont masqués si les altitudes GPX ne sont pas disponibles ; les vitesses sont masquées si les horodatages ne permettent pas de les calculer.
+- Calculs de vitesse fondés sur les horodatages et les distances cumulées du GPX ; les valeurs aberrantes supérieures à 150 km/h sont écartées du calcul de vitesse maximale. Aucune donnée GPS n'est inventée.
+- Ajustements CSS responsives pour garder le panneau compact, notamment sur téléphone. La carte, le tracé, la caméra, les filtres et les autres fonctions ne sont pas volontairement modifiés.
+- Commits application : `d88f0ee4a0654df2cf4d00296de725924bdcc216`, `6c469e69812187934a48bc6e591d563457ec64ac`, `2dc6a4fbfdca642dddbfd1bc6b50ef9679406044`.
+- Aucun test navigateur/téléphone ni test réel avec GPX effectué à ce stade. Aucun déploiement déclenché. Aucun changement sur `main`, aucune fusion, aucune modification de base Neon.
+- Étape suivante : vérifier le workflow automatique GitHub et relire le diff ; ensuite seulement demander à Math de tester sur Maillons test. Ne pas déployer sans son accord explicite.
+
+---
+
 # Mise à jour du relais — 13/11/2026 — panneau cinéma mobile compact
 
 - Après le test sur téléphone, le panneau cinéma occupait presque toute la hauteur. Cause identifiée dans la règle CSS mobile : `top: 72px` restait défini en même temps que le `bottom: 28px` de la règle générale, ce qui étirait le panneau.
