@@ -1000,6 +1000,7 @@ jobs:
           try:
               import_result = main.importer_sortie(
                   main.ImportGpxRequest(gpx="<gpx>" + (" " * 50) + "</gpx>", nom="Sortie test vélo A"),
+                  background_tasks=main.BackgroundTasks(),
                   velo_id=route_id,
                   x_code_acces="test"
               )
