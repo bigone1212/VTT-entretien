@@ -13403,13 +13403,90 @@ def accueil():
                 el.innerHTML = '<svg viewBox="0 0 ' + largeur + ' 52" width="' + largeur + '" aria-hidden="true"><path d="M0 50 L23 19" fill="none" stroke="rgba(255,255,255,.98)" stroke-width="1.8" stroke-linecap="round"/><circle cx="0" cy="50" r="4.5" fill="#65e6d4" stroke="#fff" stroke-width="1.8"/><text x="29" y="24" dominant-baseline="middle" font-size="' + taille + '" font-weight="900" fill="#fff" stroke="rgba(5,15,25,.9)" stroke-width="3.5" stroke-linejoin="round" paint-order="stroke">' + libelle + '</text></svg>';
                 return el;
             }
+            async function chercherLieuxIGNV3d(dist) {
+                if (!v3d.total || v3d.total <= 0) return [];
+                const nombre = Math.min(36, Math.max(1, Math.ceil(v3d.total / 2500)));
+                const pas = v3d.total / nombre;
+                const rayon = Math.max(1200, Math.min(3500, pas * 0.72));
+                const resultats = [];
+                const lots = [];
+                for (let i = 0; i < nombre; i += 4) {
+                    const appels = [];
+                    for (let j = i; j < Math.min(nombre, i + 4); j++) {
+                        const coord = pointA(Math.min(v3d.total, (j + 0.5) * pas));
+                        const zone = { type: 'Circle', coordinates: [coord[0], coord[1]], radius: rayon };
+                        const params = new URLSearchParams({
+                            index: 'poi',
+                            searchgeom: JSON.stringify(zone),
+                            lon: String(coord[0]),
+                            lat: String(coord[1]),
+                            limit: '20'
+                        });
+                        appels.push((async () => {
+                            const ctl = new AbortController();
+                            const timer = setTimeout(() => ctl.abort(), 9000);
+                            try {
+                                const res = await fetch('https://data.geopf.fr/geocodage/reverse?' + params.toString(), { signal: ctl.signal });
+                                if (!res.ok) throw new Error('IGN HTTP ' + res.status);
+                                return await res.json();
+                            } finally {
+                                clearTimeout(timer);
+                            }
+                        })());
+                    }
+                    const reponses = await Promise.allSettled(appels);
+                    reponses.forEach(r => {
+                        if (r.status === 'fulfilled' && r.value && Array.isArray(r.value.features)) {
+                            resultats.push(...r.value.features);
+                        }
+                    });
+                }
+                const lieux = [];
+                for (const f of resultats) {
+                    const p = f && f.properties ? f.properties : {};
+                    const geom = f && f.geometry ? f.geometry.coordinates : null;
+                    if (!Array.isArray(geom) || geom.length < 2) continue;
+                    const lon = Number(geom[0]), lat = Number(geom[1]);
+                    if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+                    const nom = String(p.name || p.label || p.toponyme || p.nom || p.title || '').trim();
+                    if (!nom) continue;
+                    const categorie = String([p.category, p.type, p.nature, p.kind, p._type, p.description].filter(Boolean).join(' ')).toLowerCase();
+                    const texte = (categorie + ' ' + nom).toLowerCase();
+                    let genre = 'lieu', rang = 6, portee = 2200;
+                    if (/sommet|peak|mountain|montagne|hill|colline|crête|crete|ridge/.test(texte)) {
+                        genre = 'sommet'; rang = 4; portee = 2200;
+                    } else if (/col\b|pass|saddle|mountain_pass/.test(texte)) {
+                        genre = 'col'; rang = 2; portee = 900;
+                    } else if (/lieu.?dit|locality|hamlet|hameau|isolated_dwelling/.test(texte)) {
+                        genre = 'village'; rang = 5; portee = 3500;
+                    } else if (/village|commune|town|city|municipality/.test(texte)) {
+                        genre = 'village'; rang = 4; portee = 5000;
+                    }
+                    const ec = dist(lon, lat);
+                    if (ec > portee) continue;
+                    const doublon = lieux.some(l => l.nom.toLocaleLowerCase() === nom.toLocaleLowerCase()
+                        && distanceM(l.coord, [lon, lat]) < 600);
+                    if (doublon) continue;
+                    const altitude = Number(p.ele || p.altitude || p.z);
+                    lieux.push({
+                        nom: nom,
+                        genre: genre,
+                        rang: rang,
+                        ec: ec,
+                        coord: [lon, lat],
+                        alt: Number.isFinite(altitude) ? altitude : NaN
+                    });
+                }
+                return lieux;
+            }
+
             async function chercherLieuxV3d() {
                 if (v3d.pts.length < 2) return [];
                 const lons = v3d.pts.map(p => p[0]), lats = v3d.pts.map(p => p[1]), marge = 0.012;
                 const sud = Math.min(...lats)-marge, nord = Math.max(...lats)+marge, ouest = Math.min(...lons)-marge, est = Math.max(...lons)+marge;
                 if (nord-sud > 0.6 || est-ouest > 0.8) return [];
                 const zone = '('+sud+','+ouest+','+nord+','+est+')';
-                const q = '[out:json][timeout:35];(nwr["place"~"^(city|town|village|hamlet|isolated_dwelling|suburb|locality|neighbourhood)$"]["name"]'+zone+';nwr["natural"="peak"]["name"]'+zone+';nwr["mountain_pass"="yes"]["name"]'+zone+';nwr["natural"="saddle"]["name"]'+zone+';);out center tags;';
+                const q = '[out:json][timeout:35];(nwr["place"~"^(city|town|village|hamlet|isolated_dwelling|suburb|locality|neighbourhood)$"]["name"]'+zone+';nwr["natural"~"^(peak|hill|ridge)$"]["name"]'+zone+';nwr["mountain_pass"="yes"]["name"]'+zone+';nwr["natural"="saddle"]["name"]'+zone+';nwr["tourism"="viewpoint"]["name"]'+zone+';);out center tags;';
                 let data = null;
                 let derniereErreur = null;
                 for (const base of ['https://overpass-api.de/api/interpreter','https://overpass.private.coffee/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter']) {
@@ -13427,39 +13504,50 @@ def accueil():
                         console.warn('Recherche de lieux OSM :', derniereErreur);
                     } catch(e) { derniereErreur = String(e); console.warn('Repères OpenStreetMap indisponibles', e); }
                 }
-                if (!data || !Array.isArray(data.elements)) {
-                    console.warn('Aucun résultat exploitable pour les lieux du survol 3D.', derniereErreur || 'réponse vide');
-                    v3d.lieuxEtat = 'panne';
-                    return [];
-                }
-                v3d.lieuxEtat = data.elements.length ? 'ok' : 'vide';
-                console.info('Survol 3D : objets OpenStreetMap reçus', data.elements.length);
                 const ref = v3d.pts.filter((_,i)=>i%Math.max(1,Math.floor(v3d.pts.length/500))===0);
                 const dist = (lon,lat) => Math.min(...ref.map(p => {
                     const x=(lon-p[0])*111320*Math.cos(lat*Math.PI/180), y=(lat-p[1])*110540; return Math.hypot(x,y);
                 }));
-                const out=[], seen=new Set();
-                for (const e of data.elements) {
-                    if (!e.tags||!e.tags.name) continue;
-                    const lon = Number.isFinite(e.lon) ? e.lon : e.center && e.center.lon;
-                    const lat = Number.isFinite(e.lat) ? e.lat : e.center && e.center.lat;
-                    if (!Number.isFinite(lon)||!Number.isFinite(lat)) continue;
-                    let genre='',rang=9,portee=5000;
-                    if (['city','town','village','hamlet','isolated_dwelling','suburb','locality'].includes(e.tags.place)) {
-                        genre=['hamlet','isolated_dwelling','locality'].includes(e.tags.place)?'village':(e.tags.place==='village'?'village':'ville');
-                        rang={city:1,town:2,suburb:3,village:4,hamlet:5,isolated_dwelling:6,locality:7}[e.tags.place] ?? 4;
-                        portee=5000;
+                const out=[];
+                const ajouter = l => {
+                    const doublon = out.some(x => x.nom.toLocaleLowerCase() === l.nom.toLocaleLowerCase()
+                        && distanceM(x.coord, l.coord) < 600);
+                    if (!doublon) out.push(l);
+                };
+                if (data && Array.isArray(data.elements)) {
+                    console.info('Survol 3D : objets OpenStreetMap reçus', data.elements.length);
+                    for (const e of data.elements) {
+                        if (!e.tags||!e.tags.name) continue;
+                        const lon = Number.isFinite(e.lon) ? e.lon : e.center && e.center.lon;
+                        const lat = Number.isFinite(e.lat) ? e.lat : e.center && e.center.lat;
+                        if (!Number.isFinite(lon)||!Number.isFinite(lat)) continue;
+                        let genre='',rang=9,portee=5000;
+                        if (['city','town','village','hamlet','isolated_dwelling','suburb','locality','neighbourhood'].includes(e.tags.place)) {
+                            genre=['hamlet','isolated_dwelling','locality'].includes(e.tags.place)?'village':(e.tags.place==='village'?'village':'ville');
+                            rang={city:1,town:2,suburb:3,village:4,hamlet:5,isolated_dwelling:6,locality:7,neighbourhood:8}[e.tags.place] ?? 4;
+                            portee=5000;
+                        } else if (['peak','hill','ridge'].includes(e.tags.natural)) { genre='sommet'; rang=4; portee=2200; }
+                        else if(e.tags.mountain_pass==='yes'||e.tags.natural==='saddle') {genre='col';rang=2;portee=900;}
+                        else if(e.tags.tourism==='viewpoint') {genre='lieu';rang=6;portee=1800;}
+                        else continue;
+                        const ec=dist(lon,lat);
+                        if(ec>portee) continue;
+                        ajouter({nom:e.tags.name,genre,rang,ec,coord:[lon,lat],alt:parseFloat(e.tags.ele)});
                     }
-                    else if(e.tags.natural==='peak') {genre='sommet';rang=4;portee=1500;}
-                    else if(e.tags.mountain_pass==='yes'||e.tags.natural==='saddle') {genre='col';rang=2;portee=500;}
-                    else continue;
-                    const ec=dist(lon,lat), key=e.tags.name.toLowerCase()+genre;
-                    if(ec>portee||seen.has(key)) continue;
-                    seen.add(key); out.push({nom:e.tags.name,genre,rang,ec,coord:[lon,lat],alt:parseInt(e.tags.ele,10)});
+                } else if (derniereErreur) {
+                    console.warn('OpenStreetMap indisponible ; la recherche IGN reste active.', derniereErreur);
+                }
+                try {
+                    const lieuxIGN = await chercherLieuxIGNV3d(dist);
+                    lieuxIGN.forEach(ajouter);
+                    console.info('Survol 3D : lieux IGN reçus', lieuxIGN.length);
+                } catch (e) {
+                    console.warn('Recherche IGN des lieux indisponible', e);
                 }
                 out.sort((a,b)=>a.rang-b.rang||a.ec-b.ec);
                 const gardes=[];
                 for(const l of out) { if(gardes.length>=18) break; if(gardes.every(g=>distanceM(g.coord,l.coord)>=600)) gardes.push(l); }
+                v3d.lieuxEtat = gardes.length ? 'ok' : (data ? 'vide' : 'panne');
                 return gardes;
             }
             function viderReperesV3d() {
