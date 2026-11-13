@@ -7,7 +7,7 @@
   - enregistrement composé dans un canvas dédié, jusqu'à 1920 px sur le plus grand côté, proportions conservées, 30 images/s et débit cible 8 Mbit/s ;
   - `preserveDrawingBuffer` activé sur MapLibre pour pouvoir reprendre le rendu WebGL dans le canvas vidéo.
 - Le mode classique, le tracé GPX, le relief, les angles, les filtres et les commandes de lecture restent disponibles.
-- Altitude GPX : le dénivelé positif est calculé depuis le quatrième champ du point (`p[3]`) ; le troisième (`p[2]`) reste réservé au temps écoulé. Commit de correction : `8345a554b2fd17f96903d9ad5a99ecd340abe5a3`.
+- Altitude GPX : le temps est en troisième champ (`p[2]`) et l'altitude en quatrième (`p[3]`). Le D+ utilise le profil d'altitude lissé déjà calculé par Maillons lorsqu'il est disponible, afin de limiter les petites variations GPS. Commits : `8345a554b2fd17f96903d9ad5a99ecd340abe5a3` et `fe48d65b445212ff4e60847ece5fa7d70655d856`.
 - Commits : `d3e8cea8b3eaf26c5d71972c5a75c9b1259e167d`, `98b5b82a1b0a18846020f0db87dbf1f755554ab3`, `7599eadfaf5f8f0e26ee9ac2b77d857bcab9fb38`, `8345a554b2fd17f96903d9ad5a99ecd340abe5a3`.
 - À vérifier : syntaxe et rendu navigateur, qualité du canvas composite, fluidité pendant l'enregistrement et présence effective des incrustations dans le fichier WebM.
 - Aucun test navigateur effectué, aucun déploiement. Aucun changement sur `main`, aucune PR/fusion, aucune opération Neon.
