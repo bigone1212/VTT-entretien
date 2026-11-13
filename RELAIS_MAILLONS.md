@@ -1,3 +1,12 @@
+# Complément du relais — 13/11/2026 — correction du tracé SVG
+
+- Contrôle du code après le premier envoi : correction de l'expression qui découpe les coordonnées du profil en points SVG, pour garantir que chaque point est bien séparé.
+- Commit correctif de `main.py` : `654780281f9cfeb7c6e28610db0ed47296a0f8f5`.
+- Le premier déploiement lancé juste avant cette correction porte sur le commit précédent ; il ne doit pas être considéré comme la version à tester. Déployer ensuite le dernier commit de la branche sur Maillons test.
+- Aucun changement sur `main`, aucune fusion, aucune modification Neon.
+
+---
+
 # Mise à jour du relais — 13/11/2026 — profil cinéma coloré selon l'avancement
 
 - À la demande de Math, suppression du point blanc mobile sur le profil altimétrique du mode Cinéma.
