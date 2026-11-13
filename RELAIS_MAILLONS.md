@@ -1046,3 +1046,15 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - Le run `43511732071` a passé la correction du recensement des routes, puis a révélé que le test générique de cloisonnement n'acceptait pas non plus le paramètre `background_tasks` de `importer_sortie`. Ajout de sa création dans le générateur d'arguments du test (`main.BackgroundTasks()`), toujours sans changer `main.py`. Commit `6932d37779d84300dc9198a36d6fb734c99752f9`; nouveau workflow en attente.
 
 - Le run `43511929360` a confirmé que le contrôle statique était corrigé, puis a trouvé deux autres helpers de tests GPX qui appelaient encore `importer_sortie` sans `background_tasks`. Ils fournissent maintenant `main.BackgroundTasks()` eux aussi. Commit `a96d440df0d67ad39f063970a95a19b10b0ba7db`; nouvelle vérification en cours. Aucun changement applicatif.
+
+
+## 13/11/2026 — correction et vérification des couches WFS IGN
+
+- Commit applicatif : `017e40734bb39fdfdf3a5f7ad967844027d25b4e`, sur la branche de test existante uniquement.
+- BD TOPO : conservation de la couche `BDTOPO_V3:lieu_dit_non_habite`, dont le nom est référencé dans le catalogue IGN.
+- BD CARTO : correction vers `BDCARTOV5_BDD_WLD_WGS84G_223:lieu_dit_non_habite`. La couche erronée `BDCARTO_V5:lieu_dit_non_habite` a été retirée.
+- Lecture des noms rendue tolérante aux noms de propriétés en minuscules ou majuscules. Les réponses OGC d'erreur en JSON ne sont plus considérées comme des réponses valides.
+- Les objets restent filtrés à 200 m du tracé et leurs coordonnées sources sont conservées.
+- Sources de vérification : documentation WFS Géoplateforme et catalogue IGN ; le catalogue référence explicitement la couche BD CARTO versionnée. La requête WFS réelle sur un parcours GPX n'a pas encore été exécutée depuis Render.
+- Workflow GitHub à contrôler après ce commit. Aucun déploiement déclenché, aucune modification de `main`, aucune opération Neon ou base de production.
+- Tâche en cours : vérifier le workflow et contrôler les réponses réelles des deux couches avant de demander le déploiement de test.
