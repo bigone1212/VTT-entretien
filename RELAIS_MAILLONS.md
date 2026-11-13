@@ -1,3 +1,208 @@
+# Complément — 13/11/2026 — gestion complète du repère Vmax temporaire
+
+- Petite correction de robustesse après relecture : le repère Vmax temporaire est également conservé dans la liste générale des repères. Il sera ainsi correctement supprimé lors du rechargement d'un parcours et respectera le bouton « Repères ».
+- Aucun changement sur sa durée d'affichage ni sur les calculs.
+- Commit applicatif : `a8eb760947b9f9277b1c3d1202116a9ac62ca385`.
+- Aucun déploiement déclenché. Attendre l'accord explicite de Math avant le déploiement sur Maillons test.
+
+---
+
+# Nouvelle évolution — 13/11/2026 — apparition temporaire du repère Vmax
+
+- Retour de Math : le repère « Vmax » ne doit pas rester affiché pendant tout le survol ; il doit apparaître brièvement au passage du point où la vitesse maximale est atteinte, comme les repères de pente.
+- Dans `main.py`, le repère Vmax utilise désormais le même mécanisme de visibilité temporaire que les repères de pente. Il apparaît autour du point de vitesse maximale pendant une courte fenêtre d'environ 2,5 secondes au rythme de lecture courant, puis disparaît.
+- Le calcul de la vitesse maximale, son emplacement GPS et le style aérien ne changent pas. Les repères de pente et les autres éléments restent inchangés.
+- Commit applicatif : `85ca81b2365dc556679c02f813d106d759f18f38`.
+- Aucun déploiement déclenché. Attendre l'accord explicite de Math avant de déployer sur Maillons test. Ne pas fusionner la PR #57, ne pas modifier `main`, ne pas toucher à la production ni à Neon.
+
+---
+
+# Nouvelle évolution — 13/11/2026 — repères aériens de pente et de vitesse maximale
+
+- Retour de Math après essai : les repères de pente doivent être plus lisibles, avec une écriture plus grande et sans cadre ; il souhaite le même traitement pour la vitesse maximale.
+- Dans `main.py`, les repères de pente deviennent des textes blancs plus grands, avec ombre pour le contraste, sans cartouche. Le point turquoise et le trait fin de rappel restent présents.
+- Ajout d'un repère « Vmax XX km/h » au point du parcours où la vitesse maximale calculée est atteinte. Il n'apparaît que si le GPX contient des horodatages permettant le calcul d'une vitesse valide. Le repère utilise le même style aérien, sans cadre.
+- Les calculs de vitesse, le seuil anti-valeurs aberrantes (150 km/h), le relief, le profil, le déplacement de caméra et les autres fonctions restent inchangés.
+- Seul `main.py` a été modifié pour cette évolution. Commit : `ac00ea5f520484a45271c227467f51f1202d67f5`.
+- Aucun test navigateur/visuel réalisé à ce stade. Le contrôle GitHub doit être vérifié avant de proposer un nouveau test.
+- Aucun déploiement déclenché. Ne pas déployer avant l'accord explicite de Math pour cette nouvelle version. Ne pas fusionner la PR #57, ne pas modifier `main`, ne pas toucher à la production ni à Neon.
+
+---
+
+# Nouvelle évolution — 13/11/2026 — profil cinéma épuré et repères de pente
+
+- À la demande de Math, suppression de la petite barre turquoise située sous le profil altimétrique : le remplissage de la surface (gris pour le parcours restant, turquoise pour la partie parcourue) donne déjà l'information de progression.
+- Angle de caméra par défaut réglé à 45°. Les angles 60° et 75° restent accessibles par le bouton existant.
+- Remplacement des panneaux triangulaires de pente par des repères discrets : point turquoise à l'emplacement du parcours, trait de rappel fin et étiquette sombre affichant la pente signée (par exemple +15 % ou −15 %). Le mécanisme de détection des tronçons raides et leur visibilité pendant le survol restent inchangés.
+- Changements applicatifs limités à `main.py`, sur `reprise/2026-11-13-animation-3d-gpx`. Commit : `ade62a3d2b65291a89cdf75898ddae599a848670`.
+- Pas de déploiement de cette nouvelle itération pour le moment. Demander l'accord de Math avant de déployer sur Maillons test. Ne pas fusionner la PR #57 ni déployer en production sans accord explicite.
+- Dernière version effectivement déployée sur le service de test avant cette itération : commit `69ecef8a59e9962cc1986ed6c79c382e3f757828`, déploiement Render `dep-dbrh8d15efls73ak2n80`, statut `live`.
+- Aucun test navigateur/téléphone ni test visuel avec GPX réalisé pour cette nouvelle itération. Aucune modification de `main`, aucune fusion, aucune opération Neon.
+
+---
+
+# Nouvelle évolution — 13/11/2026 — surface du profil altimétrique
+
+- À la suite du retour de Math, le profil cinéma ne se limite plus à une ligne colorée : toute la surface sous le profil est remplie.
+- La surface du parcours restant est gris clair translucide ; la surface déjà parcourue se superpose en turquoise translucide. La ligne de profil reste visible au-dessus du remplissage.
+- La limite de couleur suit la distance parcourue (axe horizontal du profil), et non la longueur géométrique de la courbe, pour rester synchronisée avec le déplacement GPX.
+- Modifications faites uniquement dans `main.py`, sur la branche `reprise/2026-11-13-animation-3d-gpx`. Aucun changement sur `main`, aucune fusion, aucune modification Neon.
+- Cette version n'a pas encore été déployée sur Render. Le déploiement précédent reste la version à surface non remplie. Attendre l'accord de Math avant de déployer cette nouvelle variante sur Maillons test.
+- Aucun test visuel navigateur/téléphone réalisé pour cette nouvelle variante.
+
+---
+
+# État du test — 13/11/2026 — profil cinéma coloré déployé
+
+- La version corrigée a été déployée sur le service Render de test `maillons-test-2026`.
+- Déploiement `dep-dbrh1k0u01pc73b7rpig`, commit applicatif `7b18d2ebd8b6928b84a109722bf6198d11571926`, statut Render : `live`. Le build est réussi.
+- Le code du profil utilise deux tracés SVG superposés : gris pour le parcours complet, turquoise pour la partie déjà parcourue. Le point circulaire mobile n'est plus présent.
+- Le run GitHub Actions `43431447832` a réussi, mais il précède cette dernière modification du profil ; aucun résultat CI propre au dernier ajustement n'a été confirmé.
+- Validation visuelle réelle avec un GPX sur téléphone : en attente du retour de Math.
+- Aucun changement sur `main`, aucune fusion, aucune opération Neon. Production non déployée.
+
+---
+
+# Complément du relais — 13/11/2026 — échappement du code intégré
+
+- Le journal du premier déploiement de la nouvelle version a signalé un avertissement Python sur l'expression régulière insérée dans le HTML.
+- Le double échappement est rétabli dans la chaîne HTML Python afin que le navigateur reçoive bien l'expression JavaScript attendue sans avertissement Python.
+- Commit correctif de `main.py` : `1e62d052bc59b884cf71f7494aceea28fbef3da8`.
+- Le déploiement suivant doit viser le dernier commit de cette branche. Aucun changement sur `main`, aucune fusion et aucune opération Neon.
+
+---
+
+# Complément du relais — 13/11/2026 — correction du tracé SVG
+
+- Contrôle du code après le premier envoi : correction de l'expression qui découpe les coordonnées du profil en points SVG, pour garantir que chaque point est bien séparé.
+- Commit correctif de `main.py` : `654780281f9cfeb7c6e28610db0ed47296a0f8f5`.
+- Le premier déploiement lancé juste avant cette correction porte sur le commit précédent ; il ne doit pas être considéré comme la version à tester. Déployer ensuite le dernier commit de la branche sur Maillons test.
+- Aucun changement sur `main`, aucune fusion, aucune modification Neon.
+
+---
+
+# Mise à jour du relais — 13/11/2026 — profil cinéma coloré selon l'avancement
+
+- À la demande de Math, suppression du point blanc mobile sur le profil altimétrique du mode Cinéma.
+- Dans `main.py`, le profil complet reste en gris discret ; une seconde ligne turquoise se dessine progressivement de gauche à droite, synchronisée avec la progression du survol GPX. Le curseur circulaire est retiré. Le profil et le suivi sont masqués comme avant si les altitudes GPX ne sont pas disponibles.
+- Le reste du HUD, les statistiques, le déplacement sur la carte, la caméra, le tracé, les filtres et l'export vidéo ne sont pas volontairement modifiés.
+- Changement enregistré sur la branche `reprise/2026-11-13-animation-3d-gpx`. Aucun changement sur `main`, aucune fusion et aucune opération Neon.
+- À faire : vérifier le CI, puis déployer uniquement sur Maillons test pour que Math puisse juger le rendu. Ne pas déployer en production ni fusionner sans accord explicite.
+
+---
+
+# Mise à jour du relais — 13/11/2026 — PR #57 ouverte pour le mode Cinéma GPX
+
+- À la demande de Math, ouverture de la PR #57 : https://github.com/bigone1212/VTT-entretien/pull/57
+- Titre : « Enrichir le mode Cinéma des parcours GPX ». Cible : `main`. Branche source : `reprise/2026-11-13-animation-3d-gpx`.
+- GitHub indique la PR ouverte, non fusionnée et actuellement fusionnable (`mergeable_state: clean`). Ne pas fusionner sans le feu vert explicite de Math.
+- Les workflows GitHub Actions déclenchés par les derniers commits étaient encore en cours au dernier contrôle (runs 43430734203, 43430763337 et 43430816235). Ne pas annoncer leur succès avant vérification de leur conclusion.
+- La PR décrit les statistiques du mode Cinéma (distance, D+ progressif, altitude, vitesses) et le profil altimétrique synchronisé. Le diff de la PR porte sur `main.py` et ce fichier de relais uniquement.
+- Aucun test visuel réel sur Render/téléphone avec un GPX n'a été effectué à ce stade. Aucun déploiement Render déclenché, aucune opération Neon.
+- Production `main` inchangée ; PR ouverte uniquement pour revue. Étape suivante : confirmer les workflows, puis déployer uniquement sur Maillons test pour validation visuelle avant toute fusion. Aucun déploiement production ni aucune fusion sans accord explicite de Math.
+
+---
+
+# Mise à jour du relais — 13/11/2026 — statistiques et profil animé du mode Cinéma
+
+- À la demande de Math, enrichissement du tableau de bord cinéma sur la branche `reprise/2026-11-13-animation-3d-gpx`.
+- `main.py` : le HUD affiche maintenant la distance parcourue, le D+ cumulé jusqu'au point courant (au lieu du D+ total affiché dès le départ), l'altitude, la vitesse instantanée, la vitesse maximale du GPX et la vitesse moyenne calculée à partir des horodatages.
+- Ajout d'un profil altimétrique SVG qui se remplit/se déplace avec le curseur synchronisé au point sur la carte. Profil réduit à environ 240 points pour limiter le coût de rendu. Le profil et les données d'altitude sont masqués si les altitudes GPX ne sont pas disponibles ; les vitesses sont masquées si les horodatages ne permettent pas de les calculer.
+- Calculs de vitesse fondés sur les horodatages et les distances cumulées du GPX ; les valeurs aberrantes supérieures à 150 km/h sont écartées du calcul de vitesse maximale. Aucune donnée GPS n'est inventée.
+- Ajustements CSS responsives pour garder le panneau compact, notamment sur téléphone. La carte, le tracé, la caméra, les filtres et les autres fonctions ne sont pas volontairement modifiés.
+- Commits application : `d88f0ee4a0654df2cf4d00296de725924bdcc216`, `6c469e69812187934a48bc6e591d563457ec64ac`, `2dc6a4fbfdca642dddbfd1bc6b50ef9679406044`.
+- Aucun test navigateur/téléphone ni test réel avec GPX effectué à ce stade. Aucun déploiement déclenché. Aucun changement sur `main`, aucune fusion, aucune modification de base Neon.
+- Étape suivante : vérifier le workflow automatique GitHub et relire le diff ; ensuite seulement demander à Math de tester sur Maillons test. Ne pas déployer sans son accord explicite.
+
+---
+
+# Mise à jour du relais — 13/11/2026 — panneau cinéma mobile compact
+
+- Après le test sur téléphone, le panneau cinéma occupait presque toute la hauteur. Cause identifiée dans la règle CSS mobile : `top: 72px` restait défini en même temps que le `bottom: 28px` de la règle générale, ce qui étirait le panneau.
+- Correction ciblée dans `main.py` : en petit écran, `top: auto` et `bottom: 18px`. Le panneau reprend ainsi sa hauteur naturelle, tout en restant en bas à gauche. Aucun changement au GPX, à la carte, au relief, à la caméra ou aux autres fonctions.
+- Commit de `main.py` : 1ac246cd98dcbeca385de1af3ba17bdd35600994.
+- Aucun test navigateur/téléphone effectué. Aucun déploiement déclenché. Production `main` inchangée.
+- Étape suivante : faire vérifier le diff, puis demander l'accord de Math avant déploiement sur Maillons test uniquement.
+
+---
+
+# Mise à jour du relais — 13/11/2026 — correction du bouton et de la disposition cinéma
+
+- Retour de Math après essai Render : l'habillage recouvrait des informations de la carte et le bouton « Mode Cinéma » devenait inaccessible.
+- Sur la branche `reprise/2026-11-13-animation-3d-gpx`, `main.py` : le bouton reste visible et cliquable en mode cinéma (libellé « Quitter cinéma ») ; l'habillage est déplacé en bas à gauche pour libérer la légende et les informations en haut de carte ; sur petit écran, marges adaptées.
+- Commit `main.py` : 02eae7e36ee21ef26fed3aad65c12094681af0f4.
+- Aucun test navigateur/téléphone effectué. Aucun déploiement de cette correction. Production `main` inchangée.
+- Étape suivante : vérifier le diff, puis demander l'accord de Math avant tout déploiement sur Maillons test uniquement.
+
+---
+
+# Mise à jour du relais — 13/11/2026 — premier mode Cinéma pour les vidéos 3D
+
+- À la demande de Math, création d'un mode Cinéma distinct du survol classique, pour rapprocher les vidéos d'une présentation d'étape cycliste.
+- Sur la branche `reprise/2026-11-13-animation-3d-gpx`, seul `main.py` a été modifié :
+  - bouton « Mode Cinéma » : les commandes basses s'effacent progressivement ; bouton pour revenir au mode normal ;
+  - habillage intégré à la vidéo exportée : titre de la sortie, date, distance parcourue et totale, dénivelé positif si les altitudes GPX sont présentes, barre de progression et crédits des fonds cartographiques ;
+  - enregistrement composé dans un canvas dédié, jusqu'à 1920 px sur le plus grand côté, proportions conservées, 30 images/s et débit cible 8 Mbit/s ;
+  - `preserveDrawingBuffer` activé sur MapLibre pour pouvoir reprendre le rendu WebGL dans le canvas vidéo.
+- Le mode classique, le tracé GPX, le relief, les angles, les filtres et les commandes de lecture restent disponibles.
+- Altitude GPX : le temps est en troisième champ (`p[2]`) et l'altitude en quatrième (`p[3]`). Le D+ utilise le profil d'altitude lissé déjà calculé par Maillons lorsqu'il est disponible, afin de limiter les petites variations GPS. Commits : `8345a554b2fd17f96903d9ad5a99ecd340abe5a3` et `fe48d65b445212ff4e60847ece5fa7d70655d856`.
+- Commits : `d3e8cea8b3eaf26c5d71972c5a75c9b1259e167d`, `98b5b82a1b0a18846020f0db87dbf1f755554ab3`, `7599eadfaf5f8f0e26ee9ac2b77d857bcab9fb38`, `8345a554b2fd17f96903d9ad5a99ecd340abe5a3`.
+- À vérifier : syntaxe et rendu navigateur, qualité du canvas composite, fluidité pendant l'enregistrement et présence effective des incrustations dans le fichier WebM.
+- Aucun test navigateur effectué, aucun déploiement. Aucun changement sur `main`, aucune PR/fusion, aucune opération Neon.
+- Prochaine étape : vérifier le prototype, puis demander l'accord de Math avant déploiement sur Maillons test uniquement.
+
+---
+
+# Mise à jour du relais — 13/11/2026 — point de progression fluide et caméra plus discrète
+
+- Retour de Math après le dernier déploiement : le survol est nettement meilleur, mais il souhaite moins de mouvements de caméra et un point mobile qui glisse sans sauter sur la carte.
+- Sur la branche `reprise/2026-11-13-animation-3d-gpx`, seul `main.py` est modifié pour l'application :
+  - mise à jour du point mobile à chaque image d'animation, en conservant l'interpolation le long de la distance cumulée du GPX ;
+  - actualisation de la ligne parcourue et des textes de progression toutes les quatre images pour limiter le coût de rendu ;
+  - caméra plus calme : lissage du centre réduit de 5 à 3, lissage du cap de 1,6 à 0,9 et regard porté plus loin (450 à 700 m) pour éviter les changements de direction trop fréquents.
+- Relief, angle de vue, tracé GPX d'origine, données d'altitude, filtres, fonds et autres fonctions inchangés. Aucun faux point GPS ajouté.
+- Commit de `main.py` : f5c89cd5f57775eb5374d5953bd512a1dd6e11d9.
+- Aucun test navigateur/téléphone effectué et aucun déploiement de cette itération. Aucun changement sur `main`, aucune PR/fusion, aucune opération Neon.
+- Étape suivante : vérifier le diff et demander à Math s'il souhaite déployer cette version sur Maillons test uniquement.
+
+---
+
+# Mise à jour du relais — 13/11/2026 — lissage du déplacement de la caméra 3D
+
+- Après le nouvel essai sur Maillons test, Math indique que le survol est moins saccadé à 45°, mais pas encore assez fluide pour un rendu cinématographique de présentation d'étape du Tour de France.
+- Sur la branche `reprise/2026-11-13-animation-3d-gpx`, seul `main.py` est modifié : ajout d'un lissage exponentiel du centre de la caméra (facteur 5), en plus du lissage du cap déjà présent. La caméra suit désormais une position filtrée plutôt que de se recaler exactement sur chaque point interpolé du GPX à chaque image.
+- Le tracé GPS, les données d'altitude, le relief, les filtres, les fonds et les autres fonctions ne sont pas modifiés. La caméra est repositionnée exactement au point final à la fin du survol et lors d'un repositionnement brusque.
+- Commit de `main.py` : 670f24a465e11e22963baaea4751c985456b28cb.
+- Aucun test navigateur/téléphone effectué. Aucun déploiement de cette itération. Aucun changement sur `main`, aucune PR/fusion, aucune opération Neon.
+- Étape suivante : relire le changement, puis demander à Math s'il souhaite le déployer sur Maillons test uniquement. Ne pas déployer en production ni fusionner sans son accord explicite.
+
+---
+
+# Mise à jour du relais — 13/11/2026 — relief 3D plus prononcé (à tester)
+
+- Retour de Math après le premier essai sur Render test : rendu « peut-être mieux », mais souhait d'un relief plus prononcé.
+- Sur la branche `reprise/2026-11-13-animation-3d-gpx`, seul le rendu du relief est renforcé dans `main.py` : exagération verticale MapLibre 1,35 → 1,7 ; intensité hillshade 0,28 → 0,42. Le tracé, la caméra, les filtres, les fonds et les autres fonctions restent inchangés.
+- Commit du changement : d3f3eb7ded7252436fcdb001dcc79b90dd555020.
+- Aucun changement sur `main`, aucune PR/fusion, aucune donnée Neon modifiée.
+- Déploiement Render test à effectuer puis vérification visuelle par Math. Ne pas déployer en production ni fusionner sans son accord explicite.
+
+---
+
+# Mise à jour du relais — 13/11/2026 — premier essai de rendu 3D des parcours (en cours)
+
+- Demande de Math : rendre les cartes et les survols des sorties VTT plus beaux et immersifs, sans chercher à reproduire Journey AI et sans abonnement payant. Conserver les fonctions déjà présentes.
+- Branche de travail créée depuis `main` : `reprise/2026-11-13-animation-3d-gpx`. Aucun changement sur `main`, aucune PR, aucune fusion, aucun déploiement.
+- Vérification du code existant : Maillons avait déjà MapLibre, un relief 3D AWS Terrain Tiles, une caméra animée, les fonds satellite/plan, les couleurs de pente/terrain et l'enregistrement WebM. Ne pas reconstruire ces fonctions.
+- Premier essai enregistré sur la branche, fichier `main.py` uniquement (commit `32dc2c134cd6654deef4a83e50fc65178c5c8671`) :
+  - relief un peu plus accentué (exaggeration 1.1 → 1.35) ;
+  - ajout d'un ombrage de relief (couche hillshade) ;
+  - tracé plus visible avec un halo turquoise discret, contour renforcé et ligne principale légèrement épaissie.
+- Ces changements sont un prototype à vérifier visuellement : ils ne sont pas encore validés sur navigateur, téléphone ou Render. Le workflow GitHub doit être vérifié après le commit.
+- Aucun changement de données, aucune opération Neon, aucun déploiement.
+- Étape suivante : vérifier le CI GitHub ; examiner le rendu et corriger si l'ombrage ou le halo nuit à la lisibilité. Demander à Math de tester la branche avant toute PR/fusion. Aucune fusion ni aucun déploiement sans son accord explicite.
+
+---
+
 # Mise à jour du relais — 31/10/2026 — PR #22 fusionnée (chercher la fiche avec mon IA)
 
 - PR #22 : **fusionnée** avec l'accord explicite de Math le 31/10/2026 (commit de fusion `01f69796edb49316a4b4758d13f45da2679bc872`). Fichiers : `main.py`, `.github/workflows/maillons-check.yml`. Aucun changement serveur ni de données.
@@ -480,42 +685,30 @@
 
 ## Tâche en cours
 
-AMÉLIORER LA RECHERCHE DES COMPOSANTS TECHNIQUES — PR #13 — 30/10/2026.
+MODE CINÉMA POUR LES VIDÉOS DE SURVOL 3D — 13/11/2026.
 
-Objectif : mieux récupérer les noms et références précis des composants d'un vélo à partir de plusieurs présentations de fiches techniques, sans inventer les équipements.
+Objectif : donner aux vidéos GPX un rendu de présentation sportive, sans supprimer le survol classique ni modifier les données de parcours.
 
-État :
-- [x] Relire le relais, vérifier le dernier commit de `main` et relire `main.py`.
-- [x] Confirmer avec Math que le test concerne le Trek Fuel EXe 9.7.
-- [x] Identifier la limite : extraction limitée aux tableaux simples, `<dt>/<dd>` et JSON-LD ; recherche secondaire limitée à trois pages.
-- [x] Créer la branche dédiée `reprise/2026-10-30-composants-fiche-velo`.
-- [x] Modifier l'extraction pour les lignes de tableaux à plusieurs paires, les listes/paragraphes et les éléments HTML voisins label/value.
-- [x] Porter le maximum de pages secondaires de 3 à 6.
-- [x] Ajouter les tests ciblés dans le workflow GitHub Actions.
-- [x] Ouvrir la PR #13 en brouillon pour déclencher les contrôles.
-- [x] CI complet réussi sur le run `41045877610` (n° 203), après correction d'une erreur de syntaxe signalée par le run précédent.
-- [x] Relire le diff final : uniquement `main.py` et `.github/workflows/maillons-check.yml`, 50 ajouts et 4 suppressions. La comparaison avec `main` montre que les deux commits plus récents de `main` concernent seulement le relais ; la PR reste mergeable.
-- [ ] Faire tester la recherche à Math après fusion, avec le Trek Fuel EXe 9.7.
-- [ ] Demander son accord avant toute fusion ; aucune fusion ou publication sans accord explicite.
+État sur la branche `reprise/2026-11-13-animation-3d-gpx` :
+- [x] Relire le présent relais et vérifier le code réel de la branche avant modification.
+- [x] Ajouter un bouton « Mode Cinéma » qui masque progressivement les commandes basses et permet de revenir au mode normal.
+- [x] Ajouter un habillage graphique vidéo : nom de la sortie, date, distance parcourue / distance totale, dénivelé positif lorsque les altitudes GPX sont disponibles, barre de progression et crédits cartographiques.
+- [x] Composer cet habillage avec l'image de la carte dans un canvas dédié avant l'enregistrement WebM ; résolution limitée à 1920 px sur le plus grand côté, proportions conservées, 30 images/s, débit cible 8 Mbit/s.
+- [x] Activer `preserveDrawingBuffer` sur MapLibre pour permettre la composition de l'image WebGL dans le canvas vidéo.
+- [x] Vérifier la structure réelle du GPX : le temps est en `p[2]` et l'altitude en `p[3]` ; le calcul du D+ utilise le champ altitude.
+- [x] Préserver le survol classique, le tracé GPX, le relief, les inclinaisons, les filtres et les commandes existantes.
+- [ ] Vérifier la syntaxe et le rendu dans un navigateur, notamment l'enregistrement WebM et la fluidité avec le canvas composite.
+- [ ] Déployer sur Maillons test uniquement après accord explicite de Math, puis lui faire essayer une vidéo.
+- [ ] Aucune fusion ni publication sur `main` sans accord explicite.
 
-Diagnostic confirmé :
-- Les composants absents de l'interface n'étaient pas masqués par l'affichage : ils n'étaient pas extraits par le serveur.
-- Les extraits de résultats des moteurs ne sont pas considérés comme preuve d'équipement.
-- Le recoupement des sources et les statuts existants doivent être préservés ; une compatibilité possible ne vaut pas preuve de montage d'origine.
+Derniers commits de code :
+- `d3e8cea8b3eaf26c5d71972c5a75c9b1259e167d` — création du mode Cinéma.
+- `98b5b82a1b0a18846020f0db87dbf1f755554ab3` — correction de la date affichée dans l'habillage.
+- `7599eadfaf5f8f0e26ee9ac2b77d857bcab9fb38` — préparation du rendu WebGL pour la composition vidéo.
+- Fichier applicatif modifié : `main.py`.
+- Tests navigateur non exécutés ; aucune validation visuelle annoncée.
+- Aucun déploiement Render, aucune PR/fusion, aucun changement sur `main`, aucune opération Neon.
 
-Enregistré sur GitHub :
-- Point de départ `main` : `cf4d8f3ae1d1a68ee3da0cff919a0a05b1004acd`.
-- Branche : `reprise/2026-10-30-composants-fiche-velo`.
-- Tête : `11fa8fe7f46820e731f2855ca3eada26ff42d8ad`.
-- PR #13 : https://github.com/bigone1212/VTT-entretien/pull/13, brouillon, non fusionnée.
-- Fichiers : `main.py`, `.github/workflows/maillons-check.yml`.
-- Workflow run `41045877610`, n° 203 : terminé avec succès ; le run initial `41045716587` avait échoué sur une erreur de syntaxe depuis corrigée.
-
-Local, non enregistré :
-- Aucun changement de code.
-
-Aucun changement de données, aucune opération Neon, aucun déploiement Render.
- 
 ## Archive — reprise automatique de la fiche technique et adaptation des entretiens — 29/10/2026
 
 REPRISE CHATGPT — RECHERCHE AUTOMATIQUE DE LA FICHE TECHNIQUE ET ENTRETIENS ADAPTÉS — 29/10/2026.
@@ -917,3 +1110,31 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - Le premier essai du nouveau contrôle JavaScript (40379448708) a échoué à cause d'une expression de recherche trop échappée dans le test, avant d'atteindre les tests d'application. Le contrôle a été corrigé et le run final 40379653916 passe entièrement.
 - Vérification visuelle réelle dans un navigateur sur ordinateur/téléphone : **non réalisée** faute d'outil navigateur disponible dans cette session. La validation actuelle reste statique et automatique; elle ne prouve pas le rendu visuel ni les interactions en situation réelle.
 - Aucun déploiement déclenché. Ne pas toucher à main. La PR #7 reste brouillon et non fusionnée; GitHub signalait encore un état de fusion dirty car main a une mise à jour distincte du fichier de relais. Réconcilier ce fichier avant toute fusion future, avec l'accord explicite de Math.
+
+
+## Survol 3D — fluidité de la caméra (13/11/2026)
+
+- Sur la branche `reprise/2026-11-13-animation-3d-gpx`, ajustement ciblé dans `main.py` après retour utilisateur : le regard de la caméra porte désormais sur une distance de 180 à 350 m (au lieu de 120 à 600 m) et la rotation du cap est davantage amortie (facteur exponentiel 1,6 au lieu de 2,5).
+- Commit : `bbae19f09e732dc5ed4caec69650973e0d9065f2`.
+- Le code interpole déjà la position de la caméra entre les points GPS du GPX via `pointA(d)`. Ajouter artificiellement des points au tracé ne crée pas de nouvelles données GPS et pourrait alourdir le rendu ; cette itération privilégie donc le lissage de caméra sans altérer les coordonnées, le profil, les photos, les filtres ou le tracé enregistré.
+- Aucun test navigateur/téléphone effectué à ce stade. Aucun déploiement, aucune modification de `main`, aucune PR/fusion.
+- Étape suivante : faire valider le rendu sur Maillons test après autorisation explicite de déployer. Si le GPX source est lui-même trop peu détaillé, demander un export original avec un enregistrement GPS plus fréquent plutôt que fabriquer de la précision.
+
+
+## Survol 3D — ralentissement pour limiter les à-coups (13/11/2026)
+
+- Nouveau retour utilisateur : le relief 3D est validé (« nickel »), mais le survol donne encore une impression de sauts entre les points.
+- Sur la branche `reprise/2026-11-13-animation-3d-gpx`, seul `main.py` est modifié : durée du survol portée de 5 à 8 minutes par km, avec bornes de 75 à 240 secondes (au lieu de 45 à 180). Objectif : réduire la distance parcourue entre deux images sur les appareils qui affichent moins d'images par seconde.
+- Commit `main.py` : `febd5f6f3b0a7d3db691114f9b4b2b950d3a1ded`.
+- Le relief, les points GPS d'origine, le tracé, les filtres et les autres fonctions ne sont pas modifiés. Aucun faux point GPS ajouté.
+- Pas de test navigateur/téléphone effectué. Pas de déploiement de cette nouvelle version à ce stade. Aucun changement sur `main`, aucune PR/fusion, aucune opération sur Neon.
+- Étape suivante : demander l'accord explicite de Math avant de déployer cette itération sur Maillons test uniquement.
+
+
+## Mode Cinéma — incrustation visible à l’écran (13/11/2026)
+
+- Retour utilisateur : le premier Mode Cinéma ne semblait pas différent du mode normal, car il masquait seulement les commandes et réservait les incrustations à la vidéo exportée.
+- Correction sur la branche de test dans `main.py`, commit `bc5485a1e5cde2b6b0b21756596e1795bc28de13` : ajout d'un habillage cinéma visible directement pendant le survol (identité Maillons, nom/date de sortie, distance parcourue, D+ si disponible, barre de progression), panneau semi-transparent et commandes masquées. Le bouton de fermeture reste accessible.
+- Les informations de progression sont actualisées avec l'avancement du survol. Le montage vidéo WebM conserve son habillage propre.
+- Fichiers modifiés dans cette itération : `main.py` et ce fichier de relais uniquement.
+- Tests navigateur et vérification visuelle non réalisés. Aucun déploiement déclenché pour cette correction. Ne pas toucher à `main`, ne pas fusionner et ne pas déployer sans nouvel accord explicite.
