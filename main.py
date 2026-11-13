@@ -13100,7 +13100,8 @@ def accueil():
                     v3d.cum.push(v3d.cum[i - 1] + distanceM(pts[i - 1], pts[i]));
                 }
                 v3d.total = v3d.cum[v3d.cum.length - 1];
-                v3d.dureeBase = Math.min(180, Math.max(45, (v3d.total / 1000) * 5));
+                // Ralentit le survol pour limiter les grands déplacements visibles entre deux images.
+                v3d.dureeBase = Math.min(240, Math.max(75, (v3d.total / 1000) * 8));
             }
 
             // Distance (en mètres, le long du parcours) correspondant à un instant.
