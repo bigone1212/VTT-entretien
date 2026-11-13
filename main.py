@@ -19761,6 +19761,70 @@ def preparer_lieux_sortie(sortie_id):
             sud, nord, ouest, est = min(lats)-marge, max(lats)+marge, min(lons)-marge, max(lons)+marge
             elements = []
             api_ok = False
+            refs = points[::max(1, len(points)//500)]
+            def distance(a,b):
+                x=(a[0]-b[0])*111320*math.cos(math.radians((a[1]+b[1])/2)); y=(a[1]-b[1])*110540
+                return math.hypot(x,y)
+
+            # 1) IGN en priorité : points d'intérêt de la BD TOPO via la Géoplateforme.
+            # Même méthode que la recherche IGN déjà utilisée dans la lecture 3D.
+            longueur = [0.0]
+            for i in range(1, len(points)):
+                longueur.append(longueur[-1] + distance(points[i-1], points[i]))
+            total = longueur[-1]
+            nombre = min(36, max(1, int(math.ceil(total / 2500)))) if total else 1
+            rayon = max(1200, min(3500, (total / nombre if nombre else 2500) * 0.72))
+            for debut in range(0, nombre, 4):
+                appels = []
+                for j in range(debut, min(nombre, debut + 4)):
+                    cible = min(total, (j + 0.5) * total / nombre) if total else 0
+                    idx = min(range(len(longueur)), key=lambda k: abs(longueur[k] - cible))
+                    lon, lat = points[idx]
+                    zone = {"type":"Circle", "coordinates":[lon,lat], "radius":rayon}
+                    params = urllib.parse.urlencode({
+                        "index":"poi", "searchgeom":json.dumps(zone,separators=(",",":")),
+                        "lon":str(lon), "lat":str(lat), "limit":"20"
+                    })
+                    appels.append(params)
+                for params in appels:
+                    try:
+                        req = urllib.request.Request(
+                            "https://data.geopf.fr/geocodage/reverse?" + params,
+                            headers={"User-Agent":"Maillons/1.0"}
+                        )
+                        with urllib.request.urlopen(req, timeout=12) as response:
+                            donnees = json.loads(response.read().decode("utf-8"))
+                        api_ok = True
+                        for feature in donnees.get("features", []):
+                            prop = feature.get("properties") or {}
+                            geom = (feature.get("geometry") or {}).get("coordinates")
+                            if not isinstance(geom, list) or len(geom) < 2: continue
+                            try: lon, lat = float(geom[0]), float(geom[1])
+                            except (TypeError, ValueError): continue
+                            nom = str(prop.get("name") or prop.get("label") or prop.get("toponyme") or prop.get("nom") or prop.get("title") or "").strip()
+                            if not nom: continue
+                            categorie = " ".join(str(prop.get(k) or "") for k in ("category","type","nature","kind","_type","description")).casefold()
+                            texte = (categorie + " " + nom).casefold()
+                            if any(m in texte for m in ("sommet","peak","mountain","montagne","hill","colline","crête","crete","ridge")):
+                                genre, rang, portee = "sommet", 4, 2200
+                            elif any(m in texte for m in ("col ","pass","saddle","mountain_pass")):
+                                genre, rang, portee = "col", 2, 900
+                            elif any(m in texte for m in ("lieu-dit","lieudit","locality","hamlet","hameau","isolated_dwelling")):
+                                genre, rang, portee = "village", 5, 3500
+                            elif any(m in texte for m in ("village","commune","town","city","municipality")):
+                                genre, rang, portee = "village", 4, 5000
+                            else:
+                                genre, rang, portee = "lieu", 6, 2200
+                            ec = min(distance((lon,lat), p) for p in refs)
+                            if ec > portee: continue
+                            altitude = None
+                            try: altitude = float(str(prop.get("ele") or prop.get("altitude") or prop.get("z")).replace(",","."))
+                            except (TypeError, ValueError): pass
+                            lieux.append({"nom":nom,"genre":genre,"rang":rang,"ec":round(ec,1),"coord":[lon,lat],"alt":altitude,"source":"IGN"})
+                    except Exception:
+                        continue
+
+            # 2) OpenStreetMap complète les noms absents de l'IGN.
             if nord-sud <= 0.6 and est-ouest <= 0.8:
                 q = '[out:json][timeout:25];(nwr["place"~"^(city|town|village|hamlet|isolated_dwelling|suburb|locality|neighbourhood)$"]["name"](%s,%s,%s,%s);nwr["natural"~"^(peak|hill|ridge)$"]["name"](%s,%s,%s,%s);nwr["mountain_pass"="yes"]["name"](%s,%s,%s,%s);nwr["natural"="saddle"]["name"](%s,%s,%s,%s);nwr["tourism"="viewpoint"]["name"](%s,%s,%s,%s););out center tags;' % ((sud,ouest,nord,est)*5)
                 body = urllib.parse.urlencode({"data": q}).encode("utf-8")
@@ -19771,10 +19835,6 @@ def preparer_lieux_sortie(sortie_id):
                         api_ok = True
                         break
                     except Exception: continue
-            refs = points[::max(1, len(points)//500)]
-            def distance(a,b):
-                x=(a[0]-b[0])*111320*math.cos(math.radians((a[1]+b[1])/2)); y=(a[1]-b[1])*110540
-                return math.hypot(x,y)
             for e in elements:
                 tags=e.get("tags") or {}; nom=str(tags.get("name") or "").strip(); c=e.get("center") or {}
                 try: lon=float(e.get("lon",c.get("lon"))); lat=float(e.get("lat",c.get("lat")))
@@ -19793,9 +19853,15 @@ def preparer_lieux_sortie(sortie_id):
                 alt=None
                 try: alt=float(str(tags.get("ele","")).replace(",","."))
                 except ValueError: pass
-                lieux.append({"nom":nom,"genre":genre,"rang":rang,"ec":round(ec,1),"coord":[lon,lat],"alt":alt})
+                lieux.append({"nom":nom,"genre":genre,"rang":rang,"ec":round(ec,1),"coord":[lon,lat],"alt":alt,"source":"OpenStreetMap"})
                 cle=hashlib.sha256((unicodedata.normalize("NFKD",nom).casefold()+"|"+str(round(lon,4))+"|"+str(round(lat,4))).encode()).hexdigest()
-                cursor.execute("""INSERT INTO bibliotheque_lieux_geo (cle,nom,genre,rang,lon,lat,altitude,source,maj_le) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT (cle) DO UPDATE SET nom=excluded.nom,genre=excluded.genre,rang=excluded.rang,altitude=excluded.altitude,maj_le=excluded.maj_le""", (cle,nom,genre,rang,lon,lat,alt,"OpenStreetMap",datetime.now(timezone.utc).isoformat()))
+                cursor.execute("""INSERT INTO bibliotheque_lieux_geo (cle,nom,genre,rang,lon,lat,altitude,source,maj_le) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT (cle) DO UPDATE SET nom=excluded.nom,genre=excluded.genre,rang=excluded.rang,altitude=excluded.altitude,source=excluded.source,maj_le=excluded.maj_le""", (cle,nom,genre,rang,lon,lat,alt,"OpenStreetMap",datetime.now(timezone.utc).isoformat()))
+            # Enregistre les lieux IGN en premier dans la bibliothèque commune.
+            for l in lieux:
+                if l.get("source") != "IGN": continue
+                lon, lat = l["coord"]
+                cle=hashlib.sha256((unicodedata.normalize("NFKD",l["nom"]).casefold()+"|"+str(round(lon,4))+"|"+str(round(lat,4))).encode()).hexdigest()
+                cursor.execute("""INSERT INTO bibliotheque_lieux_geo (cle,nom,genre,rang,lon,lat,altitude,source,maj_le) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT (cle) DO UPDATE SET nom=excluded.nom,genre=excluded.genre,rang=excluded.rang,altitude=excluded.altitude,source=excluded.source,maj_le=excluded.maj_le""", (cle,l["nom"],l["genre"],l["rang"],lon,lat,l.get("alt"),"IGN",datetime.now(timezone.utc).isoformat()))
             # Réutilise les lieux déjà connus dans la bibliothèque commune,
             # même si le service cartographique est momentanément indisponible.
             cursor.execute(
@@ -19807,7 +19873,7 @@ def preparer_lieux_sortie(sortie_id):
                 ec=min(distance(coord,p) for p in refs)
                 portee=5000 if genre in ("ville","village") else (900 if genre=="col" else (2200 if genre=="sommet" else 1800))
                 if ec<=portee and not any(x["nom"].casefold()==str(nom).casefold() and distance(tuple(x["coord"]),coord)<600 for x in lieux):
-                    lieux.append({"nom":str(nom),"genre":genre or "lieu","rang":int(rang or 9),"ec":round(ec,1),"coord":[coord[0],coord[1]],"alt":alt})
+                    lieux.append({"nom":str(nom),"genre":genre or "lieu","rang":int(rang or 9),"ec":round(ec,1),"coord":[coord[0],coord[1]],"alt":alt,"source":"bibliotheque"})
             if not api_ok and not lieux:
                 raise RuntimeError("Les services cartographiques sont indisponibles ; la recherche sera reprise.")
             lieux.sort(key=lambda x:(x["rang"],x["ec"])); retenus=[]
