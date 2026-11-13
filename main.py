@@ -13409,7 +13409,6 @@ def accueil():
                 const pas = v3d.total / nombre;
                 const rayon = Math.max(1200, Math.min(3500, pas * 0.72));
                 const resultats = [];
-                const lots = [];
                 for (let i = 0; i < nombre; i += 4) {
                     const appels = [];
                     for (let j = i; j < Math.min(nombre, i + 4); j++) {
@@ -13595,7 +13594,7 @@ def accueil():
                 try { lieux=await chercherLieuxV3d(); } catch(e) { console.warn(e); }
                 if(rech) rech.style.display='none';
                 if(v3d.carte!==carte) return;
-                if(v3d.lieuxEtat==='panne') { messageV3d('Noms de lieux indisponibles : le serveur OpenStreetMap ne répond pas.'); setTimeout(()=>messageV3d(''),6000); }
+                if(v3d.lieuxEtat==='panne') { messageV3d('Noms de lieux indisponibles : les services IGN et OpenStreetMap ne répondent pas.'); setTimeout(()=>messageV3d(''),6000); }
                 lieux.forEach(l=>{
                     const el=document.createElement('div'); el.className='v3d-lieu'+(['sommet','col'].includes(l.genre)?' v3d-lieu-haut':'');
                     const ic=l.genre==='sommet'?'⛰️':l.genre==='col'?'🏔️':l.genre==='lieu'?'📍':'🏘️';
