@@ -1538,6 +1538,7 @@ jobs:
               est_route = any(
                   isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute)
                   and isinstance(d.func.value, ast.Name) and d.func.value.id == "app"
+                  and d.func.attr != "on_event"
                   for d in noeud.decorator_list
               )
               if est_route:
