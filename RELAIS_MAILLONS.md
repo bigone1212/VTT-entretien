@@ -977,3 +977,12 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - Le relief, les points GPS d'origine, le tracé, les filtres et les autres fonctions ne sont pas modifiés. Aucun faux point GPS ajouté.
 - Pas de test navigateur/téléphone effectué. Pas de déploiement de cette nouvelle version à ce stade. Aucun changement sur `main`, aucune PR/fusion, aucune opération sur Neon.
 - Étape suivante : demander l'accord explicite de Math avant de déployer cette itération sur Maillons test uniquement.
+
+
+## Mode Cinéma — incrustation visible à l’écran (13/11/2026)
+
+- Retour utilisateur : le premier Mode Cinéma ne semblait pas différent du mode normal, car il masquait seulement les commandes et réservait les incrustations à la vidéo exportée.
+- Correction sur la branche de test dans `main.py`, commit `bc5485a1e5cde2b6b0b21756596e1795bc28de13` : ajout d'un habillage cinéma visible directement pendant le survol (identité Maillons, nom/date de sortie, distance parcourue, D+ si disponible, barre de progression), panneau semi-transparent et commandes masquées. Le bouton de fermeture reste accessible.
+- Les informations de progression sont actualisées avec l'avancement du survol. Le montage vidéo WebM conserve son habillage propre.
+- Fichiers modifiés dans cette itération : `main.py` et ce fichier de relais uniquement.
+- Tests navigateur et vérification visuelle non réalisés. Aucun déploiement déclenché pour cette correction. Ne pas toucher à `main`, ne pas fusionner et ne pas déployer sans nouvel accord explicite.
