@@ -19819,7 +19819,18 @@ def reprendre_lieux_en_attente():
 
 @app.on_event("startup")
 def reprendre_lieux_au_demarrage():
-    reprendre_lieux_en_attente()
+    # Réinitialise seulement les tâches interrompues ; elles repartiront
+    # en arrière-plan dès que la sortie sera consultée.
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "UPDATE recherche_lieux_gpx SET statut = ? WHERE statut = ?",
+            ("en_attente", "en_cours")
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 @app.post("/api/sorties/import")
 def importer_sortie(
@@ -20015,7 +20026,7 @@ def importer_sortie(
 
 
 @app.get("/api/sorties/{sortie_id}/lieux")
-def obtenir_lieux_prepares(sortie_id: int, velo_id: int = 1, x_code_acces: Optional[str] = Header(default=None)):
+def obtenir_lieux_prepares(sortie_id: int, background_tasks: BackgroundTasks, velo_id: int = 1, x_code_acces: Optional[str] = Header(default=None)):
     controle_acces(x_code_acces, velo_id)
     conn=db.connect(); cursor=conn.cursor()
     try:
@@ -20024,6 +20035,8 @@ def obtenir_lieux_prepares(sortie_id: int, velo_id: int = 1, x_code_acces: Optio
         cursor.execute("SELECT statut,lieux_json,erreur FROM recherche_lieux_gpx WHERE sortie_id = ?", (sortie_id,))
         row=cursor.fetchone()
         if row is None: return {"statut":"absent","lieux":[]}
+        if row[0] == "en_attente":
+            background_tasks.add_task(preparer_lieux_sortie, sortie_id)
         try: lieux=json.loads(row[1] or "[]")
         except (TypeError,ValueError): lieux=[]
         return {"statut":row[0],"lieux":lieux,"erreur":row[2]}
