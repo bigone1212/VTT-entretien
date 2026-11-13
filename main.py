@@ -19760,6 +19760,7 @@ def preparer_lieux_sortie(sortie_id):
             lons = [p[0] for p in points]; lats = [p[1] for p in points]; marge = 0.012
             sud, nord, ouest, est = min(lats)-marge, max(lats)+marge, min(lons)-marge, max(lons)+marge
             elements = []
+            api_ok = False
             if nord-sud <= 0.6 and est-ouest <= 0.8:
                 q = '[out:json][timeout:25];(nwr["place"~"^(city|town|village|hamlet|isolated_dwelling|suburb|locality|neighbourhood)$"]["name"](%s,%s,%s,%s);nwr["natural"~"^(peak|hill|ridge)$"]["name"](%s,%s,%s,%s);nwr["mountain_pass"="yes"]["name"](%s,%s,%s,%s);nwr["natural"="saddle"]["name"](%s,%s,%s,%s);nwr["tourism"="viewpoint"]["name"](%s,%s,%s,%s););out center tags;' % ((sud,ouest,nord,est)*5)
                 body = urllib.parse.urlencode({"data": q}).encode("utf-8")
@@ -19767,6 +19768,7 @@ def preparer_lieux_sortie(sortie_id):
                     try:
                         req = urllib.request.Request(base, data=body, headers={"Content-Type":"application/x-www-form-urlencoded", "User-Agent":"Maillons/1.0"})
                         with urllib.request.urlopen(req, timeout=28) as response: elements = json.loads(response.read().decode("utf-8")).get("elements", [])
+                        api_ok = True
                         break
                     except Exception: continue
             refs = points[::max(1, len(points)//500)]
@@ -19794,6 +19796,20 @@ def preparer_lieux_sortie(sortie_id):
                 lieux.append({"nom":nom,"genre":genre,"rang":rang,"ec":round(ec,1),"coord":[lon,lat],"alt":alt})
                 cle=hashlib.sha256((unicodedata.normalize("NFKD",nom).casefold()+"|"+str(round(lon,4))+"|"+str(round(lat,4))).encode()).hexdigest()
                 cursor.execute("""INSERT INTO bibliotheque_lieux_geo (cle,nom,genre,rang,lon,lat,altitude,source,maj_le) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT (cle) DO UPDATE SET nom=excluded.nom,genre=excluded.genre,rang=excluded.rang,altitude=excluded.altitude,maj_le=excluded.maj_le""", (cle,nom,genre,rang,lon,lat,alt,"OpenStreetMap",datetime.now(timezone.utc).isoformat()))
+            # Réutilise les lieux déjà connus dans la bibliothèque commune,
+            # même si le service cartographique est momentanément indisponible.
+            cursor.execute(
+                "SELECT nom,genre,rang,lon,lat,altitude FROM bibliotheque_lieux_geo WHERE lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?",
+                (sud-0.05,nord+0.05,ouest-0.05,est+0.05)
+            )
+            for nom,genre,rang,lon,lat,alt in cursor.fetchall():
+                coord=(float(lon),float(lat))
+                ec=min(distance(coord,p) for p in refs)
+                portee=5000 if genre in ("ville","village") else (900 if genre=="col" else (2200 if genre=="sommet" else 1800))
+                if ec<=portee and not any(x["nom"].casefold()==str(nom).casefold() and distance(tuple(x["coord"]),coord)<600 for x in lieux):
+                    lieux.append({"nom":str(nom),"genre":genre or "lieu","rang":int(rang or 9),"ec":round(ec,1),"coord":[coord[0],coord[1]],"alt":alt})
+            if not api_ok and not lieux:
+                raise RuntimeError("Les services cartographiques sont indisponibles ; la recherche sera reprise.")
             lieux.sort(key=lambda x:(x["rang"],x["ec"])); retenus=[]
             for l in lieux:
                 if len(retenus)>=18: break
