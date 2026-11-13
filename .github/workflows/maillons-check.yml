@@ -5079,15 +5079,19 @@ jobs:
               assert nb() == 6 and len(galeries[2]) == 5
               # Supprimer une photo supplémentaire
               pg.click("#galerieVelo .galerie-point:nth-child(3)"); pg.wait_for_timeout(1200)
-              pg.click("#galerieVelo .galerie-diapo:nth-child(3) .galerie-suppr"); pg.wait_for_timeout(700)
+              pg.click("#galerieVelo .menu-photo-zone .menu-sortie-btn"); pg.click("#galerieVelo .menu-photo-zone [role=menuitem]:has-text('Supprimer cette photo')"); pg.wait_for_timeout(700)
               assert nb() == 5 and len(galeries[2]) == 4 and not pg.is_visible("#galerieVelo .galerie-plein")
-              # La photo principale n'a pas de croix : elle se gère dans l'onglet Entretien
-              assert pg.locator("#galerieVelo .galerie-diapo:nth-child(1) .galerie-suppr").count() == 0
-              assert pg.locator("#galerieVelo .galerie-diapo:nth-child(2) .galerie-suppr").count() == 1
+              # Plus de croix sur les photos : on supprime par le menu, et pas la photo principale (elle se gère dans l'onglet Entretien)
+              assert pg.locator("#galerieVelo .galerie-suppr").count() == 0
+              pg.click("#galerieVelo .galerie-point:nth-child(1)"); pg.wait_for_timeout(300)
+              assert pg.eval_on_selector_all("#galerieVelo .menu-photo-zone [role=menuitem]", "os => os.map(o => [o.textContent.trim(), o.disabled])") == [["Ajouter des photos", False], ["Supprimer cette photo", True]]
+              pg.click("#galerieVelo .galerie-point:nth-child(2)"); pg.wait_for_timeout(300)
+              assert pg.eval_on_selector_all("#galerieVelo .menu-photo-zone [role=menuitem]", "os => os.map(o => o.disabled)") == [False, False]
+              pg.click("#galerieVelo .galerie-point:nth-child(1)"); pg.wait_for_timeout(300)
               # Vélo sans photo : la galerie ne crée jamais la photo principale (elle se fait dans l'onglet Entretien)
               pg.click("#listeMesVelos .velo-ligne:nth-child(3) .velo-ligne-fleche"); pg.wait_for_timeout(1000)
               assert nb() == 0 and "Pas de photo principale" in pg.inner_text("#galerieVelo")
-              assert pg.eval_on_selector("#galerieVelo .menu-photo-zone [role=menuitem]", "e => e.disabled")
+              assert pg.eval_on_selector_all("#galerieVelo .menu-photo-zone [role=menuitem]", "os => os.map(o => o.disabled)") == [True, True]
               pg.set_input_files("#galeriePhotoInput", fichiers[:1]); pg.wait_for_timeout(1500)
               assert 3 not in principales and galeries[3] == [] and nb() == 0, (principales.keys(), galeries[3], nb())
               assert "Ajoute d’abord la photo principale" in pg.inner_text("#messageMesVelos")
@@ -5099,7 +5103,7 @@ jobs:
               # Le CUBE montre sa photo d'origine ; une photo ajoutée vient en plus
               pg.click("#listeMesVelos .velo-ligne:nth-child(1) .velo-ligne-fleche"); pg.wait_for_timeout(1000)
               assert nb() == 1 and pg.inner_text("#galerieVelo .galerie-badge") == "Principale"
-              assert pg.eval_on_selector_all("#galerieVelo .galerie-suppr", "e => e.length") == 0
+              assert pg.eval_on_selector_all("#galerieVelo .menu-photo-zone [role=menuitem]", "os => os.map(o => o.disabled)") == [False, True]
               assert not err, err
               nav.close()
           print("OK galerie : 6 photos au maximum, défilement, ajout, suppression")
@@ -6713,7 +6717,7 @@ jobs:
               pg.evaluate("location.hash = 'reglages'")
               pg.wait_for_timeout(1200)
               assert pg.locator("#galerieVelo .menu-photo-zone .menu-sortie-btn").count() == 1
-              verifie("#galerieVelo .menu-photo-zone", "mon vélo", ["Ajouter des photos"], [False])
+              verifie("#galerieVelo .menu-photo-zone", "mon vélo", ["Ajouter des photos", "Supprimer cette photo"], [False, True])
               fond = pg.eval_on_selector("#galerieVelo .menu-sortie-btn", "e => getComputedStyle(e).backgroundColor")
               assert fond != "rgba(0, 0, 0, 0)", "le bouton doit se voir sur la photo"
               # Le menu du vélo ne garde que la fiche et la suppression
