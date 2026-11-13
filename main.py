@@ -14338,7 +14338,7 @@ def accueil():
 
                 try {
                     v3d.carte = creerCarte(document.getElementById('carte3d'));
-                    v3d.carte.on('load', async () => {
+                    v3d.carte.on('load', () => {
                         const carteChargee = v3d.carte;
                         if (!carteChargee) return;
                         installerCouches();
@@ -14346,9 +14346,8 @@ def accueil():
                         majLegendeV3d();
                         majBoutonsV3d();
                         vueEnsemble();
-                        messageV3d('Préparation des noms de lieux et des repères…');
-                        await poserReperesV3d();
-                        if (v3d.carte !== carteChargee) return;
+
+                        // La carte suffit pour démarrer : les recherches de lieux continuent en arrière-plan.
                         v3d.prete = true;
                         v3d.cap = capEntre(v3d.pts[0], pointA(Math.min(v3d.total, 300)));
                         messageV3d(v3d.photos.length
@@ -14356,6 +14355,9 @@ def accueil():
                             : 'Appuie sur Lecture pour lancer le survol.');
                         majBoutonsV3d();
                         dessinerAvancement();
+
+                        // Les repères (pentes, Vmax et lieux) se préparent sans bloquer le bouton Lecture.
+                        poserReperesV3d().catch(e => console.warn('Préparation des repères 3D :', e));
                     });
                     v3d.carte.on('error', (e) => console.error(e && e.error ? e.error : e));
                 } catch (e) {
