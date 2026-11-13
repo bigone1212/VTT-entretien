@@ -1,3 +1,14 @@
+# État du test — 13/11/2026 — profil cinéma coloré déployé
+
+- La version corrigée a été déployée sur le service Render de test `maillons-test-2026`.
+- Déploiement `dep-dbrh1k0u01pc73b7rpig`, commit applicatif `7b18d2ebd8b6928b84a109722bf6198d11571926`, statut Render : `live`. Le build est réussi.
+- Le code du profil utilise deux tracés SVG superposés : gris pour le parcours complet, turquoise pour la partie déjà parcourue. Le point circulaire mobile n'est plus présent.
+- Le run GitHub Actions `43431447832` a réussi, mais il précède cette dernière modification du profil ; aucun résultat CI propre au dernier ajustement n'a été confirmé.
+- Validation visuelle réelle avec un GPX sur téléphone : en attente du retour de Math.
+- Aucun changement sur `main`, aucune fusion, aucune opération Neon. Production non déployée.
+
+---
+
 # Complément du relais — 13/11/2026 — échappement du code intégré
 
 - Le journal du premier déploiement de la nouvelle version a signalé un avertissement Python sur l'expression régulière insérée dans le HTML.
