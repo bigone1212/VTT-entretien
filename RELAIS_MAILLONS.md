@@ -1,3 +1,19 @@
+# Mise à jour du relais — 13/11/2026 — premier mode Cinéma pour les vidéos 3D
+
+- À la demande de Math, création d'un mode Cinéma distinct du survol classique, pour rapprocher les vidéos d'une présentation d'étape cycliste.
+- Sur la branche `reprise/2026-11-13-animation-3d-gpx`, seul `main.py` a été modifié :
+  - bouton « Mode Cinéma » : les commandes basses s'effacent progressivement ; bouton pour revenir au mode normal ;
+  - habillage intégré à la vidéo exportée : titre de la sortie, date, distance parcourue et totale, dénivelé positif si les altitudes GPX sont présentes, barre de progression et crédits des fonds cartographiques ;
+  - enregistrement composé dans un canvas dédié, jusqu'à 1920 px sur le plus grand côté, proportions conservées, 30 images/s et débit cible 8 Mbit/s ;
+  - `preserveDrawingBuffer` activé sur MapLibre pour pouvoir reprendre le rendu WebGL dans le canvas vidéo.
+- Le mode classique, le tracé GPX, le relief, les angles, les filtres et les commandes de lecture restent disponibles.
+- Commits : `d3e8cea8b3eaf26c5d71972c5a75c9b1259e167d`, `98b5b82a1b0a18846020f0db87dbf1f755554ab3`, `7599eadfaf5f8f0e26ee9ac2b77d857bcab9fb38`.
+- À vérifier : syntaxe et rendu navigateur, qualité du canvas composite, fluidité pendant l'enregistrement et présence effective des incrustations dans le fichier WebM.
+- Aucun test navigateur effectué, aucun déploiement. Aucun changement sur `main`, aucune PR/fusion, aucune opération Neon.
+- Prochaine étape : vérifier le prototype, puis demander l'accord de Math avant déploiement sur Maillons test uniquement.
+
+---
+
 # Mise à jour du relais — 13/11/2026 — point de progression fluide et caméra plus discrète
 
 - Retour de Math après le dernier déploiement : le survol est nettement meilleur, mais il souhaite moins de mouvements de caméra et un point mobile qui glisse sans sauter sur la carte.
@@ -516,42 +532,29 @@
 
 ## Tâche en cours
 
-AMÉLIORER LA RECHERCHE DES COMPOSANTS TECHNIQUES — PR #13 — 30/10/2026.
+MODE CINÉMA POUR LES VIDÉOS DE SURVOL 3D — 13/11/2026.
 
-Objectif : mieux récupérer les noms et références précis des composants d'un vélo à partir de plusieurs présentations de fiches techniques, sans inventer les équipements.
+Objectif : donner aux vidéos GPX un rendu de présentation sportive, sans supprimer le survol classique ni modifier les données de parcours.
 
-État :
-- [x] Relire le relais, vérifier le dernier commit de `main` et relire `main.py`.
-- [x] Confirmer avec Math que le test concerne le Trek Fuel EXe 9.7.
-- [x] Identifier la limite : extraction limitée aux tableaux simples, `<dt>/<dd>` et JSON-LD ; recherche secondaire limitée à trois pages.
-- [x] Créer la branche dédiée `reprise/2026-10-30-composants-fiche-velo`.
-- [x] Modifier l'extraction pour les lignes de tableaux à plusieurs paires, les listes/paragraphes et les éléments HTML voisins label/value.
-- [x] Porter le maximum de pages secondaires de 3 à 6.
-- [x] Ajouter les tests ciblés dans le workflow GitHub Actions.
-- [x] Ouvrir la PR #13 en brouillon pour déclencher les contrôles.
-- [x] CI complet réussi sur le run `41045877610` (n° 203), après correction d'une erreur de syntaxe signalée par le run précédent.
-- [x] Relire le diff final : uniquement `main.py` et `.github/workflows/maillons-check.yml`, 50 ajouts et 4 suppressions. La comparaison avec `main` montre que les deux commits plus récents de `main` concernent seulement le relais ; la PR reste mergeable.
-- [ ] Faire tester la recherche à Math après fusion, avec le Trek Fuel EXe 9.7.
-- [ ] Demander son accord avant toute fusion ; aucune fusion ou publication sans accord explicite.
+État sur la branche `reprise/2026-11-13-animation-3d-gpx` :
+- [x] Relire le présent relais et vérifier le code réel de la branche avant modification.
+- [x] Ajouter un bouton « Mode Cinéma » qui masque progressivement les commandes basses et permet de revenir au mode normal.
+- [x] Ajouter un habillage graphique vidéo : nom de la sortie, date, distance parcourue / distance totale, dénivelé positif lorsque les altitudes GPX sont disponibles, barre de progression et crédits cartographiques.
+- [x] Composer cet habillage avec l'image de la carte dans un canvas dédié avant l'enregistrement WebM ; résolution limitée à 1920 px sur le plus grand côté, proportions conservées, 30 images/s, débit cible 8 Mbit/s.
+- [x] Activer `preserveDrawingBuffer` sur MapLibre pour permettre la composition de l'image WebGL dans le canvas vidéo.
+- [x] Préserver le survol classique, le tracé GPX, le relief, les inclinaisons, les filtres et les commandes existantes.
+- [ ] Vérifier la syntaxe et le rendu dans un navigateur, notamment l'enregistrement WebM et la fluidité avec le canvas composite.
+- [ ] Déployer sur Maillons test uniquement après accord explicite de Math, puis lui faire essayer une vidéo.
+- [ ] Aucune fusion ni publication sur `main` sans accord explicite.
 
-Diagnostic confirmé :
-- Les composants absents de l'interface n'étaient pas masqués par l'affichage : ils n'étaient pas extraits par le serveur.
-- Les extraits de résultats des moteurs ne sont pas considérés comme preuve d'équipement.
-- Le recoupement des sources et les statuts existants doivent être préservés ; une compatibilité possible ne vaut pas preuve de montage d'origine.
+Derniers commits de code :
+- `d3e8cea8b3eaf26c5d71972c5a75c9b1259e167d` — création du mode Cinéma.
+- `98b5b82a1b0a18846020f0db87dbf1f755554ab3` — correction de la date affichée dans l'habillage.
+- `7599eadfaf5f8f0e26ee9ac2b77d857bcab9fb38` — préparation du rendu WebGL pour la composition vidéo.
+- Fichier applicatif modifié : `main.py`.
+- Tests navigateur non exécutés ; aucune validation visuelle annoncée.
+- Aucun déploiement Render, aucune PR/fusion, aucun changement sur `main`, aucune opération Neon.
 
-Enregistré sur GitHub :
-- Point de départ `main` : `cf4d8f3ae1d1a68ee3da0cff919a0a05b1004acd`.
-- Branche : `reprise/2026-10-30-composants-fiche-velo`.
-- Tête : `11fa8fe7f46820e731f2855ca3eada26ff42d8ad`.
-- PR #13 : https://github.com/bigone1212/VTT-entretien/pull/13, brouillon, non fusionnée.
-- Fichiers : `main.py`, `.github/workflows/maillons-check.yml`.
-- Workflow run `41045877610`, n° 203 : terminé avec succès ; le run initial `41045716587` avait échoué sur une erreur de syntaxe depuis corrigée.
-
-Local, non enregistré :
-- Aucun changement de code.
-
-Aucun changement de données, aucune opération Neon, aucun déploiement Render.
- 
 ## Archive — reprise automatique de la fiche technique et adaptation des entretiens — 29/10/2026
 
 REPRISE CHATGPT — RECHERCHE AUTOMATIQUE DE LA FICHE TECHNIQUE ET ENTRETIENS ADAPTÉS — 29/10/2026.
