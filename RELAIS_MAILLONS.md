@@ -1,3 +1,15 @@
+# Mise à jour — 13/11/2026 — correction de la recherche complémentaire (vérifications en cours)
+
+- Commit applicatif `157e165dbe972fdca5ce554a5dc2f815807537a3` sur la branche existante.
+- `chercherLieuxV3d()` ne s'arrête plus dès que la préparation serveur est terminée : elle fusionne maintenant les lieux préparés avec les recherches directes OpenStreetMap et IGN.
+- Cache navigateur invalidé par passage de la clé `v2` à `v3`, pour forcer une nouvelle recherche au prochain chargement de la sortie.
+- Limite portée de 18 à 60 lieux dans la préparation serveur et dans la sélection navigateur.
+- Les coordonnées des sources ne sont pas déplacées ; la bibliothèque reste conservée et complémentaire.
+- Workflow GitHub Actions `43518683346` déclenché sur ce commit ; statut encore `in_progress` au moment de cette note. Aucun résultat final annoncé.
+- Aucun déploiement Render, aucune modification de `main`, aucune nouvelle branche, aucune fusion et aucune opération Neon.
+
+---
+
 # Tâche en cours — 13/11/2026 — rétablir la recherche complémentaire des lieux
 
 - Retour utilisateur après déploiement : l'interface semble n'afficher que la bibliothèque et trop peu de lieux-dits.
