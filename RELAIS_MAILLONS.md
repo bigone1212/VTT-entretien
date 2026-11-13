@@ -150,6 +150,12 @@
 ---
 
 
+## 2026-11-13 (16h20) — Galerie : « Supprimer cette photo » dans le menu (plus de croix), PR #58 FUSIONNÉE
+
+- Plus de croix sur les photos de la galerie (CSS `.galerie-suppr` retiré). Menu de la galerie : « Ajouter des photos » + « Supprimer cette photo » (photo affichée ; grisé sur la photo principale, qui se supprime dans l'onglet Entretien). Le défilement automatique s'arrête menu ouvert ; le menu se met à jour à chaque changement de photo.
+- Testé : tests navigateur adaptés (aucune croix, états grisé/actif, suppression par le menu), contrôle GitHub vert (run 43448822030).
+- NON vérifié : Render, vrai téléphone. (Un envoi Git a échoué une fois sur une erreur 503 de GitHub, refait sans souci.)
+
 ## 2026-11-13 (13h20) — Photo principale gérée dans Entretien, Mon vélo = autres photos seulement, PR #56 FUSIONNÉE
 
 - Menu Entretien (`actionsPhotoPrincipale`) : Ajouter/Changer la photo principale, Photo depuis un lien…, Supprimer la photo principale, Replacer les repères (droite/gauche).
