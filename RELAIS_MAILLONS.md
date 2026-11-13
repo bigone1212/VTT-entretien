@@ -1,3 +1,13 @@
+# Mise à jour du relais — 13/11/2026 — profil cinéma coloré selon l'avancement
+
+- À la demande de Math, suppression du point blanc mobile sur le profil altimétrique du mode Cinéma.
+- Dans `main.py`, le profil complet reste en gris discret ; une seconde ligne turquoise se dessine progressivement de gauche à droite, synchronisée avec la progression du survol GPX. Le curseur circulaire est retiré. Le profil et le suivi sont masqués comme avant si les altitudes GPX ne sont pas disponibles.
+- Le reste du HUD, les statistiques, le déplacement sur la carte, la caméra, le tracé, les filtres et l'export vidéo ne sont pas volontairement modifiés.
+- Changement enregistré sur la branche `reprise/2026-11-13-animation-3d-gpx`. Aucun changement sur `main`, aucune fusion et aucune opération Neon.
+- À faire : vérifier le CI, puis déployer uniquement sur Maillons test pour que Math puisse juger le rendu. Ne pas déployer en production ni fusionner sans accord explicite.
+
+---
+
 # Mise à jour du relais — 13/11/2026 — PR #57 ouverte pour le mode Cinéma GPX
 
 - À la demande de Math, ouverture de la PR #57 : https://github.com/bigone1212/VTT-entretien/pull/57
