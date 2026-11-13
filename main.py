@@ -13492,6 +13492,7 @@ def accueil():
                     if (indexMax >= 0) {
                         const libelle='Vmax '+Math.round(v3d.vitesseMax)+' km/h';
                         const marqueurMax=new window.maplibregl.Marker({element:elementRepereAerienV3d(libelle,16),anchor:'bottom-left'}).setLngLat(pointA(v3d.cum[indexMax])).addTo(carte);
+                        v3d.reperes.push(marqueurMax);
                         v3d.panneauxPente.push({
                             marqueur: marqueurMax,
                             debut: v3d.cum[indexMax],
