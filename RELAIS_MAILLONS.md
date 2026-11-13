@@ -150,6 +150,13 @@
 ---
 
 
+## 2026-11-13 (13h20) — Photo principale gérée dans Entretien, Mon vélo = autres photos seulement, PR #56 FUSIONNÉE
+
+- Menu Entretien (`actionsPhotoPrincipale`) : Ajouter/Changer la photo principale, Photo depuis un lien…, Supprimer la photo principale, Replacer les repères (droite/gauche).
+- Menu galerie Mon vélo (`actionsGalerieVelo`) : seulement « Ajouter des photos » (grisé sans photo principale). Croix de suppression seulement sur les photos non principales. `ajouterPhotoGalerie` ne crée plus jamais la photo principale (message « Ajoute d'abord la photo principale dans l'onglet Entretien »). Texte de la galerie vide et texte d'aide mis à jour.
+- Testé : nouveaux tests navigateur (menus, galerie sans principale, croix), anciens tests adaptés, contrôle GitHub vert (run 43414017174).
+- NON vérifié : Render, vrai téléphone.
+
 ## 2026-11-13 (11h55) — Menu de la photo en haut à droite de la photo, PR #55 FUSIONNÉE
 
 - Nouveau menu trois points sur la photo : onglet Entretien (`#menuPhotoEntretien`, avant `.bike-container`) et galerie de l'onglet Mon vélo (`.menu-photo-zone` en tête de `#galerieVelo`). Fonctions `actionsPhotoVelo()` / `monterMenuPhoto()`. Contenu : Ajouter une photo/des photos, Changer la photo principale, Photo depuis un lien…, Supprimer la photo, Replacer les repères (droite/gauche).
