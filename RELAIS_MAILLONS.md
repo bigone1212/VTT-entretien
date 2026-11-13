@@ -953,3 +953,13 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - Le premier essai du nouveau contrôle JavaScript (40379448708) a échoué à cause d'une expression de recherche trop échappée dans le test, avant d'atteindre les tests d'application. Le contrôle a été corrigé et le run final 40379653916 passe entièrement.
 - Vérification visuelle réelle dans un navigateur sur ordinateur/téléphone : **non réalisée** faute d'outil navigateur disponible dans cette session. La validation actuelle reste statique et automatique; elle ne prouve pas le rendu visuel ni les interactions en situation réelle.
 - Aucun déploiement déclenché. Ne pas toucher à main. La PR #7 reste brouillon et non fusionnée; GitHub signalait encore un état de fusion dirty car main a une mise à jour distincte du fichier de relais. Réconcilier ce fichier avant toute fusion future, avec l'accord explicite de Math.
+
+
+# Reprise — 13/11/2026 — lecture 3D bloquée pendant la recherche des lieux
+
+- Retour de Math : après le dernier déploiement, le bouton Lecture ne lance plus le survol.
+- Cause identifiée dans `main.py` : le gestionnaire de chargement de la carte attendait (`await`) la fin de `poserReperesV3d()`, qui lance les requêtes IGN / OpenStreetMap, avant de passer `v3d.prete` à vrai. Si les services géographiques tardent, la lecture reste bloquée.
+- Correctif enregistré sur la branche `reprise/2026-11-13-maillons-complet-test`, commit applicatif `00ec26c5a0e2fe842b1e3f39fcdc5b2ba76e76f8` : la lecture est maintenant autorisée dès que la carte est chargée ; la préparation des pentes, de la Vmax et des noms de lieux continue en arrière-plan.
+- Aucun changement sur `main`, aucune fusion, aucune opération Neon et aucune modification de données.
+- Render `maillons-test-2026` a `autoDeploy=no` : le code n'est pas encore déployé. **Tâche en cours : déclencher le déploiement manuel sur le service de test uniquement, puis vérifier son statut Live et les journaux.**
+- Tests navigateur réels non effectués à ce stade ; ne pas annoncer le correctif validé avant l'essai de Math.
