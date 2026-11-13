@@ -1,3 +1,15 @@
+# Mise à jour — 13/11/2026 — préparation géographique automatique (en cours)
+
+- Travail sur la seule branche `reprise/2026-11-13-maillons-complet-test`.
+- `main.py` : ajout d'une file persistante en base pour chaque sortie importée ; recherche OpenStreetMap en tâche de fond ; enregistrement des lieux dans une bibliothèque géographique commune ; rattachement des noms au point et à la distance du parcours.
+- À la reprise du service Render, les tâches interrompues repassent en attente et repartent lors de la consultation de la sortie. Le traitement ne tourne pas lorsque le service gratuit est endormi.
+- La lecture 3D demande d'abord les lieux déjà préparés sur le serveur ; si la préparation n'est pas terminée ou si l'API serveur est indisponible, la recherche habituelle dans le navigateur reste disponible.
+- Commits : `33dfebfe0f534952e4871835c4328fea89c0c326` et `e178101477da2dc58136ec83283e472f40a5ca16`.
+- La bibliothèque serveur alimente actuellement la recherche OpenStreetMap. L'enrichissement IGN côté serveur et les tests de bout en bout restent à vérifier.
+- Aucun changement sur `main`, aucune fusion de PR, aucune modification volontaire des données de production. Aucun déploiement Render déclenché.
+- Étape suivante : attendre le résultat du workflow GitHub, corriger toute erreur, puis demander l'accord de Math juste avant le déploiement sur Maillons test.
+
+---
 # Mise à jour — 13/11/2026 — noms des lieux affichés au passage (en cours)
 
 - Demande de Math : mémoriser à l'avance les noms de villages, lieux-dits et sommets, puis les afficher brièvement au passage du cycliste, en texte aérien comme les panneaux de pente et Vmax.
