@@ -1,3 +1,14 @@
+# Mise à jour — 13/11/2026 — IGN prioritaire, OpenStreetMap en complément
+
+- Commit `070f28eef6634042a9692e6fbe06834bf6a2cf73` : la préparation géographique côté serveur interroge désormais d'abord l'API de géocodage IGN de la Géoplateforme (points d'intérêt BD TOPO), avec des recherches autour de points répartis sur le parcours ; OpenStreetMap/Overpass est ensuite interrogé pour compléter les résultats.
+- Les lieux IGN sont enregistrés dans la bibliothèque géographique partagée avec la source `IGN`. Les lieux OpenStreetMap gardent leur source propre. Les noms de la bibliothèque restent réutilisés entre sorties.
+- L'API IGN est celle documentée par l'IGN : `https://data.geopf.fr/geocodage/reverse`, index `poi`, zone circulaire autour des points du parcours. L'API est ouverte ; sa documentation indique une limite de 50 requêtes/seconde.
+- Modifications sur la seule branche `reprise/2026-11-13-maillons-complet-test`. Aucun changement sur `main`, aucune fusion, aucune opération sur la base Neon de production.
+- Vérification à faire : syntaxe et workflow GitHub, puis déploiement Render de test déjà autorisé par Math. Aucun test navigateur ou test réel de résultat IGN encore effectué.
+- Render test : service `srv-dbfm8r0ae00c738k4840`, déploiement automatique désactivé ; déclencher uniquement le déploiement manuel de ce service.
+
+---
+
 # Mise à jour — 13/11/2026 — bibliothèque géographique partagée
 
 - Commit `b46163cc21e3de36999123b37100a9f2abd315a0` : réutilisation des noms déjà enregistrés dans la bibliothèque géographique commune, même si Overpass est indisponible.
