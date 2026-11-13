@@ -937,3 +937,13 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - Le code interpole déjà la position de la caméra entre les points GPS du GPX via `pointA(d)`. Ajouter artificiellement des points au tracé ne crée pas de nouvelles données GPS et pourrait alourdir le rendu ; cette itération privilégie donc le lissage de caméra sans altérer les coordonnées, le profil, les photos, les filtres ou le tracé enregistré.
 - Aucun test navigateur/téléphone effectué à ce stade. Aucun déploiement, aucune modification de `main`, aucune PR/fusion.
 - Étape suivante : faire valider le rendu sur Maillons test après autorisation explicite de déployer. Si le GPX source est lui-même trop peu détaillé, demander un export original avec un enregistrement GPS plus fréquent plutôt que fabriquer de la précision.
+
+
+## Survol 3D — ralentissement pour limiter les à-coups (13/11/2026)
+
+- Nouveau retour utilisateur : le relief 3D est validé (« nickel »), mais le survol donne encore une impression de sauts entre les points.
+- Sur la branche `reprise/2026-11-13-animation-3d-gpx`, seul `main.py` est modifié : durée du survol portée de 5 à 8 minutes par km, avec bornes de 75 à 240 secondes (au lieu de 45 à 180). Objectif : réduire la distance parcourue entre deux images sur les appareils qui affichent moins d'images par seconde.
+- Commit `main.py` : `febd5f6f3b0a7d3db691114f9b4b2b950d3a1ded`.
+- Le relief, les points GPS d'origine, le tracé, les filtres et les autres fonctions ne sont pas modifiés. Aucun faux point GPS ajouté.
+- Pas de test navigateur/téléphone effectué. Pas de déploiement de cette nouvelle version à ce stade. Aucun changement sur `main`, aucune PR/fusion, aucune opération sur Neon.
+- Étape suivante : demander l'accord explicite de Math avant de déployer cette itération sur Maillons test uniquement.
