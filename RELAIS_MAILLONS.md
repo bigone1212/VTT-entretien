@@ -928,3 +928,12 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - Le premier essai du nouveau contrôle JavaScript (40379448708) a échoué à cause d'une expression de recherche trop échappée dans le test, avant d'atteindre les tests d'application. Le contrôle a été corrigé et le run final 40379653916 passe entièrement.
 - Vérification visuelle réelle dans un navigateur sur ordinateur/téléphone : **non réalisée** faute d'outil navigateur disponible dans cette session. La validation actuelle reste statique et automatique; elle ne prouve pas le rendu visuel ni les interactions en situation réelle.
 - Aucun déploiement déclenché. Ne pas toucher à main. La PR #7 reste brouillon et non fusionnée; GitHub signalait encore un état de fusion dirty car main a une mise à jour distincte du fichier de relais. Réconcilier ce fichier avant toute fusion future, avec l'accord explicite de Math.
+
+
+## Survol 3D — fluidité de la caméra (13/11/2026)
+
+- Sur la branche `reprise/2026-11-13-animation-3d-gpx`, ajustement ciblé dans `main.py` après retour utilisateur : le regard de la caméra porte désormais sur une distance de 180 à 350 m (au lieu de 120 à 600 m) et la rotation du cap est davantage amortie (facteur exponentiel 1,6 au lieu de 2,5).
+- Commit : `bbae19f09e732dc5ed4caec69650973e0d9065f2`.
+- Le code interpole déjà la position de la caméra entre les points GPS du GPX via `pointA(d)`. Ajouter artificiellement des points au tracé ne crée pas de nouvelles données GPS et pourrait alourdir le rendu ; cette itération privilégie donc le lissage de caméra sans altérer les coordonnées, le profil, les photos, les filtres ou le tracé enregistré.
+- Aucun test navigateur/téléphone effectué à ce stade. Aucun déploiement, aucune modification de `main`, aucune PR/fusion.
+- Étape suivante : faire valider le rendu sur Maillons test après autorisation explicite de déployer. Si le GPX source est lui-même trop peu détaillé, demander un export original avec un enregistrement GPS plus fréquent plutôt que fabriquer de la précision.
