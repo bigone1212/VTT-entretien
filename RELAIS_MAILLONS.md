@@ -1,3 +1,14 @@
+# Mise à jour du relais — 13/11/2026 — lissage du déplacement de la caméra 3D
+
+- Après le nouvel essai sur Maillons test, Math indique que le survol est moins saccadé à 45°, mais pas encore assez fluide pour un rendu cinématographique de présentation d'étape du Tour de France.
+- Sur la branche `reprise/2026-11-13-animation-3d-gpx`, seul `main.py` est modifié : ajout d'un lissage exponentiel du centre de la caméra (facteur 5), en plus du lissage du cap déjà présent. La caméra suit désormais une position filtrée plutôt que de se recaler exactement sur chaque point interpolé du GPX à chaque image.
+- Le tracé GPS, les données d'altitude, le relief, les filtres, les fonds et les autres fonctions ne sont pas modifiés. La caméra est repositionnée exactement au point final à la fin du survol et lors d'un repositionnement brusque.
+- Commit de `main.py` : 670f24a465e11e22963baaea4751c985456b28cb.
+- Aucun test navigateur/téléphone effectué. Aucun déploiement de cette itération. Aucun changement sur `main`, aucune PR/fusion, aucune opération Neon.
+- Étape suivante : relire le changement, puis demander à Math s'il souhaite le déployer sur Maillons test uniquement. Ne pas déployer en production ni fusionner sans son accord explicite.
+
+---
+
 # Mise à jour du relais — 13/11/2026 — relief 3D plus prononcé (à tester)
 
 - Retour de Math après le premier essai sur Render test : rendu « peut-être mieux », mais souhait d'un relief plus prononcé.
