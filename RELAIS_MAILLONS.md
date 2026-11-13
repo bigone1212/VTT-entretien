@@ -1,3 +1,20 @@
+# Mise à jour — 13/11/2026 — noms des lieux affichés au passage (en cours)
+
+- Demande de Math : mémoriser à l'avance les noms de villages, lieux-dits et sommets, puis les afficher brièvement au passage du cycliste, en texte aérien comme les panneaux de pente et Vmax.
+- Travail effectué uniquement sur la branche `reprise/2026-11-13-maillons-complet-test`, dans `main.py` :
+  - recherche IGN / OpenStreetMap conservée ;
+  - noms mémorisés dans le stockage local du navigateur, avec une clé liée à la sortie et à un échantillon de son tracé, pour éviter de refaire la recherche à chaque lecture ;
+  - chaque lieu est rattaché au point du GPX le plus proche et seuls les lieux suffisamment proches du tracé sont conservés ;
+  - affichage en texte aérien sans étiquette encadrée, uniquement pendant une courte fenêtre au passage, un nom à la fois ;
+  - la lecture du survol attend la fin de la préparation des repères.
+- Commits `main.py` : `3d0605c76f959522d7545a5cb974d817ed9bd568` puis `519c50f6c3b01b31e3c8166d0ad43685858956cf` (correction du dédoublonnage et du rayon de proximité).
+- Tests : à vérifier via GitHub Actions ; aucun test navigateur réel effectué à ce stade.
+- Render `maillons-test-2026` vérifié : il suit bien cette branche, mais `autoDeploy=no`. Aucun déploiement déclenché.
+- Aucun changement sur `main`, aucune fusion de PR, aucune modification de base Neon ni de données.
+- **Tâche en cours** : vérifier le workflow automatique, puis demander l'accord explicite de Math avant de déployer sur Maillons test.
+
+---
+
 # Complément — 13/11/2026 — intégration de la PR #58 dans la branche de test
 
 - La PR #58 est fusionnée dans `main` : suppression des photos supplémentaires depuis le menu de la galerie, sans croix sur les photos.
