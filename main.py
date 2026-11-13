@@ -13112,7 +13112,7 @@ def accueil():
                 // La trace est enregistrée en [latitude, longitude] ; la carte veut [longitude, latitude].
                 const valides = trace.filter(p => Array.isArray(p) && p.length >= 2);
                 const pts = valides.map(p => [p[1], p[0]]);
-                const altitudes = valides.map(p => (typeof p[2] === 'number' && isFinite(p[2]) ? p[2] : null));
+                const altitudes = valides.map(p => (typeof p[3] === 'number' && isFinite(p[3]) ? p[3] : null));
                 v3d.altitudeDisponible = altitudes.filter(a => a !== null).length >= 2;
                 v3d.denivelePlus = 0;
                 for (let i = 1; i < altitudes.length; i++) {
