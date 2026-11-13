@@ -13759,6 +13759,8 @@ def accueil():
                     zoom: 12,
                     pitch: 45,
                     maxPitch: 85,
+                    // Nécessaire pour composer les incrustations dans la vidéo exportée.
+                    preserveDrawingBuffer: true,
                     attributionControl: true
                 });
                 return carte;
