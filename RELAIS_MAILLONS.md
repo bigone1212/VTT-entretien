@@ -1018,3 +1018,5 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - Commit : `089126d8c72d8a1ee71c4223149443fe80428e0c`. Vérification GitHub Actions en cours.
 - Render test toujours configuré sur cette branche avec auto-déploiement désactivé. Ne déclencher le déploiement test qu'après succès du workflow. Aucun changement sur `main`, aucune opération Neon ni base de production.
 - Tâche en cours : attendre et examiner le résultat du workflow, puis déployer uniquement sur `maillons-test-2026` si les contrôles passent.
+
+- Après correction du paramètre `background_tasks`, le test d'import GPX passe. Le run `43511512397` a ensuite révélé un deuxième défaut ancien du contrôle statique : le gestionnaire `@app.on_event("startup")` était compté à tort comme une route HTTP et réclamait un contrôle de vélo. Correction limitée au workflow : les événements `on_event` sont exclus du recensement des routes. Commit `2e2125ffdaaf5a39bf451a39e925f8710411c836`; nouveau contrôle en cours. Aucune modification du code applicatif dans ces corrections de tests.
