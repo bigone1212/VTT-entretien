@@ -1,3 +1,13 @@
+# Tâche en cours — 13/11/2026 — enrichissement des lieux-dits
+
+- Accord de Math : ajouter des sources complémentaires pour trouver davantage de lieux-dits, en priorité les couches vectorielles IGN BD TOPO et BD CARTO, puis étudier un enrichissement OSM par extractions Geofabrik et GeoNames.
+- Travail limité à la branche existante `reprise/2026-11-13-maillons-complet-test`. Ne pas créer de branche, ne pas modifier `main`, ne pas fusionner, ne pas toucher à la base Neon de production.
+- Objectif : requêter les objets nommés autour du GPX (cible de proximité 200 m), conserver les coordonnées géographiques originales, dédoublonner et enregistrer dans la bibliothèque géographique existante. Préserver la lecture 3D et les filtres.
+- Avant intégration, vérifier les noms techniques et attributs des couches WFS IGN, les limites de requête et les formats de réponse. Geofabrik implique le téléchargement/traitement d'extraits régionaux volumineux : ne pas télécharger un PBF complet dans chaque tâche GPX ni introduire de charge excessive sur Render Free. GeoNames sera évalué comme source complémentaire distincte.
+- Aucun déploiement n'est autorisé implicitement par cet accord de développement ; le service Render test reste en déploiement manuel.
+
+---
+
 # Mise à jour — 13/11/2026 — IGN prioritaire, OpenStreetMap en complément
 
 - Commit `070f28eef6634042a9692e6fbe06834bf6a2cf73` : la préparation géographique côté serveur interroge désormais d'abord l'API de géocodage IGN de la Géoplateforme (points d'intérêt BD TOPO), avec des recherches autour de points répartis sur le parcours ; OpenStreetMap/Overpass est ensuite interrogé pour compléter les résultats.
