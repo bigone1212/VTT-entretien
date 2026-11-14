@@ -1386,3 +1386,18 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - Commit applicatif : `6ec455fff9978976dcc60261291fa9361c04dcb7`, branche existante `reprise/2026-11-13-maillons-complet-test`.
 - À faire : contrôler le diff, exécuter les vérifications Python/JavaScript et le workflow GitHub Actions. Aucun déploiement Render n'est autorisé par cette étape ; demander un nouvel accord explicite avant le déploiement test.
 - Aucun changement sur `main`, aucune fusion, aucune opération Neon.
+
+
+# Mise à jour — 14/11/2026 — allègement du rendu 3D pendant la lecture
+
+- Retour utilisateur : même après la fin de la recherche géographique, la lecture reste lente ; masquer les « Repères » ne suffit pas.
+- Inspection du code : le bouton Repères masque les étiquettes, mais ne réduit pas le travail du moteur cartographique. La caméra et le point mobile forçaient encore des mises à jour MapLibre à chaque image ; la couche d'ombres du relief ajoutait un rendu coûteux.
+- Correction dans `main.py` :
+  - la progression temporelle continue à chaque image, mais les mises à jour de la caméra et du point mobile sont limitées à 30 images par seconde au maximum ;
+  - les informations et repères sont recalculés environ 10 fois par seconde, et la ligne parcourue environ 3 fois par seconde ;
+  - la couche d'ombres est masquée uniquement pendant la lecture normale, puis rétablie à la pause ou à la fin. Le terrain 3D et son relief restent actifs ;
+  - pendant un enregistrement vidéo, les ombres restent visibles.
+- Les recherches IGN/OSM, la bibliothèque, les coordonnées, les rayons, les catégories, les règles d'affichage et les données GPX ne sont pas modifiés.
+- Commit applicatif : `b45403c4c0787c34492949baf90b00fc968f0e63`, branche existante `reprise/2026-11-13-maillons-complet-test`.
+- Vérifications à faire : syntaxe Python, syntaxe JavaScript intégrée, workflow GitHub Actions et relecture du diff. Déploiement Render test non effectué à ce stade ; demander l'accord explicite avant de déployer.
+- Aucun changement sur `main`, aucune fusion, aucune opération Neon.
