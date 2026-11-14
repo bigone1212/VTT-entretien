@@ -1,3 +1,14 @@
+# Mise à jour — 14/11/2026 — correction des couches IGN et réduction du temps de recherche
+
+- Le test après le déploiement précédent a montré que le résultat restait vide. La cause structurelle des appels WFS était confirmée : les deux couches interrogées étaient des lieux-dits non habités, alors que l'affichage doit surtout récupérer les zones d'habitation et les cours d'eau. De plus, le géocodage inverse envoyait une limite de 50 résultats ; elle est ramenée à 20 et le corps d'une erreur HTTP IGN est désormais conservé dans les logs.
+- Les couches WFS sont maintenant `BDTOPO_V3:zone_d_habitation`, `BDTOPO_V3:cours_d_eau` et `BDTOPO_V3:lieu_dit_non_habite`. Le traitement accepte les polygones d'habitation (point représentatif calculé à partir de leur contour) et les lignes de cours d'eau (point le plus proche du parcours). La recherche WFS garde une marge de 500 m pour les zones d'habitation.
+- OpenStreetMap : une requête par tronçon récupère désormais à la fois les lieux et les rivières, au lieu de deux requêtes. Délai réseau par serveur ramené à 6 secondes et trois serveurs essayés. La requête utilise une sortie Overpass valide `out tags geom`.
+- Aucun changement aux filtres d'affichage, à la bibliothèque, aux coordonnées de la trace, aux couches satellite/plan ou au survol 3D. Les lieux-dits non habités restent conservés dans la bibliothèque mais ne sont pas affichés.
+- Commits applicatifs sur la branche existante : `7ba7d61b44d3d95eabfe563201fa5716c37fa18e` puis `55553b963be74421dbef5307626c1adcb4545d42`. Aucun nouveau branchement, aucun changement sur `main`, aucune fusion, aucune opération Neon.
+- À faire : contrôle syntaxique/build Render, puis déploiement Render test uniquement. Les réponses réelles IGN/OSM doivent être confirmées dans les logs après le déploiement.
+
+---
+
 # Mise à jour — 14/11/2026 — correction IGN / OpenStreetMap après diagnostic Render
 
 - Diagnostic réel sur la sortie 17 : géocodage IGN reverse en erreur HTTP 400 ; WFS a renvoyé 29 objets dont 2 lieux-dits non habités à moins de 200 m, mais ils sont correctement exclus de l'affichage ; OpenStreetMap n'a obtenu aucune réponse exploitable sur les 5 tronçons.
