@@ -13144,7 +13144,7 @@ def accueil():
                 nomParcours: '', dateParcours: '', cinema: false,
                 canvasVideo: null, ctxVideo: null, rafVideo: 0, fluxVideo: null, videoActif: false,
                 denivelePlus: 0, altitudeDisponible: false, altitudes: [], deniveleCum: [], vitesses: [], vitesseMax: null, vitesseMoyenne: null, profilLongueur: 0,
-                dureeBase: 60, prete: false, compteImages: 0,
+                dureeBase: 60, prete: false, compteImages: 0, dernierRendu: 0,
                 tps: [], decalage: 0, alts: [], surfaces: '', pentes: [], mode: 'pente', autres: [], voirAutres: false, photos: [], marqueurs: [], reperes: [], panneauxPente: [], panneauxLieux: [], repereVisibles: true, prochaine: 0, sortieId: 0, minuteur: 0
             };
 
@@ -14166,24 +14166,31 @@ def accueil():
                 v3d.f = Math.min(1, v3d.f + (dt * v3d.vitesse) / v3d.dureeBase);
                 verifierPhotosV3d(avant, v3d.f * v3d.total);
 
-                placerCamera(dt, false);
-                // Le point mobile est actualisé à chaque image ; seule la ligne complète
-                // et les informations de progression restent limitées à une image sur quatre.
-                dessinerPositionV3d(v3d.f * v3d.total);
-                v3d.compteImages++;
-                // Les repères et la progression sont actualisés 10 fois/s environ.
-                // La ligne complète, qui recopie tous les points déjà parcourus,
-                // ne l'est qu'environ 2,5 fois/s. Caméra et point mobile restent
-                // animés à chaque image pour préserver la fluidité du survol.
-                if (v3d.compteImages % 6 === 0 || v3d.f >= 1) {
-                    dessinerAvancement(true, {
-                        ligne: v3d.compteImages % 24 === 0 || v3d.f >= 1,
-                        reperes: true
-                    });
+                // Le calcul du parcours continue à chaque image, mais MapLibre ne reçoit
+                // que 30 mises à jour caméra/point par seconde au maximum.
+                // Cela évite de relancer le rendu complet du relief 3D à 60 Hz sur mobile.
+                const intervalleRendu = 1000 / 30;
+                if (t - v3d.dernierRendu >= intervalleRendu || v3d.f >= 1) {
+                    const dtRendu = v3d.dernierRendu
+                        ? Math.min(0.15, Math.max(0, (t - v3d.dernierRendu) / 1000))
+                        : dt;
+                    v3d.dernierRendu = t;
+                    placerCamera(dtRendu, false);
+                    dessinerPositionV3d(v3d.f * v3d.total);
+                    v3d.compteImages++;
+
+                    // Repères/progression : environ 10 fois/s ; ligne parcourue : environ 3 fois/s.
+                    if (v3d.compteImages % 3 === 0 || v3d.f >= 1) {
+                        dessinerAvancement(true, {
+                            ligne: v3d.compteImages % 9 === 0 || v3d.f >= 1,
+                            reperes: true
+                        });
+                    }
                 }
 
                 if (v3d.f >= 1) {
                     v3d.jouer = false;
+                    reglerOmbresLectureV3d(false);
                     if (v3d.enregistreur) arreterEnregistrement(true);
                     majBoutonsV3d();
                     return;
@@ -14191,13 +14198,28 @@ def accueil():
                 v3d.raf = requestAnimationFrame(imageV3d);
             }
 
+            // Le relief 3D reste actif pendant la lecture ; seule la couche d'ombres,
+            // coûteuse à recalculer à chaque mouvement, est masquée temporairement.
+            function reglerOmbresLectureV3d(enLecture) {
+                const carte = v3d.carte;
+                if (!carte || !carte.getLayer('v3d-relief-ombres')) return;
+                try {
+                    carte.setLayoutProperty('v3d-relief-ombres', 'visibility',
+                        enLecture && !v3d.enregistreur ? 'none' : 'visible');
+                } catch (e) {
+                    console.warn('Réglage des ombres 3D indisponible', e);
+                }
+            }
+
             function lectureV3d(jouer) {
                 if (!v3d.prete) return;
                 if (jouer && v3d.f >= 1) v3d.f = 0;
                 v3d.jouer = jouer;
+                reglerOmbresLectureV3d(jouer);
                 if (jouer) {
                     messageV3d('');
                     v3d.dernier = performance.now();
+                    v3d.dernierRendu = 0;
                     placerCamera(0, v3d.f === 0);
                     dessinerAvancement();
                     if (!v3d.raf) v3d.raf = requestAnimationFrame(imageV3d);
