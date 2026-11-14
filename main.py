@@ -20466,10 +20466,8 @@ def preparer_lieux_sortie(sortie_id):
                                     # Une zone d'habitation n'est pas forcément un hameau :
                                     # seuls les objets explicitement nommés hameau, bourg
                                     # ou village sont affichés. Les lieux-dits restent en bibliothèque.
-                                    if "hameau" in nature_top:
+                                    if any(x in nature_top for x in ("hameau", "bourg", "village")):
                                         genre_wfs, rang_wfs = "hameau", 4
-                                    elif any(x in nature_top for x in ("bourg", "village")):
-                                        genre_wfs, rang_wfs = "village", 3
                                     else:
                                         genre_wfs, rang_wfs = "lieu_dit", 9
                                 elif "commune" in classe_top:
@@ -20523,10 +20521,8 @@ def preparer_lieux_sortie(sortie_id):
                                 ec = ecart_parcours_m(position, points)
                                 if ec > 500:
                                     continue
-                                if "hameau" in nature:
+                                if any(x in nature for x in ("hameau", "bourg", "village")):
                                     genre_wfs, rang_wfs = "hameau", 4
-                                elif any(x in nature for x in ("bourg", "village")):
-                                    genre_wfs, rang_wfs = "village", 3
                                 else:
                                     # "Lieu-dit habité" reste consultable dans la bibliothèque,
                                     # mais n'est pas assimilé automatiquement à un hameau.
