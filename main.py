@@ -13551,9 +13551,22 @@ def accueil():
                 if (!Array.isArray(lieux) || !lieux.length) return;
                 try { localStorage.setItem(cleCacheLieuxV3d(), JSON.stringify(lieux)); } catch (e) {}
             }
-            async function chercherLieuxV3d() {
+            async function chercherLieuxV3d(bibliothequeSeulement=false, forcerRecherche=false) {
                 if (v3d.pts.length < 2) return [];
-                const cache = lireCacheLieuxV3d();
+                if (bibliothequeSeulement) {
+                    try {
+                        const res = await fetch('/api/sorties/' + encodeURIComponent(v3d.sortieId) + '/lieux/bibliotheque?velo_id=' + encodeURIComponent(veloActifId || 1), { headers: getHeaders() });
+                        if (res.ok) {
+                            const data = await res.json();
+                            const lieux = Array.isArray(data.lieux) ? data.lieux : [];
+                            v3d.lieuxEtat = lieux.length ? 'ok' : 'vide';
+                            console.info('Survol 3D : noms chargés immédiatement depuis la bibliothèque', lieux.length);
+                            return lieux;
+                        }
+                    } catch (e) { console.warn('Bibliothèque géographique momentanément indisponible', e); }
+                    return [];
+                }
+                const cache = forcerRecherche ? null : lireCacheLieuxV3d();
                 if (cache) {
                     v3d.lieuxEtat = 'ok';
                     console.info('Survol 3D : noms de lieux chargés depuis la mémoire de cet appareil', cache.length);
@@ -13729,24 +13742,43 @@ def accueil():
                     }
                 }
                 majVisibiliteReperesV3d(); majBoutonsV3d();
-                let lieux=[];
+                const afficherLieux = lieux => {
+                    v3d.panneauxLieux.forEach(p => p.marqueur.remove());
+                    const anciens = new Set(v3d.panneauxLieux.map(p => p.marqueur));
+                    v3d.reperes = v3d.reperes.filter(m => !anciens.has(m));
+                    v3d.panneauxLieux = [];
+                    lieux.forEach(l => {
+                        const libelle = l.nom + (Number.isFinite(l.alt) && ['sommet', 'col'].includes(l.genre)
+                            ? ' · ' + fmtAltitude(l.alt).complet : '');
+                        const el = elementRepereAerienV3d(libelle, 16);
+                        const marqueur = new window.maplibregl.Marker({ element: el, anchor: 'bottom-left' })
+                            .setLngLat(pointA(l.d)).addTo(carte);
+                        v3d.reperes.push(marqueur);
+                        v3d.panneauxLieux.push({ marqueur: marqueur, d: l.d });
+                    });
+                    majVisibiliteReperesV3d();
+                    majBoutonsV3d();
+                };
+                // Affiche d'abord les lieux déjà connus : aucune attente des API IGN/OSM.
+                let lieuxBibliotheque = [];
+                try { lieuxBibliotheque = await chercherLieuxV3d(true); } catch(e) { console.warn(e); }
+                if (v3d.carte !== carte) return;
+                afficherLieux(lieuxBibliotheque);
+                // Complète ensuite en arrière-plan, puis remplace les repères par la liste enrichie.
                 const rech=document.getElementById('v3dRecherche');
                 if(rech) rech.style.display='flex';
-                try { lieux=await chercherLieuxV3d(); } catch(e) { console.warn(e); }
-                if(rech) rech.style.display='none';
-                if(v3d.carte!==carte) return;
-                if(v3d.lieuxEtat==='panne') { messageV3d('Noms de lieux indisponibles : les services IGN et OpenStreetMap ne répondent pas.'); setTimeout(()=>messageV3d(''),6000); }
-                lieux.forEach(l => {
-                    const libelle = l.nom + (Number.isFinite(l.alt) && ['sommet', 'col'].includes(l.genre)
-                        ? ' · ' + fmtAltitude(l.alt).complet : '');
-                    const el = elementRepereAerienV3d(libelle, 16);
-                    const marqueur = new window.maplibregl.Marker({ element: el, anchor: 'bottom-left' })
-                        .setLngLat(pointA(l.d)).addTo(carte);
-                    v3d.reperes.push(marqueur);
-                    v3d.panneauxLieux.push({ marqueur: marqueur, d: l.d });
+                chercherLieuxV3d(false, true).then(lieux => {
+                    if (v3d.carte !== carte) return;
+                    if (rech) rech.style.display='none';
+                    if (v3d.lieuxEtat==='panne' && !lieuxBibliotheque.length) {
+                        messageV3d('Noms de lieux indisponibles : les services IGN et OpenStreetMap ne répondent pas.');
+                        setTimeout(()=>messageV3d(''),6000);
+                    }
+                    afficherLieux(lieux);
+                }).catch(e => {
+                    if (rech) rech.style.display='none';
+                    console.warn('Complément géographique indisponible', e);
                 });
-                majVisibiliteReperesV3d();
-                majBoutonsV3d();
             }
 
             function messageV3d(texte) {
@@ -20251,6 +20283,80 @@ def importer_sortie(
     finally:
         conn.close()
 
+
+
+@app.get("/api/sorties/{sortie_id}/lieux/bibliotheque")
+def obtenir_lieux_bibliotheque(sortie_id: int, velo_id: int = 1, x_code_acces: Optional[str] = Header(default=None)):
+    """Retourne immédiatement les noms déjà connus dans la bibliothèque, à 200 m du GPX."""
+    controle_acces(x_code_acces, velo_id)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT trace FROM sorties WHERE id = ? AND velo_id = ?", (sortie_id, velo_id))
+        ligne = cursor.fetchone()
+        if ligne is None:
+            raise HTTPException(status_code=404, detail="Sortie introuvable.")
+        try:
+            trace = json.loads(ligne[0] or "[]")
+        except (TypeError, ValueError):
+            trace = []
+        points = []
+        for p in trace:
+            try:
+                lat, lon = float(p[0]), float(p[1])
+                if -90 <= lat <= 90 and -180 <= lon <= 180:
+                    points.append((lon, lat))
+            except (TypeError, ValueError, IndexError):
+                continue
+        if len(points) < 2:
+            return {"statut": "vide", "lieux": []}
+
+        def distance(a, b):
+            x = (a[0] - b[0]) * 111320 * math.cos(math.radians((a[1] + b[1]) / 2))
+            y = (a[1] - b[1]) * 110540
+            return math.hypot(x, y)
+
+        refs = points[::max(1, len(points) // 1000)]
+        sud, nord = min(p[1] for p in refs), max(p[1] for p in refs)
+        ouest, est = min(p[0] for p in refs), max(p[0] for p in refs)
+        marge_lat = 200 / 110540 + 0.0002
+        marge_lon = marge_lat / max(0.2, math.cos(math.radians((sud + nord) / 2)))
+        cursor.execute(
+            """SELECT nom, genre, rang, lon, lat, altitude
+               FROM bibliotheque_lieux_geo
+               WHERE lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?""",
+            (sud - marge_lat, nord + marge_lat, ouest - marge_lon, est + marge_lon)
+        )
+        retenus = []
+        cumul = [0.0]
+        for i in range(1, len(points)):
+            cumul.append(cumul[-1] + distance(points[i - 1], points[i]))
+        genres = ("ville", "village", "hameau", "riviere", "col", "sommet")
+        for nom, genre, rang, lon, lat, altitude in cursor.fetchall():
+            genre = str(genre or "").casefold()
+            if genre not in genres:
+                continue
+            coord = (float(lon), float(lat))
+            ec = min(distance(coord, p) for p in refs)
+            if ec > 200:
+                continue
+            index = min(range(len(points)), key=lambda i: distance(coord, points[i]))
+            entree = {
+                "nom": str(nom), "genre": genre, "rang": int(rang or 9),
+                "ec": round(ec, 1), "coord": [coord[0], coord[1]],
+                "alt": altitude, "source": "bibliotheque", "d": round(cumul[index], 1)
+            }
+            doublon = next((i for i, x in enumerate(retenus)
+                            if x["nom"].casefold() == entree["nom"].casefold()
+                            and distance(tuple(x["coord"]), coord) < 600), None)
+            if doublon is None:
+                retenus.append(entree)
+            elif entree["rang"] < retenus[doublon]["rang"]:
+                retenus[doublon] = entree
+        retenus.sort(key=lambda x: (x["rang"], x["ec"]))
+        return {"statut": "bibliotheque", "lieux": retenus[:60]}
+    finally:
+        conn.close()
 
 
 @app.get("/api/sorties/{sortie_id}/lieux")
