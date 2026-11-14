@@ -1224,3 +1224,4 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - Aucun changement aux requêtes, catégories, rayons (500 m villes/villages ; 200 m hameaux/rivières/cols/sommets), filtres d'affichage, bibliothèque ou interface. Il s'agit uniquement de mesures de diagnostic dans les journaux Render.
 - Commit diagnostic : `16df94d52c673692948f7cacab81c1e094643500`.
 - Aucun nouveau branchement, aucun changement de `main`, aucune modification Neon et aucun déploiement Render déclenché. Attendre le feu vert explicite de Math avant déploiement.
+- Petit contrôle complémentaire : les compteurs sont initialisés même si une trace GPX contient moins de deux points, afin que le journal ne provoque pas lui-même d'erreur. Correctif de robustesse : `ad60242b9fdb4e3e4a10efb2795ac748545e9a60`.
