@@ -20420,6 +20420,10 @@ def preparer_lieux_sortie(sortie_id):
                 idx=min(range(len(points)),key=lambda i:distance(l["coord"],points[i])); cumul=sum(distance(points[i-1],points[i]) for i in range(1,idx+1))
                 l["d"]=round(cumul,1); retenus.append(l)
             lieux=retenus
+        # Même une trace GPX vide doit pouvoir recevoir un état final.
+        if conn is None:
+            conn = db.connect()
+            cursor = conn.cursor()
         cursor.execute("SELECT tentatives FROM recherche_lieux_gpx WHERE sortie_id = ?", (sortie_id,))
         ligne_essais = cursor.fetchone()
         essais = int(ligne_essais[0] or 0) if ligne_essais else 0
