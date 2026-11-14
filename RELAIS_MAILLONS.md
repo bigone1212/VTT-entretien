@@ -1429,3 +1429,15 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - Aucun changement à la lecture 3D, aux coordonnées, aux rayons, à la bibliothèque, aux sommets, cols, villages ou cours d'eau.
 - Commit applicatif : `9987395aea53d90aa7ccd10c7b97932e31fb4543`, branche de test `reprise/2026-11-13-maillons-complet-test`.
 - À faire : workflow GitHub Actions, puis déploiement Render test après accord utilisateur. Aucun changement sur `main`, aucune fusion ni déploiement production.
+
+
+# Correctif — 14/11/2026 — reclassement réel de la bibliothèque géographique
+
+- Diagnostic confirmé après les deux tentatives précédentes : l'UPSERT empêchait de remplacer une ancienne catégorie `hameau` par `lieu_dit`, l'API de bibliothèque renvoyait encore ces anciennes lignes, et les résultats préparés des parcours historiques n'étaient jamais recalculés s'ils étaient déjà marqués terminés.
+- Dans `main.py`, l'enregistrement accepte maintenant le nouveau genre et le nouveau rang issus des données IGN/OSM. Il met aussi à jour le classement des doublons portant le même nom à moins de 600 m, sans supprimer ni déplacer les entrées de bibliothèque.
+- Ajout d'une version de classement `classification_version` à la table `recherche_lieux_gpx`, avec migration compatible SQLite/PostgreSQL. Au démarrage, tous les parcours historiques dont le classement est ancien sont remis en file une seule fois, puis recalculés en arrière-plan. La version 2 est enregistrée uniquement à la fin d'un traitement réussi.
+- Tant qu'un parcours n'a pas été reclassé, les deux API ne renvoient plus ses anciennes étiquettes comme si elles étaient à jour. Les noms restent dans la bibliothèque ; ils sont simplement masqués pendant le recalcul. Les vrais villages, hameaux, sommets, cols et rivières restent autorisés par les filtres existants.
+- Cache local du téléphone renouvelé de `v10` à `v11`.
+- Aucun changement aux recherches IGN/OSM, aux coordonnées, aux rayons, aux fenêtres d'affichage, aux panneaux pente/vitesse ou à la lecture 3D. Aucun nom n'est supprimé. Aucun changement sur `main`, aucune fusion, aucune opération manuelle sur Neon, aucun déploiement production.
+- Commit applicatif : `b29ff586ee68085c41307b1a3eb1794ec2c8a181` sur la branche de test existante `reprise/2026-11-13-maillons-complet-test`.
+- À faire : vérifier le diff, la syntaxe Python/JavaScript, les tests automatisés et le déploiement Render test. Confirmer ensuite dans les logs que les parcours historiques ont bien été reclassés, puis faire tester le survol.
