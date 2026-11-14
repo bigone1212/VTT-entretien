@@ -20079,7 +20079,8 @@ def preparer_lieux_sortie(sortie_id):
             # L'API de géocodage IGN refuse tout rayon supérieur à 500 m.
             # Multiplier les points de recherche permet de couvrir le tracé sans
             # envoyer un rayon invalide au service.
-            nombre = min(60, max(1, int(math.ceil(total / 700)))) if total else 1
+            # La couche WFS Toponymie couvre le parcours ; le reverse sert de complément léger.
+            nombre = min(8, max(1, int(math.ceil(total / 2500)))) if total else 1
             rayon = 500.0
             ign_erreurs = []
             for debut in range(0, nombre, 4):
@@ -20099,7 +20100,7 @@ def preparer_lieux_sortie(sortie_id):
                     # paramètre « type=locality » n'est pas un filtre reverse valide.
                     # Les catégories POI varient selon le catalogue IGN : on récupère
                     # l'index complet puis on classe les propriétés reçues ci-dessous.
-                    appels.append(urllib.parse.urlencode(dict(communs, index="address")))
+                    # Les noms géographiques sont dans l'index POI, pas dans l'index adresse BAN.
                     appels.append(urllib.parse.urlencode(dict(communs, index="poi")))
                 for params in appels:
                     try:
