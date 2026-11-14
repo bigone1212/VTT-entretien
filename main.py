@@ -13453,24 +13453,38 @@ def accueil():
                     for (let j = i; j < Math.min(nombre, i + 4); j++) {
                         const coord = pointA(Math.min(v3d.total, (j + 0.5) * pas));
                         const zone = { type: 'Circle', coordinates: [coord[0], coord[1]], radius: rayon };
-                        const params = new URLSearchParams({
-                            index: 'poi',
-                            searchgeom: JSON.stringify(zone),
-                            lon: String(coord[0]),
-                            lat: String(coord[1]),
-                            limit: '20'
-                        });
-                        appels.push((async () => {
-                            const ctl = new AbortController();
-                            const timer = setTimeout(() => ctl.abort(), 9000);
-                            try {
-                                const res = await fetch('https://data.geopf.fr/geocodage/reverse?' + params.toString(), { signal: ctl.signal });
-                                if (!res.ok) throw new Error('IGN HTTP ' + res.status);
-                                return await res.json();
-                            } finally {
-                                clearTimeout(timer);
-                            }
-                        })());
+                        const parametres = [
+                            new URLSearchParams({
+                                index: 'address,poi',
+                                type: 'locality',
+                                category: "zone d'habitation",
+                                searchgeom: JSON.stringify(zone),
+                                lon: String(coord[0]),
+                                lat: String(coord[1]),
+                                limit: '50'
+                            }),
+                            new URLSearchParams({
+                                index: 'poi',
+                                category: 'élément topographique ou forestier',
+                                searchgeom: JSON.stringify(zone),
+                                lon: String(coord[0]),
+                                lat: String(coord[1]),
+                                limit: '50'
+                            })
+                        ];
+                        for (const params of parametres) {
+                            appels.push((async () => {
+                                const ctl = new AbortController();
+                                const timer = setTimeout(() => ctl.abort(), 9000);
+                                try {
+                                    const res = await fetch('https://data.geopf.fr/geocodage/reverse?' + params.toString(), { signal: ctl.signal });
+                                    if (!res.ok) throw new Error('IGN HTTP ' + res.status);
+                                    return await res.json();
+                                } finally {
+                                    clearTimeout(timer);
+                                }
+                            })());
+                        }
                     }
                     const reponses = await Promise.allSettled(appels);
                     reponses.forEach(r => {
@@ -13530,7 +13544,7 @@ def accueil():
                     const p = v3d.pts[Math.round(i * (n - 1) / 7)];
                     echantillon.push(p.map(x => Number(x).toFixed(4)).join(','));
                 }
-                return 'maillons-v3d-lieux-v5-' + String(v3d.sortieId) + '-' + n + '-' + echantillon.join('|');
+                return 'maillons-v3d-lieux-v6-' + String(v3d.sortieId) + '-' + n + '-' + echantillon.join('|');
             }
             function lireCacheLieuxV3d() {
                 try {
@@ -13586,7 +13600,7 @@ def accueil():
                 const sud = Math.min(...lats)-marge, nord = Math.max(...lats)+marge, ouest = Math.min(...lons)-marge, est = Math.max(...lons)+marge;
                 const zoneValide = nord-sud <= 0.6 && est-ouest <= 0.8;
                 const zone = '('+sud+','+ouest+','+nord+','+est+')';
-                const q = '[out:json][timeout:35];(nwr["place"~"^(city|town|village|hamlet)$"]["name"]'+zone+';way["waterway"="river"]["name"]'+zone+';nwr["natural"~"^(peak|hill|ridge)$"]["name"]'+zone+';nwr["mountain_pass"="yes"]["name"]'+zone+';nwr["natural"="saddle"]["name"]'+zone+';);out center tags;';
+                const q = '[out:json][timeout:35];(nwr["place"~"^(city|town|village|hamlet|isolated_dwelling)$"]["name"]'+zone+';way["waterway"="river"]["name"]'+zone+';nwr["natural"~"^(peak|hill|ridge)$"]["name"]'+zone+';nwr["mountain_pass"="yes"]["name"]'+zone+';nwr["natural"="saddle"]["name"]'+zone+';);out center tags;';
                 let data = null;
                 let derniereErreur = null;
                 if (zoneValide) for (const base of ['https://overpass-api.de/api/interpreter','https://overpass.private.coffee/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter']) {
@@ -13635,9 +13649,9 @@ def accueil():
                         const lat = Number.isFinite(e.lat) ? e.lat : e.center && e.center.lat;
                         if (!Number.isFinite(lon)||!Number.isFinite(lat)) continue;
                         let genre='',rang=9,portee=5000;
-                        if (['city','town','village','hamlet'].includes(e.tags.place)) {
-                            genre=e.tags.place==='hamlet'?'hameau':(e.tags.place==='village'?'village':'ville');
-                            rang={city:1,town:2,village:3,hamlet:4}[e.tags.place] ?? 3;
+                        if (['city','town','village','hamlet','isolated_dwelling'].includes(e.tags.place)) {
+                            genre=(e.tags.place==='hamlet' || e.tags.place==='isolated_dwelling')?'hameau':(e.tags.place==='village'?'village':'ville');
+                            rang={city:1,town:2,village:3,hamlet:4,isolated_dwelling:4}[e.tags.place] ?? 3;
                             portee=5000;
                         } else if (e.tags.waterway === 'river') { genre='riviere'; rang=5; portee=1800; }
                         else if (e.tags.mountain_pass === 'yes' || e.tags.natural === 'saddle') { genre='col'; rang=2; portee=900; }
@@ -19859,7 +19873,7 @@ def preparer_lieux_sortie(sortie_id):
                             texte = categorie
                             if any(m in texte for m in ("river","rivière","riviere","cours d'eau","cours d’eau","hydrograph")):
                                 genre, rang, portee = "riviere", 5, 1800
-                            elif any(m in texte for m in ("hamlet","hameau")):
+                            elif any(m in texte for m in ("hamlet","hameau","locality","localité","zone d'habitation")):
                                 genre, rang, portee = "hameau", 4, 3500
                             elif any(m in texte for m in ("village","commune","town","city","municipality")):
                                 genre, rang, portee = "village", 3, 5000
@@ -19973,7 +19987,9 @@ def preparer_lieux_sortie(sortie_id):
                 if place in ("city","town","village","hamlet"):
                     genre=("hameau" if place=="hamlet" else ("village" if place=="village" else "ville"))
                     rang={"city":1,"town":2,"village":3,"hamlet":4}.get(place,3); portee=5000
-                elif place in ("isolated_dwelling","suburb","locality","neighbourhood"):
+                elif place == "isolated_dwelling":
+                    genre,rang,portee="hameau",4,3500
+                elif place in ("suburb","locality","neighbourhood"):
                     genre,rang,portee="lieu",9,5000
                 elif nat in ("peak","hill","ridge"): genre,rang,portee="sommet",4,2200
                 elif tags.get("mountain_pass")=="yes" or nat=="saddle": genre,rang,portee="col",2,900
