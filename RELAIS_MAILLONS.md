@@ -1401,3 +1401,16 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - Commit applicatif : `b45403c4c0787c34492949baf90b00fc968f0e63`, branche existante `reprise/2026-11-13-maillons-complet-test`.
 - Vérifications à faire : syntaxe Python, syntaxe JavaScript intégrée, workflow GitHub Actions et relecture du diff. Déploiement Render test non effectué à ce stade ; demander l'accord explicite avant de déployer.
 - Aucun changement sur `main`, aucune fusion, aucune opération Neon.
+
+
+# Mise à jour — 14/11/2026 — tri des lieux-dits génériques
+
+- Objectif : éviter que des lieux-dits ou habitations isolées peu informatifs soient affichés comme s'il s'agissait de hameaux, sur l'ensemble des parcours.
+- Dans `main.py`, la couche IGN/BD TOPO distingue désormais les zones explicitement classées comme hameau, bourg ou village des objets simplement classés « lieu-dit habité ». Ces derniers restent enregistrés dans la bibliothèque avec le genre `lieu_dit`, mais ne sont pas affichés automatiquement.
+- Dans OpenStreetMap, `isolated_dwelling` est également conservé comme `lieu_dit` et non comme hameau. Les vrais hameaux (`hamlet`) restent affichés.
+- Lorsqu'une nouvelle réponse IGN identifie un lieu comme `lieu_dit`, une ancienne entrée proche de la bibliothèque classée hameau ne peut plus réintroduire ce nom dans les repères de ce parcours. La ligne historique de bibliothèque n'est ni supprimée ni modifiée.
+- Les sommets, cols, rivières, villages et hameaux explicitement reconnus restent affichables. Aucun nom n'est banni par son orthographe ; les exemples « Le Claux », « Le Cap Caux » et « Le Buguet » servent à illustrer le tri par catégorie, pas une liste noire.
+- Aucun changement aux recherches, services IGN/OSM, délais, rayons, coordonnées, fenêtre d'affichage 200 m avant / 100 m après, priorité pente/vitesse, lecture 3D ou données GPX. Cache des repères renouvelé de v9 à v10.
+- Commits applicatifs : `c41007a07cdf36dc41341cbdcf27271a65ffa739` et `1f730e4ddd012527a9ab3481abc5037853ad8b70`, sur la branche de test existante `reprise/2026-11-13-maillons-complet-test`.
+- À faire : vérifier le diff et le workflow GitHub Actions. Aucun déploiement Render effectué ; demander l'accord explicite avant de déployer sur le site de test.
+- Aucun changement sur `main`, aucune fusion, aucune opération Neon.
