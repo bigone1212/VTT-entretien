@@ -1468,3 +1468,12 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - Aucun changement aux filtres de masquage des hameaux, aux recherches, coordonnées, rayons, bibliothèque, rivières, cols, sommets ou à la lecture 3D.
 - Commit applicatif : `93e448900f3208909bd029f4ecbb314f76c70ba6` sur la branche de test existante `reprise/2026-11-13-maillons-complet-test`.
 - À faire : vérifier le diff et les validations automatisées, puis demander l'accord avant le déploiement Render test. Aucun changement sur `main`, aucune fusion ni déploiement production.
+
+
+# Retour arrière — 14/11/2026 — rétablir les hameaux dans les survols
+
+- Demande utilisateur : revenir sur le masquage des hameaux et les afficher de nouveau dans les survols.
+- Dans `main.py`, réintégration de `hameau` dans les trois filtres d'affichage : filtre navigateur, résultats préparés côté serveur et API de lecture immédiate de la bibliothèque.
+- Les corrections de classement des villages/bourgs restent en place ; les hameaux sont de nouveau affichables. Aucun changement aux recherches, données de bibliothèque, coordonnées, rayons, rivières, cols, sommets ou lecture 3D.
+- Commit applicatif : `89803bd31f59753c4de65029b07527750905f0a5` sur la branche de test existante `reprise/2026-11-13-maillons-complet-test`.
+- Validations et déploiement Render test à effectuer après cette modification. Aucun changement sur `main`, aucune fusion, aucun déploiement production.
