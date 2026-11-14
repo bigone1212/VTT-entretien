@@ -1419,3 +1419,13 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - Correctif de préservation : l'UPSERT de la bibliothèque ne remplace plus le genre/rang historique par `lieu_dit` en cas de conflit. Commit : `d27d60abb677b9157ff05ff12ba7c85608833985`.
 
 - Compatibilité SQLite/PostgreSQL : les expressions de conservation de `genre` et `rang` utilisent les colonnes existantes sans préfixe de table. Commit : `a160c88d02ff1ed60d411218c01cc40d01857696`.
+
+
+# Correctif complémentaire — 14/11/2026 — lieux-dits encore affichés comme hameaux
+
+- Retour après déploiement : aucun changement visible sur le survol ; l'inspection a révélé deux chemins de classement non corrigés dans `main.py`.
+- La recherche OpenStreetMap exécutée directement côté navigateur classait encore `isolated_dwelling` comme `hameau`. Elle le classe maintenant `lieu_dit` (rang 9), donc il n'est plus affiché automatiquement.
+- Le reverse IGN classait encore explicitement « lieu-dit habité » comme `hameau`. Cette nature est maintenant classée `lieu_dit`; les catégories `hameau`, `hamlet`, `locality` et `localité` restent traitées comme hameaux.
+- Aucun changement à la lecture 3D, aux coordonnées, aux rayons, à la bibliothèque, aux sommets, cols, villages ou cours d'eau.
+- Commit applicatif : `9987395aea53d90aa7ccd10c7b97932e31fb4543`, branche de test `reprise/2026-11-13-maillons-complet-test`.
+- À faire : workflow GitHub Actions, puis déploiement Render test après accord utilisateur. Aucun changement sur `main`, aucune fusion ni déploiement production.
