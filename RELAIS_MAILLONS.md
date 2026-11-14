@@ -1,3 +1,21 @@
+# Mise à jour — 14/11/2026 — correction de l'affichage des noms géographiques (à vérifier)
+
+- Retour utilisateur : après le déploiement précédent, aucun nom n'est visible sur le satellite.
+- Inspection du JavaScript dans `main.py` : deux causes certaines ont été identifiées :
+  1. les marqueurs de lieux étaient placés avec `pointA(l.d)`, donc projetés sur le tracé au lieu de conserver leurs coordonnées géographiques originales `l.coord` ;
+  2. `majVisibiliteReperesV3d()` masquait tous les noms sauf un seul, pendant une courte fenêtre au passage du cycliste. À l'arrêt ou au début de la lecture, la plupart des noms étaient donc invisibles.
+- Correction ciblée dans `main.py` :
+  - les marqueurs utilisent maintenant `setLngLat(l.coord)`, sans déplacer les coordonnées ;
+  - tous les noms géographiques retenus restent visibles sur la carte tant que le bouton « Repères » est activé, indépendamment de la position de lecture ;
+  - le bouton « Repères » continue de masquer/afficher l'ensemble des repères ;
+  - les repères de pente et Vmax gardent leur comportement existant.
+- Fichier applicatif modifié : `main.py` uniquement pour ce correctif. Pas de changement aux filtres, à la recherche, à la bibliothèque, aux catégories autorisées, au rayon de 200 m, aux couches satellite/plan ou aux fonctions de lecture 3D.
+- Commit applicatif : `30cdcac8465ac7179a7db26ca38b9a8cdde458d5`, branche existante `reprise/2026-11-13-maillons-complet-test`.
+- Aucun nouveau branchement, aucun changement de `main`, aucune fusion, aucune opération Neon et aucun déploiement Render effectué pour ce correctif.
+- À faire : vérifier le workflow GitHub Actions et les contrôles JavaScript. Demander l'accord explicite de Math avant tout nouveau déploiement de test. Le rendu visuel réel reste à confirmer par Math dans son navigateur.
+
+---
+
 # Mise à jour — 14/11/2026 — noms blancs sur le satellite
 
 - Retour utilisateur : rendre les noms des lieux blancs comme l'étiquette Vmax.
