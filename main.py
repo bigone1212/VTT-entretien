@@ -20187,7 +20187,7 @@ def enregistrer_lieu_bibliotheque(cursor, l, source):
     lon, lat = l["coord"]
     cle = hashlib.sha256((unicodedata.normalize("NFKD", nom).casefold() + "|" + str(round(lon, 4)) + "|" + str(round(lat, 4))).encode()).hexdigest()
     cursor.execute(
-        """INSERT INTO bibliotheque_lieux_geo (cle,nom,genre,rang,lon,lat,altitude,source,maj_le) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT (cle) DO UPDATE SET nom=excluded.nom,genre=excluded.genre,rang=excluded.rang,altitude=excluded.altitude,source=excluded.source,maj_le=excluded.maj_le""",
+        """INSERT INTO bibliotheque_lieux_geo (cle,nom,genre,rang,lon,lat,altitude,source,maj_le) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT (cle) DO UPDATE SET nom=excluded.nom,genre=CASE WHEN excluded.genre='lieu_dit' THEN bibliotheque_lieux_geo.genre ELSE excluded.genre END,rang=CASE WHEN excluded.genre='lieu_dit' THEN bibliotheque_lieux_geo.rang ELSE excluded.rang END,altitude=excluded.altitude,source=excluded.source,maj_le=excluded.maj_le""",
         (cle, l["nom"], l["genre"], l["rang"], lon, lat, l.get("alt"), source, datetime.now(timezone.utc).isoformat())
     )
 
