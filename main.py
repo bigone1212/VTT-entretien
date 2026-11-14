@@ -19902,25 +19902,42 @@ def rayon_affichage_m(genre):
     return 500 if str(genre or "").casefold() in ("ville", "village") else 200
 
 
-def interroger_overpass(requete):
-    """Retourne la liste des éléments, ou None si la réponse est absente, vide d'erreur ou incomplète.
-    Overpass répond parfois « délai dépassé » avec un code 200 : ce n'est pas un succès."""
+def interroger_overpass(requete, erreurs=None):
+    """Retourne les éléments OSM ; None signifie que tous les serveurs ont échoué.
+    Un tableau vide sans message d'erreur est une réponse valide."""
     corps = urllib.parse.urlencode({"data": requete}).encode("utf-8")
-    for base in ("https://overpass-api.de/api/interpreter",
-                 "https://overpass.private.coffee/api/interpreter",
-                 "https://overpass.kumi.systems/api/interpreter"):
+    serveurs = (
+        "https://overpass-api.de/api/interpreter",
+        "https://overpass.private.coffee/api/interpreter",
+        "https://overpass.kumi.systems/api/interpreter",
+        "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+    )
+    for base in serveurs:
         try:
             req = urllib.request.Request(
                 base, data=corps,
-                headers={"Content-Type": "application/x-www-form-urlencoded", "User-Agent": "Maillons/1.0"}
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Accept": "application/json",
+                    "User-Agent": "Maillons/1.0 (recherche de lieux geographiques)"
+                }
             )
-            with urllib.request.urlopen(req, timeout=30) as reponse:
+            with urllib.request.urlopen(req, timeout=12) as reponse:
                 donnees = json.loads(reponse.read().decode("utf-8"))
             remarque = str((donnees or {}).get("remark") or "").casefold()
             elements = (donnees or {}).get("elements")
-            if isinstance(elements, list) and not any(m in remarque for m in ("error", "timed out", "out of memory")):
+            if isinstance(elements, list) and not any(
+                m in remarque for m in ("error", "timed out", "out of memory", "runtime error")
+            ):
                 return elements
-        except Exception:
+            detail = remarque or "réponse sans liste elements"
+            if erreurs is not None and len(erreurs) < 8:
+                erreurs.append(base.split("/")[2] + ": " + detail[:140])
+        except Exception as exc:
+            if erreurs is not None and len(erreurs) < 8:
+                code = getattr(exc, "code", None)
+                detail = "HTTP " + str(code) if code else type(exc).__name__ + ": " + str(exc)
+                erreurs.append(base.split("/")[2] + ": " + detail[:140])
             continue
     return None
 
@@ -20040,8 +20057,9 @@ def preparer_lieux_sortie(sortie_id):
             "ign_appels_ok": 0, "ign_features": 0, "ign_noms_acceptes": 0,
             "wfs_appels_ok": 0, "wfs_features": 0, "wfs_noms_acceptes": 0,
             "osm_troncons": 0, "osm_reponses_ok": 0, "osm_points": 0,
-            "osm_rivieres": 0, "osm_noms_acceptes": 0
+            "osm_rivieres": 0, "osm_noms_acceptes": 0, "osm_erreurs": []
         }
+        erreurs_overpass = diagnostic["osm_erreurs"]
         if len(points) >= 2:
             lons = [p[0] for p in points]; lats = [p[1] for p in points]; marge = 0.012
             sud, nord, ouest, est = min(lats)-marge, max(lats)+marge, min(lons)-marge, max(lons)+marge
@@ -20075,18 +20093,12 @@ def preparer_lieux_sortie(sortie_id):
                     }
                     # Sépare les index : le filtre de catégorie ne doit pas
                     # limiter la recherche BAN des localités.
-                    params_adresses = dict(communs, index="address", type="locality")
-                    appels.append(urllib.parse.urlencode(params_adresses))
-                    # Les lieux-dits habités sont des POI de la catégorie
-                    # « zone d'habitation » dans la BD TOPO.
-                    params_hameaux = dict(communs, index="poi", category="zone d'habitation")
-                    appels.append(urllib.parse.urlencode(params_hameaux))
-                    # Les cours d'eau nommés sont indexés séparément.
-                    params_hydro = dict(communs, index="poi", category="hydrographie")
-                    appels.append(urllib.parse.urlencode(params_hydro))
-                    # Les cols et sommets sont des POI topographiques.
-                    params_toponymes = dict(communs, index="poi", category="élément topographique ou forestier")
-                    appels.append(urllib.parse.urlencode(params_toponymes))
+                    # L'API reverse documente les index address et poi, mais le
+                    # paramètre « type=locality » n'est pas un filtre reverse valide.
+                    # Les catégories POI varient selon le catalogue IGN : on récupère
+                    # l'index complet puis on classe les propriétés reçues ci-dessous.
+                    appels.append(urllib.parse.urlencode(dict(communs, index="address")))
+                    appels.append(urllib.parse.urlencode(dict(communs, index="poi")))
                 for params in appels:
                     try:
                         req = urllib.request.Request(
@@ -20244,8 +20256,8 @@ def preparer_lieux_sortie(sortie_id):
                     '[out:json][timeout:25];way["waterway"="river"]["name"](around:200,LISTE);out tags geom;'
                 ).replace("LISTE", liste_points)
                 diagnostic["osm_troncons"] += 1
-                elements_points = interroger_overpass(requete_points)
-                elements_rivieres = interroger_overpass(requete_rivieres)
+                elements_points = interroger_overpass(requete_points, erreurs_overpass)
+                elements_rivieres = interroger_overpass(requete_rivieres, erreurs_overpass)
                 if elements_points is not None:
                     diagnostic["osm_reponses_ok"] += 1
                     diagnostic["osm_points"] += len(elements_points)
