@@ -1,3 +1,14 @@
+# Mise à jour — 14/11/2026 — affichage des noms au passage du point
+
+- Demande de Math : chaque nom géographique doit apparaître à l'approche du point puis disparaître après le passage.
+- Dans `main.py`, la visibilité des marqueurs géographiques du survol 3D dépend maintenant de la distance parcourue : apparition à 200 m avant le point, maintien jusqu'à 100 m après.
+- Les noms restent enregistrés dans la bibliothèque ; aucune modification des recherches IGN/OSM, des coordonnées, des catégories, des filtres, des marqueurs de pente/Vmax ou des couches de carte.
+- Modification limitée à `main.py` sur la branche de test existante `reprise/2026-11-13-maillons-complet-test`.
+- Commit applicatif : `c6888287f16959ea90e376c5e69f8fe5006f259d`.
+- Aucun changement sur `main`, aucune fusion, aucune opération Neon. Déploiement Render test à effectuer après vérifications automatiques.
+
+---
+
 # Mise à jour — 14/11/2026 — correction de la connexion Neon pendant la recherche des lieux
 
 - Diagnostic confirmé dans le code et les journaux Render : `preparer_lieux_sortie()` ouvrait une connexion PostgreSQL Neon, puis la gardait ouverte pendant les nombreux appels réseau IGN, WFS et OpenStreetMap. Pendant ces attentes, Neon / le réseau pouvait fermer la connexion SSL. Le bloc d'erreur réutilisait ensuite le même curseur et la même connexion morte pour tenter d'enregistrer le statut, ce qui provoquait une deuxième erreur.
