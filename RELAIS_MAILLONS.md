@@ -1,3 +1,14 @@
+# Mise à jour — 14/11/2026 — superposition du plan sur le satellite
+
+- Retour utilisateur : la recherche des noms ne fonctionne toujours pas ; la carte non satellite affiche déjà les noms utiles. Nouvelle piste choisie : superposer le fond plan sur l'imagerie satellite avec transparence.
+- Dans `main.py`, les deux cartes concernées (fiche sortie et survol 3D) gardent désormais les deux couches visibles : le plan OSM est à 32 % d'opacité sur le satellite, et passe à 100 % en mode Plan.
+- Transition d'opacité configurée sur 500 ms. Aucun changement à la bibliothèque géographique, aux recherches IGN/OSM, aux filtres, à la lecture 3D ou aux autres fichiers applicatifs.
+- Commit : `93e4f26f6dac27aec416ff7185573d552ad90e7d`, branche existante `reprise/2026-11-13-maillons-complet-test`.
+- Aucun déploiement Render déclenché. Aucun changement sur `main`, aucune fusion, aucune opération Neon.
+- À faire : contrôler le workflow / la syntaxe puis demander l'accord explicite de Math avant de déployer sur le service Render de test.
+
+---
+
 # Tâche en cours — 14/11/2026 — corriger l'affichage des repères à 200 m
 
 - Retour après le dernier déploiement de test : aucun nom ne s'affiche. Le besoin est maintenant strict : afficher uniquement les noms situés sur le parcours ou à 200 m maximum.
