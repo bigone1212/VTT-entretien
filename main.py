@@ -13599,6 +13599,32 @@ def accueil():
                 if (!Array.isArray(lieux) || !lieux.length) return;
                 try { localStorage.setItem(cleCacheLieuxV3d(), JSON.stringify(lieux)); } catch (e) {}
             }
+            // Calcule la distance parcourue au point le plus proche pour tous les noms,
+            // qu'ils viennent de la bibliothèque ou des recherches IGN / OpenStreetMap.
+            function positionnerLieuxSurParcoursV3d(lieux) {
+                const gardes = [];
+                for (const lieu of (Array.isArray(lieux) ? lieux : [])) {
+                    if (!lieu || !Array.isArray(lieu.coord) || lieu.coord.length !== 2) continue;
+                    const lon = Number(lieu.coord[0]), lat = Number(lieu.coord[1]);
+                    if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+                    const l = { ...lieu, coord: [lon, lat] };
+                    let meilleureDistance = Infinity, meilleurIndex = 0;
+                    for (let i = 0; i < v3d.pts.length; i++) {
+                        const ecart = distanceM(l.coord, v3d.pts[i]);
+                        if (ecart < meilleureDistance) {
+                            meilleureDistance = ecart;
+                            meilleurIndex = i;
+                        }
+                    }
+                    const ecartReel = ecartParcoursV3d(l.coord);
+                    if (ecartReel > rayonAffichageV3d(l.genre)) continue;
+                    l.ec = ecartReel;
+                    l.d = v3d.cum[meilleurIndex] || 0;
+                    gardes.push(l);
+                    if (gardes.length >= 60) break;
+                }
+                return gardes;
+            }
             async function chercherLieuxV3d(bibliothequeSeulement=false, forcerRecherche=false) {
                 if (v3d.pts.length < 2) return [];
                 if (bibliothequeSeulement) {
@@ -13607,9 +13633,10 @@ def accueil():
                         if (res.ok) {
                             const data = await res.json();
                             const lieux = Array.isArray(data.lieux) ? data.lieux : [];
-                            v3d.lieuxEtat = lieux.length ? 'ok' : 'vide';
-                            console.info('Survol 3D : noms chargés immédiatement depuis la bibliothèque', lieux.length);
-                            return lieux;
+                            const positionnes = positionnerLieuxSurParcoursV3d(lieux);
+                            v3d.lieuxEtat = positionnes.length ? 'ok' : (lieux.length ? 'vide' : 'vide');
+                            console.info('Survol 3D : noms chargés immédiatement depuis la bibliothèque', positionnes.length);
+                            return positionnes;
                         }
                     } catch (e) { console.warn('Bibliothèque géographique momentanément indisponible', e); }
                     return [];
@@ -13712,26 +13739,8 @@ def accueil():
                     if (gardes.every(g => !(g.nom.toLocaleLowerCase() === l.nom.toLocaleLowerCase()
                         && distanceM(g.coord, l.coord) < 600))) gardes.push(l);
                 }
-                // Chaque lieu est rattaché au point du GPX le plus proche : le texte apparaîtra sur le trajet.
-                for (const l of gardes) {
-                    let meilleureDistance = Infinity, meilleurIndex = 0;
-                    for (let i = 0; i < v3d.pts.length; i++) {
-                        const ecart = distanceM(l.coord, v3d.pts[i]);
-                        if (ecart < meilleureDistance) {
-                            meilleureDistance = ecart;
-                            meilleurIndex = i;
-                        }
-                    }
-                    // Distance mesurée au segment le plus proche du parcours (la trace est allégée à 400 points).
-                    const ecartReel = ecartParcoursV3d(l.coord);
-                    if (ecartReel > rayonAffichageV3d(l.genre)) {
-                        l.d = -1;
-                    } else {
-                        l.ec = ecartReel;
-                        l.d = v3d.cum[meilleurIndex] || 0;
-                    }
-                }
-                const lieuxProches = gardes.filter(l => l.d >= 0);
+                // Même calcul pour les résultats IGN/OSM et ceux déjà préparés.
+                const lieuxProches = positionnerLieuxSurParcoursV3d(gardes);
                 gardes.length = 0;
                 gardes.push(...lieuxProches);
                 v3d.lieuxEtat = gardes.length ? 'ok' : (data ? 'vide' : 'panne');
