@@ -20300,7 +20300,7 @@ def preparer_lieux_sortie(sortie_id):
                             categorie = " ".join(str(prop.get(k) or "") for k in ("category","type","nature","kind","_type","description","poi_type","poiType")).casefold()
                             texte = categorie.replace("’", "'").replace("–", "-")
                             if any(m in texte for m in ("river","rivière","riviere","cours d'eau","hydrographie")):
-                                genre, rang, portee = "riviere", 5, 1800
+                                continue
                             elif any(m in texte for m in ("lieu-dit habité","lieu dit habité")):
                                 genre, rang, portee = "lieu_dit", 9, 3500
                             elif any(m in texte for m in ("hameau","hamlet","locality","localité")):
@@ -20431,7 +20431,7 @@ def preparer_lieux_sortie(sortie_id):
                                     else:
                                         genre_wfs, rang_wfs = "lieu_dit", 9
                                 elif any(x in classe_top for x in ("cours d'eau", "tronçon hydrographique", "detail hydrographique", "détail hydrographique")):
-                                    genre_wfs, rang_wfs = "riviere", 5
+                                    continue
                                 elif "zone d'habitation" in classe_top:
                                     # Une zone d'habitation n'est pas forcément un hameau :
                                     # seuls les objets explicitement nommés hameau, bourg
