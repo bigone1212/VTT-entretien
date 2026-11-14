@@ -1,3 +1,21 @@
+# Mise à jour — 14/11/2026 — correction de la connexion Neon pendant la recherche des lieux
+
+- Diagnostic confirmé dans le code et les journaux Render : `preparer_lieux_sortie()` ouvrait une connexion PostgreSQL Neon, puis la gardait ouverte pendant les nombreux appels réseau IGN, WFS et OpenStreetMap. Pendant ces attentes, Neon / le réseau pouvait fermer la connexion SSL. Le bloc d'erreur réutilisait ensuite le même curseur et la même connexion morte pour tenter d'enregistrer le statut, ce qui provoquait une deuxième erreur.
+- Correction dans `main.py` sur la branche existante `reprise/2026-11-13-maillons-complet-test` :
+  1. lecture de la trace et passage à `en_cours` dans une connexion courte, fermée avant le premier appel réseau ;
+  2. aucune connexion PostgreSQL conservée pendant les appels IGN / WFS / OSM ;
+  3. ouverture d'une nouvelle connexion après les recherches pour enregistrer les noms IGN/OSM, relire la bibliothèque et sauvegarder le résultat ;
+  4. en cas d'erreur, fermeture de la connexion fautive et tentative d'enregistrer l'erreur avec une nouvelle connexion ;
+  5. verrou par sortie pour empêcher le traitement de démarrage et une relance manuelle de lancer deux recherches concurrentes sur la même sortie.
+- Le cas d'une trace vide ou invalide ouvre également une connexion courte pour enregistrer un état final.
+- Commits applicatifs : `94accd7ba25debcc99ed0ba11ec7a80afc5be584` et `14b658d397ea796956f396effd1e46b88255e31d`.
+- Seul `main.py` a été modifié côté application ; les couches IGN, la logique des catégories, les rayons, la bibliothèque, les filtres et le survol 3D ne sont pas modifiés par ce correctif.
+- Vérifications de cohérence du correctif effectuées avant écriture : fermeture avant réseau, absence d'écriture DB pendant le réseau, reconnexion avant sauvegarde, gestion d'erreur avec nouvelle connexion et verrou anti-doublon. Les tests complets GitHub Actions restent à confirmer.
+- Aucun déploiement Render, aucune fusion, aucun changement sur `main`, aucune opération sur Neon et aucune modification de données de production.
+- La branche de test est en avance de 80 commits et en retard de 3 commits sur `main` ; le diff actuel entre les branches concerne `.github/workflows/maillons-check.yml`, `RELAIS_MAILLONS.md` et `main.py`. Vérifier le résultat de la demande de fusion et les éventuels conflits avant toute fusion.
+
+---
+
 # Mise à jour — 14/11/2026 — correction des couches IGN et réduction du temps de recherche
 
 - Le test après le déploiement précédent a montré que le résultat restait vide. La cause structurelle des appels WFS était confirmée : les deux couches interrogées étaient des lieux-dits non habités, alors que l'affichage doit surtout récupérer les zones d'habitation et les cours d'eau. De plus, le géocodage inverse envoyait une limite de 50 résultats ; elle est ramenée à 20 et le corps d'une erreur HTTP IGN est désormais conservé dans les logs.
