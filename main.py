@@ -14523,11 +14523,11 @@ def accueil():
                         for (let essai = 0; essai < 120; essai++) {
                             await new Promise(resolve => setTimeout(resolve, 2500));
                             if (v3d.carte == null) break;
-                            const suivi = await fetch('/api/sorties/' + encodeURIComponent(v3d.sortieId) + '/lieux?velo_id=' + encodeURIComponent(veloActifId || 1), { headers: getHeaders() });
+                            const suivi = await fetch('/api/sorties/' + encodeURIComponent(v3d.sortieId) + '/lieux/etat?velo_id=' + encodeURIComponent(veloActifId || 1), { headers: getHeaders() });
                             if (!suivi.ok) throw new Error('Impossible de suivre la recherche des lieux.');
                             const etat = await suivi.json();
                             if (etat.statut === 'termine') { termine = true; break; }
-                            if (etat.statut === 'erreur') throw new Error(etat.erreur || 'La recherche a échoué.');
+                            if (etat.erreur && etat.statut !== 'termine') throw new Error(etat.erreur || 'La recherche a échoué.');
                         }
                         if (!v3d.carte) return;
                         if (!termine) throw new Error('La recherche prend plus de temps que prévu. Les résultats continueront en arrière-plan.');
@@ -20649,6 +20649,25 @@ def relancer_recherche_lieux(sortie_id: int, background_tasks: BackgroundTasks, 
         conn.commit()
         background_tasks.add_task(preparer_lieux_sortie, sortie_id)
         return {"statut": "en_cours", "sortie_id": sortie_id, "message": "Recherche IGN et OpenStreetMap relancée."}
+    finally:
+        conn.close()
+
+
+@app.get("/api/sorties/{sortie_id}/lieux/etat")
+def obtenir_etat_lieux(sortie_id: int, velo_id: int = 1, x_code_acces: Optional[str] = Header(default=None)):
+    """Lit l'état de la recherche sans déclencher un nouvel essai."""
+    controle_acces(x_code_acces, velo_id)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT id FROM sorties WHERE id = ? AND velo_id = ?", (sortie_id, velo_id))
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Sortie introuvable.")
+        cursor.execute("SELECT statut, erreur FROM recherche_lieux_gpx WHERE sortie_id = ?", (sortie_id,))
+        row = cursor.fetchone()
+        if row is None:
+            return {"statut": "absent", "erreur": None}
+        return {"statut": row[0], "erreur": row[1]}
     finally:
         conn.close()
 
