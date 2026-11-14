@@ -20033,10 +20033,26 @@ def enregistrer_lieu_bibliotheque(cursor, l, source):
 
 
 # Préparation anticipée des noms géographiques des sorties GPX.
+# Une seule préparation par sortie à la fois : la file de démarrage et une relance
+# manuelle peuvent sinon lancer deux traitements concurrents sur la même sortie.
+_lieux_traitements_actifs = set()
+_lieux_traitements_verrou = threading.Lock()
+
+
 def preparer_lieux_sortie(sortie_id):
-    conn = db.connect()
-    cursor = conn.cursor()
+    with _lieux_traitements_verrou:
+        if sortie_id in _lieux_traitements_actifs:
+            print(f"[Maillons lieux] Sortie {sortie_id} déjà en cours : doublon ignoré.")
+            return
+        _lieux_traitements_actifs.add(sortie_id)
+
+    conn = None
+    cursor = None
     try:
+        # La connexion ne sert qu'à lire la trace et marquer le début.
+        # Elle est fermée avant tout appel réseau IGN / OSM / WFS.
+        conn = db.connect()
+        cursor = conn.cursor()
         cursor.execute("SELECT trace FROM sorties WHERE id = ?", (sortie_id,))
         ligne = cursor.fetchone()
         if ligne is None: return
@@ -20050,6 +20066,9 @@ def preparer_lieux_sortie(sortie_id):
             except (TypeError, ValueError, IndexError): pass
         cursor.execute("UPDATE recherche_lieux_gpx SET statut = ?, tentatives = COALESCE(tentatives, 0) + 1, erreur = NULL WHERE sortie_id = ?", ("en_cours", sortie_id))
         conn.commit()
+        conn.close()
+        conn = None
+        cursor = None
         lieux = []
         osm_complet = True
         diagnostic = {
@@ -20354,13 +20373,16 @@ def preparer_lieux_sortie(sortie_id):
                 diagnostic["osm_noms_acceptes"] += len(trouves)
                 for l in trouves:
                     lieux.append(l)
-                    enregistrer_lieu_bibliotheque(cursor, l, "OpenStreetMap")
-            # Enregistre les lieux IGN en premier dans la bibliothèque commune.
+            # Tous les appels réseau sont terminés. On ouvre maintenant une
+            # connexion fraîche et courte pour écrire et relire la bibliothèque.
+            conn = db.connect()
+            cursor = conn.cursor()
             for l in lieux:
-                if not str(l.get("source", "")).startswith("IGN"): continue
-                lon, lat = l["coord"]
-                cle=hashlib.sha256((unicodedata.normalize("NFKD",l["nom"]).casefold()+"|"+str(round(lon,4))+"|"+str(round(lat,4))).encode()).hexdigest()
-                cursor.execute("""INSERT INTO bibliotheque_lieux_geo (cle,nom,genre,rang,lon,lat,altitude,source,maj_le) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT (cle) DO UPDATE SET nom=excluded.nom,genre=excluded.genre,rang=excluded.rang,altitude=excluded.altitude,source=excluded.source,maj_le=excluded.maj_le""", (cle,l["nom"],l["genre"],l["rang"],lon,lat,l.get("alt"),"IGN",datetime.now(timezone.utc).isoformat()))
+                source_lieu = str(l.get("source", "")).casefold()
+                if source_lieu.startswith("ign"):
+                    enregistrer_lieu_bibliotheque(cursor, l, "IGN")
+                elif "openstreetmap" in source_lieu or source_lieu == "osm":
+                    enregistrer_lieu_bibliotheque(cursor, l, "OpenStreetMap")
             # Réutilise les lieux déjà connus dans la bibliothèque commune,
             # même si le service cartographique est momentanément indisponible.
             cursor.execute(
@@ -20407,12 +20429,51 @@ def preparer_lieux_sortie(sortie_id):
         diagnostic["noms_finaux_affichables"] = len(lieux)
         diagnostic["points_gpx"] = len(points)
         diagnostic["tentative"] = essais
-        print("[Maillons lieux] " + json.dumps({"sortie_id": sortie_id, **diagnostic, "statut": statut_final}, ensure_ascii=False))
         conn.commit()
+        print("[Maillons lieux] " + json.dumps({"sortie_id": sortie_id, **diagnostic, "statut": statut_final}, ensure_ascii=False))
     except Exception as exc:
-        try: cursor.execute("UPDATE recherche_lieux_gpx SET statut = ?, erreur = ?, maj_le = ? WHERE sortie_id = ?", ("en_attente",str(exc)[:500],datetime.now(timezone.utc).isoformat(),sortie_id)); conn.commit()
-        except Exception: conn.rollback()
-    finally: conn.close()
+        detail_erreur = str(exc)[:500]
+        print(f"[Maillons lieux] Échec sortie {sortie_id} : {detail_erreur}")
+        # Ne jamais réutiliser une connexion qui vient de perdre son SSL.
+        try:
+            if conn is not None:
+                conn.close()
+        except Exception:
+            pass
+        conn = None
+        cursor = None
+        # Le statut d'erreur est enregistré avec une nouvelle connexion.
+        try:
+            conn = db.connect()
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE recherche_lieux_gpx SET statut = ?, erreur = ?, maj_le = ? WHERE sortie_id = ?",
+                ("en_attente", detail_erreur, datetime.now(timezone.utc).isoformat(), sortie_id)
+            )
+            conn.commit()
+        except Exception as erreur_db:
+            print(f"[Maillons lieux] Impossible d'enregistrer l'erreur en base pour la sortie {sortie_id} : {erreur_db}")
+            try:
+                if conn is not None:
+                    conn.rollback()
+            except Exception:
+                pass
+        finally:
+            try:
+                if conn is not None:
+                    conn.close()
+            except Exception:
+                pass
+            conn = None
+            cursor = None
+    finally:
+        try:
+            if conn is not None:
+                conn.close()
+        except Exception:
+            pass
+        with _lieux_traitements_verrou:
+            _lieux_traitements_actifs.discard(sortie_id)
 
 def reprendre_lieux_en_attente():
     conn=db.connect(); cursor=conn.cursor()
