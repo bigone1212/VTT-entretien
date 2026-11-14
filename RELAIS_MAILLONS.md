@@ -1,3 +1,14 @@
+# Mise à jour — 14/11/2026 — calcul de distance pour les noms de la bibliothèque
+
+- Diagnostic confirmé : le chargement immédiat de la bibliothèque renvoyait les noms sans calculer leur distance cumulée sur la trace GPX. La nouvelle règle d'affichage (200 m avant / 100 m après) exige cette distance ; les noms avaient donc tous une distance absente et restaient masqués.
+- Correction dans `main.py` : ajout d'un calcul commun de position sur le parcours, appliqué aux noms venant de la bibliothèque comme à ceux des recherches IGN / OpenStreetMap.
+- Les noms hors rayon d'affichage sont filtrés selon les règles déjà existantes ; les coordonnées et les données enregistrées dans la bibliothèque ne sont pas modifiées.
+- La règle d'affichage reste : apparition 200 m avant le point, disparition 100 m après.
+- Commit applicatif : `c9977f5d16634cb54474202ab8ac0f3e89c1974f`.
+- Branche existante uniquement : `reprise/2026-11-13-maillons-complet-test`. Aucun changement sur `main`, aucune fusion, aucune opération Neon. Déploiement de test après vérifications automatiques.
+
+---
+
 # Mise à jour — 14/11/2026 — affichage des noms au passage du point
 
 - Demande de Math : chaque nom géographique doit apparaître à l'approche du point puis disparaître après le passage.
