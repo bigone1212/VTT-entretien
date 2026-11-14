@@ -1263,3 +1263,14 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 
 - Correctif de suivi avant déploiement : ajout d'une route de lecture d'état sans effet secondaire (`/lieux/etat`) afin que le bouton ne déclenche pas de nouvelles tâches lors du contrôle périodique. Le suivi s'arrête aussi sur une erreur remontée par le serveur.
 - Dernier commit applicatif : `79ef34b13e06b2f4f758f5bb0767b9c4dcf79002`.
+
+
+# Mise à jour — 14/11/2026 — correction du rayon IGN rejeté
+
+- Après le test sur Render, les journaux ont révélé trois erreurs HTTP 400 identiques : l'API IGN impose un rayon compris entre 0 et 500 m.
+- Le code envoyait pourtant un rayon calculé entre 1 200 et 3 500 m. La correction précédente n'avait donc pas résolu le vrai blocage.
+- Dans `main.py`, le rayon est maintenant fixé à 500 m et le nombre de points de recherche est augmenté (un point tous les 700 m, avec un maximum de 60) pour mieux couvrir le tracé.
+- Commit : `3994a65337bc4c72b1121e28ba609677dce51222`, branche de test existante uniquement.
+- Le changement est enregistré sur GitHub. Il n'a pas encore été vérifié par un nouveau test Render et n'a pas été redéployé.
+- Aucun changement de branche, de `main`, de production ou de Neon. Les autres sources (WFS et OSM), les filtres et l'affichage 3D n'ont pas été modifiés.
+- Tâche en cours : vérifier le changement, puis déployer uniquement sur le service Render de test et contrôler les nouveaux journaux avant de conclure.
