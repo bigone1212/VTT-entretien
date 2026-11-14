@@ -1274,3 +1274,6 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - Le changement est enregistré sur GitHub. Il n'a pas encore été vérifié par un nouveau test Render et n'a pas été redéployé.
 - Aucun changement de branche, de `main`, de production ou de Neon. Les autres sources (WFS et OSM), les filtres et l'affichage 3D n'ont pas été modifiés.
 - Tâche en cours : vérifier le changement, puis déployer uniquement sur le service Render de test et contrôler les nouveaux journaux avant de conclure.
+
+- Déploiement Render de test effectué après cette mise à jour : `dep-dbs3qvgn74is738p81tg`, statut `live` le 14/11/2026 à 10:53:31 UTC. Le build est réussi.
+- Le parcours doit maintenant être retesté avec « Relancer les noms ». Contrôler les journaux de cette nouvelle tentative : disparition des HTTP 400 IGN, réponses WFS/OSM et nombre final de noms. Ne pas conclure que l'affichage est réparé avant cette vérification.
