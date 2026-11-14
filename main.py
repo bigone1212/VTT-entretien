@@ -20020,6 +20020,7 @@ def preparer_lieux_sortie(sortie_id):
             total = longueur[-1]
             nombre = min(36, max(1, int(math.ceil(total / 2500)))) if total else 1
             rayon = max(1200, min(3500, (total / nombre if nombre else 2500) * 0.72))
+            ign_erreurs = []
             for debut in range(0, nombre, 4):
                 appels = []
                 for j in range(debut, min(nombre, debut + 4)):
@@ -20031,11 +20032,15 @@ def preparer_lieux_sortie(sortie_id):
                         "searchgeom":json.dumps(zone,separators=(",",":")),
                         "lon":str(lon), "lat":str(lat), "limit":"50"
                     }
-                    # Les lieux-dits de la BAN sont des localités.
-                    params_adresses = dict(communs, index="address,poi", type="locality", category="zone d'habitation")
+                    # Sépare les index : le filtre de catégorie ne doit pas
+                    # limiter la recherche BAN des localités.
+                    params_adresses = dict(communs, index="address", type="locality")
                     appels.append(urllib.parse.urlencode(params_adresses))
-                    # Les lieux-dits non habités, sommets, cols et reliefs sont
-                    # répertoriés dans la catégorie topographique de la BD TOPO.
+                    # Les lieux-dits habités sont des POI de la catégorie
+                    # « zone d'habitation » dans la BD TOPO.
+                    params_hameaux = dict(communs, index="poi", category="zone d'habitation")
+                    appels.append(urllib.parse.urlencode(params_hameaux))
+                    # Les cols, sommets et cours d'eau sont des POI distincts.
                     params_toponymes = dict(communs, index="poi", category="élément topographique ou forestier")
                     appels.append(urllib.parse.urlencode(params_toponymes))
                 for params in appels:
@@ -20055,12 +20060,16 @@ def preparer_lieux_sortie(sortie_id):
                             except (TypeError, ValueError): continue
                             nom = str(prop.get("name") or prop.get("label") or prop.get("toponyme") or prop.get("nom") or prop.get("title") or "").strip()
                             if not nom: continue
-                            categorie = " ".join(str(prop.get(k) or "") for k in ("category","type","nature","kind","_type","description")).casefold()
-                            texte = categorie
-                            if any(m in texte for m in ("river","rivière","riviere","cours d'eau","cours d’eau","hydrograph")):
+                            categorie = " ".join(str(prop.get(k) or "") for k in ("category","type","nature","kind","_type","description","poi_type","poiType")).casefold()
+                            texte = categorie.replace("’", "'").replace("–", "-")
+                            if any(m in texte for m in ("river","rivière","riviere","cours d'eau","hydrographie")):
                                 genre, rang, portee = "riviere", 5, 1800
-                            elif any(m in texte for m in ("hamlet","hameau","locality","localité","zone d'habitation")):
+                            elif any(m in texte for m in ("lieu-dit habité","lieu dit habité","hameau","hamlet","locality","localité")):
                                 genre, rang, portee = "hameau", 4, 3500
+                            elif any(m in texte for m in ("col","saddle","mountain_pass")) and any(m in texte for m in ("col","saddle","mountain_pass")):
+                                genre, rang, portee = "col", 2, 2200
+                            elif any(m in texte for m in ("sommet","peak","pic","mountain summit")):
+                                genre, rang, portee = "sommet", 2, 2200
                             elif any(m in texte for m in ("village","commune","town","city","municipality")):
                                 genre, rang, portee = "village", 3, 5000
                             else:
@@ -20071,8 +20080,15 @@ def preparer_lieux_sortie(sortie_id):
                             try: altitude = float(str(prop.get("ele") or prop.get("altitude") or prop.get("z")).replace(",","."))
                             except (TypeError, ValueError): pass
                             lieux.append({"nom":nom,"genre":genre,"rang":rang,"ec":round(ec,1),"coord":[lon,lat],"alt":altitude,"source":"IGN"})
-                    except Exception:
+                    except Exception as exc:
+                        # Ne pas masquer les erreurs IGN : elles expliquent
+                        # pourquoi une recherche peut ne rapporter aucun nom.
+                        if len(ign_erreurs) < 3:
+                            ign_erreurs.append(f"{type(exc).__name__}: {str(exc)[:160]}")
                         continue
+
+            if ign_erreurs:
+                print("[Maillons IGN] Échecs de requêtes : " + " | ".join(ign_erreurs))
 
             # 1 bis) Recherche vectorielle directe dans les couches IGN WFS.
             # Contrairement au géocodage inverse, GetFeature renvoie les objets
