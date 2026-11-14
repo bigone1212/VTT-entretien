@@ -1,3 +1,274 @@
+# Mise à jour — 14/11/2026 — correction de la connexion Neon pendant la recherche des lieux
+
+- Diagnostic confirmé dans le code et les journaux Render : `preparer_lieux_sortie()` ouvrait une connexion PostgreSQL Neon, puis la gardait ouverte pendant les nombreux appels réseau IGN, WFS et OpenStreetMap. Pendant ces attentes, Neon / le réseau pouvait fermer la connexion SSL. Le bloc d'erreur réutilisait ensuite le même curseur et la même connexion morte pour tenter d'enregistrer le statut, ce qui provoquait une deuxième erreur.
+- Correction dans `main.py` sur la branche existante `reprise/2026-11-13-maillons-complet-test` :
+  1. lecture de la trace et passage à `en_cours` dans une connexion courte, fermée avant le premier appel réseau ;
+  2. aucune connexion PostgreSQL conservée pendant les appels IGN / WFS / OSM ;
+  3. ouverture d'une nouvelle connexion après les recherches pour enregistrer les noms IGN/OSM, relire la bibliothèque et sauvegarder le résultat ;
+  4. en cas d'erreur, fermeture de la connexion fautive et tentative d'enregistrer l'erreur avec une nouvelle connexion ;
+  5. verrou par sortie pour empêcher le traitement de démarrage et une relance manuelle de lancer deux recherches concurrentes sur la même sortie.
+- Le cas d'une trace vide ou invalide ouvre également une connexion courte pour enregistrer un état final.
+- Commits applicatifs : `94accd7ba25debcc99ed0ba11ec7a80afc5be584` et `14b658d397ea796956f396effd1e46b88255e31d`.
+- Seul `main.py` a été modifié côté application ; les couches IGN, la logique des catégories, les rayons, la bibliothèque, les filtres et le survol 3D ne sont pas modifiés par ce correctif.
+- Vérifications de cohérence du correctif effectuées avant écriture : fermeture avant réseau, absence d'écriture DB pendant le réseau, reconnexion avant sauvegarde, gestion d'erreur avec nouvelle connexion et verrou anti-doublon. Les tests complets GitHub Actions restent à confirmer.
+- Aucun déploiement Render, aucune fusion, aucun changement sur `main`, aucune opération sur Neon et aucune modification de données de production.
+- La branche de test est en avance de 80 commits et en retard de 3 commits sur `main` ; le diff actuel entre les branches concerne `.github/workflows/maillons-check.yml`, `RELAIS_MAILLONS.md` et `main.py`. Vérifier le résultat de la demande de fusion et les éventuels conflits avant toute fusion.
+
+---
+
+# Mise à jour — 14/11/2026 — correction des couches IGN et réduction du temps de recherche
+
+- Le test après le déploiement précédent a montré que le résultat restait vide. La cause structurelle des appels WFS était confirmée : les deux couches interrogées étaient des lieux-dits non habités, alors que l'affichage doit surtout récupérer les zones d'habitation et les cours d'eau. De plus, le géocodage inverse envoyait une limite de 50 résultats ; elle est ramenée à 20 et le corps d'une erreur HTTP IGN est désormais conservé dans les logs.
+- Les couches WFS sont maintenant `BDTOPO_V3:zone_d_habitation`, `BDTOPO_V3:cours_d_eau` et `BDTOPO_V3:lieu_dit_non_habite`. Le traitement accepte les polygones d'habitation (point représentatif calculé à partir de leur contour) et les lignes de cours d'eau (point le plus proche du parcours). La recherche WFS garde une marge de 500 m pour les zones d'habitation.
+- OpenStreetMap : une requête par tronçon récupère désormais à la fois les lieux et les rivières, au lieu de deux requêtes. Délai réseau par serveur ramené à 6 secondes et trois serveurs essayés. La requête utilise une sortie Overpass valide `out tags geom`.
+- Aucun changement aux filtres d'affichage, à la bibliothèque, aux coordonnées de la trace, aux couches satellite/plan ou au survol 3D. Les lieux-dits non habités restent conservés dans la bibliothèque mais ne sont pas affichés.
+- Commits applicatifs sur la branche existante : `7ba7d61b44d3d95eabfe563201fa5716c37fa18e` puis `55553b963be74421dbef5307626c1adcb4545d42`. Aucun nouveau branchement, aucun changement sur `main`, aucune fusion, aucune opération Neon.
+- À faire : contrôle syntaxique/build Render, puis déploiement Render test uniquement. Les réponses réelles IGN/OSM doivent être confirmées dans les logs après le déploiement.
+
+---
+
+# Mise à jour — 14/11/2026 — correction IGN / OpenStreetMap après diagnostic Render
+
+- Diagnostic réel sur la sortie 17 : géocodage IGN reverse en erreur HTTP 400 ; WFS a renvoyé 29 objets dont 2 lieux-dits non habités à moins de 200 m, mais ils sont correctement exclus de l'affichage ; OpenStreetMap n'a obtenu aucune réponse exploitable sur les 5 tronçons.
+- Dans `main.py`, les requêtes IGN reverse n'envoient plus `type=locality` ni des catégories POI codées en dur. Elles interrogent séparément les index documentés `address` et `poi`, puis classent les propriétés reçues. Cela évite le paramètre reverse qui provoquait les HTTP 400 et les filtres POI trop restrictifs.
+- La recherche Overpass essaie désormais aussi le miroir `maps.mail.ru`, réduit le délai individuel à 12 secondes et conserve les erreurs des serveurs dans le diagnostic `osm_erreurs`. Une réponse valide avec zéro élément reste distincte d'une panne.
+- Aucun changement aux rayons confirmés (500 m villes/villages ; 200 m autres catégories), à la bibliothèque, à l'ordre de priorité, aux filtres, aux coordonnées ou au survol 3D.
+- Branche existante uniquement : `reprise/2026-11-13-maillons-complet-test`. Aucun changement sur `main`, aucune fusion, aucune opération Neon, aucun nouveau branchement.
+- Commit applicatif : `d574c0cc680d20f7cadc9f04904b0dec4b81747d`.
+- À vérifier : contrôles syntaxiques et workflow GitHub Actions ; puis déploiement Render test uniquement. Les appels réels aux services externes devront être confirmés dans les logs après une relance manuelle sur la sortie 17.
+- Documentation officielle consultée : guide Géoplateforme géocodage et documentation Overpass QL ; les appels IGN utilisent désormais les index `address` et `poi` sans filtre reverse non documenté.
+
+---
+
+# Mise à jour — 14/11/2026 — correction du classement des noms IGN
+
+- Branche existante conservée : `reprise/2026-11-13-maillons-complet-test`. Aucun nouveau branchement.
+- Dans `main.py`, les requêtes de géocodage inverse IGN sont maintenant séparées par index : BAN (`address`), POI d'habitation (`zone d'habitation`), hydrographie (`hydrographie`) et relief (`élément topographique ou forestier`). Le filtre de catégorie ne peut donc plus réduire la recherche BAN.
+- Le classement des réponses IGN reconnaît maintenant les sous-catégories réelles « lieu-dit habité », « cours d'eau », « col », « sommet » et « pic ». Avant ce correctif, plusieurs de ces réponses étaient classées génériquement en `lieu`, puis éliminées du survol.
+- Les erreurs des appels IGN ne sont plus totalement silencieuses : les trois premiers messages d'erreur sont écrits dans les logs Render pour faciliter le diagnostic.
+- Les règles confirmées avec Math restent inchangées : 500 m pour villes/villages ; 200 m pour hameaux, rivières, cols et sommets. Priorité bibliothèque, puis CARTO, IGN, OSM. Aucun effacement de bibliothèque.
+- Les lieux-dits non habités restent conservés en bibliothèque mais ne sont pas ajoutés à l'affichage, conformément aux catégories demandées.
+- Documentation consultée : guide officiel Géoplateforme du géocodage (GetCapabilities et index address/POI) et liste de catégories BD TOPO. Les noms exacts des couches WFS BDTOPO restent à confirmer par GetCapabilities ; aucune modification hasardeuse de ces identifiants n'a été faite.
+- Contrôles réseau réels sur Caussenus et rendu navigateur non encore effectués. Le workflow GitHub Actions doit être vérifié après ce commit.
+- Aucun déploiement Render, aucune modification de `main`, aucune opération Neon.
+
+---
+
+# Mise à jour — 14/11/2026 — fiabilisation des noms géographiques du survol 3D (Claude, à vérifier en ligne)
+
+- Base : commit `c80eac7` (classement IGN et habitations isolées, ajoutés par ailleurs le matin même) conservé tel quel. Un seul fichier applicatif modifié : `main.py`, sur la branche existante `reprise/2026-11-13-maillons-complet-test`.
+- Causes corrigées :
+  1. **Rivières** : OpenStreetMap donnait le centre de la rivière entière (hors des 200 m). La recherche serveur récupère maintenant la géométrie de la rivière et pose le nom au point de la rivière le plus proche du parcours.
+  2. **Bibliothèque non prioritaire** : la recherche complète remplaçait la liste de la bibliothèque. Les deux listes sont maintenant fusionnées (la bibliothèque passe en premier, jamais écrasée par une liste vide).
+  3. **Réponse Overpass vide ou « délai dépassé » prise pour un succès** : la sortie était marquée « terminée » avec zéro nom et jamais relancée. Désormais, une réponse incomplète laisse la sortie « en_attente » (4 essais au plus) et les noms déjà trouvés restent utilisables.
+  4. **Distance au parcours** : mesurée au segment le plus proche (la trace stockée est allégée à 400 points), au lieu du sommet le plus proche.
+  5. **Rayon** : 500 m pour les villes et villages (décision de Math), 200 m pour hameaux, rivières, cols et sommets.
+- Serveur : recherche OpenStreetMap plus légère (uniquement villes, villages, hameaux, habitations isolées, sommets, cols, rivières), découpée en tronçons autour du tracé. Les lieux déjà présents dans la bibliothèque ne sont pas supprimés. `natural=ridge` n'est plus recherché (lignes trop longues).
+- Écran : texte des noms protégé (&, <, >), noms cachés derrière une crête moins estompés (75 %), un petit compte-rendu de 8 secondes indique le nombre de noms et leur origine (bibliothèque / OpenStreetMap / IGN). Le backslash `col\\b` de la recherche IGN du navigateur a été supprimé (règle : pas de backslash dans le JavaScript).
+- Non modifié : la recherche directe IGN/OSM du navigateur reste en secours ; son OSM place toujours les rivières au centre de leur tracé (les vraies rivières viennent du serveur). Filtres, lecture 3D, couches satellite/plan, `main`, base Neon : inchangés. Aucun déploiement.
+- Tests faits (sans réseau) : syntaxe Python, syntaxe des deux scripts JavaScript, 17 contrôles des fonctions serveur sur des cas fabriqués (rayons, rivière qui croise le parcours, réponse Overpass « délai dépassé »), 5 contrôles des fonctions JavaScript. **Non testé** : réponses réelles d'Overpass/IGN, rendu dans un vrai navigateur, tests GitHub Actions (à regarder après le push). Ne pas déployer sans accord explicite de Math.
+
+---
+
+# Mise à jour — 14/11/2026 — correction de l'affichage des noms géographiques (à vérifier)
+
+- Retour utilisateur : après le déploiement précédent, aucun nom n'est visible sur le satellite.
+- Inspection du JavaScript dans `main.py` : deux causes certaines ont été identifiées :
+  1. les marqueurs de lieux étaient placés avec `pointA(l.d)`, donc projetés sur le tracé au lieu de conserver leurs coordonnées géographiques originales `l.coord` ;
+  2. `majVisibiliteReperesV3d()` masquait tous les noms sauf un seul, pendant une courte fenêtre au passage du cycliste. À l'arrêt ou au début de la lecture, la plupart des noms étaient donc invisibles.
+- Correction ciblée dans `main.py` :
+  - les marqueurs utilisent maintenant `setLngLat(l.coord)`, sans déplacer les coordonnées ;
+  - tous les noms géographiques retenus restent visibles sur la carte tant que le bouton « Repères » est activé, indépendamment de la position de lecture ;
+  - le bouton « Repères » continue de masquer/afficher l'ensemble des repères ;
+  - les repères de pente et Vmax gardent leur comportement existant.
+- Fichier applicatif modifié : `main.py` uniquement pour ce correctif. Pas de changement aux filtres, à la recherche, à la bibliothèque, aux catégories autorisées, au rayon de 200 m, aux couches satellite/plan ou aux fonctions de lecture 3D.
+- Commit applicatif : `30cdcac8465ac7179a7db26ca38b9a8cdde458d5`, branche existante `reprise/2026-11-13-maillons-complet-test`.
+- Aucun nouveau branchement, aucun changement de `main`, aucune fusion, aucune opération Neon et aucun déploiement Render effectué pour ce correctif.
+- À faire : vérifier le workflow GitHub Actions et les contrôles JavaScript. Demander l'accord explicite de Math avant tout nouveau déploiement de test. Le rendu visuel réel reste à confirmer par Math dans son navigateur.
+
+---
+
+# Mise à jour — 14/11/2026 — noms blancs sur le satellite
+
+- Retour utilisateur : rendre les noms des lieux blancs comme l'étiquette Vmax.
+- Dans `main.py`, le plan raster n'est plus superposé en mode satellite (opacité 0, transition 500 ms). Les repères de lieux utilisent déjà le même générateur de marqueur que Vmax : texte blanc avec contour sombre pour rester lisible.
+- En mode Plan, le fond normal reste affiché à 100 %. Aucun changement aux recherches, à la bibliothèque, aux filtres ou à la lecture 3D.
+- Commit applicatif : `31f0ed3c54e8d6f72482dee1c0d63bf9047177e6`, branche existante `reprise/2026-11-13-maillons-complet-test`.
+- Aucun déploiement Render déclenché. Production et branche `main` inchangées.
+
+---
+
+# Mise à jour — 14/11/2026 — superposition du plan sur le satellite
+
+- Retour utilisateur : la recherche des noms ne fonctionne toujours pas ; la carte non satellite affiche déjà les noms utiles. Nouvelle piste choisie : superposer le fond plan sur l'imagerie satellite avec transparence.
+- Dans `main.py`, les deux cartes concernées (fiche sortie et survol 3D) gardent désormais les deux couches visibles : le plan OSM est à 32 % d'opacité sur le satellite, et passe à 100 % en mode Plan.
+- Transition d'opacité configurée sur 500 ms. Aucun changement à la bibliothèque géographique, aux recherches IGN/OSM, aux filtres, à la lecture 3D ou aux autres fichiers applicatifs.
+- Commit : `93e4f26f6dac27aec416ff7185573d552ad90e7d`, branche existante `reprise/2026-11-13-maillons-complet-test`.
+- Aucun déploiement Render déclenché. Aucun changement sur `main`, aucune fusion, aucune opération Neon.
+- À faire : contrôler le workflow / la syntaxe puis demander l'accord explicite de Math avant de déployer sur le service Render de test.
+
+---
+
+# Tâche en cours — 14/11/2026 — corriger l'affichage des repères à 200 m
+
+- Retour après le dernier déploiement de test : aucun nom ne s'affiche. Le besoin est maintenant strict : afficher uniquement les noms situés sur le parcours ou à 200 m maximum.
+- Catégories à conserver à l'affichage : villes, villages, hameaux, rivières, cols et sommets / points hauts.
+- Les noms plus éloignés et les autres catégories restent conservés dans la bibliothèque géographique ; ils ne sont simplement pas présentés pendant le survol.
+- Correction ciblée dans `main.py`, sur la branche existante `reprise/2026-11-13-maillons-complet-test` : rayon d'affichage navigateur fixé à 200 m ; filtre serveur limité à 200 m ; cols et sommets réintégrés dans les filtres navigateur et serveur ; requête OSM navigateur complétée pour récupérer cols et sommets ; cache navigateur renouvelé de v4 à v5.
+- Commit applicatif : `c199699dc4954757319167527dd59064631b2cbd`.
+- Fichiers modifiés : `main.py` et ce relais uniquement. Aucun nouveau branchement, aucun changement de `main`, aucune opération Neon, aucun déploiement Render à ce stade.
+- Vérifier le workflow GitHub Actions et la syntaxe avant de demander l'autorisation pour un nouveau déploiement de test.
+
+---
+
+# Tâche en cours — 14/11/2026 — ajouter les cols et points hauts à l'affichage
+
+- Précision de Math : conserver également les cols et les points hauts / sommets dans les repères affichés.
+- Catégories d'affichage actuelles : villes, villages, hameaux, rivières, cols et sommets / points hauts.
+- Les autres lieux (lieux-dits isolés, forêts, attractions, canaux, ruisseaux, etc.) restent exclus de l'affichage mais leurs données déjà enregistrées dans la bibliothèque ne sont pas supprimées.
+- OSM direct (carte navigateur) interroge maintenant aussi `natural=peak|hill|ridge`, `mountain_pass=yes` et `natural=saddle`. Le classement IGN direct comprend les catégories col / mountain pass / saddle et peak / summit / sommet / point haut.
+- Le traitement serveur conserve également les cols et sommets issus d'OSM et de la bibliothèque, et le filtre final les autorise.
+- Rayon d'accrochage au parcours adapté pour cols et sommets. Cache navigateur renouvelé en version v4 lors de l'étape précédente.
+- Branche existante uniquement : `reprise/2026-11-13-maillons-complet-test`. Pas de nouvelle branche, aucun changement de `main`, aucun déploiement Render, aucune modification Neon.
+- Commit de cette précision : `6e3302ab136f9e6865fb7c996cdf157214e41aac`. Les contrôles automatisés sont en attente / en cours ; vérifier la dernière exécution avant tout déploiement.
+- Ne pas déployer sans nouvel accord explicite.
+
+---
+
+# Tâche en cours — 14/11/2026 — limiter les noms affichés et définir les priorités des sources
+
+- Nouvelle précision de Math : l'affichage doit se limiter aux villes, villages, hameaux et rivières. Les autres lieux-dits, sommets, cols, forêts, attractions, etc. ne doivent plus apparaître pendant le survol.
+- Ne pas supprimer les données déjà présentes dans la bibliothèque géographique : conserver les noms enregistrés, mais filtrer ce qui est présenté à l'écran.
+- Ordre de priorité demandé : 1) bibliothèque géographique ; 2) noms issus des données géographiques de la carte non satellite (CARTO/OSM) ; 3) géocodage inversé IGN ; 4) OSM complémentaire.
+- Précision technique : les tuiles CARTO utilisées par la carte sont des images raster ; leurs inscriptions ne sont pas directement interrogeables comme attributs. Pour cette étape, utiliser les données géographiques OSM qui alimentent la carte comme source complémentaire, sans OCR des images.
+- Travail limité à `main.py` et à ce relais sur la branche existante `reprise/2026-11-13-maillons-complet-test`. Aucun nouveau branchement, aucun changement de `main`, aucune fusion, aucune opération Neon.
+- Après modification : invalider le cache local de la liste affichée, contrôler les filtres et les priorités avec les tests existants. Ne pas déployer Render sans nouvel accord explicite.
+
+---
+
+# Mise à jour — 14/11/2026 — recherche géographique complémentaire vérifiée
+
+- Le workflow GitHub Actions `43518683346` pour le commit applicatif `157e165dbe972fdca5ce554a5dc2f815807537a3` est terminé avec succès.
+- Toutes les étapes du workflow sont passées, y compris syntaxe Python/JavaScript, tests applicatifs et tests navigateur existants.
+- Le correctif fusionne les lieux pré-calculés avec les recherches directes OSM/IGN, invalide le cache v2 en passant à v3 et relève la limite à 60.
+- Ces tests automatiques ne valident pas encore le nombre réel de lieux-dits retournés par les services IGN/OSM sur un GPX réel.
+- Le correctif n'est pas encore déployé sur Render. Ne pas déployer sans accord explicite. Production, branche `main` et base Neon inchangées.
+
+---
+
+# Mise à jour — 13/11/2026 — correction de la recherche complémentaire (vérifications en cours)
+
+- Commit applicatif `157e165dbe972fdca5ce554a5dc2f815807537a3` sur la branche existante.
+- `chercherLieuxV3d()` ne s'arrête plus dès que la préparation serveur est terminée : elle fusionne maintenant les lieux préparés avec les recherches directes OpenStreetMap et IGN.
+- Cache navigateur invalidé par passage de la clé `v2` à `v3`, pour forcer une nouvelle recherche au prochain chargement de la sortie.
+- Limite portée de 18 à 60 lieux dans la préparation serveur et dans la sélection navigateur.
+- Les coordonnées des sources ne sont pas déplacées ; la bibliothèque reste conservée et complémentaire.
+- Workflow GitHub Actions `43518683346` déclenché sur ce commit ; statut encore `in_progress` au moment de cette note. Aucun résultat final annoncé.
+- Aucun déploiement Render, aucune modification de `main`, aucune nouvelle branche, aucune fusion et aucune opération Neon.
+
+---
+
+# Tâche en cours — 13/11/2026 — rétablir la recherche complémentaire des lieux
+
+- Retour utilisateur après déploiement : l'interface semble n'afficher que la bibliothèque et trop peu de lieux-dits.
+- Inspection de `main.py` sur la branche de test : `chercherLieuxV3d()` retourne immédiatement les résultats serveur dès que le statut est `termine`, même si la liste est vide ou pauvre ; la recherche directe OSM/IGN du navigateur n'est alors jamais exécutée.
+- Le cache navigateur utilise la clé `maillons-v3d-lieux-v2` et peut donc réutiliser les anciennes listes sans relancer les recherches. Le serveur et le navigateur plafonnent également les résultats à 18.
+- Correction ciblée prévue sur la branche existante : fusionner les résultats pré-calculés avec les recherches directes OSM/IGN, invalider l'ancien cache par changement de version de clé, augmenter raisonnablement la limite de lieux et conserver les coordonnées sources. Préserver la lecture 3D, les filtres et le fonctionnement de la bibliothèque.
+- Aucun changement sur `main`, aucune nouvelle branche, aucune fusion, aucune opération Neon. Déploiement test non autorisé à ce stade ; demander l'accord de Math après vérifications.
+
+---
+
+# Mise à jour — 13/11/2026 — ajout WFS IGN (à vérifier)
+
+- Commit `a505db912908577b06b49e4f0113a71388d0cc27` sur la branche de test existante : ajout d'une recherche WFS directe dans les couches IGN `BDTOPO_V3:lieu_dit_non_habite` et `BDCARTO_V5:lieu_dit_non_habite`, en complément du géocodage inverse IGN déjà présent et d'Overpass.
+- Les requêtes sont découpées le long du GPX, avec une emprise de 200 m autour de chaque tronçon ; les objets ponctuels ne sont retenus que si leur coordonnée d'origine est à 200 m ou moins du tracé. Les coordonnées ne sont pas déplacées.
+- Les résultats des deux couches WFS sont enregistrés dans la bibliothèque géographique partagée comme sources IGN.
+- Les services WFS sont publics ; documentation IGN : `https://data.geopf.fr/wfs/ows`, WFS 2.0.0, limite publiée de 30 requêtes/seconde. Référence couche BD CARTO repérée dans le catalogue IGN : `BDCARTO_V5:lieu_dit_non_habite`.
+- **À vérifier** : nom exact de couche WFS BD CARTO dans le service courant, structure des attributs et réponses réelles ; disponibilité réseau depuis Render ; temps de traitement sur un GPX réel. Les erreurs d'une couche sont ignorées pour préserver les sources déjà en place.
+- GitHub Actions déclenché par le push ; résultat à contrôler. Aucun déploiement Render déclenché. Aucun changement de `main`, aucune fusion, aucune opération sur Neon.
+- Geofabrik : ses PBF régionaux sont des extractions OSM quotidiennes, mais leur téléchargement/traitement à chaque import GPX serait trop lourd pour Render Free ; à évaluer plutôt comme source de préchargement régional. GeoNames reste à évaluer comme complément, pas encore intégré.
+
+---
+
+# Tâche en cours — 13/11/2026 — enrichissement des lieux-dits
+
+- Accord de Math : ajouter des sources complémentaires pour trouver davantage de lieux-dits, en priorité les couches vectorielles IGN BD TOPO et BD CARTO, puis étudier un enrichissement OSM par extractions Geofabrik et GeoNames.
+- Travail limité à la branche existante `reprise/2026-11-13-maillons-complet-test`. Ne pas créer de branche, ne pas modifier `main`, ne pas fusionner, ne pas toucher à la base Neon de production.
+- Objectif : requêter les objets nommés autour du GPX (cible de proximité 200 m), conserver les coordonnées géographiques originales, dédoublonner et enregistrer dans la bibliothèque géographique existante. Préserver la lecture 3D et les filtres.
+- Avant intégration, vérifier les noms techniques et attributs des couches WFS IGN, les limites de requête et les formats de réponse. Geofabrik implique le téléchargement/traitement d'extraits régionaux volumineux : ne pas télécharger un PBF complet dans chaque tâche GPX ni introduire de charge excessive sur Render Free. GeoNames sera évalué comme source complémentaire distincte.
+- Aucun déploiement n'est autorisé implicitement par cet accord de développement ; le service Render test reste en déploiement manuel.
+
+---
+
+# Mise à jour — 13/11/2026 — IGN prioritaire, OpenStreetMap en complément
+
+- Commit `070f28eef6634042a9692e6fbe06834bf6a2cf73` : la préparation géographique côté serveur interroge désormais d'abord l'API de géocodage IGN de la Géoplateforme (points d'intérêt BD TOPO), avec des recherches autour de points répartis sur le parcours ; OpenStreetMap/Overpass est ensuite interrogé pour compléter les résultats.
+- Les lieux IGN sont enregistrés dans la bibliothèque géographique partagée avec la source `IGN`. Les lieux OpenStreetMap gardent leur source propre. Les noms de la bibliothèque restent réutilisés entre sorties.
+- L'API IGN est celle documentée par l'IGN : `https://data.geopf.fr/geocodage/reverse`, index `poi`, zone circulaire autour des points du parcours. L'API est ouverte ; sa documentation indique une limite de 50 requêtes/seconde.
+- Modifications sur la seule branche `reprise/2026-11-13-maillons-complet-test`. Aucun changement sur `main`, aucune fusion, aucune opération sur la base Neon de production.
+- Vérification à faire : syntaxe et workflow GitHub, puis déploiement Render de test déjà autorisé par Math. Aucun test navigateur ou test réel de résultat IGN encore effectué.
+- Render test : service `srv-dbfm8r0ae00c738k4840`, déploiement automatique désactivé ; déclencher uniquement le déploiement manuel de ce service.
+
+---
+
+# Mise à jour — 13/11/2026 — bibliothèque géographique partagée
+
+- Commit `b46163cc21e3de36999123b37100a9f2abd315a0` : réutilisation des noms déjà enregistrés dans la bibliothèque géographique commune, même si Overpass est indisponible.
+- La file d'attente persistante, la reprise des tâches interrompues à la prochaine consultation et le chargement prioritaire des noms préparés côté serveur sont dans `main.py`.
+- Render `maillons-test-2026` est bien configuré sur la branche `reprise/2026-11-13-maillons-complet-test`, en offre Free, avec déploiement automatique désactivé. Le dernier déploiement actif est toujours l'ancien commit `a0ac5a054f97b0fad84c41a23ea3e9d7816ac5a0` ; les changements ci-dessus ne sont donc pas encore en ligne.
+- Aucun résultat de vérification GitHub Actions n'est remonté par l'outil de statut consulté ; ne pas déclarer les tests réussis. Aucun test navigateur réel ni test sur Render n'a été effectué pour cette nouvelle préparation.
+- Limite connue avant validation : la préparation serveur utilise actuellement OpenStreetMap ; l'IGN reste disponible dans la recherche navigateur de secours, mais n'est pas encore intégré au traitement serveur anticipé.
+- Aucun déploiement, aucune fusion, aucune modification de `main` ou de la base de production.
+
+---
+# Mise à jour — 13/11/2026 — préparation géographique automatique (en cours)
+
+- Travail sur la seule branche `reprise/2026-11-13-maillons-complet-test`.
+- `main.py` : ajout d'une file persistante en base pour chaque sortie importée ; recherche OpenStreetMap en tâche de fond ; enregistrement des lieux dans une bibliothèque géographique commune ; rattachement des noms au point et à la distance du parcours.
+- À la reprise du service Render, les tâches interrompues repassent en attente et repartent lors de la consultation de la sortie. Le traitement ne tourne pas lorsque le service gratuit est endormi.
+- La lecture 3D demande d'abord les lieux déjà préparés sur le serveur ; si la préparation n'est pas terminée ou si l'API serveur est indisponible, la recherche habituelle dans le navigateur reste disponible.
+- Commits : `33dfebfe0f534952e4871835c4328fea89c0c326` et `e178101477da2dc58136ec83283e472f40a5ca16`.
+- La bibliothèque serveur alimente actuellement la recherche OpenStreetMap. L'enrichissement IGN côté serveur et les tests de bout en bout restent à vérifier.
+- Aucun changement sur `main`, aucune fusion de PR, aucune modification volontaire des données de production. Aucun déploiement Render déclenché.
+- Étape suivante : attendre le résultat du workflow GitHub, corriger toute erreur, puis demander l'accord de Math juste avant le déploiement sur Maillons test.
+
+---
+# Mise à jour — 13/11/2026 — noms des lieux affichés au passage (en cours)
+
+- Demande de Math : mémoriser à l'avance les noms de villages, lieux-dits et sommets, puis les afficher brièvement au passage du cycliste, en texte aérien comme les panneaux de pente et Vmax.
+- Travail effectué uniquement sur la branche `reprise/2026-11-13-maillons-complet-test`, dans `main.py` :
+  - recherche IGN / OpenStreetMap conservée ;
+  - noms mémorisés dans le stockage local du navigateur, avec une clé liée à la sortie et à un échantillon de son tracé, pour éviter de refaire la recherche à chaque lecture ;
+  - chaque lieu est rattaché au point du GPX le plus proche et seuls les lieux suffisamment proches du tracé sont conservés ;
+  - affichage en texte aérien sans étiquette encadrée, uniquement pendant une courte fenêtre au passage, un nom à la fois ;
+  - la lecture du survol attend la fin de la préparation des repères.
+- Commits `main.py` : `3d0605c76f959522d7545a5cb974d817ed9bd568` puis `519c50f6c3b01b31e3c8166d0ad43685858956cf` (correction du dédoublonnage et du rayon de proximité).
+- Tests : à vérifier via GitHub Actions ; aucun test navigateur réel effectué à ce stade.
+- Render `maillons-test-2026` vérifié : il suit bien cette branche, mais `autoDeploy=no`. Aucun déploiement déclenché.
+- Aucun changement sur `main`, aucune fusion de PR, aucune modification de base Neon ni de données.
+- **Tâche en cours** : vérifier le workflow automatique, puis demander l'accord explicite de Math avant de déployer sur Maillons test.
+
+---
+
+# Complément — 13/11/2026 — intégration de la PR #58 dans la branche de test
+
+- La PR #58 est fusionnée dans `main` : suppression des photos supplémentaires depuis le menu de la galerie, sans croix sur les photos.
+- Cette évolution est également reportée dans la branche de test complète, avec ses vérifications navigateur mises à jour.
+- La branche de test reste basée sur les fonctionnalités de `main` et ajoute le mode Cinéma ainsi que les repères géographiques IGN/OSM.
+- Aucun déploiement Render, aucune modification de `main`, aucune fusion de la PR #57.
+
+---
+
+# Mise à jour — 13/11/2026 — branche de test complète (préparation)
+
+- Branche créée depuis le dernier `main` (PR #56 et toutes les évolutions précédentes conservées).
+- Mode Cinéma et ajustements GPX réintégrés depuis la PR #57, sans fusionner la PR.
+- Recherche géographique IGN + OpenStreetMap réintégrée : villages, lieux-dits, sommets, cols et points de vue.
+- Aucune modification de `main`, aucune fusion de PR #57, aucun déploiement Render et aucune opération Neon.
+- Étape suivante : vérifier les contrôles automatiques et les fichiers avant de proposer un essai sur Maillons test.
+
+---
+
 # Mise à jour du relais — 31/10/2026 — PR #22 fusionnée (chercher la fiche avec mon IA)
 
 - PR #22 : **fusionnée** avec l'accord explicite de Math le 31/10/2026 (commit de fusion `01f69796edb49316a4b4758d13f45da2679bc872`). Fichiers : `main.py`, `.github/workflows/maillons-check.yml`. Aucun changement serveur ni de données.
@@ -923,3 +1194,124 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - Le premier essai du nouveau contrôle JavaScript (40379448708) a échoué à cause d'une expression de recherche trop échappée dans le test, avant d'atteindre les tests d'application. Le contrôle a été corrigé et le run final 40379653916 passe entièrement.
 - Vérification visuelle réelle dans un navigateur sur ordinateur/téléphone : **non réalisée** faute d'outil navigateur disponible dans cette session. La validation actuelle reste statique et automatique; elle ne prouve pas le rendu visuel ni les interactions en situation réelle.
 - Aucun déploiement déclenché. Ne pas toucher à main. La PR #7 reste brouillon et non fusionnée; GitHub signalait encore un état de fusion dirty car main a une mise à jour distincte du fichier de relais. Réconcilier ce fichier avant toute fusion future, avec l'accord explicite de Math.
+
+
+# Reprise — 13/11/2026 — lecture 3D bloquée pendant la recherche des lieux
+
+- Retour de Math : après le dernier déploiement, le bouton Lecture ne lance plus le survol.
+- Cause identifiée dans `main.py` : le gestionnaire de chargement de la carte attendait (`await`) la fin de `poserReperesV3d()`, qui lance les requêtes IGN / OpenStreetMap, avant de passer `v3d.prete` à vrai. Si les services géographiques tardent, la lecture reste bloquée.
+- Correctif enregistré sur la branche `reprise/2026-11-13-maillons-complet-test`, commit applicatif `00ec26c5a0e2fe842b1e3f39fcdc5b2ba76e76f8` : la lecture est maintenant autorisée dès que la carte est chargée ; la préparation des pentes, de la Vmax et des noms de lieux continue en arrière-plan.
+- Aucun changement sur `main`, aucune fusion, aucune opération Neon et aucune modification de données.
+- Render `maillons-test-2026` a `autoDeploy=no` : le code n'est pas encore déployé. **Tâche en cours : déclencher le déploiement manuel sur le service de test uniquement, puis vérifier son statut Live et les journaux.**
+- Tests navigateur réels non effectués à ce stade ; ne pas annoncer le correctif validé avant l'essai de Math.
+
+
+# Mise à jour — 13/11/2026 — enrichissement des noms du fond CARTO / OpenStreetMap
+
+- Commit applicatif : `60f43fc3a547810dca03563d168fb000d521af8a`, uniquement dans `main.py`.
+- La deuxième carte utilise des tuiles raster CARTO Voyager, dont les noms proviennent notamment des données OpenStreetMap. Les inscriptions des images ne sont pas directement lisibles comme des données ; le serveur interroge donc les objets OSM correspondants.
+- Recherche OSM élargie aux cours d'eau, plans d'eau, forêts/bois, zones humides, plages, falaises, parcs, réserves, zones protégées, sites historiques et attractions/musées, en plus des villages, lieux-dits, sommets, cols et points de vue déjà recherchés.
+- Les coordonnées OSM d'origine sont conservées ; les lieux sont toujours filtrés selon leur distance réelle au tracé et enregistrés dans la bibliothèque géographique partagée.
+- Limite : les noms de rues et tous les libellés visuels de CARTO ne sont pas extraits automatiquement. La recherche OSM enrichie couvre les principaux objets géographiques nommés, pas une lecture OCR des tuiles.
+- Vérifications automatiques GitHub à attendre ; aucun test navigateur réel effectué à ce stade. Aucun changement sur `main`, aucun déploiement Render déclenché dans cette étape, aucune opération Neon.
+- Tâche en cours : vérifier le workflow GitHub, puis déployer uniquement sur Render test après validation automatique.
+
+- Résultat du workflow GitHub `43511103831` sur le commit applicatif `60f43fc3a547810dca03563d168fb000d521af8a` : échec dans l'étape de test multi-vélos, avec `TypeError: importer_sortie() missing 1 required positional argument: 'background_tasks'`. Le même échec exact est présent sur le commit de base `688d637` (workflow `43509325125`) : il est antérieur à cet enrichissement OSM et ne vient pas de la modification géographique. La syntaxe Python, le chargement initial, l'installation et les étapes précédentes sont passés. Ne pas déployer tant que ce blocage n'est pas traité ou explicitement accepté.
+
+
+## 13/11/2026 — correction du test d'import GPX
+
+- Le test d'intégration appelait `importer_sortie()` sans fournir le paramètre obligatoire `background_tasks`. Les journaux ont confirmé que le même défaut était présent avant l'enrichissement OSM.
+- Correction limitée à `.github/workflows/maillons-check.yml` : le test fournit maintenant `main.BackgroundTasks()`, sans modifier le fonctionnement de l'application.
+- Commit : `089126d8c72d8a1ee71c4223149443fe80428e0c`. Vérification GitHub Actions en cours.
+- Render test toujours configuré sur cette branche avec auto-déploiement désactivé. Ne déclencher le déploiement test qu'après succès du workflow. Aucun changement sur `main`, aucune opération Neon ni base de production.
+- Tâche en cours : attendre et examiner le résultat du workflow, puis déployer uniquement sur `maillons-test-2026` si les contrôles passent.
+
+- Après correction du paramètre `background_tasks`, le test d'import GPX passe. Le run `43511512397` a ensuite révélé un deuxième défaut ancien du contrôle statique : le gestionnaire `@app.on_event("startup")` était compté à tort comme une route HTTP et réclamait un contrôle de vélo. Correction limitée au workflow : les événements `on_event` sont exclus du recensement des routes. Commit `2e2125ffdaaf5a39bf451a39e925f8710411c836`; nouveau contrôle en cours. Aucune modification du code applicatif dans ces corrections de tests.
+
+- Le run `43511732071` a passé la correction du recensement des routes, puis a révélé que le test générique de cloisonnement n'acceptait pas non plus le paramètre `background_tasks` de `importer_sortie`. Ajout de sa création dans le générateur d'arguments du test (`main.BackgroundTasks()`), toujours sans changer `main.py`. Commit `6932d37779d84300dc9198a36d6fb734c99752f9`; nouveau workflow en attente.
+
+- Le run `43511929360` a confirmé que le contrôle statique était corrigé, puis a trouvé deux autres helpers de tests GPX qui appelaient encore `importer_sortie` sans `background_tasks`. Ils fournissent maintenant `main.BackgroundTasks()` eux aussi. Commit `a96d440df0d67ad39f063970a95a19b10b0ba7db`; nouvelle vérification en cours. Aucun changement applicatif.
+
+
+## 13/11/2026 — correction et vérification des couches WFS IGN
+
+- Commit applicatif : `017e40734bb39fdfdf3a5f7ad967844027d25b4e`, sur la branche de test existante uniquement.
+- BD TOPO : conservation de la couche `BDTOPO_V3:lieu_dit_non_habite`, dont le nom est référencé dans le catalogue IGN.
+- BD CARTO : correction vers `BDCARTOV5_BDD_WLD_WGS84G_223:lieu_dit_non_habite`. La couche erronée `BDCARTO_V5:lieu_dit_non_habite` a été retirée.
+- Lecture des noms rendue tolérante aux noms de propriétés en minuscules ou majuscules. Les réponses OGC d'erreur en JSON ne sont plus considérées comme des réponses valides.
+- Les objets restent filtrés à 200 m du tracé et leurs coordonnées sources sont conservées.
+- Sources de vérification : documentation WFS Géoplateforme et catalogue IGN ; le catalogue référence explicitement la couche BD CARTO versionnée. La requête WFS réelle sur un parcours GPX n'a pas encore été exécutée depuis Render.
+- Workflow GitHub à contrôler après ce commit. Aucun déploiement déclenché, aucune modification de `main`, aucune opération Neon ou base de production.
+- Tâche en cours : vérifier le workflow et contrôler les réponses réelles des deux couches avant de demander le déploiement de test.
+
+
+## Tâche en cours — 14/11/2026 — Préparation de tous les parcours géographiques
+- Branche : `reprise/2026-11-13-maillons-complet-test`.
+- Commit : `97cb0790d5143c802a69aab6c6cda74b8147dda6`.
+- Dans `main.py`, au démarrage, chaque sortie GPX sans entrée dans `recherche_lieux_gpx` est ajoutée à la file avec `ON CONFLICT DO NOTHING` : les résultats déjà traités ne sont pas écrasés.
+- La file est ensuite traitée en arrière-plan, une sortie après l'autre, via un thread daemon ; le serveur reste disponible.
+- Les nouveaux imports conservent leur déclenchement existant.
+- Aucun déploiement effectué ; aucune modification de `main`, de la production ou de la base Neon.
+- Vérifications locales/CI et comportement en production non confirmés à ce stade.
+
+
+# Mise à jour — 14/11/2026 — affichage immédiat depuis la bibliothèque géographique
+
+- Sur la branche de test existante, ajout d'une route rapide `/api/sorties/{sortie_id}/lieux/bibliotheque` : elle lit directement la bibliothèque partagée, filtre les villes, villages, hameaux, rivières, cols et sommets situés à 200 m maximum du tracé, conserve leurs coordonnées exactes et calcule leur distance le long du GPX.
+- La lecture 3D affiche d'abord ces noms connus sans attendre les appels IGN / OpenStreetMap. Une recherche complémentaire est ensuite lancée en arrière-plan ; ses résultats remplacent la première liste lorsqu'ils sont prêts. Le cache local ne bloque plus cet enrichissement.
+- Aucun autre fichier applicatif modifié. Aucun changement de branche, aucun changement de `main`, aucune opération sur Neon, aucun déploiement Render effectué pour ce correctif.
+- Commit applicatif : `0ed1ecfd0d5ee818eb5c73aa6c411bc9d42a296c`.
+- À faire avant déploiement : vérifier la syntaxe Python, les scripts JavaScript intégrés et les tests GitHub Actions. Puis demander l'accord explicite de Math pour le serveur de test.
+
+
+# Mise à jour — 14/11/2026 — diagnostic détaillé des recherches IGN et OSM
+
+- Sur la branche existante `reprise/2026-11-13-maillons-complet-test`, ajout dans `main.py` d'un journal unique `[Maillons lieux]` après chaque recherche de noms.
+- Le journal indique : identifiant de sortie, nombre de points GPX, appels IGN reverse réussis et nombre de features reçues, noms IGN acceptés, appels WFS réussis et features reçues, noms WFS acceptés, tronçons OSM interrogés, réponses OSM valides, éléments OSM reçus (points et rivières), noms OSM acceptés, nombre final de noms affichables, numéro de tentative et statut.
+- Aucun changement aux requêtes, catégories, rayons (500 m villes/villages ; 200 m hameaux/rivières/cols/sommets), filtres d'affichage, bibliothèque ou interface. Il s'agit uniquement de mesures de diagnostic dans les journaux Render.
+- Commit diagnostic : `16df94d52c673692948f7cacab81c1e094643500`.
+- Aucun nouveau branchement, aucun changement de `main`, aucune modification Neon et aucun déploiement Render déclenché. Attendre le feu vert explicite de Math avant déploiement.
+- Petit contrôle complémentaire : les compteurs sont initialisés même si une trace GPX contient moins de deux points, afin que le journal ne provoque pas lui-même d'erreur. Correctif de robustesse : `ad60242b9fdb4e3e4a10efb2795ac748545e9a60`.
+
+
+# Mise à jour — 14/11/2026 — relance manuelle des recherches géographiques
+
+- Ajout d'un bouton « Relancer les noms » dans les commandes du survol 3D.
+- Le bouton appelle une nouvelle route POST `/api/sorties/{sortie_id}/lieux/rechercher`, vérifie l'accès au vélo et relance le traitement IGN / WFS / OpenStreetMap en arrière-plan.
+- Les résultats précédents dans `lieux_json` et toute la bibliothèque géographique sont conservés pendant la relance ; le compteur d'essais est réinitialisé pour permettre un nouveau cycle de recherche.
+- Le bouton suit l'état de la recherche, puis recharge les repères quand le serveur indique « terminé ». Il invalide également le cache local de cette sortie.
+- Travail limité à `main.py`, sur la branche existante. Aucun changement de `main`, aucune opération Neon, aucune nouvelle branche.
+- Commit applicatif : `a859b0d94a675210dfbdc754bb2f8a3c9c42dd07`.
+- À faire avant déploiement : vérifier le workflow GitHub, puis déployer uniquement sur le service Render de test `srv-dbfm8r0ae00c738k4840` (déploiement manuel).
+
+- Correctif de suivi avant déploiement : ajout d'une route de lecture d'état sans effet secondaire (`/lieux/etat`) afin que le bouton ne déclenche pas de nouvelles tâches lors du contrôle périodique. Le suivi s'arrête aussi sur une erreur remontée par le serveur.
+- Dernier commit applicatif : `79ef34b13e06b2f4f758f5bb0767b9c4dcf79002`.
+
+
+# Mise à jour — 14/11/2026 — correction du rayon IGN rejeté
+
+- Après le test sur Render, les journaux ont révélé trois erreurs HTTP 400 identiques : l'API IGN impose un rayon compris entre 0 et 500 m.
+- Le code envoyait pourtant un rayon calculé entre 1 200 et 3 500 m. La correction précédente n'avait donc pas résolu le vrai blocage.
+- Dans `main.py`, le rayon est maintenant fixé à 500 m et le nombre de points de recherche est augmenté (un point tous les 700 m, avec un maximum de 60) pour mieux couvrir le tracé.
+- Commit : `3994a65337bc4c72b1121e28ba609677dce51222`, branche de test existante uniquement.
+- Le changement est enregistré sur GitHub. Il n'a pas encore été vérifié par un nouveau test Render et n'a pas été redéployé.
+- Aucun changement de branche, de `main`, de production ou de Neon. Les autres sources (WFS et OSM), les filtres et l'affichage 3D n'ont pas été modifiés.
+- Tâche en cours : vérifier le changement, puis déployer uniquement sur le service Render de test et contrôler les nouveaux journaux avant de conclure.
+
+- Déploiement Render de test effectué après cette mise à jour : `dep-dbs3qvgn74is738p81tg`, statut `live` le 14/11/2026 à 10:53:31 UTC. Le build est réussi.
+- Le parcours doit maintenant être retesté avec « Relancer les noms ». Contrôler les journaux de cette nouvelle tentative : disparition des HTTP 400 IGN, réponses WFS/OSM et nombre final de noms. Ne pas conclure que l'affichage est réparé avant cette vérification.
+
+
+# Suite — 14/11/2026 — couche IGN Toponymie et réduction des appels
+
+- Le test après correction du rayon montre que l'IGN ne renvoie plus HTTP 400 ; une requête reverse a cependant expiré. Les journaux précédents montraient également qu'OpenStreetMap était inaccessible depuis le service Render (réseau inaccessible, délais dépassés et HTTP 504).
+- La documentation officielle BD TOPO 3.5 décrit une couche dédiée `toponymie`, ponctuelle, avec les champs `graphie_du_toponyme`, `classe_de_l_objet` et `nature_de_l_objet`. Cette couche manquait dans les requêtes et son champ de nom n'était pas lu.
+- `main.py` interroge désormais `BDTOPO_V3:toponymie` et classe les points nommés pertinents : cours d'eau, zones d'habitation, communes, cols et sommets. Les autres toponymes restent conservés dans la bibliothèque sans affichage automatique.
+- Le reverse IGN est limité à 8 points de contrôle maximum et utilise uniquement l'index POI, car l'index adresse BAN ne correspond pas à la recherche de toponymes. Rayon fixé à 500 m.
+- Commits applicatifs : `a80cd425de1988434c9874f175997b736eac5896` et `973c4a71c8f268feebca99f1459e59f7683f4dcc`.
+- Aucun autre fichier applicatif modifié ; filtres, affichage 3D et bibliothèque existants préservés.
+- Cette correction doit être déployée uniquement sur le service Render de test, puis contrôlée dans les journaux. Ne pas conclure avant d'avoir un diagnostic complet avec des noms retenus.
+
+- Déploiement du correctif Toponymie sur Render test : `dep-dbs3tp6i0phs73c24jsg`, commit déployé `4c0e209c38741542f3cbbdd688f7818db791d989`, statut `live` le 14/11/2026 à 10:59:30 UTC. Build réussi.
+- Le code a été relu après modification. Le test fonctionnel de la nouvelle couche `BDTOPO_V3:toponymie` reste à faire ; vérifier les journaux et les noms retenus avant toute conclusion.

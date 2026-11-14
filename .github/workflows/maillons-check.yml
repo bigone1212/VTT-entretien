@@ -1000,6 +1000,7 @@ jobs:
           try:
               import_result = main.importer_sortie(
                   main.ImportGpxRequest(gpx="<gpx>" + (" " * 50) + "</gpx>", nom="Sortie test vélo A"),
+                  background_tasks=main.BackgroundTasks(),
                   velo_id=route_id,
                   x_code_acces="test"
               )
@@ -1492,7 +1493,7 @@ jobs:
 
 
           def importer(code, debut, velo_id=None, nom="Sortie"):
-              return main.importer_sortie(main.ImportGpxRequest(gpx=gpx(debut, 10.0, nom)), velo_id=velo_id, x_code_acces=code)
+              return main.importer_sortie(main.ImportGpxRequest(gpx=gpx(debut, 10.0, nom)), background_tasks=main.BackgroundTasks(), velo_id=velo_id, x_code_acces=code)
 
 
           # ---------------------------------------------------------------------------
@@ -1537,6 +1538,7 @@ jobs:
               est_route = any(
                   isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute)
                   and isinstance(d.func.value, ast.Name) and d.func.value.id == "app"
+                  and d.func.attr != "on_event"
                   for d in noeud.decorator_list
               )
               if est_route:
@@ -1601,6 +1603,8 @@ jobs:
                       args[nom] = code
                   elif nom == "velo_id":
                       args[nom] = velo_id
+                  elif nom == "background_tasks":
+                      args[nom] = main.BackgroundTasks()
                   elif isinstance(ann, type) and issubclass(ann, main.BaseModel):
                       fabrique = getattr(ann, "model_construct", None) or ann.construct
                       args[nom] = fabrique()
@@ -2925,7 +2929,7 @@ jobs:
 
 
           def importer(debut, km, velo_id=None, nom="Sortie test"):
-              return main.importer_sortie(main.ImportGpxRequest(gpx=gpx(debut, km, nom)), velo_id=velo_id, x_code_acces=CODE)
+              return main.importer_sortie(main.ImportGpxRequest(gpx=gpx(debut, km, nom)), background_tasks=main.BackgroundTasks(), velo_id=velo_id, x_code_acces=CODE)
 
 
           def refuse(code, fonction, *a, **k):
