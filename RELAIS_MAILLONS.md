@@ -1215,3 +1215,12 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - Aucun autre fichier applicatif modifié. Aucun changement de branche, aucun changement de `main`, aucune opération sur Neon, aucun déploiement Render effectué pour ce correctif.
 - Commit applicatif : `0ed1ecfd0d5ee818eb5c73aa6c411bc9d42a296c`.
 - À faire avant déploiement : vérifier la syntaxe Python, les scripts JavaScript intégrés et les tests GitHub Actions. Puis demander l'accord explicite de Math pour le serveur de test.
+
+
+# Mise à jour — 14/11/2026 — diagnostic détaillé des recherches IGN et OSM
+
+- Sur la branche existante `reprise/2026-11-13-maillons-complet-test`, ajout dans `main.py` d'un journal unique `[Maillons lieux]` après chaque recherche de noms.
+- Le journal indique : identifiant de sortie, nombre de points GPX, appels IGN reverse réussis et nombre de features reçues, noms IGN acceptés, appels WFS réussis et features reçues, noms WFS acceptés, tronçons OSM interrogés, réponses OSM valides, éléments OSM reçus (points et rivières), noms OSM acceptés, nombre final de noms affichables, numéro de tentative et statut.
+- Aucun changement aux requêtes, catégories, rayons (500 m villes/villages ; 200 m hameaux/rivières/cols/sommets), filtres d'affichage, bibliothèque ou interface. Il s'agit uniquement de mesures de diagnostic dans les journaux Render.
+- Commit diagnostic : `16df94d52c673692948f7cacab81c1e094643500`.
+- Aucun nouveau branchement, aucun changement de `main`, aucune modification Neon et aucun déploiement Render déclenché. Attendre le feu vert explicite de Math avant déploiement.
