@@ -13745,8 +13745,8 @@ def accueil():
                         if (!Number.isFinite(lon)||!Number.isFinite(lat)) continue;
                         let genre='',rang=9,portee=5000;
                         if (['city','town','village','hamlet','isolated_dwelling'].includes(e.tags.place)) {
-                            genre=(e.tags.place==='hamlet' || e.tags.place==='isolated_dwelling')?'hameau':(e.tags.place==='village'?'village':'ville');
-                            rang={city:1,town:2,village:3,hamlet:4,isolated_dwelling:4}[e.tags.place] ?? 3;
+                            genre=e.tags.place==='isolated_dwelling'?'lieu_dit':(e.tags.place==='hamlet'?'hameau':(e.tags.place==='village'?'village':'ville'));
+                            rang={city:1,town:2,village:3,hamlet:4,isolated_dwelling:9}[e.tags.place] ?? 3;
                             portee=5000;
                         } else if (e.tags.waterway === 'river') { genre='riviere'; rang=5; portee=1800; }
                         else if (e.tags.mountain_pass === 'yes' || e.tags.natural === 'saddle') { genre='col'; rang=2; portee=900; }
@@ -20309,7 +20309,9 @@ def preparer_lieux_sortie(sortie_id):
                             texte = categorie.replace("’", "'").replace("–", "-")
                             if any(m in texte for m in ("river","rivière","riviere","cours d'eau","hydrographie")):
                                 genre, rang, portee = "riviere", 5, 1800
-                            elif any(m in texte for m in ("lieu-dit habité","lieu dit habité","hameau","hamlet","locality","localité")):
+                            elif any(m in texte for m in ("lieu-dit habité","lieu dit habité")):
+                                genre, rang, portee = "lieu_dit", 9, 3500
+                            elif any(m in texte for m in ("hameau","hamlet","locality","localité")):
                                 genre, rang, portee = "hameau", 4, 3500
                             elif any(m in texte.split() for m in ("col","saddle","mountain_pass")):
                                 genre, rang, portee = "col", 2, 2200
