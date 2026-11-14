@@ -1477,3 +1477,12 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - Les corrections de classement des villages/bourgs restent en place ; les hameaux sont de nouveau affichables. Aucun changement aux recherches, données de bibliothèque, coordonnées, rayons, rivières, cols, sommets ou lecture 3D.
 - Commit applicatif : `89803bd31f59753c4de65029b07527750905f0a5` sur la branche de test existante `reprise/2026-11-13-maillons-complet-test`.
 - Validations et déploiement Render test à effectuer après cette modification. Aucun changement sur `main`, aucune fusion, aucun déploiement production.
+
+
+# Retour à la version cartographique connue comme fonctionnelle — 14/11/2026
+
+- Après le rétablissement des hameaux, l'utilisateur indique que le survol ne fonctionne plus et demande de revenir à la version qui fonctionnait.
+- Restauration intégrale de `main.py` depuis le commit `fe84f5b87091e97f70d74fd050eaea027678d5e2`, version déployée sur Render test le 14/11/2026 à 19:02:26 UTC, après confirmation utilisateur que les noms de la bibliothèque étaient revenus.
+- Cette restauration annule les modifications cartographiques ultérieures concernant le masquage des hameaux et la reclassification associée. Elle remet donc le comportement de cette version connue comme fonctionnelle, sans toucher à `main`, aux données Neon, ni à la production.
+- Commit de restauration : `48644b974b08185062180dc1148bd6fcd4e8fd3c` sur `reprise/2026-11-13-maillons-complet-test`.
+- À faire : validations automatiques puis déploiement Render test. Aucun déploiement production.
