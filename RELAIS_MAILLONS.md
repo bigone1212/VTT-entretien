@@ -1,3 +1,13 @@
+# Mise à jour — 14/11/2026 — noms blancs sur le satellite
+
+- Retour utilisateur : rendre les noms des lieux blancs comme l'étiquette Vmax.
+- Dans `main.py`, le plan raster n'est plus superposé en mode satellite (opacité 0, transition 500 ms). Les repères de lieux utilisent déjà le même générateur de marqueur que Vmax : texte blanc avec contour sombre pour rester lisible.
+- En mode Plan, le fond normal reste affiché à 100 %. Aucun changement aux recherches, à la bibliothèque, aux filtres ou à la lecture 3D.
+- Commit applicatif : `31f0ed3c54e8d6f72482dee1c0d63bf9047177e6`, branche existante `reprise/2026-11-13-maillons-complet-test`.
+- Aucun déploiement Render déclenché. Production et branche `main` inchangées.
+
+---
+
 # Mise à jour — 14/11/2026 — superposition du plan sur le satellite
 
 - Retour utilisateur : la recherche des noms ne fonctionne toujours pas ; la carte non satellite affiche déjà les noms utiles. Nouvelle piste choisie : superposer le fond plan sur l'imagerie satellite avec transparence.
