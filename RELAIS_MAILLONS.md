@@ -1127,3 +1127,13 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - Sources de vérification : documentation WFS Géoplateforme et catalogue IGN ; le catalogue référence explicitement la couche BD CARTO versionnée. La requête WFS réelle sur un parcours GPX n'a pas encore été exécutée depuis Render.
 - Workflow GitHub à contrôler après ce commit. Aucun déploiement déclenché, aucune modification de `main`, aucune opération Neon ou base de production.
 - Tâche en cours : vérifier le workflow et contrôler les réponses réelles des deux couches avant de demander le déploiement de test.
+
+
+## Tâche en cours — 14/11/2026 — Préparation de tous les parcours géographiques
+- Branche : `reprise/2026-11-13-maillons-complet-test`.
+- Commit : `97cb0790d5143c802a69aab6c6cda74b8147dda6`.
+- Dans `main.py`, au démarrage, chaque sortie GPX sans entrée dans `recherche_lieux_gpx` est ajoutée à la file avec `ON CONFLICT DO NOTHING` : les résultats déjà traités ne sont pas écrasés.
+- La file est ensuite traitée en arrière-plan, une sortie après l'autre, via un thread daemon ; le serveur reste disponible.
+- Les nouveaux imports conservent leur déclenchement existant.
+- Aucun déploiement effectué ; aucune modification de `main`, de la production ou de la base Neon.
+- Vérifications locales/CI et comportement en production non confirmés à ce stade.
