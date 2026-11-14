@@ -13749,8 +13749,7 @@ def accueil():
                             genre=e.tags.place==='isolated_dwelling'?'lieu_dit':(e.tags.place==='hamlet'?'hameau':(e.tags.place==='village'?'village':'ville'));
                             rang={city:1,town:2,village:3,hamlet:4,isolated_dwelling:9}[e.tags.place] ?? 3;
                             portee=5000;
-                        
-                        else if (e.tags.mountain_pass === 'yes' || e.tags.natural === 'saddle') { genre='col'; rang=2; portee=900; }
+                        } else if (e.tags.mountain_pass === 'yes' || e.tags.natural === 'saddle') { genre='col'; rang=2; portee=900; }
                         else if (['peak','hill','ridge'].includes(e.tags.natural)) { genre='sommet'; rang=4; portee=2200; }
                         else continue;
                         const ec=dist(lon,lat);
