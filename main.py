@@ -20951,10 +20951,9 @@ def obtenir_lieux_bibliotheque(sortie_id: int, velo_id: int = 1, x_code_acces: O
         ligne = cursor.fetchone()
         if ligne is None:
             raise HTTPException(status_code=404, detail="Sortie introuvable.")
-        cursor.execute("SELECT classification_version FROM recherche_lieux_gpx WHERE sortie_id = ?", (sortie_id,))
-        version = cursor.fetchone()
-        if version is None or int(version[0] or 0) < 2:
-            return {"statut": "reclassement", "lieux": []}
+        # La bibliothèque reste consultable immédiatement pendant le reclassement
+        # en arrière-plan. Le filtre des catégories affichables ci-dessous s'applique
+        # toujours ; les entrées sont corrigées au fil des recherches IGN/OSM.
         try:
             trace = json.loads(ligne[0] or "[]")
         except (TypeError, ValueError):
