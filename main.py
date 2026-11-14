@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, Header, BackgroundTasks
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 import base64
+import ast
 import db
 import gpx_import
 import hashlib
@@ -20012,7 +20013,16 @@ def nom_geographique_texte(valeur):
     if valeur is None:
         return ""
     texte = str(valeur).strip()
-    if texte.casefold() in ("none", "null", "[]", "{}"):
+    # Certains anciens résultats ont déjà été enregistrés sous la forme
+    # littérale "['Nom']" dans la bibliothèque géographique.
+    if texte.startswith(("[", "(" , "{")) and texte.endswith(("]", ")", "}")):
+        try:
+            decode = ast.literal_eval(texte)
+            if isinstance(decode, (list, tuple, dict)):
+                return nom_geographique_texte(decode)
+        except (ValueError, SyntaxError):
+            pass
+    if texte.casefold() in ("none", "null", "[]", "{}", "()", "['']", '[""]'):
         return ""
     return texte
 
@@ -20060,8 +20070,12 @@ def lieux_osm_rivieres(elements, points):
 
 
 def enregistrer_lieu_bibliotheque(cursor, l, source):
+    nom = nom_geographique_texte(l.get("nom"))
+    if not nom:
+        return
+    l["nom"] = nom
     lon, lat = l["coord"]
-    cle = hashlib.sha256((unicodedata.normalize("NFKD", l["nom"]).casefold() + "|" + str(round(lon, 4)) + "|" + str(round(lat, 4))).encode()).hexdigest()
+    cle = hashlib.sha256((unicodedata.normalize("NFKD", nom).casefold() + "|" + str(round(lon, 4)) + "|" + str(round(lat, 4))).encode()).hexdigest()
     cursor.execute(
         """INSERT INTO bibliotheque_lieux_geo (cle,nom,genre,rang,lon,lat,altitude,source,maj_le) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT (cle) DO UPDATE SET nom=excluded.nom,genre=excluded.genre,rang=excluded.rang,altitude=excluded.altitude,source=excluded.source,maj_le=excluded.maj_le""",
         (cle, l["nom"], l["genre"], l["rang"], lon, lat, l.get("alt"), source, datetime.now(timezone.utc).isoformat())
@@ -20426,6 +20440,9 @@ def preparer_lieux_sortie(sortie_id):
                 (sud-0.05,nord+0.05,ouest-0.05,est+0.05)
             )
             for nom,genre,rang,lon,lat,alt in cursor.fetchall():
+                nom = nom_geographique_texte(nom)
+                if not nom:
+                    continue
                 coord=(float(lon),float(lat))
                 ec=ecart_parcours_m(coord, points)
                 portee=5000 if genre in ("ville","village") else (900 if genre=="col" else (2200 if genre=="sommet" else 1800))
@@ -20799,6 +20816,9 @@ def obtenir_lieux_bibliotheque(sortie_id: int, velo_id: int = 1, x_code_acces: O
             cumul.append(cumul[-1] + distance(points[i - 1], points[i]))
         genres = ("ville", "village", "hameau", "riviere", "col", "sommet")
         for nom, genre, rang, lon, lat, altitude in cursor.fetchall():
+            nom = nom_geographique_texte(nom)
+            if not nom:
+                continue
             genre = str(genre or "").casefold()
             if genre not in genres:
                 continue
