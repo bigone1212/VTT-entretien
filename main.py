@@ -20620,7 +20620,7 @@ def preparer_lieux_sortie(sortie_id):
                             entree_bibliotheque["rang"] = 9
                         lieux[doublon]=entree_bibliotheque
             diagnostic["duree_bibliotheque_s"] = round(time.perf_counter() - t_bibliotheque, 2)
-            if not api_ok and not lieux:
+            if not api_ok:
                 raise RuntimeError("Les services cartographiques sont indisponibles ; la recherche sera reprise.")
             # La bibliothèque reste prioritaire ; les résultats CARTO/OSM
             # viennent ensuite, puis IGN. Les autres catégories restent
