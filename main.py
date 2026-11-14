@@ -13491,14 +13491,14 @@ def accueil():
                     const categorie = String([p.category, p.type, p.nature, p.kind, p._type, p.description].filter(Boolean).join(' ')).toLowerCase();
                     const texte = (categorie + ' ' + nom).toLowerCase();
                     let genre = 'lieu', rang = 6, portee = 2200;
-                    if (/sommet|peak|mountain|montagne|hill|colline|crête|crete|ridge/.test(texte)) {
-                        genre = 'sommet'; rang = 4; portee = 2200;
-                    } else if (/col\\b|pass|saddle|mountain_pass/.test(texte)) {
-                        genre = 'col'; rang = 2; portee = 900;
-                    } else if (/lieu.?dit|locality|hamlet|hameau|isolated_dwelling/.test(texte)) {
-                        genre = 'village'; rang = 5; portee = 3500;
+                    if (/river|rivière|riviere|cours d.?eau|hydrograph/.test(texte)) {
+                        genre = 'cours_eau'; rang = 5; portee = 1800;
+                    } else if (/hamlet|hameau/.test(texte)) {
+                        genre = 'village'; rang = 4; portee = 3500;
                     } else if (/village|commune|town|city|municipality/.test(texte)) {
-                        genre = 'village'; rang = 4; portee = 5000;
+                        genre = 'village'; rang = 3; portee = 5000;
+                    } else {
+                        continue;
                     }
                     const ec = dist(lon, lat);
                     if (ec > portee) continue;
@@ -13512,7 +13512,8 @@ def accueil():
                         rang: rang,
                         ec: ec,
                         coord: [lon, lat],
-                        alt: Number.isFinite(altitude) ? altitude : NaN
+                        alt: Number.isFinite(altitude) ? altitude : NaN,
+                        source: 'IGN'
                     });
                 }
                 return lieux;
@@ -13525,7 +13526,7 @@ def accueil():
                     const p = v3d.pts[Math.round(i * (n - 1) / 7)];
                     echantillon.push(p.map(x => Number(x).toFixed(4)).join(','));
                 }
-                return 'maillons-v3d-lieux-v3-' + String(v3d.sortieId) + '-' + n + '-' + echantillon.join('|');
+                return 'maillons-v3d-lieux-v4-' + String(v3d.sortieId) + '-' + n + '-' + echantillon.join('|');
             }
             function lireCacheLieuxV3d() {
                 try {
@@ -13568,7 +13569,7 @@ def accueil():
                 const sud = Math.min(...lats)-marge, nord = Math.max(...lats)+marge, ouest = Math.min(...lons)-marge, est = Math.max(...lons)+marge;
                 const zoneValide = nord-sud <= 0.6 && est-ouest <= 0.8;
                 const zone = '('+sud+','+ouest+','+nord+','+est+')';
-                const q = '[out:json][timeout:35];(nwr["place"~"^(city|town|village|hamlet|isolated_dwelling|suburb|locality|neighbourhood)$"]["name"]'+zone+';nwr["natural"~"^(peak|hill|ridge)$"]["name"]'+zone+';nwr["mountain_pass"="yes"]["name"]'+zone+';nwr["natural"="saddle"]["name"]'+zone+';nwr["tourism"="viewpoint"]["name"]'+zone+';);out center tags;';
+                const q = '[out:json][timeout:35];(nwr["place"~"^(city|town|village|hamlet)$"]["name"]'+zone+';way["waterway"="river"]["name"]'+zone+';);out center tags;';
                 let data = null;
                 let derniereErreur = null;
                 if (zoneValide) for (const base of ['https://overpass-api.de/api/interpreter','https://overpass.private.coffee/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter']) {
@@ -13591,8 +13592,16 @@ def accueil():
                     const x=(lon-p[0])*111320*Math.cos(lat*Math.PI/180), y=(lat-p[1])*110540; return Math.hypot(x,y);
                 }));
                 const out=[];
+                const affichable = l => l && ['ville','village','cours_eau','riviere'].includes(String(l.genre || '').toLowerCase());
+                const prioriteSource = l => {
+                    const source = String(l && l.source || '').toLowerCase();
+                    if (source.includes('bibliotheque')) return 0;
+                    if (source.includes('carto') || source.includes('osm') || source.includes('openstreetmap')) return 1;
+                    if (source.includes('ign')) return 2;
+                    return 3;
+                };
                 const ajouter = l => {
-                    if (!l || typeof l.nom !== 'string' || !Array.isArray(l.coord) || l.coord.length !== 2) return;
+                    if (!affichable(l) || typeof l.nom !== 'string' || !Array.isArray(l.coord) || l.coord.length !== 2) return;
                     const doublon = out.some(x => x.nom.toLocaleLowerCase() === l.nom.toLocaleLowerCase()
                         && distanceM(x.coord, l.coord) < 600);
                     if (!doublon) out.push(l);
@@ -13607,17 +13616,15 @@ def accueil():
                         const lat = Number.isFinite(e.lat) ? e.lat : e.center && e.center.lat;
                         if (!Number.isFinite(lon)||!Number.isFinite(lat)) continue;
                         let genre='',rang=9,portee=5000;
-                        if (['city','town','village','hamlet','isolated_dwelling','suburb','locality','neighbourhood'].includes(e.tags.place)) {
-                            genre=['hamlet','isolated_dwelling','locality'].includes(e.tags.place)?'village':(e.tags.place==='village'?'village':'ville');
-                            rang={city:1,town:2,suburb:3,village:4,hamlet:5,isolated_dwelling:6,locality:7,neighbourhood:8}[e.tags.place] ?? 4;
+                        if (['city','town','village','hamlet'].includes(e.tags.place)) {
+                            genre=['village','hamlet'].includes(e.tags.place)?'village':'ville';
+                            rang={city:1,town:2,village:3,hamlet:4}[e.tags.place] ?? 3;
                             portee=5000;
-                        } else if (['peak','hill','ridge'].includes(e.tags.natural)) { genre='sommet'; rang=4; portee=2200; }
-                        else if(e.tags.mountain_pass==='yes'||e.tags.natural==='saddle') {genre='col';rang=2;portee=900;}
-                        else if(e.tags.tourism==='viewpoint') {genre='lieu';rang=6;portee=1800;}
+                        } else if (e.tags.waterway === 'river') { genre='cours_eau'; rang=5; portee=1800; }
                         else continue;
                         const ec=dist(lon,lat);
                         if(ec>portee) continue;
-                        ajouter({nom:e.tags.name,genre,rang,ec,coord:[lon,lat],alt:parseFloat(e.tags.ele)});
+                        ajouter({nom:e.tags.name,genre,rang,ec,coord:[lon,lat],alt:parseFloat(e.tags.ele),source:'CARTO/OSM'});
                     }
                 } else if (derniereErreur) {
                     console.warn('OpenStreetMap indisponible ; la recherche IGN reste active.', derniereErreur);
@@ -13629,7 +13636,7 @@ def accueil():
                 } catch (e) {
                     console.warn('Recherche IGN des lieux indisponible', e);
                 }
-                out.sort((a,b)=>a.rang-b.rang||a.ec-b.ec);
+                out.sort((a,b)=>prioriteSource(a)-prioriteSource(b)||a.rang-b.rang||a.ec-b.ec);
                 const gardes = [];
                 for (const l of out) {
                     if (gardes.length >= 60) break;
