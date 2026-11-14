@@ -13489,7 +13489,7 @@ def accueil():
                     const nom = String(p.name || p.label || p.toponyme || p.nom || p.title || '').trim();
                     if (!nom) continue;
                     const categorie = String([p.category, p.type, p.nature, p.kind, p._type, p.description].filter(Boolean).join(' ')).toLowerCase();
-                    const texte = (categorie + ' ' + nom).toLowerCase();
+                    const texte = categorie;
                     let genre = 'lieu', rang = 6, portee = 2200;
                     if (/river|rivière|riviere|cours d.?eau|hydrograph/.test(texte)) {
                         genre = 'cours_eau'; rang = 5; portee = 1800;
@@ -13592,7 +13592,7 @@ def accueil():
                     const x=(lon-p[0])*111320*Math.cos(lat*Math.PI/180), y=(lat-p[1])*110540; return Math.hypot(x,y);
                 }));
                 const out=[];
-                const affichable = l => l && ['ville','village','cours_eau','riviere'].includes(String(l.genre || '').toLowerCase());
+                const affichable = l => l && ['ville','village','hameau','cours_eau','riviere'].includes(String(l.genre || '').toLowerCase());
                 const prioriteSource = l => {
                     const source = String(l && l.source || '').toLowerCase();
                     if (source.includes('bibliotheque')) return 0;
@@ -13617,7 +13617,7 @@ def accueil():
                         if (!Number.isFinite(lon)||!Number.isFinite(lat)) continue;
                         let genre='',rang=9,portee=5000;
                         if (['city','town','village','hamlet'].includes(e.tags.place)) {
-                            genre=['village','hamlet'].includes(e.tags.place)?'village':'ville';
+                            genre=e.tags.place==='hamlet'?'hameau':(e.tags.place==='village'?'village':'ville');
                             rang={city:1,town:2,village:3,hamlet:4}[e.tags.place] ?? 3;
                             portee=5000;
                         } else if (e.tags.waterway === 'river') { genre='cours_eau'; rang=5; portee=1800; }
@@ -19821,11 +19821,11 @@ def preparer_lieux_sortie(sortie_id):
                             nom = str(prop.get("name") or prop.get("label") or prop.get("toponyme") or prop.get("nom") or prop.get("title") or "").strip()
                             if not nom: continue
                             categorie = " ".join(str(prop.get(k) or "") for k in ("category","type","nature","kind","_type","description")).casefold()
-                            texte = (categorie + " " + nom).casefold()
+                            texte = categorie
                             if any(m in texte for m in ("river","rivière","riviere","cours d'eau","cours d’eau","hydrograph")):
                                 genre, rang, portee = "cours_eau", 5, 1800
                             elif any(m in texte for m in ("hamlet","hameau")):
-                                genre, rang, portee = "village", 4, 3500
+                                genre, rang, portee = "hameau", 4, 3500
                             elif any(m in texte for m in ("village","commune","town","city","municipality")):
                                 genre, rang, portee = "village", 3, 5000
                             else:
@@ -19936,7 +19936,7 @@ def preparer_lieux_sortie(sortie_id):
                 if not nom: continue
                 place=tags.get("place"); nat=tags.get("natural")
                 if place in ("city","town","village","hamlet"):
-                    genre="village" if place in ("village","hamlet") else "ville"
+                    genre=("hameau" if place=="hamlet" else ("village" if place=="village" else "ville"))
                     rang={"city":1,"town":2,"village":3,"hamlet":4}.get(place,3); portee=5000
                 elif place in ("isolated_dwelling","suburb","locality","neighbourhood"):
                     genre,rang,portee="lieu",9,5000
@@ -19985,7 +19985,7 @@ def preparer_lieux_sortie(sortie_id):
             # La bibliothèque reste prioritaire ; les résultats CARTO/OSM
             # viennent ensuite, puis IGN. Les autres catégories restent
             # conservées dans la bibliothèque mais ne sont pas affichées.
-            lieux = [l for l in lieux if str(l.get("genre", "")).casefold() in ("ville", "village", "cours_eau", "riviere")]
+            lieux = [l for l in lieux if str(l.get("genre", "")).casefold() in ("ville", "village", "hameau", "cours_eau", "riviere")]
             def priorite_source(l):
                 source = str(l.get("source", "")).casefold()
                 if "bibliotheque" in source: return 0
