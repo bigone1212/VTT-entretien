@@ -1486,3 +1486,14 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - Cette restauration annule les modifications cartographiques ultérieures concernant le masquage des hameaux et la reclassification associée. Elle remet donc le comportement de cette version connue comme fonctionnelle, sans toucher à `main`, aux données Neon, ni à la production.
 - Commit de restauration : `48644b974b08185062180dc1148bd6fcd4e8fd3c` sur `reprise/2026-11-13-maillons-complet-test`.
 - À faire : validations automatiques puis déploiement Render test. Aucun déploiement production.
+
+
+# Mise à jour — 14/11/2026 — retour à la base d'avant le masquage des hameaux et retrait des cours d'eau
+
+- L'utilisateur a demandé de reprendre la version immédiatement antérieure à sa demande de masquer les hameaux. Le fichier `main.py` de cette base est celui du commit `fe84f5b87091e97f70d74fd050eaea027678d5e2` (version où l'utilisateur avait confirmé que les noms de la bibliothèque étaient revenus).
+- Le fichier `main.py` a été restauré depuis cette base, puis modifié uniquement pour retirer les cours d'eau de la recherche et de l'affichage : suppression de la couche IGN `BDTOPO_V3:cours_d_eau`, de la requête OSM `waterway=river`, du traitement des rivières OSM, et exclusion des objets hydrographiques retournés par les autres sources.
+- Les filtres d'affichage n'incluent plus la catégorie `riviere`. Les entrées historiques de rivière déjà présentes dans `bibliotheque_lieux_geo` ne sont pas supprimées ; elles restent en base mais ne sont plus lues ni affichées dans les survols.
+- Les hameaux restent autorisés dans les filtres, comme dans la version de base. Les villes, villages, cols et sommets restent concernés par les règles de cette version. Aucune suppression de parcours, de nom de bibliothèque, ni modification de coordonnées ou de données GPX.
+- Commit applicatif : `1090e2f4921675908abdccdb54f69610c446c147` puis retrait complet des chemins hydrographiques dans le commit suivant.
+- À faire : contrôler le diff avec la base `fe84f5b87091e97f70d74fd050eaea027678d5e2`, lancer les vérifications automatiques et demander l'accord explicite avant déploiement Render test.
+- Aucun changement sur `main`, aucune fusion, aucune opération Neon et aucun déploiement production.
