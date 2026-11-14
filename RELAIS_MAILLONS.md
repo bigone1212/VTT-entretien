@@ -1353,3 +1353,13 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 
 - Déploiement du correctif Toponymie sur Render test : `dep-dbs3tp6i0phs73c24jsg`, commit déployé `4c0e209c38741542f3cbbdd688f7818db791d989`, statut `live` le 14/11/2026 à 10:59:30 UTC. Build réussi.
 - Le code a été relu après modification. Le test fonctionnel de la nouvelle couche `BDTOPO_V3:toponymie` reste à faire ; vérifier les journaux et les noms retenus avant toute conclusion.
+
+
+# Mise à jour — 14/11/2026 — priorité des panneaux et réduction des chevauchements
+
+- Retour utilisateur : les noms restent parfois superposés. Nouvelle règle validée : lorsqu'un panneau de pente ou de vitesse entre en conflit visuel avec un nom de lieu, le panneau de pente/vitesse reste prioritaire et le nom est temporairement masqué.
+- Dans `main.py`, la visibilité est maintenant recalculée à partir des rectangles réellement affichés à l'écran : les panneaux prioritaires sont réservés en premier, puis les noms sont affichés sans se chevaucher. Entre plusieurs noms en conflit, priorité au nom le plus proche de la progression actuelle, puis au meilleur rang.
+- Les noms masqués temporairement réapparaissent dès que le chevauchement disparaît. La règle d'apparition 200 m avant / disparition 100 m après reste inchangée.
+- Cache navigateur renouvelé de v7 à v8.
+- Commit applicatif : `0da356b66ed854c1ccd1f6291e025bf6f2d048a5`.
+- Modification limitée à `main.py` sur la branche de test existante `reprise/2026-11-13-maillons-complet-test`. Aucun changement sur `main`, aucune fusion, aucune opération Neon, aucun déploiement à ce stade.
