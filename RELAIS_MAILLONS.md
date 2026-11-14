@@ -1458,3 +1458,13 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - Les hameaux restent conservés dans la bibliothèque géographique et continuent d'être classés comme hameaux ; seule leur apparition dans le survol est désactivée. Aucune suppression de données, aucun changement des recherches, coordonnées, rayons, autres catégories ou lecture 3D.
 - Commit applicatif : `1ecbbfc66daada5609bad0f5996b812bbee37837` sur la branche existante `reprise/2026-11-13-maillons-complet-test`.
 - Pas de déploiement Render déclenché à ce stade. Attendre l'accord explicite de l'utilisateur avant le déploiement de test.
+
+
+# Correctif — 14/11/2026 — rétablir l'affichage des villages sans les hameaux
+
+- Retour utilisateur après masquage des hameaux : les cours d'eau restaient visibles, mais les villes et villages avaient disparu.
+- Cause trouvée dans les deux classifications IGN WFS : les objets dont la nature était explicitement « bourg » ou « village » étaient rangés à tort dans la catégorie « hameau ». Le filtre demandé masquait donc aussi ces villages.
+- Correction dans `main.py` : les objets explicitement « hameau » restent classés hameau (et masqués dans le survol) ; les objets « bourg » ou « village » sont maintenant classés village et restent affichables. Les lieux-dits génériques restent non affichés.
+- Aucun changement aux filtres de masquage des hameaux, aux recherches, coordonnées, rayons, bibliothèque, rivières, cols, sommets ou à la lecture 3D.
+- Commit applicatif : `93e448900f3208909bd029f4ecbb314f76c70ba6` sur la branche de test existante `reprise/2026-11-13-maillons-complet-test`.
+- À faire : vérifier le diff et les validations automatisées, puis demander l'accord avant le déploiement Render test. Aucun changement sur `main`, aucune fusion ni déploiement production.
