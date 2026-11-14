@@ -15,6 +15,7 @@ import re
 import secrets
 import socket
 import time
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -20027,8 +20028,8 @@ def reprendre_lieux_en_attente():
 
 @app.on_event("startup")
 def reprendre_lieux_au_demarrage():
-    # Réinitialise seulement les tâches interrompues ; elles repartiront
-    # en arrière-plan dès que la sortie sera consultée.
+    # Ajoute à la file tous les parcours historiques jamais préparés.
+    # ON CONFLICT préserve intégralement les résultats déjà enregistrés.
     conn = db.connect()
     cursor = conn.cursor()
     try:
@@ -20036,9 +20037,28 @@ def reprendre_lieux_au_demarrage():
             "UPDATE recherche_lieux_gpx SET statut = ? WHERE statut = ?",
             ("en_attente", "en_cours")
         )
+        cursor.execute("SELECT id, velo_id FROM sorties")
+        sorties = cursor.fetchall()
+        for sortie in sorties:
+            cursor.execute(
+                """INSERT INTO recherche_lieux_gpx
+                   (sortie_id, velo_id, statut, tentatives, maj_le)
+                   VALUES (?, ?, ?, 0, ?)
+                   ON CONFLICT (sortie_id) DO NOTHING""",
+                (int(sortie[0]), int(sortie[1]), "en_attente",
+                 datetime.now(timezone.utc).isoformat())
+            )
         conn.commit()
     finally:
         conn.close()
+
+    # Traite la file en arrière-plan, une sortie après l'autre.
+    # Le serveur reste disponible pendant les recherches cartographiques.
+    threading.Thread(
+        target=reprendre_lieux_en_attente,
+        name="preparation-lieux-gpx",
+        daemon=True
+    ).start()
 
 @app.post("/api/sorties/import")
 def importer_sortie(
