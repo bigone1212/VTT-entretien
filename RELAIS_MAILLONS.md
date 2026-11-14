@@ -1,3 +1,13 @@
+# Mise à jour — 14/11/2026 — recherche géographique complémentaire vérifiée
+
+- Le workflow GitHub Actions `43518683346` pour le commit applicatif `157e165dbe972fdca5ce554a5dc2f815807537a3` est terminé avec succès.
+- Toutes les étapes du workflow sont passées, y compris syntaxe Python/JavaScript, tests applicatifs et tests navigateur existants.
+- Le correctif fusionne les lieux pré-calculés avec les recherches directes OSM/IGN, invalide le cache v2 en passant à v3 et relève la limite à 60.
+- Ces tests automatiques ne valident pas encore le nombre réel de lieux-dits retournés par les services IGN/OSM sur un GPX réel.
+- Le correctif n'est pas encore déployé sur Render. Ne pas déployer sans accord explicite. Production, branche `main` et base Neon inchangées.
+
+---
+
 # Mise à jour — 13/11/2026 — correction de la recherche complémentaire (vérifications en cours)
 
 - Commit applicatif `157e165dbe972fdca5ce554a5dc2f815807537a3` sur la branche existante.
