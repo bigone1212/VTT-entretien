@@ -19822,14 +19822,12 @@ def preparer_lieux_sortie(sortie_id):
                             if not nom: continue
                             categorie = " ".join(str(prop.get(k) or "") for k in ("category","type","nature","kind","_type","description")).casefold()
                             texte = (categorie + " " + nom).casefold()
-                            if any(m in texte for m in ("sommet","peak","mountain","montagne","hill","colline","crête","crete","ridge")):
-                                genre, rang, portee = "sommet", 4, 2200
-                            elif any(m in texte for m in ("col ","pass","saddle","mountain_pass")):
-                                genre, rang, portee = "col", 2, 900
-                            elif any(m in texte for m in ("lieu-dit","lieudit","locality","hamlet","hameau","isolated_dwelling")):
-                                genre, rang, portee = "village", 5, 3500
+                            if any(m in texte for m in ("river","rivière","riviere","cours d'eau","cours d’eau","hydrograph")):
+                                genre, rang, portee = "cours_eau", 5, 1800
+                            elif any(m in texte for m in ("hamlet","hameau")):
+                                genre, rang, portee = "village", 4, 3500
                             elif any(m in texte for m in ("village","commune","town","city","municipality")):
-                                genre, rang, portee = "village", 4, 5000
+                                genre, rang, portee = "village", 3, 5000
                             else:
                                 genre, rang, portee = "lieu", 6, 2200
                             ec = min(distance((lon,lat), p) for p in refs)
@@ -19913,7 +19911,7 @@ def preparer_lieux_sortie(sortie_id):
                             if ec > 200:
                                 continue
                             lieux.append({
-                                "nom": nom, "genre": "village", "rang": 5,
+                                "nom": nom, "genre": "lieu_dit", "rang": 9,
                                 "ec": round(ec, 1), "coord": [lon, lat],
                                 "alt": None, "source": source_wfs
                             })
@@ -19937,9 +19935,11 @@ def preparer_lieux_sortie(sortie_id):
                 except (TypeError,ValueError): continue
                 if not nom: continue
                 place=tags.get("place"); nat=tags.get("natural")
-                if place in ("city","town","village","hamlet","isolated_dwelling","suburb","locality","neighbourhood"):
-                    genre="village" if place in ("village","hamlet","isolated_dwelling","locality") else "ville"
-                    rang={"city":1,"town":2,"suburb":3,"village":4,"hamlet":5,"isolated_dwelling":6,"locality":7,"neighbourhood":8}.get(place,4); portee=5000
+                if place in ("city","town","village","hamlet"):
+                    genre="village" if place in ("village","hamlet") else "ville"
+                    rang={"city":1,"town":2,"village":3,"hamlet":4}.get(place,3); portee=5000
+                elif place in ("isolated_dwelling","suburb","locality","neighbourhood"):
+                    genre,rang,portee="lieu",9,5000
                 elif nat in ("peak","hill","ridge"): genre,rang,portee="sommet",4,2200
                 elif tags.get("mountain_pass")=="yes" or nat=="saddle": genre,rang,portee="col",2,900
                 elif tags.get("tourism")=="viewpoint": genre,rang,portee="lieu",6,1800
@@ -19973,11 +19973,26 @@ def preparer_lieux_sortie(sortie_id):
                 coord=(float(lon),float(lat))
                 ec=min(distance(coord,p) for p in refs)
                 portee=5000 if genre in ("ville","village") else (900 if genre=="col" else (2200 if genre=="sommet" else 1800))
-                if ec<=portee and not any(x["nom"].casefold()==str(nom).casefold() and distance(tuple(x["coord"]),coord)<600 for x in lieux):
-                    lieux.append({"nom":str(nom),"genre":genre or "lieu","rang":int(rang or 9),"ec":round(ec,1),"coord":[coord[0],coord[1]],"alt":alt,"source":"bibliotheque"})
+                if ec<=portee:
+                    entree_bibliotheque={"nom":str(nom),"genre":genre or "lieu","rang":int(rang or 9),"ec":round(ec,1),"coord":[coord[0],coord[1]],"alt":alt,"source":"bibliotheque"}
+                    doublon=next((i for i,x in enumerate(lieux) if x["nom"].casefold()==str(nom).casefold() and distance(tuple(x["coord"]),coord)<600),None)
+                    if doublon is None:
+                        lieux.append(entree_bibliotheque)
+                    else:
+                        lieux[doublon]=entree_bibliotheque
             if not api_ok and not lieux:
                 raise RuntimeError("Les services cartographiques sont indisponibles ; la recherche sera reprise.")
-            lieux.sort(key=lambda x:(x["rang"],x["ec"])); retenus=[]
+            # La bibliothèque reste prioritaire ; les résultats CARTO/OSM
+            # viennent ensuite, puis IGN. Les autres catégories restent
+            # conservées dans la bibliothèque mais ne sont pas affichées.
+            lieux = [l for l in lieux if str(l.get("genre", "")).casefold() in ("ville", "village", "cours_eau", "riviere")]
+            def priorite_source(l):
+                source = str(l.get("source", "")).casefold()
+                if "bibliotheque" in source: return 0
+                if "carto" in source or "osm" in source or "openstreetmap" in source: return 1
+                if "ign" in source: return 2
+                return 3
+            lieux.sort(key=lambda x:(priorite_source(x),x["rang"],x["ec"])); retenus=[]
             for l in lieux:
                 if len(retenus)>=60: break
                 if any(x["nom"].casefold()==l["nom"].casefold() and distance(tuple(x["coord"]),tuple(l["coord"]))<600 for x in retenus): continue
