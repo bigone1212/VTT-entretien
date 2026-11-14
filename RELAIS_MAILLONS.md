@@ -1,3 +1,15 @@
+# Mise à jour — 14/11/2026 — nettoyage des noms IGN/WFS et doublons visuels
+
+- Retour de test : certains villages apparaissent deux fois, avec une seconde étiquette littérale de forme `['Nom']`.
+- Cause identifiée : les réponses IGN/WFS peuvent fournir un champ de nom sous forme de liste ; le code serveur utilisait `str(...)`, ce qui transformait la liste Python en texte affichable au lieu d'en extraire le nom.
+- Correction dans `main.py` : ajout de `nom_geographique_texte()`, qui extrait proprement le premier nom non vide des valeurs liste/tuple/dictionnaire, puis application à l'extraction IGN et WFS.
+- Cache du navigateur renouvelé de v6 à v7 pour empêcher la réutilisation d'anciennes étiquettes mal formées.
+- La fusion/déduplication existante conserve la priorité bibliothèque et regroupe les noms identiques proches ; aucune modification des recherches, coordonnées, rayons, filtres ou règle d'apparition 200 m avant / 100 m après.
+- Modification applicative limitée à `main.py`, sur la branche de test existante `reprise/2026-11-13-maillons-complet-test`.
+- Aucun changement sur `main`, aucune fusion, aucune opération Neon, aucun déploiement à cette étape.
+
+---
+
 # Mise à jour — 14/11/2026 — calcul de distance pour les noms de la bibliothèque
 
 - Diagnostic confirmé : le chargement immédiat de la bibliothèque renvoyait les noms sans calculer leur distance cumulée sur la trace GPX. La nouvelle règle d'affichage (200 m avant / 100 m après) exige cette distance ; les noms avaient donc tous une distance absente et restaient masqués.
