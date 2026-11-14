@@ -20021,6 +20021,12 @@ def preparer_lieux_sortie(sortie_id):
             nombre = min(36, max(1, int(math.ceil(total / 2500)))) if total else 1
             rayon = max(1200, min(3500, (total / nombre if nombre else 2500) * 0.72))
             ign_erreurs = []
+            diagnostic = {
+                "ign_appels_ok": 0, "ign_features": 0, "ign_noms_acceptes": 0,
+                "wfs_appels_ok": 0, "wfs_features": 0, "wfs_noms_acceptes": 0,
+                "osm_troncons": 0, "osm_reponses_ok": 0, "osm_points": 0,
+                "osm_rivieres": 0, "osm_noms_acceptes": 0
+            }
             for debut in range(0, nombre, 4):
                 appels = []
                 for j in range(debut, min(nombre, debut + 4)):
@@ -20055,7 +20061,10 @@ def preparer_lieux_sortie(sortie_id):
                         with urllib.request.urlopen(req, timeout=12) as response:
                             donnees = json.loads(response.read().decode("utf-8"))
                         api_ok = True
-                        for feature in donnees.get("features", []):
+                        diagnostic["ign_appels_ok"] += 1
+                        features_ign = donnees.get("features", [])
+                        diagnostic["ign_features"] += len(features_ign)
+                        for feature in features_ign:
                             prop = feature.get("properties") or {}
                             geom = (feature.get("geometry") or {}).get("coordinates")
                             if not isinstance(geom, list) or len(geom) < 2: continue
@@ -20083,6 +20092,7 @@ def preparer_lieux_sortie(sortie_id):
                             try: altitude = float(str(prop.get("ele") or prop.get("altitude") or prop.get("z")).replace(",","."))
                             except (TypeError, ValueError): pass
                             lieux.append({"nom":nom,"genre":genre,"rang":rang,"ec":round(ec,1),"coord":[lon,lat],"alt":altitude,"source":"IGN"})
+                            diagnostic["ign_noms_acceptes"] += 1
                     except Exception as exc:
                         # Ne pas masquer les erreurs IGN : elles expliquent
                         # pourquoi une recherche peut ne rapporter aucun nom.
@@ -20140,6 +20150,8 @@ def preparer_lieux_sortie(sortie_id):
                         if not isinstance(donnees_wfs, dict) or not isinstance(donnees_wfs.get("features"), list):
                             continue
                         api_ok = True
+                        diagnostic["wfs_appels_ok"] += 1
+                        diagnostic["wfs_features"] += len(donnees_wfs["features"])
                         for feature in donnees_wfs["features"]:
                             prop = feature.get("properties") or {}
                             geom = feature.get("geometry") or {}
@@ -20164,6 +20176,7 @@ def preparer_lieux_sortie(sortie_id):
                             ec = ecart_parcours_m((lon, lat), points)
                             if ec > 200:
                                 continue
+                            diagnostic["wfs_noms_acceptes"] += 1
                             lieux.append({
                                 "nom": nom, "genre": "lieu_dit", "rang": 9,
                                 "ec": round(ec, 1), "coord": [lon, lat],
@@ -20195,13 +20208,21 @@ def preparer_lieux_sortie(sortie_id):
                 requete_rivieres = (
                     '[out:json][timeout:25];way["waterway"="river"]["name"](around:200,LISTE);out tags geom;'
                 ).replace("LISTE", liste_points)
+                diagnostic["osm_troncons"] += 1
                 elements_points = interroger_overpass(requete_points)
                 elements_rivieres = interroger_overpass(requete_rivieres)
+                if elements_points is not None:
+                    diagnostic["osm_reponses_ok"] += 1
+                    diagnostic["osm_points"] += len(elements_points)
+                if elements_rivieres is not None:
+                    diagnostic["osm_reponses_ok"] += 1
+                    diagnostic["osm_rivieres"] += len(elements_rivieres)
                 if elements_points is None or elements_rivieres is None:
                     osm_complet = False
                 if elements_points is not None or elements_rivieres is not None:
                     api_ok = True
                 trouves = lieux_osm_points(elements_points or [], points) + lieux_osm_rivieres(elements_rivieres or [], points)
+                diagnostic["osm_noms_acceptes"] += len(trouves)
                 for l in trouves:
                     lieux.append(l)
                     enregistrer_lieu_bibliotheque(cursor, l, "OpenStreetMap")
@@ -20254,6 +20275,10 @@ def preparer_lieux_sortie(sortie_id):
         statut_final = "termine" if (osm_complet or essais >= 4) else "en_attente"
         message_final = None if statut_final == "termine" else "Recherche OpenStreetMap incomplète : nouvel essai à la prochaine consultation."
         cursor.execute("UPDATE recherche_lieux_gpx SET statut = ?, lieux_json = ?, erreur = ?, maj_le = ? WHERE sortie_id = ?", (statut_final,json.dumps(lieux,ensure_ascii=False),message_final,datetime.now(timezone.utc).isoformat(),sortie_id))
+        diagnostic["noms_finaux_affichables"] = len(lieux)
+        diagnostic["points_gpx"] = len(points)
+        diagnostic["tentative"] = essais
+        print("[Maillons lieux] " + json.dumps({"sortie_id": sortie_id, **diagnostic, "statut": statut_final}, ensure_ascii=False))
         conn.commit()
     except Exception as exc:
         try: cursor.execute("UPDATE recherche_lieux_gpx SET statut = ?, erreur = ?, maj_le = ? WHERE sortie_id = ?", ("en_attente",str(exc)[:500],datetime.now(timezone.utc).isoformat(),sortie_id)); conn.commit()
