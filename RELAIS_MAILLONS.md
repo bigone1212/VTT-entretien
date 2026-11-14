@@ -1288,3 +1288,6 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - Commits applicatifs : `a80cd425de1988434c9874f175997b736eac5896` et `973c4a71c8f268feebca99f1459e59f7683f4dcc`.
 - Aucun autre fichier applicatif modifié ; filtres, affichage 3D et bibliothèque existants préservés.
 - Cette correction doit être déployée uniquement sur le service Render de test, puis contrôlée dans les journaux. Ne pas conclure avant d'avoir un diagnostic complet avec des noms retenus.
+
+- Déploiement du correctif Toponymie sur Render test : `dep-dbs3tp6i0phs73c24jsg`, commit déployé `4c0e209c38741542f3cbbdd688f7818db791d989`, statut `live` le 14/11/2026 à 10:59:30 UTC. Build réussi.
+- Le code a été relu après modification. Le test fonctionnel de la nouvelle couche `BDTOPO_V3:toponymie` reste à faire ; vérifier les journaux et les noms retenus avant toute conclusion.
