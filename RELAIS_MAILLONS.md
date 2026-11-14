@@ -1449,3 +1449,12 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - Le reclassement historique se fait en arrière-plan, parcours après parcours. Il reste à vérifier dans les logs Render les premiers résultats de recherche, puis à faire tester le survol par Math. Ne pas conclure que tous les parcours sont déjà reclassés.
 
 - Correctif après retour utilisateur du 14/11 : la bibliothèque ne fournissait plus aucun nom car l'API immédiate renvoyait volontairement une liste vide tant que le reclassement du parcours n'était pas terminé. Ce verrou est retiré : les noms déjà connus sont de nouveau renvoyés immédiatement pendant le reclassement. Les filtres de catégories affichables restent en place ; les parcours continuent à être reclassés en arrière-plan. Commit : `fe84f5b87091e97f70d74fd050eaea027678d5e2`. À vérifier sur Render test.
+
+
+# Mise à jour — 14/11/2026 — masquer tous les hameaux dans le survol 3D
+
+- Demande utilisateur : ne plus afficher les hameaux dans les survols, sur tous les parcours.
+- Dans `main.py`, la catégorie `hameau` est retirée des trois filtres d'affichage : liste côté navigateur, résultats préparés côté serveur et lecture immédiate de la bibliothèque.
+- Les hameaux restent conservés dans la bibliothèque géographique et continuent d'être classés comme hameaux ; seule leur apparition dans le survol est désactivée. Aucune suppression de données, aucun changement des recherches, coordonnées, rayons, autres catégories ou lecture 3D.
+- Commit applicatif : `1ecbbfc66daada5609bad0f5996b812bbee37837` sur la branche existante `reprise/2026-11-13-maillons-complet-test`.
+- Pas de déploiement Render déclenché à ce stade. Attendre l'accord explicite de l'utilisateur avant le déploiement de test.
