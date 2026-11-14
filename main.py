@@ -14047,31 +14047,38 @@ def accueil():
                 }
             }
 
-            function dessinerAvancement(positionDejaMiseAJour) {
+            function dessinerAvancement(positionDejaMiseAJour, options) {
                 const carte = v3d.carte;
                 if (!carte || !v3d.prete) return;
+                options = options || {};
 
                 const d = v3d.f * v3d.total;
                 const pos = pointA(d);
                 if (!positionDejaMiseAJour) dessinerPositionV3d(d);
-                const fait = [];
-                for (let i = 0; i < v3d.pts.length && v3d.cum[i] <= d; i++) {
-                    fait.push(v3d.pts[i]);
-                }
-                fait.push(pos);
 
-                const srcFait = carte.getSource('v3d-fait');
-                if (srcFait) {
-                    srcFait.setData({
-                        type: 'Feature',
-                        geometry: { type: 'LineString', coordinates: fait.length > 1 ? fait : [pos, pos] }
-                    });
+                // La ligne parcourue est lourde à reconstruire sur les longues traces.
+                // En lecture, son rafraîchissement est volontairement moins fréquent
+                // que celui du point mobile et des informations à l'écran.
+                if (options.ligne !== false) {
+                    const fait = [];
+                    for (let i = 0; i < v3d.pts.length && v3d.cum[i] <= d; i++) {
+                        fait.push(v3d.pts[i]);
+                    }
+                    fait.push(pos);
+
+                    const srcFait = carte.getSource('v3d-fait');
+                    if (srcFait) {
+                        srcFait.setData({
+                            type: 'Feature',
+                            geometry: { type: 'LineString', coordinates: fait.length > 1 ? fait : [pos, pos] }
+                        });
+                    }
                 }
                 document.getElementById('v3dProgres').value = String(Math.round(v3d.f * 1000));
                 document.getElementById('v3dInfo').textContent =
                     `${fmtDistance(d / 1000, 1).complet} sur ${fmtDistance(v3d.total / 1000, 1).complet}`;
                 majHabillageCinemaV3d();
-                majVisibiliteReperesV3d();
+                if (options.reperes !== false) majVisibiliteReperesV3d();
             }
 
             // Place la caméra derrière le point courant, orientée vers la suite du parcours.
@@ -14164,7 +14171,16 @@ def accueil():
                 // et les informations de progression restent limitées à une image sur quatre.
                 dessinerPositionV3d(v3d.f * v3d.total);
                 v3d.compteImages++;
-                if (v3d.compteImages % 4 === 0 || v3d.f >= 1) dessinerAvancement(true);
+                // Les repères et la progression sont actualisés 10 fois/s environ.
+                // La ligne complète, qui recopie tous les points déjà parcourus,
+                // ne l'est qu'environ 2,5 fois/s. Caméra et point mobile restent
+                // animés à chaque image pour préserver la fluidité du survol.
+                if (v3d.compteImages % 6 === 0 || v3d.f >= 1) {
+                    dessinerAvancement(true, {
+                        ligne: v3d.compteImages % 24 === 0 || v3d.f >= 1,
+                        reperes: true
+                    });
+                }
 
                 if (v3d.f >= 1) {
                     v3d.jouer = false;
