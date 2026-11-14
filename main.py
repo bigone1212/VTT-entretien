@@ -13755,9 +13755,13 @@ def accueil():
                     const visible = v3d.repereVisibles && d >= Math.max(0, p.debut - avanceParSeconde) && d <= p.fin;
                     p.marqueur.getElement().classList.toggle('v3d-cache', !visible);
                 });
-                // Les noms géographiques restent visibles sur la carte, indépendamment de la lecture.
+                // Un nom apparaît 200 m avant son point et disparaît 100 m après.
                 v3d.panneauxLieux.forEach(p => {
-                    p.marqueur.getElement().classList.toggle('v3d-cache', !v3d.repereVisibles);
+                    const visible = v3d.repereVisibles
+                        && Number.isFinite(p.d)
+                        && d >= Math.max(0, p.d - 200)
+                        && d <= p.d + 100;
+                    p.marqueur.getElement().classList.toggle('v3d-cache', !visible);
                 });
             }
             async function poserReperesV3d() {
