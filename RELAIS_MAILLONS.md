@@ -1,3 +1,17 @@
+# Mise à jour — 14/11/2026 — correction du classement des noms IGN
+
+- Branche existante conservée : `reprise/2026-11-13-maillons-complet-test`. Aucun nouveau branchement.
+- Dans `main.py`, les requêtes de géocodage inverse IGN sont maintenant séparées par index : BAN (`address`), POI d'habitation (`zone d'habitation`), hydrographie (`hydrographie`) et relief (`élément topographique ou forestier`). Le filtre de catégorie ne peut donc plus réduire la recherche BAN.
+- Le classement des réponses IGN reconnaît maintenant les sous-catégories réelles « lieu-dit habité », « cours d'eau », « col », « sommet » et « pic ». Avant ce correctif, plusieurs de ces réponses étaient classées génériquement en `lieu`, puis éliminées du survol.
+- Les erreurs des appels IGN ne sont plus totalement silencieuses : les trois premiers messages d'erreur sont écrits dans les logs Render pour faciliter le diagnostic.
+- Les règles confirmées avec Math restent inchangées : 500 m pour villes/villages ; 200 m pour hameaux, rivières, cols et sommets. Priorité bibliothèque, puis CARTO, IGN, OSM. Aucun effacement de bibliothèque.
+- Les lieux-dits non habités restent conservés en bibliothèque mais ne sont pas ajoutés à l'affichage, conformément aux catégories demandées.
+- Documentation consultée : guide officiel Géoplateforme du géocodage (GetCapabilities et index address/POI) et liste de catégories BD TOPO. Les noms exacts des couches WFS BDTOPO restent à confirmer par GetCapabilities ; aucune modification hasardeuse de ces identifiants n'a été faite.
+- Contrôles réseau réels sur Caussenus et rendu navigateur non encore effectués. Le workflow GitHub Actions doit être vérifié après ce commit.
+- Aucun déploiement Render, aucune modification de `main`, aucune opération Neon.
+
+---
+
 # Mise à jour — 14/11/2026 — fiabilisation des noms géographiques du survol 3D (Claude, à vérifier en ligne)
 
 - Base : commit `c80eac7` (classement IGN et habitations isolées, ajoutés par ailleurs le matin même) conservé tel quel. Un seul fichier applicatif modifié : `main.py`, sur la branche existante `reprise/2026-11-13-maillons-complet-test`.
