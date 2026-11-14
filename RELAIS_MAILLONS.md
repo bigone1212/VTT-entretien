@@ -1441,3 +1441,5 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - Aucun changement aux recherches IGN/OSM, aux coordonnées, aux rayons, aux fenêtres d'affichage, aux panneaux pente/vitesse ou à la lecture 3D. Aucun nom n'est supprimé. Aucun changement sur `main`, aucune fusion, aucune opération manuelle sur Neon, aucun déploiement production.
 - Commit applicatif : `b29ff586ee68085c41307b1a3eb1794ec2c8a181` sur la branche de test existante `reprise/2026-11-13-maillons-complet-test`.
 - À faire : vérifier le diff, la syntaxe Python/JavaScript, les tests automatisés et le déploiement Render test. Confirmer ensuite dans les logs que les parcours historiques ont bien été reclassés, puis faire tester le survol.
+
+- Précision après relecture du traitement : une ancienne entrée de bibliothèque ne doit jamais suffire à déclarer une recherche réussie lorsque tous les services IGN/WFS/OSM ont échoué. Le traitement reste donc en attente et la version de classement n'est pas validée tant qu'aucune réponse cartographique n'a été reçue. Commit complémentaire : `9f5dee0aecc99c43e1750340afe923eea8e74055`.
