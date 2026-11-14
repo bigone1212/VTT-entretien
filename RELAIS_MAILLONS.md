@@ -1497,3 +1497,7 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - Commit applicatif : `1090e2f4921675908abdccdb54f69610c446c147` puis retrait complet des chemins hydrographiques dans le commit suivant.
 - À faire : contrôler le diff avec la base `fe84f5b87091e97f70d74fd050eaea027678d5e2`, lancer les vérifications automatiques et demander l'accord explicite avant déploiement Render test.
 - Aucun changement sur `main`, aucune fusion, aucune opération Neon et aucun déploiement production.
+
+- Correction du bloc JavaScript OSM après retrait de la branche rivière : commit `525ce0f990f3efda4034a940497b76ce5ee890ef`.
+- Vérifications GitHub Actions du commit applicatif `525ce0f990f3efda4034a940497b76ce5ee890ef` : run `43644743433`, statut `completed`, conclusion `success`, 68 étapes terminées, aucune en échec.
+- Déploiement Render test non déclenché : attendre l'accord explicite de l'utilisateur. Le site test actuellement en ligne n'a pas encore reçu cette version.
