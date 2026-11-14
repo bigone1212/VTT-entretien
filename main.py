@@ -13706,13 +13706,9 @@ def accueil():
                     const visible = v3d.repereVisibles && d >= Math.max(0, p.debut - avanceParSeconde) && d <= p.fin;
                     p.marqueur.getElement().classList.toggle('v3d-cache', !visible);
                 });
-                // Un seul nom à la fois, brièvement, au moment où le cycliste passe à proximité.
-                const fenetre = Math.max(70, avanceParSeconde * 1.1);
-                const actifs = v3d.panneauxLieux.filter(p => d >= p.d - fenetre * 0.65 && d <= p.d + fenetre * 0.9);
-                actifs.sort((a, b) => Math.abs(a.d - d) - Math.abs(b.d - d));
-                const actif = actifs[0] || null;
+                // Les noms géographiques restent visibles sur la carte, indépendamment de la lecture.
                 v3d.panneauxLieux.forEach(p => {
-                    p.marqueur.getElement().classList.toggle('v3d-cache', !v3d.repereVisibles || p !== actif);
+                    p.marqueur.getElement().classList.toggle('v3d-cache', !v3d.repereVisibles);
                 });
             }
             async function poserReperesV3d() {
@@ -13751,7 +13747,7 @@ def accueil():
                             ? ' · ' + fmtAltitude(l.alt).complet : '');
                         const el = elementRepereAerienV3d(libelle, 16);
                         const marqueur = new window.maplibregl.Marker({ element: el, anchor: 'bottom-left' })
-                            .setLngLat(pointA(l.d)).addTo(carte);
+                            .setLngLat(l.coord).addTo(carte);
                         v3d.reperes.push(marqueur);
                         v3d.panneauxLieux.push({ marqueur: marqueur, d: l.d });
                     });
