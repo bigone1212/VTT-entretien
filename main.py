@@ -13574,9 +13574,7 @@ def accueil():
                     const categorie = String([p.category, p.type, p.nature, p.kind, p._type, p.description].filter(Boolean).join(' ')).toLowerCase();
                     const texte = categorie;
                     let genre = 'lieu', rang = 6, portee = 2200;
-                    if (/river|rivière|riviere|cours d.?eau|hydrograph/.test(texte)) {
-                        genre = 'riviere'; rang = 5; portee = 1800;
-                    } else if (/mountain.?pass|(^| )col( |$)|saddle|passage/.test(texte)) {
+                    if (/mountain.?pass|(^| )col( |$)|saddle|passage/.test(texte)) {
                         genre = 'col'; rang = 2; portee = 900;
                     } else if (/peak|summit|sommet|point.?haut|hill|ridge|crête|crete/.test(texte)) {
                         genre = 'sommet'; rang = 4; portee = 2200;
@@ -13697,7 +13695,7 @@ def accueil():
                 const sud = Math.min(...lats)-marge, nord = Math.max(...lats)+marge, ouest = Math.min(...lons)-marge, est = Math.max(...lons)+marge;
                 const zoneValide = nord-sud <= 0.6 && est-ouest <= 0.8;
                 const zone = '('+sud+','+ouest+','+nord+','+est+')';
-                const q = '[out:json][timeout:35];(nwr["place"~"^(city|town|village|hamlet|isolated_dwelling)$"]["name"]'+zone+';way["waterway"="river"]["name"]'+zone+';nwr["natural"~"^(peak|hill|ridge)$"]["name"]'+zone+';nwr["mountain_pass"="yes"]["name"]'+zone+';nwr["natural"="saddle"]["name"]'+zone+';);out center tags;';
+                const q = '[out:json][timeout:35];(nwr["place"~"^(city|town|village|hamlet|isolated_dwelling)$"]["name"]'+zone+';nwr["natural"~"^(peak|hill|ridge)$"]["name"]'+zone+';nwr["mountain_pass"="yes"]["name"]'+zone+';nwr["natural"="saddle"]["name"]'+zone+';);out center tags;';
                 let data = null;
                 let derniereErreur = null;
                 if (zoneValide) for (const base of ['https://overpass-api.de/api/interpreter','https://overpass.private.coffee/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter']) {
@@ -13718,7 +13716,7 @@ def accueil():
                 const ref = v3d.pts.filter((_,i)=>i%Math.max(1,Math.floor(v3d.pts.length/500))===0);
                 const dist = (lon,lat) => ecartParcoursV3d([lon, lat]);
                 const out=[];
-                const affichable = l => l && ['ville','village','hameau','riviere','col','sommet'].includes(String(l.genre || '').toLowerCase());
+                const affichable = l => l && ['ville','village','hameau','col','sommet'].includes(String(l.genre || '').toLowerCase());
                 const prioriteSource = l => {
                     const source = String(l && l.source || '').toLowerCase();
                     if (source.includes('bibliotheque')) return 0;
@@ -13751,7 +13749,7 @@ def accueil():
                             genre=e.tags.place==='isolated_dwelling'?'lieu_dit':(e.tags.place==='hamlet'?'hameau':(e.tags.place==='village'?'village':'ville'));
                             rang={city:1,town:2,village:3,hamlet:4,isolated_dwelling:9}[e.tags.place] ?? 3;
                             portee=5000;
-                        } else if (e.tags.waterway === 'river') { genre='riviere'; rang=5; portee=1800; }
+                        
                         else if (e.tags.mountain_pass === 'yes' || e.tags.natural === 'saddle') { genre='col'; rang=2; portee=900; }
                         else if (['peak','hill','ridge'].includes(e.tags.natural)) { genre='sommet'; rang=4; portee=2200; }
                         else continue;
@@ -20155,33 +20153,6 @@ def densifier_m(coords, pas=25.0):
     return sortie
 
 
-def lieux_osm_rivieres(elements, points):
-    """Rivières : le nom est posé sur le point de la rivière le plus proche du parcours,
-    et non au centre de la rivière entière."""
-    resultats = []
-    for e in elements:
-        tags = e.get("tags") or {}
-        nom = nom_geographique_texte(tags.get("name"))
-        if not nom or tags.get("waterway") != "river":
-            continue
-        trace_riviere = []
-        for g in e.get("geometry") or []:
-            try:
-                trace_riviere.append((float(g["lon"]), float(g["lat"])))
-            except (KeyError, TypeError, ValueError):
-                continue
-        meilleur = None
-        for c in densifier_m(trace_riviere):
-            ec = ecart_parcours_m(c, points)
-            if meilleur is None or ec < meilleur[0]:
-                meilleur = (ec, c)
-        if meilleur is None or meilleur[0] > rayon_affichage_m("riviere"):
-            continue
-        resultats.append({"nom": nom, "genre": "riviere", "rang": 5, "ec": round(meilleur[0], 1),
-                          "coord": [meilleur[1][0], meilleur[1][1]], "alt": None, "source": "OpenStreetMap"})
-    return resultats
-
-
 def enregistrer_lieu_bibliotheque(cursor, l, source):
     nom = nom_geographique_texte(l.get("nom"))
     if not nom:
@@ -20257,7 +20228,7 @@ def preparer_lieux_sortie(sortie_id):
             "ign_appels_ok": 0, "ign_features": 0, "ign_noms_acceptes": 0,
             "wfs_appels_ok": 0, "wfs_features": 0, "wfs_noms_acceptes": 0,
             "osm_troncons": 0, "osm_reponses_ok": 0, "osm_points": 0,
-            "osm_rivieres": 0, "osm_noms_acceptes": 0, "osm_erreurs": [],
+            "osm_noms_acceptes": 0, "osm_erreurs": [],
             "duree_ign_s": 0, "duree_wfs_s": 0, "duree_osm_s": 0,
             "duree_bibliotheque_s": 0, "duree_totale_s": 0
         }
@@ -20375,7 +20346,6 @@ def preparer_lieux_sortie(sortie_id):
             # boîte englobante et les réponses trop volumineuses.
             wfs_layers = (
                 ("BDTOPO_V3:zone_d_habitation", "IGN-BD-TOPO"),
-                ("BDTOPO_V3:cours_d_eau", "IGN-BD-TOPO"),
                 ("BDTOPO_V3:lieu_dit_non_habite", "IGN-BD-TOPO"),
                 # Cette couche porte les noms cartographiques et leurs points d'ancrage.
                 ("BDTOPO_V3:toponymie", "IGN-BD-TOPO"),
@@ -20479,27 +20449,6 @@ def preparer_lieux_sortie(sortie_id):
                                 portee_top = 500 if genre_wfs == "village" else 200
                                 if ec > portee_top:
                                     continue
-                            elif couche == "BDTOPO_V3:cours_d_eau":
-                                if type_geom == "LineString" and isinstance(coord, list):
-                                    lignes = [coord]
-                                elif type_geom == "MultiLineString" and isinstance(coord, list):
-                                    lignes = coord
-                                else:
-                                    lignes = []
-                                trace_eau = []
-                                for ligne_eau in lignes:
-                                    for xy in ligne_eau:
-                                        try: trace_eau.append((float(xy[0]), float(xy[1])))
-                                        except (TypeError, ValueError, IndexError): continue
-                                meilleur = None
-                                for point_eau in densifier_m(trace_eau):
-                                    ec_eau = ecart_parcours_m(point_eau, points)
-                                    if meilleur is None or ec_eau < meilleur[0]:
-                                        meilleur = (ec_eau, point_eau)
-                                if meilleur is None or meilleur[0] > 200:
-                                    continue
-                                ec, position = meilleur
-                                genre_wfs, rang_wfs = "riviere", 5
                             elif couche == "BDTOPO_V3:zone_d_habitation":
                                 if nature and not any(x in nature for x in ("lieu-dit habité", "lieu dit habité", "bourg", "village", "hameau")):
                                     continue
@@ -20564,7 +20513,6 @@ def preparer_lieux_sortie(sortie_id):
                     'nwr["natural"~"^(peak|hill)$"]["name"](around:200,LISTE);'
                     'nwr["mountain_pass"="yes"]["name"](around:200,LISTE);'
                     'nwr["natural"="saddle"]["name"](around:200,LISTE);'
-                    'way["waterway"="river"]["name"](around:200,LISTE);'
                     ');out center tags geom;'
                 ).replace("LISTE", liste_points)
                 diagnostic["osm_troncons"] += 1
@@ -20574,9 +20522,8 @@ def preparer_lieux_sortie(sortie_id):
                 else:
                     diagnostic["osm_reponses_ok"] += 1
                     diagnostic["osm_points"] += len(elements)
-                    diagnostic["osm_rivieres"] += sum(1 for e in elements if (e.get("tags") or {}).get("waterway") == "river")
                     api_ok = True
-                trouves = lieux_osm_points(elements or [], points) + lieux_osm_rivieres(elements or [], points)
+                trouves = lieux_osm_points(elements or [], points)
                 diagnostic["osm_noms_acceptes"] += len(trouves)
                 for l in trouves:
                     lieux.append(l)
@@ -20625,7 +20572,7 @@ def preparer_lieux_sortie(sortie_id):
             # La bibliothèque reste prioritaire ; les résultats CARTO/OSM
             # viennent ensuite, puis IGN. Les autres catégories restent
             # conservées dans la bibliothèque mais ne sont pas affichées.
-            lieux = [l for l in lieux if str(l.get("genre", "")).casefold() in ("ville", "village", "hameau", "riviere", "col", "sommet") and float(l.get("ec", 999999)) <= rayon_affichage_m(l.get("genre"))]
+            lieux = [l for l in lieux if str(l.get("genre", "")).casefold() in ("ville", "village", "hameau", "col", "sommet") and float(l.get("ec", 999999)) <= rayon_affichage_m(l.get("genre"))]
             def priorite_source(l):
                 source = str(l.get("source", "")).casefold()
                 if "bibliotheque" in source: return 0
@@ -20989,7 +20936,7 @@ def obtenir_lieux_bibliotheque(sortie_id: int, velo_id: int = 1, x_code_acces: O
         cumul = [0.0]
         for i in range(1, len(points)):
             cumul.append(cumul[-1] + distance(points[i - 1], points[i]))
-        genres = ("ville", "village", "hameau", "riviere", "col", "sommet")
+        genres = ("ville", "village", "hameau", "col", "sommet")
         for nom, genre, rang, lon, lat, altitude in cursor.fetchall():
             nom = nom_geographique_texte(nom)
             if not nom:
