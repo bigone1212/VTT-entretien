@@ -4620,6 +4620,7 @@ def accueil():
                     <button type="button" id="v3dFond"></button>
                     <button type="button" id="v3dAutres"></button>
                     <button type="button" id="v3dReperes"></button>
+                    <button type="button" id="v3dRelancerLieux">Relancer les noms</button>
                     <button type="button" id="v3dCouleur"></button>
                     <button type="button" id="v3dEnreg"></button>
                 </div>
@@ -14507,6 +14508,40 @@ def accueil():
                     majBoutonsV3d();
                 });
                 bouton('v3dReperes', () => { v3d.repereVisibles = !v3d.repereVisibles; majVisibiliteReperesV3d(); majBoutonsV3d(); });
+                bouton('v3dRelancerLieux', async () => {
+                    const relancer = document.getElementById('v3dRelancerLieux');
+                    if (!v3d.sortieId || !v3d.carte || relancer.disabled) return;
+                    relancer.disabled = true;
+                    messageV3d('Relance de la recherche des noms de lieux…');
+                    try {
+                        const url = '/api/sorties/' + encodeURIComponent(v3d.sortieId) + '/lieux/rechercher?velo_id=' + encodeURIComponent(veloActifId || 1);
+                        const demarrage = await fetch(url, { method: 'POST', headers: getHeaders() });
+                        const resultat = await demarrage.json().catch(() => ({}));
+                        if (!demarrage.ok) throw new Error(resultat.detail || 'Impossible de relancer la recherche.');
+                        messageV3d('Recherche IGN et OpenStreetMap relancée. Cela peut prendre quelques minutes…');
+                        let termine = false;
+                        for (let essai = 0; essai < 120; essai++) {
+                            await new Promise(resolve => setTimeout(resolve, 2500));
+                            if (v3d.carte == null) break;
+                            const suivi = await fetch('/api/sorties/' + encodeURIComponent(v3d.sortieId) + '/lieux?velo_id=' + encodeURIComponent(veloActifId || 1), { headers: getHeaders() });
+                            if (!suivi.ok) throw new Error('Impossible de suivre la recherche des lieux.');
+                            const etat = await suivi.json();
+                            if (etat.statut === 'termine') { termine = true; break; }
+                            if (etat.statut === 'erreur') throw new Error(etat.erreur || 'La recherche a échoué.');
+                        }
+                        if (!v3d.carte) return;
+                        if (!termine) throw new Error('La recherche prend plus de temps que prévu. Les résultats continueront en arrière-plan.');
+                        localStorage.removeItem(cleCacheLieuxV3d());
+                        await poserReperesV3d();
+                        messageV3d('Recherche terminée. Les noms du parcours ont été actualisés.');
+                        setTimeout(() => messageV3d(''), 5000);
+                    } catch (e) {
+                        messageV3d(e.message || 'Erreur pendant la recherche des noms.');
+                        console.warn('Relance des noms géographiques :', e);
+                    } finally {
+                        relancer.disabled = false;
+                    }
+                });
                 bouton('v3dLecture', () => lectureV3d(!v3d.jouer));
                 bouton('v3dVitesse', () => {
                     v3d.vitesse = VITESSES[(VITESSES.indexOf(v3d.vitesse) + 1) % VITESSES.length];
@@ -20591,6 +20626,29 @@ def obtenir_lieux_bibliotheque(sortie_id: int, velo_id: int = 1, x_code_acces: O
                 retenus[doublon] = entree
         retenus.sort(key=lambda x: (x["rang"], x["ec"]))
         return {"statut": "bibliotheque", "lieux": retenus[:60]}
+    finally:
+        conn.close()
+
+
+@app.post("/api/sorties/{sortie_id}/lieux/rechercher")
+def relancer_recherche_lieux(sortie_id: int, background_tasks: BackgroundTasks, velo_id: int = 1, x_code_acces: Optional[str] = Header(default=None)):
+    """Relance explicitement les recherches IGN et OSM sans effacer les résultats existants."""
+    controle_acces(x_code_acces, velo_id)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT id FROM sorties WHERE id = ? AND velo_id = ?", (sortie_id, velo_id))
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Sortie introuvable.")
+        cursor.execute(
+            """INSERT INTO recherche_lieux_gpx (sortie_id, velo_id, statut, lieux_json, tentatives, erreur, maj_le)
+               VALUES (?, ?, ?, '[]', 0, NULL, ?)
+               ON CONFLICT (sortie_id) DO UPDATE SET statut=excluded.statut, tentatives=0, erreur=NULL, maj_le=excluded.maj_le""",
+            (sortie_id, velo_id, "en_cours", datetime.now(timezone.utc).isoformat())
+        )
+        conn.commit()
+        background_tasks.add_task(preparer_lieux_sortie, sortie_id)
+        return {"statut": "en_cours", "sortie_id": sortie_id, "message": "Recherche IGN et OpenStreetMap relancée."}
     finally:
         conn.close()
 
