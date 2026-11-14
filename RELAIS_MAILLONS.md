@@ -1225,3 +1225,14 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - Commit diagnostic : `16df94d52c673692948f7cacab81c1e094643500`.
 - Aucun nouveau branchement, aucun changement de `main`, aucune modification Neon et aucun déploiement Render déclenché. Attendre le feu vert explicite de Math avant déploiement.
 - Petit contrôle complémentaire : les compteurs sont initialisés même si une trace GPX contient moins de deux points, afin que le journal ne provoque pas lui-même d'erreur. Correctif de robustesse : `ad60242b9fdb4e3e4a10efb2795ac748545e9a60`.
+
+
+# Mise à jour — 14/11/2026 — relance manuelle des recherches géographiques
+
+- Ajout d'un bouton « Relancer les noms » dans les commandes du survol 3D.
+- Le bouton appelle une nouvelle route POST `/api/sorties/{sortie_id}/lieux/rechercher`, vérifie l'accès au vélo et relance le traitement IGN / WFS / OpenStreetMap en arrière-plan.
+- Les résultats précédents dans `lieux_json` et toute la bibliothèque géographique sont conservés pendant la relance ; le compteur d'essais est réinitialisé pour permettre un nouveau cycle de recherche.
+- Le bouton suit l'état de la recherche, puis recharge les repères quand le serveur indique « terminé ». Il invalide également le cache local de cette sortie.
+- Travail limité à `main.py`, sur la branche existante. Aucun changement de `main`, aucune opération Neon, aucune nouvelle branche.
+- Commit applicatif : `a859b0d94a675210dfbdc754bb2f8a3c9c42dd07`.
+- À faire avant déploiement : vérifier le workflow GitHub, puis déployer uniquement sur le service Render de test `srv-dbfm8r0ae00c738k4840` (déploiement manuel).
