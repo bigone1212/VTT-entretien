@@ -1417,3 +1417,5 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - Aucun changement sur `main`, aucune fusion, aucune opération Neon.
 
 - Correctif de préservation : l'UPSERT de la bibliothèque ne remplace plus le genre/rang historique par `lieu_dit` en cas de conflit. Commit : `d27d60abb677b9157ff05ff12ba7c85608833985`.
+
+- Compatibilité SQLite/PostgreSQL : les expressions de conservation de `genre` et `rang` utilisent les colonnes existantes sans préfixe de table. Commit : `a160c88d02ff1ed60d411218c01cc40d01857696`.
