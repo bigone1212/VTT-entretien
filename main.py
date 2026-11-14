@@ -13493,8 +13493,12 @@ def accueil():
                     let genre = 'lieu', rang = 6, portee = 2200;
                     if (/river|rivière|riviere|cours d.?eau|hydrograph/.test(texte)) {
                         genre = 'riviere'; rang = 5; portee = 1800;
+                    } else if (/mountain.?pass|col\\b|saddle|passage/.test(texte)) {
+                        genre = 'col'; rang = 2; portee = 900;
+                    } else if (/peak|summit|sommet|point.?haut|hill|ridge|crête|crete/.test(texte)) {
+                        genre = 'sommet'; rang = 4; portee = 2200;
                     } else if (/hamlet|hameau/.test(texte)) {
-                        genre = 'village'; rang = 4; portee = 3500;
+                        genre = 'hameau'; rang = 4; portee = 3500;
                     } else if (/village|commune|town|city|municipality/.test(texte)) {
                         genre = 'village'; rang = 3; portee = 5000;
                     } else {
