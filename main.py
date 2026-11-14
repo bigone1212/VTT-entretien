@@ -12779,7 +12779,7 @@ def accueil():
                     },
                     layers: [
                         { id: 'fond-sat', type: 'raster', source: 'sat' },
-                        { id: 'fond-plan', type: 'raster', source: 'plan', layout: { visibility: 'none' } }
+                        { id: 'fond-plan', type: 'raster', source: 'plan', paint: { 'raster-opacity': 0.32, 'raster-opacity-transition': { duration: 500 } } }
                     ]
                 };
             }
@@ -13108,8 +13108,7 @@ def accueil():
                         let satellite = true;
                         fond.addEventListener('click', () => {
                             satellite = !satellite;
-                            carte.setLayoutProperty('fond-sat', 'visibility', satellite ? 'visible' : 'none');
-                            carte.setLayoutProperty('fond-plan', 'visibility', satellite ? 'none' : 'visible');
+                            carte.setPaintProperty('fond-plan', 'raster-opacity', satellite ? 0.32 : 1);
                             fond.textContent = satellite ? 'Plan' : 'Satellite';
                         });
                         blocCarte.appendChild(fond);
@@ -14223,7 +14222,7 @@ def accueil():
                         },
                         layers: [
                             { id: 'fond-sat', type: 'raster', source: 'sat' },
-                            { id: 'fond-plan', type: 'raster', source: 'plan', layout: { visibility: 'none' } }
+                            { id: 'fond-plan', type: 'raster', source: 'plan', paint: { 'raster-opacity': 0.32, 'raster-opacity-transition': { duration: 500 } } }
                         ]
                     },
                     center: v3d.pts[0],
@@ -14465,8 +14464,7 @@ def accueil():
                 bouton('v3dFond', () => {
                     v3d.fond = v3d.fond === 'sat' ? 'plan' : 'sat';
                     if (v3d.carte && v3d.prete) {
-                        v3d.carte.setLayoutProperty('fond-sat', 'visibility', v3d.fond === 'sat' ? 'visible' : 'none');
-                        v3d.carte.setLayoutProperty('fond-plan', 'visibility', v3d.fond === 'plan' ? 'visible' : 'none');
+                        v3d.carte.setPaintProperty('fond-plan', 'raster-opacity', v3d.fond === 'sat' ? 0.32 : 1);
                     }
                     majBoutonsV3d();
                 });
