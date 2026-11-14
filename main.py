@@ -19908,9 +19908,8 @@ def interroger_overpass(requete, erreurs=None):
     corps = urllib.parse.urlencode({"data": requete}).encode("utf-8")
     serveurs = (
         "https://overpass-api.de/api/interpreter",
-        "https://overpass.private.coffee/api/interpreter",
         "https://overpass.kumi.systems/api/interpreter",
-        "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+        "https://overpass.private.coffee/api/interpreter",
     )
     for base in serveurs:
         try:
@@ -19922,7 +19921,7 @@ def interroger_overpass(requete, erreurs=None):
                     "User-Agent": "Maillons/1.0 (recherche de lieux geographiques)"
                 }
             )
-            with urllib.request.urlopen(req, timeout=12) as reponse:
+            with urllib.request.urlopen(req, timeout=6) as reponse:
                 donnees = json.loads(reponse.read().decode("utf-8"))
             remarque = str((donnees or {}).get("remark") or "").casefold()
             elements = (donnees or {}).get("elements")
@@ -20089,7 +20088,7 @@ def preparer_lieux_sortie(sortie_id):
                     zone = {"type":"Circle", "coordinates":[lon,lat], "radius":rayon}
                     communs = {
                         "searchgeom":json.dumps(zone,separators=(",",":")),
-                        "lon":str(lon), "lat":str(lat), "limit":"50"
+                        "lon":str(lon), "lat":str(lat), "limit":"20"
                     }
                     # Sépare les index : le filtre de catégorie ne doit pas
                     # limiter la recherche BAN des localités.
@@ -20140,9 +20139,16 @@ def preparer_lieux_sortie(sortie_id):
                             except (TypeError, ValueError): pass
                             lieux.append({"nom":nom,"genre":genre,"rang":rang,"ec":round(ec,1),"coord":[lon,lat],"alt":altitude,"source":"IGN"})
                             diagnostic["ign_noms_acceptes"] += 1
+                    except urllib.error.HTTPError as exc:
+                        # Le corps HTTP IGN contient le vrai motif du refus (paramètre invalide, limite, etc.).
+                        try:
+                            detail_http = exc.read().decode("utf-8", errors="replace")[:220]
+                        except Exception:
+                            detail_http = str(exc)
+                        if len(ign_erreurs) < 3:
+                            ign_erreurs.append(f"HTTP {exc.code}: {detail_http}")
+                        continue
                     except Exception as exc:
-                        # Ne pas masquer les erreurs IGN : elles expliquent
-                        # pourquoi une recherche peut ne rapporter aucun nom.
                         if len(ign_erreurs) < 3:
                             ign_erreurs.append(f"{type(exc).__name__}: {str(exc)[:160]}")
                         continue
@@ -20156,8 +20162,9 @@ def preparer_lieux_sortie(sortie_id):
             # Les emprises suivent le parcours par tronçons pour éviter une grande
             # boîte englobante et les réponses trop volumineuses.
             wfs_layers = (
+                ("BDTOPO_V3:zone_d_habitation", "IGN-BD-TOPO"),
+                ("BDTOPO_V3:cours_d_eau", "IGN-BD-TOPO"),
                 ("BDTOPO_V3:lieu_dit_non_habite", "IGN-BD-TOPO"),
-                ("BDCARTOV5_BDD_WLD_WGS84G_223:lieu_dit_non_habite", "IGN-BD-CARTO"),
             )
             pas_wfs = max(1, int(math.ceil(total / 10000))) if total else 1
             for debut_idx in range(0, len(points), max(2, int(len(points) / min(12, max(1, pas_wfs))) or 2)):
@@ -20202,13 +20209,7 @@ def preparer_lieux_sortie(sortie_id):
                         for feature in donnees_wfs["features"]:
                             prop = feature.get("properties") or {}
                             geom = feature.get("geometry") or {}
-                            coord = geom.get("coordinates")
-                            if geom.get("type") != "Point" or not isinstance(coord, list) or len(coord) < 2:
-                                continue
-                            try:
-                                lon, lat = float(coord[0]), float(coord[1])
-                            except (TypeError, ValueError):
-                                continue
+                            nature = str(prop.get("nature") or prop.get("NATURE") or "").casefold()
                             nom = str(
                                 prop.get("toponyme") or prop.get("TOPONYME")
                                 or prop.get("nom") or prop.get("NOM")
@@ -20218,14 +20219,59 @@ def preparer_lieux_sortie(sortie_id):
                             ).strip()
                             if not nom:
                                 continue
-                            # Distance calculée sur les points du GPX, sans déplacer le POI.
-                            pas_distance = max(1, len(points) // 3000)
-                            ec = ecart_parcours_m((lon, lat), points)
-                            if ec > 200:
-                                continue
+                            type_geom = geom.get("type")
+                            coord = geom.get("coordinates")
+                            genre_wfs = "lieu_dit"
+                            rang_wfs = 9
+                            position = None
+                            if couche == "BDTOPO_V3:cours_d_eau":
+                                if type_geom == "LineString" and isinstance(coord, list):
+                                    lignes = [coord]
+                                elif type_geom == "MultiLineString" and isinstance(coord, list):
+                                    lignes = coord
+                                else:
+                                    lignes = []
+                                trace_eau = []
+                                for ligne_eau in lignes:
+                                    for xy in ligne_eau:
+                                        try: trace_eau.append((float(xy[0]), float(xy[1])))
+                                        except (TypeError, ValueError, IndexError): continue
+                                meilleur = None
+                                for point_eau in densifier_m(trace_eau):
+                                    ec_eau = ecart_parcours_m(point_eau, points)
+                                    if meilleur is None or ec_eau < meilleur[0]:
+                                        meilleur = (ec_eau, point_eau)
+                                if meilleur is None or meilleur[0] > 200:
+                                    continue
+                                ec, position = meilleur
+                                genre_wfs, rang_wfs = "riviere", 5
+                            elif couche == "BDTOPO_V3:zone_d_habitation":
+                                if nature and not any(x in nature for x in ("lieu-dit habité", "lieu dit habité", "bourg", "village", "hameau")):
+                                    continue
+                                if type_geom != "Polygon" or not coord or not coord[0]:
+                                    continue
+                                anneau = coord[0]
+                                # Centroïde du polygone d'habitation : position réelle du secteur nommé.
+                                somme_x = somme_y = 0.0
+                                for xy in anneau[:-1] if len(anneau) > 1 else anneau:
+                                    somme_x += float(xy[0]); somme_y += float(xy[1])
+                                nb_xy = max(1, len(anneau) - (1 if len(anneau) > 1 else 0))
+                                position = (somme_x / nb_xy, somme_y / nb_xy)
+                                ec = ecart_parcours_m(position, points)
+                                if ec > 500:
+                                    continue
+                                genre_wfs, rang_wfs = "hameau", 4
+                            else:
+                                if type_geom != "Point" or not isinstance(coord, list) or len(coord) < 2:
+                                    continue
+                                position = (float(coord[0]), float(coord[1]))
+                                ec = ecart_parcours_m(position, points)
+                                if ec > 200:
+                                    continue
+                            lon, lat = position
                             diagnostic["wfs_noms_acceptes"] += 1
                             lieux.append({
-                                "nom": nom, "genre": "lieu_dit", "rang": 9,
+                                "nom": nom, "genre": genre_wfs, "rang": rang_wfs,
                                 "ec": round(ec, 1), "coord": [lon, lat],
                                 "alt": None, "source": source_wfs
                             })
@@ -20243,32 +20289,26 @@ def preparer_lieux_sortie(sortie_id):
                 if len(troncon) < 2:
                     continue
                 liste_points = ",".join("%.6f,%.6f" % (p[1], p[0]) for p in troncon)
-                requete_points = (
-                    '[out:json][timeout:25];('
+                requete_complete = (
+                    '[out:json][timeout:12];('
                     'nwr["place"~"^(city|town|village)$"]["name"](around:500,LISTE);'
                     'nwr["place"~"^(hamlet|isolated_dwelling)$"]["name"](around:200,LISTE);'
                     'nwr["natural"~"^(peak|hill)$"]["name"](around:200,LISTE);'
                     'nwr["mountain_pass"="yes"]["name"](around:200,LISTE);'
                     'nwr["natural"="saddle"]["name"](around:200,LISTE);'
-                    ');out tags center;'
-                ).replace("LISTE", liste_points)
-                requete_rivieres = (
-                    '[out:json][timeout:25];way["waterway"="river"]["name"](around:200,LISTE);out tags geom;'
+                    'way["waterway"="river"]["name"](around:200,LISTE);'
+                    ');out tags center geom;'
                 ).replace("LISTE", liste_points)
                 diagnostic["osm_troncons"] += 1
-                elements_points = interroger_overpass(requete_points, erreurs_overpass)
-                elements_rivieres = interroger_overpass(requete_rivieres, erreurs_overpass)
-                if elements_points is not None:
-                    diagnostic["osm_reponses_ok"] += 1
-                    diagnostic["osm_points"] += len(elements_points)
-                if elements_rivieres is not None:
-                    diagnostic["osm_reponses_ok"] += 1
-                    diagnostic["osm_rivieres"] += len(elements_rivieres)
-                if elements_points is None or elements_rivieres is None:
+                elements = interroger_overpass(requete_complete, erreurs_overpass)
+                if elements is None:
                     osm_complet = False
-                if elements_points is not None or elements_rivieres is not None:
+                else:
+                    diagnostic["osm_reponses_ok"] += 1
+                    diagnostic["osm_points"] += len(elements)
+                    diagnostic["osm_rivieres"] += sum(1 for e in elements if (e.get("tags") or {}).get("waterway") == "river")
                     api_ok = True
-                trouves = lieux_osm_points(elements_points or [], points) + lieux_osm_rivieres(elements_rivieres or [], points)
+                trouves = lieux_osm_points(elements or [], points) + lieux_osm_rivieres(elements or [], points)
                 diagnostic["osm_noms_acceptes"] += len(trouves)
                 for l in trouves:
                     lieux.append(l)
