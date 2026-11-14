@@ -20168,6 +20168,8 @@ def preparer_lieux_sortie(sortie_id):
                 ("BDTOPO_V3:zone_d_habitation", "IGN-BD-TOPO"),
                 ("BDTOPO_V3:cours_d_eau", "IGN-BD-TOPO"),
                 ("BDTOPO_V3:lieu_dit_non_habite", "IGN-BD-TOPO"),
+                # Cette couche porte les noms cartographiques et leurs points d'ancrage.
+                ("BDTOPO_V3:toponymie", "IGN-BD-TOPO"),
             )
             pas_wfs = max(1, int(math.ceil(total / 10000))) if total else 1
             for debut_idx in range(0, len(points), max(2, int(len(points) / min(12, max(1, pas_wfs))) or 2)):
@@ -20215,6 +20217,7 @@ def preparer_lieux_sortie(sortie_id):
                             nature = str(prop.get("nature") or prop.get("NATURE") or "").casefold()
                             nom = str(
                                 prop.get("toponyme") or prop.get("TOPONYME")
+                                or prop.get("graphie_du_toponyme") or prop.get("GRAPHIE")
                                 or prop.get("nom") or prop.get("NOM")
                                 or prop.get("name") or prop.get("NAME")
                                 or prop.get("libelle") or prop.get("LIBELLE")
@@ -20227,7 +20230,36 @@ def preparer_lieux_sortie(sortie_id):
                             genre_wfs = "lieu_dit"
                             rang_wfs = 9
                             position = None
-                            if couche == "BDTOPO_V3:cours_d_eau":
+                            if couche == "BDTOPO_V3:toponymie":
+                                # La couche Toponymie est ponctuelle et utilise GRAPHIE,
+                                # CLASSE et NATURE pour décrire le nom et son objet support.
+                                if type_geom != "Point" or not isinstance(coord, list) or len(coord) < 2:
+                                    continue
+                                position = (float(coord[0]), float(coord[1]))
+                                ec = ecart_parcours_m(position, points)
+                                classe_top = str(prop.get("classe_de_l_objet") or prop.get("CLASSE") or "").casefold().replace("_", " ")
+                                nature_top = str(prop.get("nature_de_l_objet") or prop.get("NATURE") or "").casefold()
+                                if "détail orographique" in classe_top or "detail orographique" in classe_top:
+                                    if "col" in nature_top:
+                                        genre_wfs, rang_wfs = "col", 2
+                                    elif any(x in nature_top for x in ("sommet", "pic", "montagne")):
+                                        genre_wfs, rang_wfs = "sommet", 2
+                                    else:
+                                        genre_wfs, rang_wfs = "lieu_dit", 9
+                                elif any(x in classe_top for x in ("cours d'eau", "tronçon hydrographique", "detail hydrographique", "détail hydrographique")):
+                                    genre_wfs, rang_wfs = "riviere", 5
+                                elif "zone d'habitation" in classe_top:
+                                    genre_wfs, rang_wfs = "hameau", 4
+                                elif "commune" in classe_top:
+                                    genre_wfs, rang_wfs = "village", 3
+                                else:
+                                    # Les autres noms restent conservés dans la bibliothèque,
+                                    # sans être affichés automatiquement sur le parcours.
+                                    genre_wfs, rang_wfs = "lieu_dit", 9
+                                portee_top = 500 if genre_wfs == "village" else 200
+                                if ec > portee_top:
+                                    continue
+                            elif couche == "BDTOPO_V3:cours_d_eau":
                                 if type_geom == "LineString" and isinstance(coord, list):
                                     lignes = [coord]
                                 elif type_geom == "MultiLineString" and isinstance(coord, list):
