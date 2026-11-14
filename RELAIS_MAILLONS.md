@@ -1236,3 +1236,6 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - Travail limité à `main.py`, sur la branche existante. Aucun changement de `main`, aucune opération Neon, aucune nouvelle branche.
 - Commit applicatif : `a859b0d94a675210dfbdc754bb2f8a3c9c42dd07`.
 - À faire avant déploiement : vérifier le workflow GitHub, puis déployer uniquement sur le service Render de test `srv-dbfm8r0ae00c738k4840` (déploiement manuel).
+
+- Correctif de suivi avant déploiement : ajout d'une route de lecture d'état sans effet secondaire (`/lieux/etat`) afin que le bouton ne déclenche pas de nouvelles tâches lors du contrôle périodique. Le suivi s'arrête aussi sur une erreur remontée par le serveur.
+- Dernier commit applicatif : `79ef34b13e06b2f4f758f5bb0767b9c4dcf79002`.
