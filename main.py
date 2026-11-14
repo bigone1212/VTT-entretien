@@ -13579,7 +13579,7 @@ def accueil():
                     const p = v3d.pts[Math.round(i * (n - 1) / 7)];
                     echantillon.push(p.map(x => Number(x).toFixed(4)).join(','));
                 }
-                return 'maillons-v3d-lieux-v6-' + String(v3d.sortieId) + '-' + n + '-' + echantillon.join('|');
+                return 'maillons-v3d-lieux-v7-' + String(v3d.sortieId) + '-' + n + '-' + echantillon.join('|');
             }
             function lireCacheLieuxV3d() {
                 try {
@@ -19994,6 +19994,29 @@ def lieux_osm_points(elements, points):
     return resultats
 
 
+def nom_geographique_texte(valeur):
+    """Convertit proprement un nom IGN/WFS en texte, même si l'API renvoie une liste."""
+    if isinstance(valeur, (list, tuple)):
+        for element in valeur:
+            texte = nom_geographique_texte(element)
+            if texte:
+                return texte
+        return ""
+    if isinstance(valeur, dict):
+        for cle in ("name", "nom", "label", "value", "toponyme", "graphie_du_toponyme"):
+            if cle in valeur:
+                texte = nom_geographique_texte(valeur.get(cle))
+                if texte:
+                    return texte
+        return ""
+    if valeur is None:
+        return ""
+    texte = str(valeur).strip()
+    if texte.casefold() in ("none", "null", "[]", "{}"):
+        return ""
+    return texte
+
+
 def densifier_m(coords, pas=25.0):
     """Ajoute des points intermédiaires sur une ligne (tous les 'pas' mètres), sans la déplacer."""
     if len(coords) < 2:
@@ -20152,7 +20175,7 @@ def preparer_lieux_sortie(sortie_id):
                             if not isinstance(geom, list) or len(geom) < 2: continue
                             try: lon, lat = float(geom[0]), float(geom[1])
                             except (TypeError, ValueError): continue
-                            nom = str(prop.get("name") or prop.get("label") or prop.get("toponyme") or prop.get("nom") or prop.get("title") or "").strip()
+                            nom = nom_geographique_texte(prop.get("name") or prop.get("label") or prop.get("toponyme") or prop.get("nom") or prop.get("title"))
                             if not nom: continue
                             categorie = " ".join(str(prop.get(k) or "") for k in ("category","type","nature","kind","_type","description","poi_type","poiType")).casefold()
                             texte = categorie.replace("’", "'").replace("–", "-")
@@ -20248,14 +20271,14 @@ def preparer_lieux_sortie(sortie_id):
                             prop = feature.get("properties") or {}
                             geom = feature.get("geometry") or {}
                             nature = str(prop.get("nature") or prop.get("NATURE") or "").casefold()
-                            nom = str(
+                            nom = nom_geographique_texte(
                                 prop.get("toponyme") or prop.get("TOPONYME")
                                 or prop.get("graphie_du_toponyme") or prop.get("GRAPHIE")
                                 or prop.get("nom") or prop.get("NOM")
                                 or prop.get("name") or prop.get("NAME")
                                 or prop.get("libelle") or prop.get("LIBELLE")
-                                or prop.get("label") or prop.get("LABEL") or ""
-                            ).strip()
+                                or prop.get("label") or prop.get("LABEL")
+                            )
                             if not nom:
                                 continue
                             type_geom = geom.get("type")
