@@ -1137,3 +1137,12 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - Les nouveaux imports conservent leur déclenchement existant.
 - Aucun déploiement effectué ; aucune modification de `main`, de la production ou de la base Neon.
 - Vérifications locales/CI et comportement en production non confirmés à ce stade.
+
+
+# Mise à jour — 14/11/2026 — affichage immédiat depuis la bibliothèque géographique
+
+- Sur la branche de test existante, ajout d'une route rapide `/api/sorties/{sortie_id}/lieux/bibliotheque` : elle lit directement la bibliothèque partagée, filtre les villes, villages, hameaux, rivières, cols et sommets situés à 200 m maximum du tracé, conserve leurs coordonnées exactes et calcule leur distance le long du GPX.
+- La lecture 3D affiche d'abord ces noms connus sans attendre les appels IGN / OpenStreetMap. Une recherche complémentaire est ensuite lancée en arrière-plan ; ses résultats remplacent la première liste lorsqu'ils sont prêts. Le cache local ne bloque plus cet enrichissement.
+- Aucun autre fichier applicatif modifié. Aucun changement de branche, aucun changement de `main`, aucune opération sur Neon, aucun déploiement Render effectué pour ce correctif.
+- Commit applicatif : `0ed1ecfd0d5ee818eb5c73aa6c411bc9d42a296c`.
+- À faire avant déploiement : vérifier la syntaxe Python, les scripts JavaScript intégrés et les tests GitHub Actions. Puis demander l'accord explicite de Math pour le serveur de test.
