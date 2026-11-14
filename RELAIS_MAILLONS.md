@@ -1,3 +1,15 @@
+# Tâche en cours — 14/11/2026 — corriger l'affichage des repères à 200 m
+
+- Retour après le dernier déploiement de test : aucun nom ne s'affiche. Le besoin est maintenant strict : afficher uniquement les noms situés sur le parcours ou à 200 m maximum.
+- Catégories à conserver à l'affichage : villes, villages, hameaux, rivières, cols et sommets / points hauts.
+- Les noms plus éloignés et les autres catégories restent conservés dans la bibliothèque géographique ; ils ne sont simplement pas présentés pendant le survol.
+- Correction ciblée dans `main.py`, sur la branche existante `reprise/2026-11-13-maillons-complet-test` : rayon d'affichage navigateur fixé à 200 m ; filtre serveur limité à 200 m ; cols et sommets réintégrés dans les filtres navigateur et serveur ; requête OSM navigateur complétée pour récupérer cols et sommets ; cache navigateur renouvelé de v4 à v5.
+- Commit applicatif : `c199699dc4954757319167527dd59064631b2cbd`.
+- Fichiers modifiés : `main.py` et ce relais uniquement. Aucun nouveau branchement, aucun changement de `main`, aucune opération Neon, aucun déploiement Render à ce stade.
+- Vérifier le workflow GitHub Actions et la syntaxe avant de demander l'autorisation pour un nouveau déploiement de test.
+
+---
+
 # Tâche en cours — 14/11/2026 — ajouter les cols et points hauts à l'affichage
 
 - Précision de Math : conserver également les cols et les points hauts / sommets dans les repères affichés.
