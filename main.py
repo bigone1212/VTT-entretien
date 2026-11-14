@@ -13478,6 +13478,36 @@ def accueil():
                 el.innerHTML = '<svg viewBox="0 0 ' + largeur + ' 52" width="' + largeur + '" aria-hidden="true"><path d="M0 50 L23 19" fill="none" stroke="rgba(255,255,255,.98)" stroke-width="1.8" stroke-linecap="round"/><circle cx="0" cy="50" r="4.5" fill="#65e6d4" stroke="#fff" stroke-width="1.8"/><text x="29" y="24" dominant-baseline="middle" font-size="' + taille + '" font-weight="900" fill="#fff" stroke="rgba(5,15,25,.9)" stroke-width="3.5" stroke-linejoin="round" paint-order="stroke">' + echapperTexteV3d(libelle) + '</text></svg>';
                 return el;
             }
+            function nomGeographiqueTexteV3d(valeur) {
+                if (Array.isArray(valeur)) {
+                    for (const element of valeur) {
+                        const texte = nomGeographiqueTexteV3d(element);
+                        if (texte) return texte;
+                    }
+                    return '';
+                }
+                if (valeur && typeof valeur === 'object') {
+                    for (const cle of ['name', 'nom', 'label', 'value', 'toponyme', 'graphie_du_toponyme']) {
+                        if (Object.prototype.hasOwnProperty.call(valeur, cle)) {
+                            const texte = nomGeographiqueTexteV3d(valeur[cle]);
+                            if (texte) return texte;
+                        }
+                    }
+                    return '';
+                }
+                if (valeur === null || valeur === undefined) return '';
+                let texte = String(valeur).trim();
+                if (texte.startsWith('[') && texte.endsWith(']')) {
+                    try {
+                        const decode = JSON.parse(texte);
+                        if (Array.isArray(decode)) return nomGeographiqueTexteV3d(decode);
+                    } catch (e) {
+                        const ancienFormat = texte.match(/^\[\s*['"]([\s\S]*?)['"]\s*\]$/);
+                        if (ancienFormat) return ancienFormat[1].trim();
+                    }
+                }
+                return texte;
+            }
             async function chercherLieuxIGNV3d(dist) {
                 if (!v3d.total || v3d.total <= 0) return [];
                 const nombre = Math.min(36, Math.max(1, Math.ceil(v3d.total / 2500)));
@@ -13536,7 +13566,7 @@ def accueil():
                     if (!Array.isArray(geom) || geom.length < 2) continue;
                     const lon = Number(geom[0]), lat = Number(geom[1]);
                     if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
-                    const nom = String(p.name || p.label || p.toponyme || p.nom || p.title || '').trim();
+                    const nom = nomGeographiqueTexteV3d(p.name || p.label || p.toponyme || p.nom || p.title || '');
                     if (!nom) continue;
                     const categorie = String([p.category, p.type, p.nature, p.kind, p._type, p.description].filter(Boolean).join(' ')).toLowerCase();
                     const texte = categorie;
@@ -13580,7 +13610,7 @@ def accueil():
                     const p = v3d.pts[Math.round(i * (n - 1) / 7)];
                     echantillon.push(p.map(x => Number(x).toFixed(4)).join(','));
                 }
-                return 'maillons-v3d-lieux-v8-' + String(v3d.sortieId) + '-' + n + '-' + echantillon.join('|');
+                return 'maillons-v3d-lieux-v9-' + String(v3d.sortieId) + '-' + n + '-' + echantillon.join('|');
             }
             function lireCacheLieuxV3d() {
                 try {
@@ -13695,11 +13725,14 @@ def accueil():
                     return 3;
                 };
                 const ajouter = l => {
-                    if (!affichable(l) || typeof l.nom !== 'string' || !Array.isArray(l.coord) || l.coord.length !== 2) return;
-                    const doublon = out.findIndex(x => x.nom.toLocaleLowerCase() === l.nom.toLocaleLowerCase()
-                        && distanceM(x.coord, l.coord) < 600);
-                    if (doublon < 0) out.push(l);
-                    else if (prioriteSource(l) < prioriteSource(out[doublon])) out[doublon] = l;
+                    if (!affichable(l) || !Array.isArray(l.coord) || l.coord.length !== 2) return;
+                    const nom = nomGeographiqueTexteV3d(l.nom);
+                    if (!nom) return;
+                    const lieuPropre = { ...l, nom: nom };
+                    const doublon = out.findIndex(x => x.nom.toLocaleLowerCase() === nom.toLocaleLowerCase()
+                        && distanceM(x.coord, lieuPropre.coord) < 600);
+                    if (doublon < 0) out.push(lieuPropre);
+                    else if (prioriteSource(lieuPropre) < prioriteSource(out[doublon])) out[doublon] = lieuPropre;
                 };
                 // Les résultats pré-calculés et ceux de la recherche directe sont complémentaires.
                 lieuxPrepares.forEach(ajouter);
@@ -19973,7 +20006,7 @@ def interroger_overpass(requete, erreurs=None):
                     "User-Agent": "Maillons/1.0 (recherche de lieux geographiques)"
                 }
             )
-            with urllib.request.urlopen(req, timeout=6) as reponse:
+            with urllib.request.urlopen(req, timeout=4) as reponse:
                 donnees = json.loads(reponse.read().decode("utf-8"))
             remarque = str((donnees or {}).get("remark") or "").casefold()
             elements = (donnees or {}).get("elements")
@@ -19998,7 +20031,7 @@ def lieux_osm_points(elements, points):
     resultats = []
     for e in elements:
         tags = e.get("tags") or {}
-        nom = str(tags.get("name") or "").strip()
+        nom = nom_geographique_texte(tags.get("name"))
         centre = e.get("center") or {}
         try:
             lon = float(e.get("lon", centre.get("lon")))
@@ -20086,7 +20119,7 @@ def lieux_osm_rivieres(elements, points):
     resultats = []
     for e in elements:
         tags = e.get("tags") or {}
-        nom = str(tags.get("name") or "").strip()
+        nom = nom_geographique_texte(tags.get("name"))
         if not nom or tags.get("waterway") != "river":
             continue
         trace_riviere = []
@@ -20128,6 +20161,7 @@ _lieux_traitements_verrou = threading.Lock()
 
 
 def preparer_lieux_sortie(sortie_id):
+    t_total = time.perf_counter()
     with _lieux_traitements_verrou:
         if sortie_id in _lieux_traitements_actifs:
             print(f"[Maillons lieux] Sortie {sortie_id} déjà en cours : doublon ignoré.")
@@ -20163,7 +20197,9 @@ def preparer_lieux_sortie(sortie_id):
             "ign_appels_ok": 0, "ign_features": 0, "ign_noms_acceptes": 0,
             "wfs_appels_ok": 0, "wfs_features": 0, "wfs_noms_acceptes": 0,
             "osm_troncons": 0, "osm_reponses_ok": 0, "osm_points": 0,
-            "osm_rivieres": 0, "osm_noms_acceptes": 0, "osm_erreurs": []
+            "osm_rivieres": 0, "osm_noms_acceptes": 0, "osm_erreurs": [],
+            "duree_ign_s": 0, "duree_wfs_s": 0, "duree_osm_s": 0,
+            "duree_bibliotheque_s": 0, "duree_totale_s": 0
         }
         erreurs_overpass = diagnostic["osm_erreurs"]
         if len(points) >= 2:
@@ -20176,6 +20212,7 @@ def preparer_lieux_sortie(sortie_id):
                 x=(a[0]-b[0])*111320*math.cos(math.radians((a[1]+b[1])/2)); y=(a[1]-b[1])*110540
                 return math.hypot(x,y)
 
+            t_ign = time.perf_counter()
             # 1) IGN en priorité : lieux-dits BAN et toponymes BD TOPO.
             # L'index address contient les lieux-dits de la BAN ; les catégories
             # zone d'habitation et élément topographique couvrent ceux de la BD TOPO.
@@ -20267,6 +20304,8 @@ def preparer_lieux_sortie(sortie_id):
             if ign_erreurs:
                 print("[Maillons IGN] Échecs de requêtes : " + " | ".join(ign_erreurs))
 
+            diagnostic["duree_ign_s"] = round(time.perf_counter() - t_ign, 2)
+            t_wfs = time.perf_counter()
             # 1 bis) Recherche vectorielle directe dans les couches IGN WFS.
             # Contrairement au géocodage inverse, GetFeature renvoie les objets
             # nommés présents dans l'emprise ; leur position d'origine est conservée.
@@ -20347,10 +20386,15 @@ def preparer_lieux_sortie(sortie_id):
                                 ec = ecart_parcours_m(position, points)
                                 classe_top = str(prop.get("classe_de_l_objet") or prop.get("CLASSE") or "").casefold().replace("_", " ")
                                 nature_top = str(prop.get("nature_de_l_objet") or prop.get("NATURE") or "").casefold()
-                                if "détail orographique" in classe_top or "detail orographique" in classe_top:
-                                    if "col" in nature_top:
+                                relief_top = any(x in nature_top for x in (
+                                    "sommet", "pic", "montagne", "colline", "butte",
+                                    "crête", "crete", "point culminant", "hill", "peak",
+                                    "summit", "mountain", "ridge", "knoll"
+                                ))
+                                if ("détail orographique" in classe_top or "detail orographique" in classe_top or relief_top):
+                                    if re.search(r"\bcol\b|saddle|mountain.?pass", nature_top):
                                         genre_wfs, rang_wfs = "col", 2
-                                    elif any(x in nature_top for x in ("sommet", "pic", "montagne")):
+                                    elif relief_top:
                                         genre_wfs, rang_wfs = "sommet", 2
                                     else:
                                         genre_wfs, rang_wfs = "lieu_dit", 9
@@ -20427,6 +20471,8 @@ def preparer_lieux_sortie(sortie_id):
                     except Exception:
                         continue
 
+            diagnostic["duree_wfs_s"] = round(time.perf_counter() - t_wfs, 2)
+            t_osm = time.perf_counter()
             # 2) OpenStreetMap complète les noms absents de l'IGN.
             # Recherche légère, autour du tracé : seulement les catégories affichées.
             # Une réponse vide d'erreur ou incomplète n'est jamais prise pour un succès.
@@ -20446,7 +20492,7 @@ def preparer_lieux_sortie(sortie_id):
                     'nwr["mountain_pass"="yes"]["name"](around:200,LISTE);'
                     'nwr["natural"="saddle"]["name"](around:200,LISTE);'
                     'way["waterway"="river"]["name"](around:200,LISTE);'
-                    ');out tags geom;'
+                    ');out center tags geom;'
                 ).replace("LISTE", liste_points)
                 diagnostic["osm_troncons"] += 1
                 elements = interroger_overpass(requete_complete, erreurs_overpass)
@@ -20461,6 +20507,8 @@ def preparer_lieux_sortie(sortie_id):
                 diagnostic["osm_noms_acceptes"] += len(trouves)
                 for l in trouves:
                     lieux.append(l)
+            diagnostic["duree_osm_s"] = round(time.perf_counter() - t_osm, 2)
+            t_bibliotheque = time.perf_counter()
             # Tous les appels réseau sont terminés. On ouvre maintenant une
             # connexion fraîche et courte pour écrire et relire la bibliothèque.
             conn = db.connect()
@@ -20491,6 +20539,7 @@ def preparer_lieux_sortie(sortie_id):
                         lieux.append(entree_bibliotheque)
                     else:
                         lieux[doublon]=entree_bibliotheque
+            diagnostic["duree_bibliotheque_s"] = round(time.perf_counter() - t_bibliotheque, 2)
             if not api_ok and not lieux:
                 raise RuntimeError("Les services cartographiques sont indisponibles ; la recherche sera reprise.")
             # La bibliothèque reste prioritaire ; les résultats CARTO/OSM
@@ -20524,6 +20573,7 @@ def preparer_lieux_sortie(sortie_id):
         diagnostic["noms_finaux_affichables"] = len(lieux)
         diagnostic["points_gpx"] = len(points)
         diagnostic["tentative"] = essais
+        diagnostic["duree_totale_s"] = round(time.perf_counter() - t_total, 2)
         conn.commit()
         print("[Maillons lieux] " + json.dumps({"sortie_id": sortie_id, **diagnostic, "statut": statut_final}, ensure_ascii=False))
     except Exception as exc:
@@ -20939,7 +20989,17 @@ def obtenir_lieux_prepares(sortie_id: int, background_tasks: BackgroundTasks, ve
             background_tasks.add_task(preparer_lieux_sortie, sortie_id)
         try: lieux=json.loads(row[1] or "[]")
         except (TypeError,ValueError): lieux=[]
-        return {"statut":row[0],"lieux":lieux,"erreur":row[2]}
+        lieux_propres = []
+        if isinstance(lieux, list):
+            for lieu in lieux:
+                if not isinstance(lieu, dict):
+                    continue
+                nom_propre = nom_geographique_texte(lieu.get("nom"))
+                if not nom_propre:
+                    continue
+                lieu["nom"] = nom_propre
+                lieux_propres.append(lieu)
+        return {"statut":row[0],"lieux":lieux_propres,"erreur":row[2]}
     finally: conn.close()
 
 @app.post("/api/sorties/{sortie_id}/verifier")
