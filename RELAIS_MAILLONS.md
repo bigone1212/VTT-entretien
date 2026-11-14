@@ -1375,3 +1375,14 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - Cache navigateur renouvelé de v7 à v8.
 - Commit applicatif : `0da356b66ed854c1ccd1f6291e025bf6f2d048a5`.
 - Modification limitée à `main.py` sur la branche de test existante `reprise/2026-11-13-maillons-complet-test`. Aucun changement sur `main`, aucune fusion, aucune opération Neon, aucun déploiement à ce stade.
+
+
+# Mise à jour — 14/11/2026 — optimisation ciblée de la lecture 3D
+
+- Retour utilisateur : les noms géographiques apparaissent rapidement après la recherche, mais la lecture du survol reste lente et saccadée.
+- Analyse du code : la caméra et le point mobile étaient actualisés à chaque image ; en plus, toutes les quatre images, le navigateur reconstruisait toute la ligne GPX déjà parcourue, mettait à jour l'interface et recalculait les chevauchements des noms avec les panneaux de pente/vitesse.
+- Correction ciblée dans `main.py` : la caméra et le point mobile restent actualisés à chaque image ; la progression et la visibilité des repères sont actualisées environ 10 fois par seconde ; la ligne complète déjà parcourue est reconstruite environ 2,5 fois par seconde.
+- Les appels existants hors lecture gardent leur comportement par défaut. Les fenêtres d'apparition des noms (200 m avant / 100 m après), la priorité pente/vitesse, les recherches, la bibliothèque, les coordonnées et les rayons ne sont pas modifiés.
+- Commit applicatif : `6ec455fff9978976dcc60261291fa9361c04dcb7`, branche existante `reprise/2026-11-13-maillons-complet-test`.
+- À faire : contrôler le diff, exécuter les vérifications Python/JavaScript et le workflow GitHub Actions. Aucun déploiement Render n'est autorisé par cette étape ; demander un nouvel accord explicite avant le déploiement test.
+- Aucun changement sur `main`, aucune fusion, aucune opération Neon.
