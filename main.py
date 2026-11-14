@@ -20076,8 +20076,11 @@ def preparer_lieux_sortie(sortie_id):
             for i in range(1, len(points)):
                 longueur.append(longueur[-1] + distance(points[i-1], points[i]))
             total = longueur[-1]
-            nombre = min(36, max(1, int(math.ceil(total / 2500)))) if total else 1
-            rayon = max(1200, min(3500, (total / nombre if nombre else 2500) * 0.72))
+            # L'API de géocodage IGN refuse tout rayon supérieur à 500 m.
+            # Multiplier les points de recherche permet de couvrir le tracé sans
+            # envoyer un rayon invalide au service.
+            nombre = min(60, max(1, int(math.ceil(total / 700)))) if total else 1
+            rayon = 500.0
             ign_erreurs = []
             for debut in range(0, nombre, 4):
                 appels = []
