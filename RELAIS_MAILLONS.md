@@ -1443,3 +1443,7 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - À faire : vérifier le diff, la syntaxe Python/JavaScript, les tests automatisés et le déploiement Render test. Confirmer ensuite dans les logs que les parcours historiques ont bien été reclassés, puis faire tester le survol.
 
 - Précision après relecture du traitement : une ancienne entrée de bibliothèque ne doit jamais suffire à déclarer une recherche réussie lorsque tous les services IGN/WFS/OSM ont échoué. Le traitement reste donc en attente et la version de classement n'est pas validée tant qu'aucune réponse cartographique n'a été reçue. Commit complémentaire : `9f5dee0aecc99c43e1750340afe923eea8e74055`.
+
+- Déploiement du correctif sur Render test : `dep-dbs9mv8ae00c73cvng7g`, commit déployé `b97e330049e1e6161024063d05af26ab804e42b1`, statut `live` le 14/11/2026 à 17:34:27 UTC. Build Render réussi ; Uvicorn a démarré et la page d'accueil a répondu HTTP 200. Aucun déploiement production.
+- Vérification manuelle SQLite réussie pour l'ajout de colonne, la remise en file et le reclassement d'une ancienne entrée proche. Le contrôle de statut GitHub n'a renvoyé aucun statut exploitable : ne pas déclarer le workflow CI vert sans résultat explicite.
+- Le reclassement historique se fait en arrière-plan, parcours après parcours. Il reste à vérifier dans les logs Render les premiers résultats de recherche, puis à faire tester le survol par Math. Ne pas conclure que tous les parcours sont déjà reclassés.
