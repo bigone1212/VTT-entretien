@@ -1,3 +1,16 @@
+# Mise à jour — 14/11/2026 — correction IGN / OpenStreetMap après diagnostic Render
+
+- Diagnostic réel sur la sortie 17 : géocodage IGN reverse en erreur HTTP 400 ; WFS a renvoyé 29 objets dont 2 lieux-dits non habités à moins de 200 m, mais ils sont correctement exclus de l'affichage ; OpenStreetMap n'a obtenu aucune réponse exploitable sur les 5 tronçons.
+- Dans `main.py`, les requêtes IGN reverse n'envoient plus `type=locality` ni des catégories POI codées en dur. Elles interrogent séparément les index documentés `address` et `poi`, puis classent les propriétés reçues. Cela évite le paramètre reverse qui provoquait les HTTP 400 et les filtres POI trop restrictifs.
+- La recherche Overpass essaie désormais aussi le miroir `maps.mail.ru`, réduit le délai individuel à 12 secondes et conserve les erreurs des serveurs dans le diagnostic `osm_erreurs`. Une réponse valide avec zéro élément reste distincte d'une panne.
+- Aucun changement aux rayons confirmés (500 m villes/villages ; 200 m autres catégories), à la bibliothèque, à l'ordre de priorité, aux filtres, aux coordonnées ou au survol 3D.
+- Branche existante uniquement : `reprise/2026-11-13-maillons-complet-test`. Aucun changement sur `main`, aucune fusion, aucune opération Neon, aucun nouveau branchement.
+- Commit applicatif : `d574c0cc680d20f7cadc9f04904b0dec4b81747d`.
+- À vérifier : contrôles syntaxiques et workflow GitHub Actions ; puis déploiement Render test uniquement. Les appels réels aux services externes devront être confirmés dans les logs après une relance manuelle sur la sortie 17.
+- Documentation officielle consultée : guide Géoplateforme géocodage et documentation Overpass QL ; les appels IGN utilisent désormais les index `address` et `poi` sans filtre reverse non documenté.
+
+---
+
 # Mise à jour — 14/11/2026 — correction du classement des noms IGN
 
 - Branche existante conservée : `reprise/2026-11-13-maillons-complet-test`. Aucun nouveau branchement.
