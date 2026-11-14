@@ -1,3 +1,17 @@
+# Tâche en cours — 14/11/2026 — ajouter les cols et points hauts à l'affichage
+
+- Précision de Math : conserver également les cols et les points hauts / sommets dans les repères affichés.
+- Catégories d'affichage actuelles : villes, villages, hameaux, rivières, cols et sommets / points hauts.
+- Les autres lieux (lieux-dits isolés, forêts, attractions, canaux, ruisseaux, etc.) restent exclus de l'affichage mais leurs données déjà enregistrées dans la bibliothèque ne sont pas supprimées.
+- OSM direct (carte navigateur) interroge maintenant aussi `natural=peak|hill|ridge`, `mountain_pass=yes` et `natural=saddle`. Le classement IGN direct comprend les catégories col / mountain pass / saddle et peak / summit / sommet / point haut.
+- Le traitement serveur conserve également les cols et sommets issus d'OSM et de la bibliothèque, et le filtre final les autorise.
+- Rayon d'accrochage au parcours adapté pour cols et sommets. Cache navigateur renouvelé en version v4 lors de l'étape précédente.
+- Branche existante uniquement : `reprise/2026-11-13-maillons-complet-test`. Pas de nouvelle branche, aucun changement de `main`, aucun déploiement Render, aucune modification Neon.
+- Commit de cette précision : `6e3302ab136f9e6865fb7c996cdf157214e41aac`. Les contrôles automatisés sont en attente / en cours ; vérifier la dernière exécution avant tout déploiement.
+- Ne pas déployer sans nouvel accord explicite.
+
+---
+
 # Tâche en cours — 14/11/2026 — limiter les noms affichés et définir les priorités des sources
 
 - Nouvelle précision de Math : l'affichage doit se limiter aux villes, villages, hameaux et rivières. Les autres lieux-dits, sommets, cols, forêts, attractions, etc. ne doivent plus apparaître pendant le survol.
