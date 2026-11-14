@@ -13718,7 +13718,7 @@ def accueil():
                 const ref = v3d.pts.filter((_,i)=>i%Math.max(1,Math.floor(v3d.pts.length/500))===0);
                 const dist = (lon,lat) => ecartParcoursV3d([lon, lat]);
                 const out=[];
-                const affichable = l => l && ['ville','village','riviere','col','sommet'].includes(String(l.genre || '').toLowerCase());
+                const affichable = l => l && ['ville','village','hameau','riviere','col','sommet'].includes(String(l.genre || '').toLowerCase());
                 const prioriteSource = l => {
                     const source = String(l && l.source || '').toLowerCase();
                     if (source.includes('bibliotheque')) return 0;
@@ -20629,7 +20629,7 @@ def preparer_lieux_sortie(sortie_id):
             # La bibliothèque reste prioritaire ; les résultats CARTO/OSM
             # viennent ensuite, puis IGN. Les autres catégories restent
             # conservées dans la bibliothèque mais ne sont pas affichées.
-            lieux = [l for l in lieux if str(l.get("genre", "")).casefold() in ("ville", "village", "riviere", "col", "sommet") and float(l.get("ec", 999999)) <= rayon_affichage_m(l.get("genre"))]
+            lieux = [l for l in lieux if str(l.get("genre", "")).casefold() in ("ville", "village", "hameau", "riviere", "col", "sommet") and float(l.get("ec", 999999)) <= rayon_affichage_m(l.get("genre"))]
             def priorite_source(l):
                 source = str(l.get("source", "")).casefold()
                 if "bibliotheque" in source: return 0
@@ -20993,7 +20993,7 @@ def obtenir_lieux_bibliotheque(sortie_id: int, velo_id: int = 1, x_code_acces: O
         cumul = [0.0]
         for i in range(1, len(points)):
             cumul.append(cumul[-1] + distance(points[i - 1], points[i]))
-        genres = ("ville", "village", "riviere", "col", "sommet")
+        genres = ("ville", "village", "hameau", "riviere", "col", "sommet")
         for nom, genre, rang, lon, lat, altitude in cursor.fetchall():
             nom = nom_geographique_texte(nom)
             if not nom:
