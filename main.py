@@ -20172,9 +20172,9 @@ def preparer_lieux_sortie(sortie_id):
                 troncon = points[debut_idx:fin_idx]
                 if len(troncon) < 2:
                     continue
-                marge_lat = 200 / 110540
+                marge_lat = 500 / 110540
                 milieu_lat = sum(p[1] for p in troncon) / len(troncon)
-                marge_lon = 200 / max(1, 111320 * math.cos(math.radians(milieu_lat)))
+                marge_lon = 500 / max(1, 111320 * math.cos(math.radians(milieu_lat)))
                 bbox = (
                     min(p[0] for p in troncon) - marge_lon,
                     min(p[1] for p in troncon) - marge_lat,
@@ -20248,9 +20248,15 @@ def preparer_lieux_sortie(sortie_id):
                             elif couche == "BDTOPO_V3:zone_d_habitation":
                                 if nature and not any(x in nature for x in ("lieu-dit habité", "lieu dit habité", "bourg", "village", "hameau")):
                                     continue
-                                if type_geom != "Polygon" or not coord or not coord[0]:
+                                if type_geom == "Polygon" and coord:
+                                    polygones = [coord]
+                                elif type_geom == "MultiPolygon" and coord:
+                                    polygones = coord
+                                else:
                                     continue
-                                anneau = coord[0]
+                                anneau = max((p[0] for p in polygones if p and p[0]), key=len, default=None)
+                                if not anneau:
+                                    continue
                                 # Centroïde du polygone d'habitation : position réelle du secteur nommé.
                                 somme_x = somme_y = 0.0
                                 for xy in anneau[:-1] if len(anneau) > 1 else anneau:
@@ -20297,7 +20303,7 @@ def preparer_lieux_sortie(sortie_id):
                     'nwr["mountain_pass"="yes"]["name"](around:200,LISTE);'
                     'nwr["natural"="saddle"]["name"](around:200,LISTE);'
                     'way["waterway"="river"]["name"](around:200,LISTE);'
-                    ');out tags center geom;'
+                    ');out tags geom;'
                 ).replace("LISTE", liste_points)
                 diagnostic["osm_troncons"] += 1
                 elements = interroger_overpass(requete_complete, erreurs_overpass)
