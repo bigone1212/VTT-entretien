@@ -13580,7 +13580,7 @@ def accueil():
                     const p = v3d.pts[Math.round(i * (n - 1) / 7)];
                     echantillon.push(p.map(x => Number(x).toFixed(4)).join(','));
                 }
-                return 'maillons-v3d-lieux-v7-' + String(v3d.sortieId) + '-' + n + '-' + echantillon.join('|');
+                return 'maillons-v3d-lieux-v8-' + String(v3d.sortieId) + '-' + n + '-' + echantillon.join('|');
             }
             function lireCacheLieuxV3d() {
                 try {
@@ -13761,17 +13761,55 @@ def accueil():
                 v3d.reperes.forEach(m => {
                     m.getElement().classList.toggle('v3d-cache', !v3d.repereVisibles || marqueursLieux.has(m));
                 });
+
+                // Les panneaux de pente et de vitesse passent toujours avant les noms.
+                const rectanglesPrioritaires = [];
                 v3d.panneauxPente.forEach(p => {
                     const visible = v3d.repereVisibles && d >= Math.max(0, p.debut - avanceParSeconde) && d <= p.fin;
-                    p.marqueur.getElement().classList.toggle('v3d-cache', !visible);
+                    const el = p.marqueur.getElement();
+                    el.classList.toggle('v3d-cache', !visible);
+                    if (visible) {
+                        const r = el.getBoundingClientRect();
+                        if (r.width && r.height) rectanglesPrioritaires.push(r);
+                    }
                 });
+
                 // Un nom apparaît 200 m avant son point et disparaît 100 m après.
+                // En cas de chevauchement, les panneaux prioritaires restent visibles.
+                const candidats = [];
                 v3d.panneauxLieux.forEach(p => {
                     const visible = v3d.repereVisibles
                         && Number.isFinite(p.d)
                         && d >= Math.max(0, p.d - 200)
                         && d <= p.d + 100;
-                    p.marqueur.getElement().classList.toggle('v3d-cache', !visible);
+                    const el = p.marqueur.getElement();
+                    el.classList.toggle('v3d-cache', !visible);
+                    if (visible) candidats.push({ panneau: p, element: el });
+                });
+
+                // Parmi les noms qui se chevauchent, on conserve d'abord le plus proche
+                // du point actuellement parcouru, puis le mieux classé.
+                candidats.sort((a, b) =>
+                    Math.abs(a.panneau.d - d) - Math.abs(b.panneau.d - d)
+                    || (a.panneau.rang ?? 9) - (b.panneau.rang ?? 9)
+                    || String(a.panneau.nom || '').localeCompare(String(b.panneau.nom || ''), 'fr')
+                );
+                const rectanglesNoms = [];
+                const seChevauchent = (a, b) =>
+                    a.left < b.right + 8 && a.right + 8 > b.left
+                    && a.top < b.bottom + 6 && a.bottom + 6 > b.top;
+
+                candidats.forEach(c => {
+                    const r = c.element.getBoundingClientRect();
+                    if (!r.width || !r.height) {
+                        c.element.classList.add('v3d-cache');
+                        return;
+                    }
+                    const prioritaire = rectanglesPrioritaires.some(pr => seChevauchent(r, pr));
+                    const doublonVisuel = rectanglesNoms.some(pr => seChevauchent(r, pr));
+                    const masquer = prioritaire || doublonVisuel;
+                    c.element.classList.toggle('v3d-cache', masquer);
+                    if (!masquer) rectanglesNoms.push(r);
                 });
             }
             async function poserReperesV3d() {
@@ -13813,7 +13851,7 @@ def accueil():
                         const marqueur = new window.maplibregl.Marker({ element: el, anchor: 'bottom-left', opacityWhenCovered: '0.75' })
                             .setLngLat(l.coord).addTo(carte);
                         v3d.reperes.push(marqueur);
-                        v3d.panneauxLieux.push({ marqueur: marqueur, d: l.d });
+                        v3d.panneauxLieux.push({ marqueur: marqueur, d: l.d, rang: l.rang, nom: l.nom });
                     });
                     majVisibiliteReperesV3d();
                     majBoutonsV3d();
