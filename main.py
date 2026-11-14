@@ -20040,7 +20040,10 @@ def preparer_lieux_sortie(sortie_id):
                     # « zone d'habitation » dans la BD TOPO.
                     params_hameaux = dict(communs, index="poi", category="zone d'habitation")
                     appels.append(urllib.parse.urlencode(params_hameaux))
-                    # Les cols, sommets et cours d'eau sont des POI distincts.
+                    # Les cours d'eau nommés sont indexés séparément.
+                    params_hydro = dict(communs, index="poi", category="hydrographie")
+                    appels.append(urllib.parse.urlencode(params_hydro))
+                    # Les cols et sommets sont des POI topographiques.
                     params_toponymes = dict(communs, index="poi", category="élément topographique ou forestier")
                     appels.append(urllib.parse.urlencode(params_toponymes))
                 for params in appels:
@@ -20066,7 +20069,7 @@ def preparer_lieux_sortie(sortie_id):
                                 genre, rang, portee = "riviere", 5, 1800
                             elif any(m in texte for m in ("lieu-dit habité","lieu dit habité","hameau","hamlet","locality","localité")):
                                 genre, rang, portee = "hameau", 4, 3500
-                            elif any(m in texte for m in ("col","saddle","mountain_pass")) and any(m in texte for m in ("col","saddle","mountain_pass")):
+                            elif any(m in texte.split() for m in ("col","saddle","mountain_pass")):
                                 genre, rang, portee = "col", 2, 2200
                             elif any(m in texte for m in ("sommet","peak","pic","mountain summit")):
                                 genre, rang, portee = "sommet", 2, 2200
