@@ -1,3 +1,14 @@
+# Tâche en cours — 14/11/2026 — limiter les noms affichés et définir les priorités des sources
+
+- Nouvelle précision de Math : l'affichage doit se limiter aux villes, villages, hameaux et rivières. Les autres lieux-dits, sommets, cols, forêts, attractions, etc. ne doivent plus apparaître pendant le survol.
+- Ne pas supprimer les données déjà présentes dans la bibliothèque géographique : conserver les noms enregistrés, mais filtrer ce qui est présenté à l'écran.
+- Ordre de priorité demandé : 1) bibliothèque géographique ; 2) noms issus des données géographiques de la carte non satellite (CARTO/OSM) ; 3) géocodage inversé IGN ; 4) OSM complémentaire.
+- Précision technique : les tuiles CARTO utilisées par la carte sont des images raster ; leurs inscriptions ne sont pas directement interrogeables comme attributs. Pour cette étape, utiliser les données géographiques OSM qui alimentent la carte comme source complémentaire, sans OCR des images.
+- Travail limité à `main.py` et à ce relais sur la branche existante `reprise/2026-11-13-maillons-complet-test`. Aucun nouveau branchement, aucun changement de `main`, aucune fusion, aucune opération Neon.
+- Après modification : invalider le cache local de la liste affichée, contrôler les filtres et les priorités avec les tests existants. Ne pas déployer Render sans nouvel accord explicite.
+
+---
+
 # Mise à jour — 14/11/2026 — recherche géographique complémentaire vérifiée
 
 - Le workflow GitHub Actions `43518683346` pour le commit applicatif `157e165dbe972fdca5ce554a5dc2f815807537a3` est terminé avec succès.
