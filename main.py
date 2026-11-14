@@ -20001,6 +20001,12 @@ def preparer_lieux_sortie(sortie_id):
         conn.commit()
         lieux = []
         osm_complet = True
+        diagnostic = {
+            "ign_appels_ok": 0, "ign_features": 0, "ign_noms_acceptes": 0,
+            "wfs_appels_ok": 0, "wfs_features": 0, "wfs_noms_acceptes": 0,
+            "osm_troncons": 0, "osm_reponses_ok": 0, "osm_points": 0,
+            "osm_rivieres": 0, "osm_noms_acceptes": 0
+        }
         if len(points) >= 2:
             lons = [p[0] for p in points]; lats = [p[1] for p in points]; marge = 0.012
             sud, nord, ouest, est = min(lats)-marge, max(lats)+marge, min(lons)-marge, max(lons)+marge
@@ -20021,12 +20027,6 @@ def preparer_lieux_sortie(sortie_id):
             nombre = min(36, max(1, int(math.ceil(total / 2500)))) if total else 1
             rayon = max(1200, min(3500, (total / nombre if nombre else 2500) * 0.72))
             ign_erreurs = []
-            diagnostic = {
-                "ign_appels_ok": 0, "ign_features": 0, "ign_noms_acceptes": 0,
-                "wfs_appels_ok": 0, "wfs_features": 0, "wfs_noms_acceptes": 0,
-                "osm_troncons": 0, "osm_reponses_ok": 0, "osm_points": 0,
-                "osm_rivieres": 0, "osm_noms_acceptes": 0
-            }
             for debut in range(0, nombre, 4):
                 appels = []
                 for j in range(debut, min(nombre, debut + 4)):
