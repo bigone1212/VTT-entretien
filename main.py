@@ -1165,6 +1165,9 @@ def init_db():
             lieux_json TEXT, tentatives INTEGER DEFAULT 0, erreur TEXT, maj_le TEXT
         )
     """)
+    # Versionne le classement afin de reclasser une seule fois tous les parcours
+    # historiques après la correction, sans effacer les noms de la bibliothèque.
+    ajouter_colonne(cursor, "recherche_lieux_gpx", "classification_version", "INTEGER DEFAULT 0")
     conn.commit()
     conn.close()
 
@@ -13610,7 +13613,7 @@ def accueil():
                     const p = v3d.pts[Math.round(i * (n - 1) / 7)];
                     echantillon.push(p.map(x => Number(x).toFixed(4)).join(','));
                 }
-                return 'maillons-v3d-lieux-v10-' + String(v3d.sortieId) + '-' + n + '-' + echantillon.join('|');
+                return 'maillons-v3d-lieux-v11-' + String(v3d.sortieId) + '-' + n + '-' + echantillon.join('|');
             }
             function lireCacheLieuxV3d() {
                 try {
@@ -20186,8 +20189,26 @@ def enregistrer_lieu_bibliotheque(cursor, l, source):
     l["nom"] = nom
     lon, lat = l["coord"]
     cle = hashlib.sha256((unicodedata.normalize("NFKD", nom).casefold() + "|" + str(round(lon, 4)) + "|" + str(round(lat, 4))).encode()).hexdigest()
+    # La même étiquette peut avoir des coordonnées légèrement différentes
+    # selon IGN/OSM. Met à jour le classement des doublons proches sans toucher
+    # à leur nom, à leurs coordonnées ni à leur présence dans la bibliothèque.
+    marge_lat = 600 / 110540
+    marge_lon = marge_lat / max(0.2, math.cos(math.radians(lat)))
     cursor.execute(
-        """INSERT INTO bibliotheque_lieux_geo (cle,nom,genre,rang,lon,lat,altitude,source,maj_le) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT (cle) DO UPDATE SET nom=excluded.nom,genre=CASE WHEN excluded.genre='lieu_dit' THEN genre ELSE excluded.genre END,rang=CASE WHEN excluded.genre='lieu_dit' THEN rang ELSE excluded.rang END,altitude=excluded.altitude,source=excluded.source,maj_le=excluded.maj_le""",
+        """SELECT cle, lon, lat FROM bibliotheque_lieux_geo
+           WHERE lower(nom) = lower(?) AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?""",
+        (nom, lat - marge_lat, lat + marge_lat, lon - marge_lon, lon + marge_lon)
+    )
+    for ancienne_cle, ancienne_lon, ancienne_lat in cursor.fetchall():
+        dx = (float(ancienne_lon) - lon) * 111320 * math.cos(math.radians((float(ancienne_lat) + lat) / 2))
+        dy = (float(ancienne_lat) - lat) * 110540
+        if math.hypot(dx, dy) <= 600:
+            cursor.execute(
+                "UPDATE bibliotheque_lieux_geo SET genre = ?, rang = ? WHERE cle = ?",
+                (l["genre"], l["rang"], ancienne_cle)
+            )
+    cursor.execute(
+        """INSERT INTO bibliotheque_lieux_geo (cle,nom,genre,rang,lon,lat,altitude,source,maj_le) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT (cle) DO UPDATE SET nom=excluded.nom,genre=excluded.genre,rang=excluded.rang,altitude=excluded.altitude,source=excluded.source,maj_le=excluded.maj_le""",
         (cle, l["nom"], l["genre"], l["rang"], lon, lat, l.get("alt"), source, datetime.now(timezone.utc).isoformat())
     )
 
@@ -20628,7 +20649,7 @@ def preparer_lieux_sortie(sortie_id):
         essais = int(ligne_essais[0] or 0) if ligne_essais else 0
         statut_final = "termine" if (osm_complet or essais >= 4) else "en_attente"
         message_final = None if statut_final == "termine" else "Recherche OpenStreetMap incomplète : nouvel essai à la prochaine consultation."
-        cursor.execute("UPDATE recherche_lieux_gpx SET statut = ?, lieux_json = ?, erreur = ?, maj_le = ? WHERE sortie_id = ?", (statut_final,json.dumps(lieux,ensure_ascii=False),message_final,datetime.now(timezone.utc).isoformat(),sortie_id))
+        cursor.execute("UPDATE recherche_lieux_gpx SET statut = ?, lieux_json = ?, erreur = ?, maj_le = ?, classification_version = ? WHERE sortie_id = ?", (statut_final,json.dumps(lieux,ensure_ascii=False),message_final,datetime.now(timezone.utc).isoformat(),2,sortie_id))
         diagnostic["noms_finaux_affichables"] = len(lieux)
         diagnostic["points_gpx"] = len(points)
         diagnostic["tentative"] = essais
@@ -20695,6 +20716,10 @@ def reprendre_lieux_au_demarrage():
     conn = db.connect()
     cursor = conn.cursor()
     try:
+        cursor.execute(
+            "UPDATE recherche_lieux_gpx SET statut = ?, tentatives = 0 WHERE classification_version < ?",
+            ("en_attente", 2)
+        )
         cursor.execute(
             "UPDATE recherche_lieux_gpx SET statut = ? WHERE statut = ?",
             ("en_attente", "en_cours")
@@ -20926,6 +20951,10 @@ def obtenir_lieux_bibliotheque(sortie_id: int, velo_id: int = 1, x_code_acces: O
         ligne = cursor.fetchone()
         if ligne is None:
             raise HTTPException(status_code=404, detail="Sortie introuvable.")
+        cursor.execute("SELECT classification_version FROM recherche_lieux_gpx WHERE sortie_id = ?", (sortie_id,))
+        version = cursor.fetchone()
+        if version is None or int(version[0] or 0) < 2:
+            return {"statut": "reclassement", "lieux": []}
         try:
             trace = json.loads(ligne[0] or "[]")
         except (TypeError, ValueError):
@@ -21041,9 +21070,15 @@ def obtenir_lieux_prepares(sortie_id: int, background_tasks: BackgroundTasks, ve
     try:
         cursor.execute("SELECT id FROM sorties WHERE id = ? AND velo_id = ?", (sortie_id,velo_id))
         if cursor.fetchone() is None: raise HTTPException(status_code=404, detail="Sortie introuvable.")
-        cursor.execute("SELECT statut,lieux_json,erreur FROM recherche_lieux_gpx WHERE sortie_id = ?", (sortie_id,))
+        cursor.execute("SELECT statut,lieux_json,erreur,classification_version FROM recherche_lieux_gpx WHERE sortie_id = ?", (sortie_id,))
         row=cursor.fetchone()
         if row is None: return {"statut":"absent","lieux":[]}
+        if int(row[3] or 0) < 2:
+            if row[0] != "en_attente":
+                cursor.execute("UPDATE recherche_lieux_gpx SET statut = ?, tentatives = 0 WHERE sortie_id = ?", ("en_attente", sortie_id))
+                conn.commit()
+            background_tasks.add_task(preparer_lieux_sortie, sortie_id)
+            return {"statut":"en_attente","lieux":[],"erreur":None}
         if row[0] == "en_attente":
             background_tasks.add_task(preparer_lieux_sortie, sortie_id)
         try: lieux=json.loads(row[1] or "[]")
