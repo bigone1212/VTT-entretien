@@ -1,3 +1,15 @@
+# Mise à jour — 14/11/2026 — noms mal formés, sommets et durée des recherches
+
+- Branche de travail conservée : `reprise/2026-11-13-maillons-complet-test`. Aucun nouveau branchement, aucune modification de `main`, aucune fusion, aucune opération Neon.
+- Cause supplémentaire des noms affichés sous la forme `['Nom']` : l'endpoint `/api/sorties/{id}/lieux` renvoyait directement les anciennes données JSON préparées sans appliquer le nettoyage déjà présent dans la bibliothèque. L'endpoint normalise maintenant chaque nom avant de le transmettre au navigateur et ignore les noms vides.
+- Le navigateur dispose aussi d'une normalisation défensive des noms (valeurs tableau, JSON et anciennes chaînes Python), appliquée aux résultats IGN et à tous les résultats avant dédoublonnage/affichage. Cache navigateur renouvelé de v8 à v9.
+- Sommets / relief : les requêtes Overpass serveur demandent maintenant le centre des objets en plus des tags et géométries, ce qui permet de positionner les objets OSM de type chemin/relation qui n'ont pas de longitude/latitude directe. La classification IGN WFS reconnaît davantage de formes de relief : colline, butte, crête, point culminant, hill, peak, summit, mountain, ridge et knoll. Les cols restent distingués des collines.
+- Performance : le délai maximal de chaque serveur Overpass est ramené de 6 à 4 secondes, en conservant les trois serveurs de secours. Les diagnostics `[Maillons lieux]` enregistrent désormais les durées IGN, WFS, OSM, lecture/écriture de la bibliothèque et durée totale. Aucun rayon de recherche ni filtre d'affichage n'a été modifié ; aucun lieu n'est supprimé de la bibliothèque.
+- Fichier applicatif modifié : `main.py` uniquement. Commit : `f6c3d22a4eceb4edb03c94d86f50b6ed0fa54b75`.
+- Vérifications à effectuer avant tout déploiement : relecture du diff, contrôles syntaxiques Python/JavaScript et workflow automatisé. Le déploiement Render test n'a pas été déclenché ; demander un nouvel accord explicite avant de le faire.
+
+---
+
 # Mise à jour complémentaire — 14/11/2026 — nettoyage des anciennes entrées de bibliothèque
 
 - Le diagnostic a été étendu : certaines valeurs mal formées ont pu être enregistrées dans la bibliothèque lors des recherches précédentes, sous forme de texte littéral `['Nom']`.
