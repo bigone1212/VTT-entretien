@@ -1,3 +1,13 @@
+# Mise à jour complémentaire — 14/11/2026 — nettoyage des anciennes entrées de bibliothèque
+
+- Le diagnostic a été étendu : certaines valeurs mal formées ont pu être enregistrées dans la bibliothèque lors des recherches précédentes, sous forme de texte littéral `['Nom']`.
+- Le nettoyage s'applique maintenant aussi à ces anciennes valeurs lors de la lecture de la bibliothèque et lors de leur réutilisation par la recherche ; les nouvelles écritures sont également normalisées.
+- Le helper accepte les listes/tuples/dictionnaires et décode de façon sûre les anciennes chaînes qui représentent une liste Python, sans modifier les coordonnées ni supprimer les entrées de bibliothèque.
+- Commit applicatif complémentaire : `7c89b0340e29be130fe1f340525ff729e645f705`.
+- Toujours limité à `main.py` sur la branche de test existante. Aucun changement sur `main`, aucune fusion, aucune opération Neon et aucun déploiement à ce stade.
+
+---
+
 # Mise à jour — 14/11/2026 — nettoyage des noms IGN/WFS et doublons visuels
 
 - Retour de test : certains villages apparaissent deux fois, avec une seconde étiquette littérale de forme `['Nom']`.
