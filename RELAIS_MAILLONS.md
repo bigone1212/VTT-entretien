@@ -1,3 +1,19 @@
+# Mise à jour — 14/11/2026 — fiabilisation des noms géographiques du survol 3D (Claude, à vérifier en ligne)
+
+- Base : commit `c80eac7` (classement IGN et habitations isolées, ajoutés par ailleurs le matin même) conservé tel quel. Un seul fichier applicatif modifié : `main.py`, sur la branche existante `reprise/2026-11-13-maillons-complet-test`.
+- Causes corrigées :
+  1. **Rivières** : OpenStreetMap donnait le centre de la rivière entière (hors des 200 m). La recherche serveur récupère maintenant la géométrie de la rivière et pose le nom au point de la rivière le plus proche du parcours.
+  2. **Bibliothèque non prioritaire** : la recherche complète remplaçait la liste de la bibliothèque. Les deux listes sont maintenant fusionnées (la bibliothèque passe en premier, jamais écrasée par une liste vide).
+  3. **Réponse Overpass vide ou « délai dépassé » prise pour un succès** : la sortie était marquée « terminée » avec zéro nom et jamais relancée. Désormais, une réponse incomplète laisse la sortie « en_attente » (4 essais au plus) et les noms déjà trouvés restent utilisables.
+  4. **Distance au parcours** : mesurée au segment le plus proche (la trace stockée est allégée à 400 points), au lieu du sommet le plus proche.
+  5. **Rayon** : 500 m pour les villes et villages (décision de Math), 200 m pour hameaux, rivières, cols et sommets.
+- Serveur : recherche OpenStreetMap plus légère (uniquement villes, villages, hameaux, habitations isolées, sommets, cols, rivières), découpée en tronçons autour du tracé. Les lieux déjà présents dans la bibliothèque ne sont pas supprimés. `natural=ridge` n'est plus recherché (lignes trop longues).
+- Écran : texte des noms protégé (&, <, >), noms cachés derrière une crête moins estompés (75 %), un petit compte-rendu de 8 secondes indique le nombre de noms et leur origine (bibliothèque / OpenStreetMap / IGN). Le backslash `col\\b` de la recherche IGN du navigateur a été supprimé (règle : pas de backslash dans le JavaScript).
+- Non modifié : la recherche directe IGN/OSM du navigateur reste en secours ; son OSM place toujours les rivières au centre de leur tracé (les vraies rivières viennent du serveur). Filtres, lecture 3D, couches satellite/plan, `main`, base Neon : inchangés. Aucun déploiement.
+- Tests faits (sans réseau) : syntaxe Python, syntaxe des deux scripts JavaScript, 17 contrôles des fonctions serveur sur des cas fabriqués (rayons, rivière qui croise le parcours, réponse Overpass « délai dépassé »), 5 contrôles des fonctions JavaScript. **Non testé** : réponses réelles d'Overpass/IGN, rendu dans un vrai navigateur, tests GitHub Actions (à regarder après le push). Ne pas déployer sans accord explicite de Math.
+
+---
+
 # Mise à jour — 14/11/2026 — correction de l'affichage des noms géographiques (à vérifier)
 
 - Retour utilisateur : après le déploiement précédent, aucun nom n'est visible sur le satellite.
