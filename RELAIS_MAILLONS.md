@@ -1277,3 +1277,14 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 
 - Déploiement Render de test effectué après cette mise à jour : `dep-dbs3qvgn74is738p81tg`, statut `live` le 14/11/2026 à 10:53:31 UTC. Le build est réussi.
 - Le parcours doit maintenant être retesté avec « Relancer les noms ». Contrôler les journaux de cette nouvelle tentative : disparition des HTTP 400 IGN, réponses WFS/OSM et nombre final de noms. Ne pas conclure que l'affichage est réparé avant cette vérification.
+
+
+# Suite — 14/11/2026 — couche IGN Toponymie et réduction des appels
+
+- Le test après correction du rayon montre que l'IGN ne renvoie plus HTTP 400 ; une requête reverse a cependant expiré. Les journaux précédents montraient également qu'OpenStreetMap était inaccessible depuis le service Render (réseau inaccessible, délais dépassés et HTTP 504).
+- La documentation officielle BD TOPO 3.5 décrit une couche dédiée `toponymie`, ponctuelle, avec les champs `graphie_du_toponyme`, `classe_de_l_objet` et `nature_de_l_objet`. Cette couche manquait dans les requêtes et son champ de nom n'était pas lu.
+- `main.py` interroge désormais `BDTOPO_V3:toponymie` et classe les points nommés pertinents : cours d'eau, zones d'habitation, communes, cols et sommets. Les autres toponymes restent conservés dans la bibliothèque sans affichage automatique.
+- Le reverse IGN est limité à 8 points de contrôle maximum et utilise uniquement l'index POI, car l'index adresse BAN ne correspond pas à la recherche de toponymes. Rayon fixé à 500 m.
+- Commits applicatifs : `a80cd425de1988434c9874f175997b736eac5896` et `973c4a71c8f268feebca99f1459e59f7683f4dcc`.
+- Aucun autre fichier applicatif modifié ; filtres, affichage 3D et bibliothèque existants préservés.
+- Cette correction doit être déployée uniquement sur le service Render de test, puis contrôlée dans les journaux. Ne pas conclure avant d'avoir un diagnostic complet avec des noms retenus.
