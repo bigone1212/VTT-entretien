@@ -13596,15 +13596,17 @@ def accueil():
                 const prioriteSource = l => {
                     const source = String(l && l.source || '').toLowerCase();
                     if (source.includes('bibliotheque')) return 0;
-                    if (source.includes('carto') || source.includes('osm') || source.includes('openstreetmap')) return 1;
+                    if (source.includes('carto')) return 1;
                     if (source.includes('ign')) return 2;
+                    if (source.includes('osm') || source.includes('openstreetmap')) return 3;
                     return 3;
                 };
                 const ajouter = l => {
                     if (!affichable(l) || typeof l.nom !== 'string' || !Array.isArray(l.coord) || l.coord.length !== 2) return;
-                    const doublon = out.some(x => x.nom.toLocaleLowerCase() === l.nom.toLocaleLowerCase()
+                    const doublon = out.findIndex(x => x.nom.toLocaleLowerCase() === l.nom.toLocaleLowerCase()
                         && distanceM(x.coord, l.coord) < 600);
-                    if (!doublon) out.push(l);
+                    if (doublon < 0) out.push(l);
+                    else if (prioriteSource(l) < prioriteSource(out[doublon])) out[doublon] = l;
                 };
                 // Les résultats pré-calculés et ceux de la recherche directe sont complémentaires.
                 lieuxPrepares.forEach(ajouter);
@@ -19989,8 +19991,9 @@ def preparer_lieux_sortie(sortie_id):
             def priorite_source(l):
                 source = str(l.get("source", "")).casefold()
                 if "bibliotheque" in source: return 0
-                if "carto" in source or "osm" in source or "openstreetmap" in source: return 1
+                if "carto" in source: return 1
                 if "ign" in source: return 2
+                if "osm" in source or "openstreetmap" in source: return 3
                 return 3
             lieux.sort(key=lambda x:(priorite_source(x),x["rang"],x["ec"])); retenus=[]
             for l in lieux:
