@@ -20084,7 +20084,8 @@ def lieux_osm_points(elements, points):
             genre = "hameau" if place == "hamlet" else ("village" if place == "village" else "ville")
             rang = {"city": 1, "town": 2, "village": 3, "hamlet": 4}.get(place, 3)
         elif place == "isolated_dwelling":
-            genre, rang = "hameau", 4
+            # Une habitation isolée n'est pas un hameau : on la conserve en bibliothèque.
+            genre, rang = "lieu_dit", 9
         elif nat in ("peak", "hill"):
             genre, rang = "sommet", 4
         elif tags.get("mountain_pass") == "yes" or nat == "saddle":
@@ -20439,7 +20440,13 @@ def preparer_lieux_sortie(sortie_id):
                                 elif any(x in classe_top for x in ("cours d'eau", "tronçon hydrographique", "detail hydrographique", "détail hydrographique")):
                                     genre_wfs, rang_wfs = "riviere", 5
                                 elif "zone d'habitation" in classe_top:
-                                    genre_wfs, rang_wfs = "hameau", 4
+                                    # Une zone d'habitation n'est pas forcément un hameau :
+                                    # seuls les objets explicitement nommés hameau, bourg
+                                    # ou village sont affichés. Les lieux-dits restent en bibliothèque.
+                                    if any(x in nature_top for x in ("hameau", "bourg", "village")):
+                                        genre_wfs, rang_wfs = "hameau", 4
+                                    else:
+                                        genre_wfs, rang_wfs = "lieu_dit", 9
                                 elif "commune" in classe_top:
                                     genre_wfs, rang_wfs = "village", 3
                                 else:
@@ -20491,7 +20498,12 @@ def preparer_lieux_sortie(sortie_id):
                                 ec = ecart_parcours_m(position, points)
                                 if ec > 500:
                                     continue
-                                genre_wfs, rang_wfs = "hameau", 4
+                                if any(x in nature for x in ("hameau", "bourg", "village")):
+                                    genre_wfs, rang_wfs = "hameau", 4
+                                else:
+                                    # "Lieu-dit habité" reste consultable dans la bibliothèque,
+                                    # mais n'est pas assimilé automatiquement à un hameau.
+                                    genre_wfs, rang_wfs = "lieu_dit", 9
                             else:
                                 if type_geom != "Point" or not isinstance(coord, list) or len(coord) < 2:
                                     continue
@@ -20576,6 +20588,13 @@ def preparer_lieux_sortie(sortie_id):
                     if doublon is None:
                         lieux.append(entree_bibliotheque)
                     else:
+                        # Une classification fraîche IGN "lieu_dit" doit empêcher
+                        # qu'une ancienne entrée de bibliothèque classée hameau
+                        # réapparaisse sur ce parcours. La ligne de bibliothèque
+                        # elle-même n'est pas supprimée ni modifiée.
+                        if str(lieux[doublon].get("genre", "")).casefold() == "lieu_dit":
+                            entree_bibliotheque["genre"] = "lieu_dit"
+                            entree_bibliotheque["rang"] = 9
                         lieux[doublon]=entree_bibliotheque
             diagnostic["duree_bibliotheque_s"] = round(time.perf_counter() - t_bibliotheque, 2)
             if not api_ok and not lieux:
