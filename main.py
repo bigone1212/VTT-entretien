@@ -13530,7 +13530,7 @@ def accueil():
                     const p = v3d.pts[Math.round(i * (n - 1) / 7)];
                     echantillon.push(p.map(x => Number(x).toFixed(4)).join(','));
                 }
-                return 'maillons-v3d-lieux-v4-' + String(v3d.sortieId) + '-' + n + '-' + echantillon.join('|');
+                return 'maillons-v3d-lieux-v5-' + String(v3d.sortieId) + '-' + n + '-' + echantillon.join('|');
             }
             function lireCacheLieuxV3d() {
                 try {
@@ -13573,7 +13573,7 @@ def accueil():
                 const sud = Math.min(...lats)-marge, nord = Math.max(...lats)+marge, ouest = Math.min(...lons)-marge, est = Math.max(...lons)+marge;
                 const zoneValide = nord-sud <= 0.6 && est-ouest <= 0.8;
                 const zone = '('+sud+','+ouest+','+nord+','+est+')';
-                const q = '[out:json][timeout:35];(nwr["place"~"^(city|town|village|hamlet)$"]["name"]'+zone+';way["waterway"="river"]["name"]'+zone+';);out center tags;';
+                const q = '[out:json][timeout:35];(nwr["place"~"^(city|town|village|hamlet)$"]["name"]'+zone+';way["waterway"="river"]["name"]'+zone+';nwr["natural"~"^(peak|hill|ridge)$"]["name"]'+zone+';nwr["mountain_pass"="yes"]["name"]'+zone+';nwr["natural"="saddle"]["name"]'+zone+';);out center tags;';
                 let data = null;
                 let derniereErreur = null;
                 if (zoneValide) for (const base of ['https://overpass-api.de/api/interpreter','https://overpass.private.coffee/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter']) {
@@ -13596,7 +13596,7 @@ def accueil():
                     const x=(lon-p[0])*111320*Math.cos(lat*Math.PI/180), y=(lat-p[1])*110540; return Math.hypot(x,y);
                 }));
                 const out=[];
-                const affichable = l => l && ['ville','village','hameau','riviere'].includes(String(l.genre || '').toLowerCase());
+                const affichable = l => l && ['ville','village','hameau','riviere','col','sommet'].includes(String(l.genre || '').toLowerCase());
                 const prioriteSource = l => {
                     const source = String(l && l.source || '').toLowerCase();
                     if (source.includes('bibliotheque')) return 0;
@@ -13627,6 +13627,8 @@ def accueil():
                             rang={city:1,town:2,village:3,hamlet:4}[e.tags.place] ?? 3;
                             portee=5000;
                         } else if (e.tags.waterway === 'river') { genre='riviere'; rang=5; portee=1800; }
+                        else if (e.tags.mountain_pass === 'yes' || e.tags.natural === 'saddle') { genre='col'; rang=2; portee=900; }
+                        else if (['peak','hill','ridge'].includes(e.tags.natural)) { genre='sommet'; rang=4; portee=2200; }
                         else continue;
                         const ec=dist(lon,lat);
                         if(ec>portee) continue;
@@ -13659,7 +13661,7 @@ def accueil():
                             meilleurIndex = i;
                         }
                     }
-                    const rayonPassage = l.genre === 'ville' ? 2500 : (l.genre === 'village' ? 1400 : 1000);
+                    const rayonPassage = 200;
                     if (meilleureDistance > rayonPassage) {
                         l.d = -1;
                     } else {
@@ -19992,7 +19994,7 @@ def preparer_lieux_sortie(sortie_id):
             # La bibliothèque reste prioritaire ; les résultats CARTO/OSM
             # viennent ensuite, puis IGN. Les autres catégories restent
             # conservées dans la bibliothèque mais ne sont pas affichées.
-            lieux = [l for l in lieux if str(l.get("genre", "")).casefold() in ("ville", "village", "hameau", "riviere")]
+            lieux = [l for l in lieux if str(l.get("genre", "")).casefold() in ("ville", "village", "hameau", "riviere", "col", "sommet") and float(l.get("ec", 999999)) <= 200]
             def priorite_source(l):
                 source = str(l.get("source", "")).casefold()
                 if "bibliotheque" in source: return 0
