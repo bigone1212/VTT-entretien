@@ -14111,10 +14111,12 @@ def accueil():
             }
 
             function dessinerHabillageVideo(ctx, largeur, hauteur) {
-                const echelle = Math.min(largeur / 1920, hauteur / 1080);
+                // Échelle d'après le petit côté de la vidéo : lisible aussi quand le téléphone est tenu à la verticale.
+                const echelle = Math.min(largeur, hauteur) / 1080;
                 const marge = 58 * echelle;
-                const grand = 34 * echelle;
-                const petit = 17 * echelle;
+                const agrandi = echelle * 1.2;
+                const grand = 34 * agrandi;
+                const petit = 17 * agrandi;
                 ctx.save();
 
                 const haut = ctx.createLinearGradient(0, 0, 0, hauteur * 0.25);
