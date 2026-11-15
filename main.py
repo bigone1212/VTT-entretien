@@ -13832,7 +13832,14 @@ def accueil():
                 document.getElementById('v3dInfo').textContent =
                     `${fmtDistance(d / 1000, 1).complet} sur ${fmtDistance(v3d.total / 1000, 1).complet}`;
                 majHabillageCinemaV3d();
-                if (options.reperes !== false) majVisibiliteReperesV3d();
+                if (options.reperes !== false) {
+                    // Pendant la lecture, le calcul des noms (qui mesure l'écran) n'est refait que 4 fois par seconde.
+                    const maintenant = performance.now();
+                    if (!v3d.jouer || maintenant - (v3d.derniereVisibilite || 0) >= 250) {
+                        v3d.derniereVisibilite = maintenant;
+                        majVisibiliteReperesV3d();
+                    }
+                }
             }
 
             // Place la caméra derrière le point courant, orientée vers la suite du parcours.
@@ -13924,7 +13931,7 @@ def accueil():
                 // que 30 mises à jour caméra/point par seconde au maximum.
                 // Cela évite de relancer le rendu complet du relief 3D à 60 Hz sur mobile.
                 const intervalleRendu = 1000 / 30;
-                if (t - v3d.dernierRendu >= intervalleRendu || v3d.f >= 1) {
+                if (t - v3d.dernierRendu >= intervalleRendu - 4 || v3d.f >= 1) {
                     const dtRendu = v3d.dernierRendu
                         ? Math.min(0.15, Math.max(0, (t - v3d.dernierRendu) / 1000))
                         : dt;
@@ -19783,6 +19790,7 @@ def interroger_overpass(requete, erreurs=None):
     Un tableau vide sans message d'erreur est une réponse valide."""
     corps = urllib.parse.urlencode({"data": requete}).encode("utf-8")
     serveurs = (
+        "https://overpass.openstreetmap.fr/api/interpreter",
         "https://overpass-api.de/api/interpreter",
         "https://overpass.kumi.systems/api/interpreter",
         "https://overpass.private.coffee/api/interpreter",
@@ -19797,7 +19805,7 @@ def interroger_overpass(requete, erreurs=None):
                     "User-Agent": "Maillons/1.0 (recherche de lieux geographiques)"
                 }
             )
-            with urllib.request.urlopen(req, timeout=4) as reponse:
+            with urllib.request.urlopen(req, timeout=15) as reponse:
                 donnees = json.loads(reponse.read().decode("utf-8"))
             remarque = str((donnees or {}).get("remark") or "").casefold()
             elements = (donnees or {}).get("elements")
@@ -20270,7 +20278,7 @@ def preparer_lieux_sortie(sortie_id):
                     'nwr["natural"~"^(peak|hill)$"]["name"](around:200,LISTE);'
                     'nwr["mountain_pass"="yes"]["name"](around:200,LISTE);'
                     'nwr["natural"="saddle"]["name"](around:200,LISTE);'
-                    ');out center tags geom;'
+                    ');out center tags;'
                 ).replace("LISTE", liste_points)
                 diagnostic["osm_troncons"] += 1
                 elements = interroger_overpass(requete_complete, erreurs_overpass)
