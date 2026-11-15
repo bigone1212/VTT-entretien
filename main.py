@@ -3435,7 +3435,8 @@ def accueil():
                 transform: translateY(0);
             }
             .vue3d.cinema.commandes .v3d-cinema-hud { opacity: 0; transform: translateY(-8px); }
-            .v3d-cinema-marque { color: #65e6d4; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.19em; }
+            .v3d-cinema-marque { display: flex; align-items: center; gap: 9px; color: #65e6d4; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.19em; }
+            .v3d-cinema-logo { width: 22px; height: 22px; flex-shrink: 0; border-radius: 6px; }
             .v3d-cinema-nom { margin-top: 7px; font-size: clamp(1.05rem, 2.2vw, 1.65rem); font-weight: 750; line-height: 1.15; text-shadow: 0 2px 8px rgba(0,0,0,0.5); }
             .v3d-cinema-date { margin-top: 5px; color: rgba(255,255,255,0.72); font-size: 0.78rem; letter-spacing: 0.06em; }
             .v3d-cinema-stats { display: flex; flex-wrap: wrap; gap: 12px 20px; margin-top: 13px; }
@@ -4594,7 +4595,7 @@ def accueil():
                 </div>
             </div>
             <div class="v3d-cinema-hud" id="v3dCinemaHud" aria-hidden="true">
-                <div class="v3d-cinema-marque">MAILLONS · CARNET VTT</div>
+                <div class="v3d-cinema-marque"><svg class="v3d-cinema-logo" role="img" aria-label="Maillons"><use href="#logo-maillon"/></svg><span>MAILLONS</span></div>
                 <div class="v3d-cinema-nom" id="v3dCinemaNom"></div>
                 <div class="v3d-cinema-date" id="v3dCinemaDate"></div>
                 <div class="v3d-cinema-stats">
@@ -14037,7 +14038,7 @@ def accueil():
                 ctx.textBaseline = 'top';
                 ctx.fillStyle = '#65e6d4';
                 ctx.font = '700 ' + petit + 'px Arial, sans-serif';
-                ctx.fillText('MAILLONS  /  CARNET VTT', marge, marge * 0.72);
+                ctx.fillText('MAILLONS', marge, marge * 0.72);
                 ctx.fillStyle = '#ffffff';
                 ctx.font = '700 ' + grand + 'px Arial, sans-serif';
                 ctx.shadowColor = 'rgba(0,0,0,0.45)';
