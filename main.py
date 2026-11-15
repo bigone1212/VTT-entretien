@@ -20356,7 +20356,7 @@ def preparer_lieux_sortie(sortie_id):
         essais = int(ligne_essais[0] or 0) if ligne_essais else 0
         statut_final = "termine" if (osm_complet or essais >= 2) else "en_attente"
         message_final = None if statut_final == "termine" else "Recherche OpenStreetMap incomplète : nouvel essai à la prochaine consultation."
-        cursor.execute("UPDATE recherche_lieux_gpx SET statut = ?, lieux_json = ?, erreur = ?, maj_le = ?, classification_version = ? WHERE sortie_id = ?", (statut_final,json.dumps(lieux,ensure_ascii=False),message_final,datetime.now(timezone.utc).isoformat(),3,sortie_id))
+        cursor.execute("UPDATE recherche_lieux_gpx SET statut = ?, lieux_json = ?, erreur = ?, maj_le = ?, classification_version = ? WHERE sortie_id = ?", (statut_final,json.dumps(lieux,ensure_ascii=False),message_final,datetime.now(timezone.utc).isoformat(),4,sortie_id))
         diagnostic["noms_finaux_affichables"] = len(lieux)
         diagnostic["points_gpx"] = len(points)
         diagnostic["tentative"] = essais
@@ -20425,7 +20425,7 @@ def reprendre_lieux_au_demarrage():
     try:
         cursor.execute(
             "UPDATE recherche_lieux_gpx SET statut = ?, tentatives = 0 WHERE classification_version < ?",
-            ("en_attente", 3)
+            ("en_attente", 4)
         )
         cursor.execute(
             "UPDATE recherche_lieux_gpx SET statut = ? WHERE statut = ?",
@@ -20779,7 +20779,7 @@ def obtenir_lieux_prepares(sortie_id: int, background_tasks: BackgroundTasks, ve
         cursor.execute("SELECT statut,lieux_json,erreur,classification_version FROM recherche_lieux_gpx WHERE sortie_id = ?", (sortie_id,))
         row=cursor.fetchone()
         if row is None: return {"statut":"absent","lieux":[]}
-        if int(row[3] or 0) < 3:
+        if int(row[3] or 0) < 4:
             if row[0] != "en_attente":
                 cursor.execute("UPDATE recherche_lieux_gpx SET statut = ?, tentatives = 0 WHERE sortie_id = ?", ("en_attente", sortie_id))
                 conn.commit()
