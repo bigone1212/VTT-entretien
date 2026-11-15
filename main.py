@@ -3530,8 +3530,6 @@ def accueil():
 
             .v3d-pente-repere { height: 52px; overflow: visible; filter: drop-shadow(0 2px 4px rgba(0,0,0,.9)); pointer-events: none; }
             .v3d-pente-repere svg { height: 52px; display: block; overflow: visible; }
-            .v3d-lieu { padding: 4px 7px; border-radius: 6px; color: #fff; background: rgba(15,23,42,.88); border: 1px solid rgba(255,255,255,.8); font-size: 12px; font-weight: 700; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,.45); }
-            .v3d-lieu-haut { background: rgba(20,83,45,.92); }
             .v3d-cache { display: none !important; }
             .v3d-tourne { display: inline-block; width: 14px; height: 14px; margin-right: 8px; vertical-align: -2px; border-radius: 50%; border: 2px solid rgba(255,255,255,.35); border-top-color: #fff; animation: v3d-tour .8s linear infinite; }
             @keyframes v3d-tour { to { transform: rotate(360deg); } }
@@ -3609,7 +3607,6 @@ def accueil():
                 border: 1px solid rgba(255,255,255,0.2);
             }
 
-            .v3d-recherche { position: absolute; z-index: 5; left: 50%; top: 64%; transform: translateX(-50%); display: flex; align-items: center; padding: 8px 14px; border-radius: 999px; font-size: 0.85rem; font-weight: 600; white-space: nowrap; color: #fff; background: rgba(10,25,31,0.92); border: 1px solid rgba(255,255,255,0.25); box-shadow: 0 2px 8px rgba(0,0,0,.4); }
 
             .videos-liste {
                 flex: 0 0 100%;
@@ -4614,7 +4611,6 @@ def accueil():
                 <img id="v3dPhotoImg" alt="Photo de la sortie">
             </div>
             <div class="v3d-message" id="v3dMessage" style="display:none;"></div>
-            <div class="v3d-recherche" id="v3dRecherche" style="display:none;"><span class="v3d-tourne"></span>Recherche des noms de lieux…</div>
             <div class="v3d-bas">
                 <input type="range" id="v3dProgres" min="0" max="1000" value="0" aria-label="Avancement du parcours">
                 <div class="v3d-boutons">
@@ -14399,7 +14395,7 @@ def accueil():
                         const demarrage = await fetch(url, { method: 'POST', headers: getHeaders() });
                         const resultat = await demarrage.json().catch(() => ({}));
                         if (!demarrage.ok) throw new Error(resultat.detail || 'Impossible de relancer la recherche.');
-                        messageV3d('Recherche IGN et OpenStreetMap relancée. Cela peut prendre quelques minutes…');
+                        messageV3d('Recherche des noms relancée. Cela peut prendre quelques minutes…');
                         let termine = false;
                         for (let essai = 0; essai < 120; essai++) {
                             await new Promise(resolve => setTimeout(resolve, 2500));
