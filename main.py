@@ -13461,17 +13461,6 @@ def accueil():
             function rayonAffichageV3d(genre) {
                 return ['ville', 'village'].includes(String(genre || '').toLowerCase()) ? 500 : 200;
             }
-            // Ajoute à la liste prioritaire les lieux de la seconde liste qui n'y figurent pas déjà.
-            function fusionnerLieuxV3d(prioritaires, autres) {
-                const fusion = prioritaires.slice();
-                (autres || []).forEach(l => {
-                    if (!l || typeof l.nom !== 'string' || !Array.isArray(l.coord)) return;
-                    const doublon = fusion.some(x => x.nom.toLocaleLowerCase() === l.nom.toLocaleLowerCase()
-                        && distanceM(x.coord, l.coord) < 600);
-                    if (!doublon) fusion.push(l);
-                });
-                return fusion;
-            }
             function elementRepereAerienV3d(libelle, taille = 18) {
                 const el = document.createElement('div');
                 el.className = 'v3d-pente-repere';
@@ -13511,128 +13500,8 @@ def accueil():
                 }
                 return texte;
             }
-            async function chercherLieuxIGNV3d(dist) {
-                if (!v3d.total || v3d.total <= 0) return [];
-                const nombre = Math.min(36, Math.max(1, Math.ceil(v3d.total / 2500)));
-                const pas = v3d.total / nombre;
-                const rayon = Math.max(1200, Math.min(3500, pas * 0.72));
-                const resultats = [];
-                for (let i = 0; i < nombre; i += 4) {
-                    const appels = [];
-                    for (let j = i; j < Math.min(nombre, i + 4); j++) {
-                        const coord = pointA(Math.min(v3d.total, (j + 0.5) * pas));
-                        const zone = { type: 'Circle', coordinates: [coord[0], coord[1]], radius: rayon };
-                        const parametres = [
-                            new URLSearchParams({
-                                index: 'address,poi',
-                                type: 'locality',
-                                category: "zone d'habitation",
-                                searchgeom: JSON.stringify(zone),
-                                lon: String(coord[0]),
-                                lat: String(coord[1]),
-                                limit: '50'
-                            }),
-                            new URLSearchParams({
-                                index: 'poi',
-                                category: 'élément topographique ou forestier',
-                                searchgeom: JSON.stringify(zone),
-                                lon: String(coord[0]),
-                                lat: String(coord[1]),
-                                limit: '50'
-                            })
-                        ];
-                        for (const params of parametres) {
-                            appels.push((async () => {
-                                const ctl = new AbortController();
-                                const timer = setTimeout(() => ctl.abort(), 9000);
-                                try {
-                                    const res = await fetch('https://data.geopf.fr/geocodage/reverse?' + params.toString(), { signal: ctl.signal });
-                                    if (!res.ok) throw new Error('IGN HTTP ' + res.status);
-                                    return await res.json();
-                                } finally {
-                                    clearTimeout(timer);
-                                }
-                            })());
-                        }
-                    }
-                    const reponses = await Promise.allSettled(appels);
-                    reponses.forEach(r => {
-                        if (r.status === 'fulfilled' && r.value && Array.isArray(r.value.features)) {
-                            resultats.push(...r.value.features);
-                        }
-                    });
-                }
-                const lieux = [];
-                for (const f of resultats) {
-                    const p = f && f.properties ? f.properties : {};
-                    const geom = f && f.geometry ? f.geometry.coordinates : null;
-                    if (!Array.isArray(geom) || geom.length < 2) continue;
-                    const lon = Number(geom[0]), lat = Number(geom[1]);
-                    if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
-                    const nom = nomGeographiqueTexteV3d(p.name || p.label || p.toponyme || p.nom || p.title || '');
-                    if (!nom) continue;
-                    const categorie = String([p.category, p.type, p.nature, p.kind, p._type, p.description].filter(Boolean).join(' ')).toLowerCase();
-                    const texte = categorie;
-                    let genre = 'lieu', rang = 6, portee = 2200;
-                    if (/mountain.?pass|(^| )col( |$)|saddle|passage/.test(texte)) {
-                        genre = 'col'; rang = 2; portee = 900;
-                    } else if (/peak|summit|sommet|point.?haut|hill|ridge|crête|crete/.test(texte)) {
-                        genre = 'sommet'; rang = 4; portee = 2200;
-                    } else if (/hamlet|hameau/.test(texte)) {
-                        genre = 'hameau'; rang = 4; portee = 3500;
-                    } else if (/village|commune|town|city|municipality/.test(texte)) {
-                        genre = 'village'; rang = 3; portee = 5000;
-                    } else {
-                        continue;
-                    }
-                    const ec = dist(lon, lat);
-                    if (ec > portee) continue;
-                    const doublon = lieux.some(l => l.nom.toLocaleLowerCase() === nom.toLocaleLowerCase()
-                        && distanceM(l.coord, [lon, lat]) < 600);
-                    if (doublon) continue;
-                    const altitude = Number(p.ele || p.altitude || p.z);
-                    lieux.push({
-                        nom: nom,
-                        genre: genre,
-                        rang: rang,
-                        ec: ec,
-                        coord: [lon, lat],
-                        alt: Number.isFinite(altitude) ? altitude : NaN,
-                        source: 'IGN'
-                    });
-                }
-                return lieux;
-            }
-
-            function cleCacheLieuxV3d() {
-                const n = v3d.pts.length;
-                const echantillon = [];
-                for (let i = 0; i < 8; i++) {
-                    const p = v3d.pts[Math.round(i * (n - 1) / 7)];
-                    echantillon.push(p.map(x => Number(x).toFixed(4)).join(','));
-                }
-                return 'maillons-v3d-lieux-v11-' + String(v3d.sortieId) + '-' + n + '-' + echantillon.join('|');
-            }
-            function lireCacheLieuxV3d() {
-                try {
-                    const brut = localStorage.getItem(cleCacheLieuxV3d());
-                    if (!brut) return null;
-                    const lieux = JSON.parse(brut);
-                    if (!Array.isArray(lieux) || !lieux.length || lieux.length > 60) return null;
-                    if (lieux.some(l => !l || typeof l.nom !== 'string' || !Array.isArray(l.coord)
-                        || l.coord.length !== 2 || !Number.isFinite(l.coord[0]) || !Number.isFinite(l.coord[1])
-                        || !Number.isFinite(l.d))) return null;
-                    return lieux;
-                } catch (e) {
-                    return null;
-                }
-            }
-            function enregistrerCacheLieuxV3d(lieux) {
-                if (!Array.isArray(lieux) || !lieux.length) return;
-                try { localStorage.setItem(cleCacheLieuxV3d(), JSON.stringify(lieux)); } catch (e) {}
-            }
             // Calcule la distance parcourue au point le plus proche pour tous les noms,
-            // qu'ils viennent de la bibliothèque ou des recherches IGN / OpenStreetMap.
+            // qui viennent de la bibliothèque.
             function positionnerLieuxSurParcoursV3d(lieux) {
                 const gardes = [];
                 for (const lieu of (Array.isArray(lieux) ? lieux : [])) {
@@ -13657,129 +13526,18 @@ def accueil():
                 }
                 return gardes;
             }
-            async function chercherLieuxV3d(bibliothequeSeulement=false, forcerRecherche=false) {
+            // Lecture unique : la bibliothèque du serveur (remplie à l'import de la sortie).
+            async function lireBibliothequeV3d() {
                 if (v3d.pts.length < 2) return [];
-                if (bibliothequeSeulement) {
-                    try {
-                        const res = await fetch('/api/sorties/' + encodeURIComponent(v3d.sortieId) + '/lieux/bibliotheque?velo_id=' + encodeURIComponent(veloActifId || 1), { headers: getHeaders() });
-                        if (res.ok) {
-                            const data = await res.json();
-                            const lieux = Array.isArray(data.lieux) ? data.lieux : [];
-                            const positionnes = positionnerLieuxSurParcoursV3d(lieux);
-                            v3d.lieuxEtat = positionnes.length ? 'ok' : (lieux.length ? 'vide' : 'vide');
-                            console.info('Survol 3D : noms chargés immédiatement depuis la bibliothèque', positionnes.length);
-                            return positionnes;
-                        }
-                    } catch (e) { console.warn('Bibliothèque géographique momentanément indisponible', e); }
-                    return [];
-                }
-                const cache = forcerRecherche ? null : lireCacheLieuxV3d();
-                if (cache) {
-                    v3d.lieuxEtat = 'ok';
-                    console.info('Survol 3D : noms de lieux chargés depuis la mémoire de cet appareil', cache.length);
-                    return cache;
-                }
-                let lieuxPrepares = [];
                 try {
-                    const res = await fetch('/api/sorties/' + encodeURIComponent(v3d.sortieId) + '/lieux?velo_id=' + encodeURIComponent(veloActifId || 1), { headers: getHeaders() });
+                    const res = await fetch('/api/sorties/' + encodeURIComponent(v3d.sortieId) + '/lieux/bibliotheque?velo_id=' + encodeURIComponent(veloActifId || 1), { headers: getHeaders() });
                     if (res.ok) {
-                        const prepares = await res.json();
-                        // Même une préparation encore incomplète apporte des noms : on les garde.
-                        if (Array.isArray(prepares.lieux)) {
-                            lieuxPrepares = prepares.lieux;
-                            console.info('Survol 3D : lieux déjà préparés sur le serveur', lieuxPrepares.length);
-                        }
+                        const data = await res.json();
+                        const lieux = Array.isArray(data.lieux) ? data.lieux : [];
+                        return positionnerLieuxSurParcoursV3d(lieux);
                     }
-                } catch (e) { console.warn('Noms pré-calculés indisponibles, recherche directe conservée.', e); }
-                const lons = v3d.pts.map(p => p[0]), lats = v3d.pts.map(p => p[1]), marge = 0.012;
-                const sud = Math.min(...lats)-marge, nord = Math.max(...lats)+marge, ouest = Math.min(...lons)-marge, est = Math.max(...lons)+marge;
-                const zoneValide = nord-sud <= 0.6 && est-ouest <= 0.8;
-                const zone = '('+sud+','+ouest+','+nord+','+est+')';
-                const q = '[out:json][timeout:35];(nwr["place"~"^(city|town|village|hamlet|isolated_dwelling)$"]["name"]'+zone+';nwr["natural"~"^(peak|hill|ridge)$"]["name"]'+zone+';nwr["mountain_pass"="yes"]["name"]'+zone+';nwr["natural"="saddle"]["name"]'+zone+';);out center tags;';
-                let data = null;
-                let derniereErreur = null;
-                if (zoneValide) for (const base of ['https://overpass-api.de/api/interpreter','https://overpass.private.coffee/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter']) {
-                    try {
-                        const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 20000);
-                        const res = await fetch(base, {
-                            method:'POST',
-                            headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},
-                            body:'data='+encodeURIComponent(q),
-                            signal:ctl.signal
-                        });
-                        clearTimeout(timer);
-                        if (res.ok) { data = await res.json(); break; }
-                        derniereErreur = 'HTTP '+res.status+' sur '+base;
-                        console.warn('Recherche de lieux OSM :', derniereErreur);
-                    } catch(e) { derniereErreur = String(e); console.warn('Repères OpenStreetMap indisponibles', e); }
-                }
-                const ref = v3d.pts.filter((_,i)=>i%Math.max(1,Math.floor(v3d.pts.length/500))===0);
-                const dist = (lon,lat) => ecartParcoursV3d([lon, lat]);
-                const out=[];
-                const affichable = l => l && ['ville','village','hameau','col','sommet'].includes(String(l.genre || '').toLowerCase());
-                const prioriteSource = l => {
-                    const source = String(l && l.source || '').toLowerCase();
-                    if (source.includes('bibliotheque')) return 0;
-                    if (source.includes('carto')) return 1;
-                    if (source.includes('ign')) return 2;
-                    if (source.includes('osm') || source.includes('openstreetmap')) return 3;
-                    return 3;
-                };
-                const ajouter = l => {
-                    if (!affichable(l) || !Array.isArray(l.coord) || l.coord.length !== 2) return;
-                    const nom = nomGeographiqueTexteV3d(l.nom);
-                    if (!nom) return;
-                    const lieuPropre = { ...l, nom: nom };
-                    const doublon = out.findIndex(x => x.nom.toLocaleLowerCase() === nom.toLocaleLowerCase()
-                        && distanceM(x.coord, lieuPropre.coord) < 600);
-                    if (doublon < 0) out.push(lieuPropre);
-                    else if (prioriteSource(lieuPropre) < prioriteSource(out[doublon])) out[doublon] = lieuPropre;
-                };
-                // Les résultats pré-calculés et ceux de la recherche directe sont complémentaires.
-                lieuxPrepares.forEach(ajouter);
-                if (data && Array.isArray(data.elements)) {
-                    console.info('Survol 3D : objets OpenStreetMap reçus', data.elements.length);
-                    for (const e of data.elements) {
-                        if (!e.tags||!e.tags.name) continue;
-                        const lon = Number.isFinite(e.lon) ? e.lon : e.center && e.center.lon;
-                        const lat = Number.isFinite(e.lat) ? e.lat : e.center && e.center.lat;
-                        if (!Number.isFinite(lon)||!Number.isFinite(lat)) continue;
-                        let genre='',rang=9,portee=5000;
-                        if (['city','town','village','hamlet','isolated_dwelling'].includes(e.tags.place)) {
-                            genre=e.tags.place==='isolated_dwelling'?'lieu_dit':(e.tags.place==='hamlet'?'hameau':(e.tags.place==='village'?'village':'ville'));
-                            rang={city:1,town:2,village:3,hamlet:4,isolated_dwelling:9}[e.tags.place] ?? 3;
-                            portee=5000;
-                        } else if (e.tags.mountain_pass === 'yes' || e.tags.natural === 'saddle') { genre='col'; rang=2; portee=900; }
-                        else if (['peak','hill','ridge'].includes(e.tags.natural)) { genre='sommet'; rang=4; portee=2200; }
-                        else continue;
-                        const ec=dist(lon,lat);
-                        if(ec>portee) continue;
-                        ajouter({nom:e.tags.name,genre,rang,ec,coord:[lon,lat],alt:parseFloat(e.tags.ele),source:'CARTO/OSM'});
-                    }
-                } else if (derniereErreur) {
-                    console.warn('OpenStreetMap indisponible ; la recherche IGN reste active.', derniereErreur);
-                }
-                try {
-                    const lieuxIGN = await chercherLieuxIGNV3d(dist);
-                    lieuxIGN.forEach(ajouter);
-                    console.info('Survol 3D : lieux IGN reçus', lieuxIGN.length);
-                } catch (e) {
-                    console.warn('Recherche IGN des lieux indisponible', e);
-                }
-                out.sort((a,b)=>prioriteSource(a)-prioriteSource(b)||a.rang-b.rang||a.ec-b.ec);
-                const gardes = [];
-                for (const l of out) {
-                    if (gardes.length >= 60) break;
-                    if (gardes.every(g => !(g.nom.toLocaleLowerCase() === l.nom.toLocaleLowerCase()
-                        && distanceM(g.coord, l.coord) < 600))) gardes.push(l);
-                }
-                // Même calcul pour les résultats IGN/OSM et ceux déjà préparés.
-                const lieuxProches = positionnerLieuxSurParcoursV3d(gardes);
-                gardes.length = 0;
-                gardes.push(...lieuxProches);
-                v3d.lieuxEtat = gardes.length ? 'ok' : (data ? 'vide' : 'panne');
-                enregistrerCacheLieuxV3d(gardes);
-                return gardes;
+                } catch (e) { console.warn('Bibliothèque géographique momentanément indisponible', e); }
+                return [];
             }
             function viderReperesV3d() {
                 v3d.reperes.forEach(m => m.remove());
@@ -13889,37 +13647,37 @@ def accueil():
                     majVisibiliteReperesV3d();
                     majBoutonsV3d();
                 };
-                // Affiche d'abord les lieux déjà connus : aucune attente des API IGN/OSM.
-                let lieuxBibliotheque = [];
-                try { lieuxBibliotheque = await chercherLieuxV3d(true); } catch(e) { console.warn(e); }
+                // Les noms viennent uniquement de la bibliothèque (affichage immédiat).
+                let lieuxAffiches = [];
+                try { lieuxAffiches = await lireBibliothequeV3d(); } catch(e) { console.warn(e); }
                 if (v3d.carte !== carte) return;
-                afficherLieux(lieuxBibliotheque);
-                // Complète ensuite en arrière-plan, puis remplace les repères par la liste enrichie.
-                const rech=document.getElementById('v3dRecherche');
-                const htmlRecherche = rech ? rech.innerHTML : '';
-                if(rech) rech.style.display='flex';
-                chercherLieuxV3d(false, true).then(lieux => {
-                    if (v3d.carte !== carte) return;
-                    if (v3d.lieuxEtat==='panne' && !lieuxBibliotheque.length) {
-                        messageV3d('Noms de lieux indisponibles : les services IGN et OpenStreetMap ne répondent pas.');
-                        setTimeout(()=>messageV3d(''),6000);
+                afficherLieux(lieuxAffiches);
+                // Si le serveur n'a pas fini de remplir la bibliothèque, on le réveille puis on relit.
+                try {
+                    const base = '/api/sorties/' + encodeURIComponent(v3d.sortieId);
+                    const suffixe = '?velo_id=' + encodeURIComponent(veloActifId || 1);
+                    const lireEtat = async () => {
+                        const r = await fetch(base + '/lieux/etat' + suffixe, { headers: getHeaders() });
+                        return r.ok ? await r.json() : null;
+                    };
+                    let etat = await lireEtat();
+                    if (etat && etat.statut !== 'termine') {
+                        // Cet appel relance la préparation côté serveur si elle est en attente.
+                        fetch(base + '/lieux' + suffixe, { headers: getHeaders() }).catch(() => {});
+                        for (let essai = 0; essai < 12 && v3d.carte === carte; essai++) {
+                            await new Promise(resolve => setTimeout(resolve, 5000));
+                            if (v3d.carte !== carte) return;
+                            etat = await lireEtat();
+                            const nouveaux = await lireBibliothequeV3d();
+                            if (v3d.carte !== carte) return;
+                            if (nouveaux.length !== lieuxAffiches.length) {
+                                lieuxAffiches = nouveaux;
+                                afficherLieux(lieuxAffiches);
+                            }
+                            if (etat && etat.statut === 'termine') break;
+                        }
                     }
-                    // La bibliothèque reste prioritaire : la recherche complète s'y ajoute, elle ne la remplace pas.
-                    const complets = fusionnerLieuxV3d(lieuxBibliotheque, lieux);
-                    afficherLieux(complets);
-                    // Petit compte-rendu pendant quelques secondes : d'où viennent les noms affichés.
-                    const compter = motifs => complets.filter(l => motifs.some(m => String(l.source || '').toLowerCase().includes(m))).length;
-                    if (rech) {
-                        rech.textContent = 'Noms de lieux : ' + complets.length
-                            + ' (bibliothèque ' + compter(['bibliotheque'])
-                            + ' · OpenStreetMap ' + compter(['osm', 'openstreetmap'])
-                            + ' · IGN ' + compter(['ign']) + ')';
-                        setTimeout(() => { rech.style.display = 'none'; rech.innerHTML = htmlRecherche; }, 8000);
-                    }
-                }).catch(e => {
-                    if (rech) rech.style.display='none';
-                    console.warn('Complément géographique indisponible', e);
-                });
+                } catch (e) { console.warn('Suivi de la bibliothèque indisponible', e); }
             }
 
             function messageV3d(texte) {
@@ -14654,7 +14412,6 @@ def accueil():
                         }
                         if (!v3d.carte) return;
                         if (!termine) throw new Error('La recherche prend plus de temps que prévu. Les résultats continueront en arrière-plan.');
-                        localStorage.removeItem(cleCacheLieuxV3d());
                         await poserReperesV3d();
                         messageV3d('Recherche terminée. Les noms du parcours ont été actualisés.');
                         setTimeout(() => messageV3d(''), 5000);
