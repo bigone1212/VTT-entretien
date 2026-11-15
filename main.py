@@ -13455,7 +13455,7 @@ def accueil():
             }
             // Villes et villages : 500 m autour du parcours ; tout le reste : 200 m.
             function rayonAffichageV3d(genre) {
-                return ['ville', 'village'].includes(String(genre || '').toLowerCase()) ? 500 : 200;
+                return ['ville', 'village', 'col', 'sommet'].includes(String(genre || '').toLowerCase()) ? 500 : 200;
             }
             function elementRepereAerienV3d(libelle, taille = 18) {
                 const el = document.createElement('div');
@@ -19774,8 +19774,8 @@ def ecart_parcours_m(coord, points):
 
 
 def rayon_affichage_m(genre):
-    """Rayon autour du parcours : plus large pour les villes et villages, 200 m pour le reste."""
-    return 500 if str(genre or "").casefold() in ("ville", "village") else 200
+    """Rayon autour du parcours : 500 m pour villes, villages, cols et sommets, 200 m pour le reste."""
+    return 500 if str(genre or "").casefold() in ("ville", "village", "col", "sommet") else 200
 
 
 def interroger_overpass(requete, erreurs=None):
@@ -20199,8 +20199,7 @@ def preparer_lieux_sortie(sortie_id):
                                     # Les autres noms restent conservés dans la bibliothèque,
                                     # sans être affichés automatiquement sur le parcours.
                                     genre_wfs, rang_wfs = "lieu_dit", 9
-                                portee_top = 500 if genre_wfs == "village" else 200
-                                if ec > portee_top:
+                                if ec > rayon_affichage_m(genre_wfs):
                                     continue
                             elif couche == "BDTOPO_V3:zone_d_habitation":
                                 if nature and not any(x in nature for x in ("lieu-dit habité", "lieu dit habité", "bourg", "village", "hameau")):
@@ -20232,7 +20231,14 @@ def preparer_lieux_sortie(sortie_id):
                                     continue
                                 position = (float(coord[0]), float(coord[1]))
                                 ec = ecart_parcours_m(position, points)
-                                if ec > 200:
+                                # Couches de lieux-dits non habités : la nature dit s'il s'agit
+                                # d'un col ou d'un sommet (ces deux-là sont affichés).
+                                mots_nature = set(nature.replace("-", " ").replace("'", " ").split())
+                                if mots_nature & {"col", "passage", "saddle"}:
+                                    genre_wfs, rang_wfs = "col", 2
+                                elif mots_nature & {"sommet", "pic", "montagne", "colline", "butte", "puy", "mont", "summit", "peak"}:
+                                    genre_wfs, rang_wfs = "sommet", 2
+                                if ec > rayon_affichage_m(genre_wfs):
                                     continue
                             lon, lat = position
                             diagnostic["wfs_noms_acceptes"] += 1
