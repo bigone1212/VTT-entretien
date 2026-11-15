@@ -1,3 +1,35 @@
+# Mise à jour — 15/11/2026 — survol 3D simplifié, bibliothèque fiable, caméra fluide, fusion sur main
+
+Travail validé par Math sur le service de test puis sur la vraie version (« ça marche très bien »).
+
+## Diagnostic de départ (journaux Render du service de test)
+- OpenStreetMap (Overpass) ne répondait jamais depuis Render : `overpass-api.de` injoignable (réseau), `kumi.systems` et `private.coffee` en dépassement du délai de 4 s. Chaque sortie perdait environ 43 s pour rien.
+- IGN trouvait des dizaines de noms par sortie, mais presque tous étaient des « lieux-dits habités » classés `lieu_dit`, genre jamais affiché : la plupart des sorties avaient 0 nom affichable.
+- Plusieurs chemins de recherche se concurrençaient (serveur, recherche IGN du navigateur jusqu'à 72 requêtes à chaque ouverture, recherche Overpass du navigateur, bouton « Relancer les noms », cache navigateur).
+
+## Ce qui a été fait (main.py seul)
+1. **L'écran ne lit que la bibliothèque** (`/api/sorties/{id}/lieux/bibliotheque`). Suppression des recherches IGN et OSM du navigateur, du cache `localStorage` et de la fusion de listes. Si le serveur n'a pas fini (`/lieux/etat` ≠ `termine`), l'écran relance la préparation puis relit toutes les 5 s (12 fois au plus).
+2. **Serveur** : les lieux-dits habités IGN (géocodage, zones d'habitation, toponymie) sont classés `hameau` (donc affichés) ; les lieux-dits non habités dont la nature est col, sommet, pic, montagne, colline, butte ou puy sont classés `col` / `sommet`. Rayon d'affichage de 500 m pour ville, village, col et sommet, 200 m pour le reste (serveur et écran).
+3. **Bibliothèque** : un classement ne peut plus être dégradé (le meilleur rang est conservé) ; requête SQL qualifiée (plus de « genre is ambiguous »). `classification_version` passe à 4 : toutes les sorties sont recalculées une fois au démarrage.
+4. **OpenStreetMap** : délai Overpass de 15 s (au lieu de 4 s), serveur `overpass.openstreetmap.fr` ajouté en premier, requête allégée (`out center tags`, sans `geom`). Si aucun serveur ne répond au premier tronçon, la recherche OSM s'arrête (plus de 43 s perdues). Statut `termine` après 2 essais au lieu de 4. Résultat : le Puech du Cayla et son altitude apparaissent.
+5. **Fluidité** (survol 3D, vérifiée sur téléphone) : caméra et noms à 60 images par seconde (seuil de cadence corrigé, ligne parcourue environ 3 fois/s, repères environ 10 fois/s, cadrage environ 5 fois/s) ; calcul d'anti-chevauchement des noms limité à 4 fois/s pendant la lecture ; un nom n'est posé sur la carte que pendant sa fenêtre (200 m avant, 100 m après) puis retiré ; noms sans ombre floue (classe `v3d-nom-lieu`, `will-change: transform`).
+6. **Nettoyage** : bandeau « Recherche des noms de lieux… » et ancien style `.v3d-lieu` retirés. Lecture des noms au format `['Nom']` réécrite sans backslash dans le JavaScript (c'était contraire à la règle et à l'origine de l'avertissement `SyntaxWarning` au démarrage).
+- Règle d'affichage conservée : nom visible 200 m avant son point, caché 100 m après, comme les panneaux de pente ; texte blanc à contour sombre comme Vmax ; la bibliothèque reste la seule source de l'écran.
+- Les rivières et ruisseaux ne sont plus dans la version actuelle : Math a dit qu'ils ne sont pas obligatoires.
+- Colonne ajoutée par `init_db()` : `recherche_lieux_gpx.classification_version` (ajout simple, rien n'est supprimé).
+
+## Commits
+- Branche de test `reprise/2026-11-13-maillons-complet-test` : `3fceea4`, `4c43fc6`, `bacfa6d`, `29266e6`, `67dfbd6`, `cad3ff8`, `26fa24d`, `7f40667`, `db914c4`, `f0bb476`.
+- `main` : `60a9f48` (main.py seul, repris de la branche de test).
+- Service de test `maillons-test-2026` : déploiement manuel ; vraie version `VTT-entretien` : déploiement automatique à chaque enregistrement sur `main`.
+
+## Reste à faire / idées
+- Les noms sursautent encore un peu : ce sont des étiquettes HTML posées sur la carte, dont la position suit le relief avec un léger décalage. Piste (option 2, à faire sur la branche de test) : couche de symboles native MapLibre (`symbol` avec `text-halo`), filtre mis à jour pour la règle 200 m / 100 m. Point à régler d'abord : la police (`glyphs`) vient d'un serveur externe, il faut une solution fiable.
+- Overpass : `overpass-api.de` reste injoignable depuis Render ; surveiller les journaux `[Maillons lieux]` (`osm_reponses_ok`).
+- `densifier_m()` est une fonction serveur orpheline (non utilisée), laissée en place.
+
+---
+
 # Mise à jour — 14/11/2026 — noms mal formés, sommets et durée des recherches
 
 - Branche de travail conservée : `reprise/2026-11-13-maillons-complet-test`. Aucun nouveau branchement, aucune modification de `main`, aucune fusion, aucune opération Neon.
