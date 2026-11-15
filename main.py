@@ -13492,8 +13492,13 @@ def accueil():
                         const decode = JSON.parse(texte);
                         if (Array.isArray(decode)) return nomGeographiqueTexteV3d(decode);
                     } catch (e) {
-                        const ancienFormat = texte.match(/^\[\s*['"]([\s\S]*?)['"]\s*\]$/);
-                        if (ancienFormat) return ancienFormat[1].trim();
+                        // Ancien format ['Nom'] : on retire les crochets puis les guillemets.
+                        const interieur = texte.slice(1, -1).trim();
+                        const guillemet = interieur.charAt(0);
+                        if (interieur.length > 1 && (guillemet === "'" || guillemet === '"')
+                            && interieur.charAt(interieur.length - 1) === guillemet) {
+                            return interieur.slice(1, -1).trim();
+                        }
                     }
                 }
                 return texte;
