@@ -1501,3 +1501,13 @@ REPRISE PAR CHATGPT — 26/10/2026 :
 - Correction du bloc JavaScript OSM après retrait de la branche rivière : commit `525ce0f990f3efda4034a940497b76ce5ee890ef`.
 - Vérifications GitHub Actions du commit applicatif `525ce0f990f3efda4034a940497b76ce5ee890ef` : run `43644743433`, statut `completed`, conclusion `success`, 68 étapes terminées, aucune en échec.
 - Déploiement Render test non déclenché : attendre l'accord explicite de l'utilisateur. Le site test actuellement en ligne n'a pas encore reçu cette version.
+
+
+# Déploiement — 15/11/2026 — retour à la base stable et retrait des cours d'eau
+
+- Après accord explicite de l'utilisateur (« Feu vert »), déploiement effectué sur le service Render de test uniquement : `dep-dbslkhmk1f9s739l2mvg`.
+- Commit déployé : `43bd1d01529a29544fc26307df3326b081ce19a0` (documentation relais et validation du code applicatif `525ce0f990f3efda4034a940497b76ce5ee890ef`).
+- Statut Render confirmé : `live` le 15/11/2026 à 07:08:38 UTC. Site de test : https://maillons-test-2026.onrender.com.
+- La version de base antérieure au masquage des hameaux est restaurée ; les hameaux restent affichables. Les recherches et l'affichage des cours d'eau sont retirés. Les anciennes entrées de rivières en bibliothèque ne sont pas supprimées.
+- Aucun changement sur `main`, aucune fusion, aucune opération Neon et aucun déploiement production.
+- À faire : demander à l'utilisateur de vérifier le survol 3D sur le site de test, notamment les noms des villages et hameaux. Ne pas entreprendre d'autre modification ni déploiement sans demande/accord explicite.
