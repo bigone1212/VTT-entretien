@@ -11089,7 +11089,53 @@ def accueil():
                 u: { couleur: '#475569', nom: 'Inconnu' }
             };
 
+            // Descentes à partir de 4 % : dégradé de bleu clair vers bleu foncé, de plus en plus foncé quand la descente est raide.
+            const ARRETS_DESCENTE = [
+                { pourcent: 4, rvb: [125, 211, 252] },
+                { pourcent: 12, rvb: [37, 99, 235] },
+                { pourcent: 20, rvb: [23, 37, 110] }
+            ];
+            const DEGRADE_DESCENTE_CSS = 'linear-gradient(90deg, #7dd3fc, #2563eb, #17256e)';
+
+            function rvbVersHex(rvb) {
+                return '#' + rvb.map(v => Math.round(v).toString(16).padStart(2, '0')).join('');
+            }
+
+            function couleurDescente(pourcent) {
+                const a = Math.abs(pourcent);
+                const arrets = ARRETS_DESCENTE;
+                if (a <= arrets[0].pourcent) return rvbVersHex(arrets[0].rvb);
+                for (let k = 1; k < arrets.length; k++) {
+                    if (a <= arrets[k].pourcent) {
+                        const part = (a - arrets[k - 1].pourcent) / (arrets[k].pourcent - arrets[k - 1].pourcent);
+                        return rvbVersHex(arrets[k - 1].rvb.map((v, j) => v + (arrets[k].rvb[j] - v) * part));
+                    }
+                }
+                return rvbVersHex(arrets[arrets.length - 1].rvb);
+            }
+
+            // Classes de descente pour les légendes et la répartition (couleur prise au milieu de chaque classe).
+            const CLASSES_DESCENTE = [
+                { max: 8, couleur: couleurDescente(6), nom: 'descente 4 à 8 %' },
+                { max: 12, couleur: couleurDescente(10), nom: 'descente 8 à 12 %' },
+                { max: 16, couleur: couleurDescente(14), nom: 'descente 12 à 16 %' },
+                { max: 1000, couleur: couleurDescente(20), nom: 'descente plus de 16 %' }
+            ];
+            const CLASSES_PENTE_COMPLETES = COULEURS_PENTE.concat(CLASSES_DESCENTE);
+            const LEGENDE_PENTES = COULEURS_PENTE.map(c => ({ couleur: c.couleur, texte: c.nom }))
+                .concat([{ couleur: DEGRADE_DESCENTE_CSS, texte: 'descente : plus foncé = plus raide' }]);
+
+            function indexClassePente(pourcent) {
+                if (pourcent <= -4) {
+                    const k = CLASSES_DESCENTE.findIndex(c => -pourcent < c.max);
+                    return COULEURS_PENTE.length + (k < 0 ? CLASSES_DESCENTE.length - 1 : k);
+                }
+                const k = COULEURS_PENTE.findIndex(c => Math.abs(pourcent) < c.max);
+                return k < 0 ? COULEURS_PENTE.length - 1 : k;
+            }
+
             function couleurPente(pourcent) {
+                if (pourcent <= -4) return couleurDescente(pourcent);
                 const a = Math.abs(pourcent);
                 return COULEURS_PENTE.find(c => a < c.max).couleur;
             }
@@ -11363,7 +11409,7 @@ def accueil():
 
             function legendesProfil(s, profil) {
                 const zone = document.createElement('div');
-                zone.appendChild(legendeProfil(COULEURS_PENTE.map(c => ({ couleur: c.couleur, texte: c.nom }))));
+                zone.appendChild(legendeProfil(LEGENDE_PENTES));
                 const codes = s.surfaces && s.surfaces.length === s.trace.length ? s.surfaces : null;
                 if (codes) {
                     zone.appendChild(legendeProfil(
@@ -12994,14 +13040,13 @@ def accueil():
                     // Pentes
                     if (profil) {
                         const blocPentes = bloc('Pentes');
-                        const km = COULEURS_PENTE.map(() => 0);
+                        const km = CLASSES_PENTE_COMPLETES.map(() => 0);
                         for (let i = 0; i < profil.pentes.length; i++) {
                             const d = profil.cum[i + 1] - profil.cum[i];
-                            const k = COULEURS_PENTE.findIndex(c => Math.abs(profil.pentes[i]) < c.max);
-                            km[k < 0 ? km.length - 1 : k] += d / 1000;
+                            km[indexClassePente(profil.pentes[i])] += d / 1000;
                         }
                         blocPentes.appendChild(barreRepartition(
-                            COULEURS_PENTE.map((c, i) => ({ couleur: c.couleur, libelle: c.nom, km: km[i] })).filter(p => p.km > 0)
+                            CLASSES_PENTE_COMPLETES.map((c, i) => ({ couleur: c.couleur, libelle: c.nom, km: km[i] })).filter(p => p.km > 0)
                         ));
                     }
 
@@ -14287,7 +14332,7 @@ def accueil():
                         .filter(k => v3d.surfaces.includes(k))
                         .map(k => ({ couleur: TYPES_CHEMIN[k].couleur, texte: TYPES_CHEMIN[k].nom }));
                 } else if (v3d.pentes.length) {
-                    lignes = COULEURS_PENTE.map(c => ({ couleur: c.couleur, texte: c.nom }));
+                    lignes = LEGENDE_PENTES;
                 }
                 el.style.display = lignes.length ? 'flex' : 'none';
                 lignes.forEach(l => {
