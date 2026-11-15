@@ -19931,11 +19931,11 @@ def enregistrer_lieu_bibliotheque(cursor, l, source):
         dy = (float(ancienne_lat) - lat) * 110540
         if math.hypot(dx, dy) <= 600:
             cursor.execute(
-                "UPDATE bibliotheque_lieux_geo SET genre = ?, rang = ? WHERE cle = ?",
-                (l["genre"], l["rang"], ancienne_cle)
+                "UPDATE bibliotheque_lieux_geo SET genre = ?, rang = ? WHERE cle = ? AND COALESCE(rang, 9) > ?",
+                (l["genre"], l["rang"], ancienne_cle, l["rang"])
             )
     cursor.execute(
-        """INSERT INTO bibliotheque_lieux_geo (cle,nom,genre,rang,lon,lat,altitude,source,maj_le) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT (cle) DO UPDATE SET nom=excluded.nom,genre=excluded.genre,rang=excluded.rang,altitude=excluded.altitude,source=excluded.source,maj_le=excluded.maj_le""",
+        """INSERT INTO bibliotheque_lieux_geo (cle,nom,genre,rang,lon,lat,altitude,source,maj_le) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT (cle) DO UPDATE SET nom=excluded.nom,genre=CASE WHEN excluded.rang < COALESCE(bibliotheque_lieux_geo.rang, 9) THEN excluded.genre ELSE bibliotheque_lieux_geo.genre END,rang=CASE WHEN excluded.rang < COALESCE(bibliotheque_lieux_geo.rang, 9) THEN excluded.rang ELSE bibliotheque_lieux_geo.rang END,altitude=excluded.altitude,maj_le=excluded.maj_le""",
         (cle, l["nom"], l["genre"], l["rang"], lon, lat, l.get("alt"), source, datetime.now(timezone.utc).isoformat())
     )
 
@@ -20058,7 +20058,8 @@ def preparer_lieux_sortie(sortie_id):
                             if any(m in texte for m in ("river","rivière","riviere","cours d'eau","hydrographie")):
                                 continue
                             elif any(m in texte for m in ("lieu-dit habité","lieu dit habité")):
-                                genre, rang, portee = "lieu_dit", 9, 3500
+                                # Un lieu-dit habité est un petit hameau : il est affiché.
+                                genre, rang, portee = "hameau", 4, 3500
                             elif any(m in texte for m in ("hameau","hamlet","locality","localité")):
                                 genre, rang, portee = "hameau", 4, 3500
                             elif any(m in texte.split() for m in ("col","saddle","mountain_pass")):
@@ -20192,7 +20193,7 @@ def preparer_lieux_sortie(sortie_id):
                                     # Une zone d'habitation n'est pas forcément un hameau :
                                     # seuls les objets explicitement nommés hameau, bourg
                                     # ou village sont affichés. Les lieux-dits restent en bibliothèque.
-                                    if any(x in nature_top for x in ("hameau", "bourg", "village")):
+                                    if any(x in nature_top for x in ("hameau", "bourg", "village", "lieu-dit habité", "lieu dit habité")):
                                         genre_wfs, rang_wfs = "hameau", 4
                                     else:
                                         genre_wfs, rang_wfs = "lieu_dit", 9
@@ -20226,11 +20227,9 @@ def preparer_lieux_sortie(sortie_id):
                                 ec = ecart_parcours_m(position, points)
                                 if ec > 500:
                                     continue
-                                if any(x in nature for x in ("hameau", "bourg", "village")):
+                                if any(x in nature for x in ("hameau", "bourg", "village", "lieu-dit habité", "lieu dit habité")):
                                     genre_wfs, rang_wfs = "hameau", 4
                                 else:
-                                    # "Lieu-dit habité" reste consultable dans la bibliothèque,
-                                    # mais n'est pas assimilé automatiquement à un hameau.
                                     genre_wfs, rang_wfs = "lieu_dit", 9
                             else:
                                 if type_geom != "Point" or not isinstance(coord, list) or len(coord) < 2:
@@ -20275,6 +20274,9 @@ def preparer_lieux_sortie(sortie_id):
                 elements = interroger_overpass(requete_complete, erreurs_overpass)
                 if elements is None:
                     osm_complet = False
+                    # Aucun serveur OpenStreetMap ne répond : inutile d'attendre sur chaque tronçon.
+                    if diagnostic["osm_reponses_ok"] == 0:
+                        break
                 else:
                     diagnostic["osm_reponses_ok"] += 1
                     diagnostic["osm_points"] += len(elements)
@@ -20350,9 +20352,9 @@ def preparer_lieux_sortie(sortie_id):
         cursor.execute("SELECT tentatives FROM recherche_lieux_gpx WHERE sortie_id = ?", (sortie_id,))
         ligne_essais = cursor.fetchone()
         essais = int(ligne_essais[0] or 0) if ligne_essais else 0
-        statut_final = "termine" if (osm_complet or essais >= 4) else "en_attente"
+        statut_final = "termine" if (osm_complet or essais >= 2) else "en_attente"
         message_final = None if statut_final == "termine" else "Recherche OpenStreetMap incomplète : nouvel essai à la prochaine consultation."
-        cursor.execute("UPDATE recherche_lieux_gpx SET statut = ?, lieux_json = ?, erreur = ?, maj_le = ?, classification_version = ? WHERE sortie_id = ?", (statut_final,json.dumps(lieux,ensure_ascii=False),message_final,datetime.now(timezone.utc).isoformat(),2,sortie_id))
+        cursor.execute("UPDATE recherche_lieux_gpx SET statut = ?, lieux_json = ?, erreur = ?, maj_le = ?, classification_version = ? WHERE sortie_id = ?", (statut_final,json.dumps(lieux,ensure_ascii=False),message_final,datetime.now(timezone.utc).isoformat(),3,sortie_id))
         diagnostic["noms_finaux_affichables"] = len(lieux)
         diagnostic["points_gpx"] = len(points)
         diagnostic["tentative"] = essais
@@ -20421,7 +20423,7 @@ def reprendre_lieux_au_demarrage():
     try:
         cursor.execute(
             "UPDATE recherche_lieux_gpx SET statut = ?, tentatives = 0 WHERE classification_version < ?",
-            ("en_attente", 2)
+            ("en_attente", 3)
         )
         cursor.execute(
             "UPDATE recherche_lieux_gpx SET statut = ? WHERE statut = ?",
@@ -20775,7 +20777,7 @@ def obtenir_lieux_prepares(sortie_id: int, background_tasks: BackgroundTasks, ve
         cursor.execute("SELECT statut,lieux_json,erreur,classification_version FROM recherche_lieux_gpx WHERE sortie_id = ?", (sortie_id,))
         row=cursor.fetchone()
         if row is None: return {"statut":"absent","lieux":[]}
-        if int(row[3] or 0) < 2:
+        if int(row[3] or 0) < 3:
             if row[0] != "en_attente":
                 cursor.execute("UPDATE recherche_lieux_gpx SET statut = ?, tentatives = 0 WHERE sortie_id = ?", ("en_attente", sortie_id))
                 conn.commit()
