@@ -3530,6 +3530,8 @@ def accueil():
 
             .v3d-pente-repere { height: 52px; overflow: visible; filter: drop-shadow(0 2px 4px rgba(0,0,0,.9)); pointer-events: none; }
             .v3d-pente-repere svg { height: 52px; display: block; overflow: visible; }
+            /* Noms de lieux : pas d'ombre floue (le contour sombre suffit), couche dédiée pour glisser sans saccade. */
+            .v3d-pente-repere.v3d-nom-lieu { filter: none; will-change: transform; }
             .v3d-cache { display: none !important; }
             .v3d-tourne { display: inline-block; width: 14px; height: 14px; margin-right: 8px; vertical-align: -2px; border-radius: 50%; border: 2px solid rgba(255,255,255,.35); border-top-color: #fff; animation: v3d-tour .8s linear infinite; }
             @keyframes v3d-tour { to { transform: rotate(360deg); } }
@@ -13638,6 +13640,7 @@ def accueil():
                         const libelle = l.nom + (Number.isFinite(l.alt) && ['sommet', 'col'].includes(l.genre)
                             ? ' · ' + fmtAltitude(l.alt).complet : '');
                         const el = elementRepereAerienV3d(libelle, 16);
+                        el.classList.add('v3d-nom-lieu');
                         // Un nom caché derrière une crête reste lisible (75 % au lieu de 20 % par défaut).
                         const marqueur = new window.maplibregl.Marker({ element: el, anchor: 'bottom-left', opacityWhenCovered: '0.75' })
                             .setLngLat(l.coord).addTo(carte);
