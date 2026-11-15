@@ -3428,6 +3428,13 @@ def accueil():
             }
 
             .vue3d.cinema .v3d-cinema-hud { opacity: 1; transform: translateY(0); }
+            /* Bouton « Commandes » : fait apparaître les boutons du bas par-dessus le survol, et efface l'encart pour ne pas se chevaucher. */
+            .vue3d.cinema.commandes .v3d-bas {
+                opacity: 1;
+                pointer-events: auto;
+                transform: translateY(0);
+            }
+            .vue3d.cinema.commandes .v3d-cinema-hud { opacity: 0; transform: translateY(-8px); }
             .v3d-cinema-marque { color: #65e6d4; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.19em; }
             .v3d-cinema-nom { margin-top: 7px; font-size: clamp(1.05rem, 2.2vw, 1.65rem); font-weight: 750; line-height: 1.15; text-shadow: 0 2px 8px rgba(0,0,0,0.5); }
             .v3d-cinema-date { margin-top: 5px; color: rgba(255,255,255,0.72); font-size: 0.78rem; letter-spacing: 0.06em; }
@@ -4581,7 +4588,8 @@ def accueil():
             <div class="v3d-haut">
                 <strong id="v3dTitre"></strong>
                 <div style="display:flex;align-items:center;gap:8px;">
-                    <button type="button" id="v3dCinema" aria-pressed="false">Mode Cinéma</button>
+                    <button type="button" id="v3dLectureHaut"></button>
+                    <button type="button" id="v3dCinema" aria-pressed="false">Commandes</button>
                     <button type="button" id="v3dFermer" aria-label="Fermer"></button>
                 </div>
             </div>
@@ -13142,7 +13150,7 @@ def accueil():
                 carte: null, pts: [], cum: [], total: 0, f: 0, jouer: false, centreCamera: null,
                 vitesse: 1, inclinaison: 45, cap: 0, dernier: 0, raf: 0,
                 fond: 'sat', enregistreur: null, morceaux: [], titre: '',
-                nomParcours: '', dateParcours: '', cinema: false,
+                nomParcours: '', dateParcours: '', cinema: true, commandes: false,
                 canvasVideo: null, ctxVideo: null, rafVideo: 0, fluxVideo: null, videoActif: false,
                 denivelePlus: 0, altitudeDisponible: false, altitudes: [], deniveleCum: [], vitesses: [], vitesseMax: null, vitesseMoyenne: null, profilLongueur: 0,
                 dureeBase: 60, prete: false, compteImages: 0, dernierRendu: 0,
@@ -13722,13 +13730,22 @@ def accueil():
                 const en_cours = !!v3d.enregistreur;
                 remplirBouton(enr, 'enreg', en_cours ? 'Arrêter et enregistrer' : 'Enregistrer');
                 enr.classList.toggle('enreg', en_cours);
+                // Le survol s'affiche toujours en mode cinéma ; le bouton du haut montre ou cache les autres boutons.
                 const cinema = document.getElementById('v3dCinema');
                 if (cinema) {
-                    cinema.textContent = v3d.cinema ? 'Quitter cinéma' : 'Mode Cinéma';
-                    cinema.classList.toggle('actif', v3d.cinema);
-                    cinema.setAttribute('aria-pressed', v3d.cinema ? 'true' : 'false');
+                    cinema.textContent = v3d.commandes ? 'Masquer' : 'Commandes';
+                    cinema.classList.toggle('actif', v3d.commandes);
+                    cinema.setAttribute('aria-pressed', v3d.commandes ? 'true' : 'false');
                 }
-                document.getElementById('vue3d').classList.toggle('cinema', v3d.cinema);
+                // Lecture / Pause reste toujours à portée de doigt, même quand les commandes sont cachées.
+                const lectureHaut = document.getElementById('v3dLectureHaut');
+                if (lectureHaut) {
+                    remplirBouton(lectureHaut, v3d.jouer ? 'pause' : 'lecture', v3d.jouer ? 'Pause' : 'Lecture');
+                    lectureHaut.classList.toggle('actif', !v3d.jouer);
+                }
+                const vue = document.getElementById('vue3d');
+                vue.classList.toggle('cinema', v3d.cinema);
+                vue.classList.toggle('commandes', v3d.commandes);
                 majHabillageCinemaV3d();
             }
 
@@ -13911,7 +13928,7 @@ def accueil():
                     center: v3d.centreCamera,
                     bearing: v3d.cap,
                     pitch: v3d.inclinaison,
-                    zoom: 14.6,
+                    zoom: 14.3,
                     padding: { top: v3d.decalage, bottom: 0, left: 0, right: 0 }
                 });
 
@@ -14145,6 +14162,7 @@ def accueil():
                 v3d.enregistreur = rec;
                 v3d.f = 0;
                 v3d.cinema = true;
+                v3d.commandes = false;
                 majBoutonsV3d();
                 dessinerCadreVideo();
                 rec.start(1000);
@@ -14337,7 +14355,8 @@ def accueil():
                 v3d.titre = (sortie.debut || '').slice(0, 10);
                 v3d.nomParcours = sortie.nom || 'Sortie VTT';
                 v3d.dateParcours = new Date(sortie.debut).toLocaleDateString('fr-FR');
-                v3d.cinema = false;
+                v3d.cinema = true;
+                v3d.commandes = false;
                 v3d.sortieId = sortie.id;
                 v3d.photos = placerPhotos(sortie);
                 v3d.voirAutres = false;
@@ -14400,9 +14419,10 @@ def accueil():
 
                 bouton('v3dFermer', fermerV3d);
                 bouton('v3dCinema', () => {
-                    v3d.cinema = !v3d.cinema;
+                    v3d.commandes = !v3d.commandes;
                     majBoutonsV3d();
                 });
+                bouton('v3dLectureHaut', () => lectureV3d(!v3d.jouer));
                 bouton('v3dReperes', () => { v3d.repereVisibles = !v3d.repereVisibles; majVisibiliteReperesV3d(); majBoutonsV3d(); });
                 bouton('v3dRelancerLieux', async () => {
                     const relancer = document.getElementById('v3dRelancerLieux');
