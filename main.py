@@ -14021,6 +14021,50 @@ def accueil():
                 majBoutonsV3d();
             }
 
+            // Rectangle aux coins arrondis (dessiné à la main pour fonctionner sur tous les navigateurs).
+            function cheminArrondiVideo(ctx, x, y, l, h, r) {
+                ctx.beginPath();
+                ctx.moveTo(x + r, y);
+                ctx.arcTo(x + l, y, x + l, y + h, r);
+                ctx.arcTo(x + l, y + h, x, y + h, r);
+                ctx.arcTo(x, y + h, x, y, r);
+                ctx.arcTo(x, y, x + l, y, r);
+                ctx.closePath();
+            }
+
+            // Logo Maillons (mêmes formes et mêmes couleurs que le logo de l'en-tête de l'appli).
+            function dessinerLogoVideo(ctx, x, y, taille) {
+                const styles = getComputedStyle(document.documentElement);
+                const couleur1 = styles.getPropertyValue('--ac1').trim() || '#65e6d4';
+                const couleur2 = styles.getPropertyValue('--ac2').trim() || '#0f9aa0';
+                ctx.save();
+                ctx.translate(x, y);
+                ctx.scale(taille / 96, taille / 96);
+                const fond = ctx.createLinearGradient(0, 0, 96, 96);
+                fond.addColorStop(0, couleur1);
+                fond.addColorStop(1, couleur2);
+                ctx.fillStyle = fond;
+                cheminArrondiVideo(ctx, 0, 0, 96, 96, 24);
+                ctx.fill();
+                ctx.lineJoin = 'round';
+                const maillons = [[14, 34, 35, 45], [40, 42, 61, 53]];
+                const traits = [['#06262b', 9], ['#ffffff', 5]];
+                for (const trait of traits) {
+                    for (const m of maillons) {
+                        ctx.save();
+                        ctx.translate(m[2], m[3]);
+                        ctx.rotate(-32 * Math.PI / 180);
+                        ctx.translate(-m[2], -m[3]);
+                        ctx.strokeStyle = trait[0];
+                        ctx.lineWidth = trait[1];
+                        cheminArrondiVideo(ctx, m[0], m[1], 42, 22, 11);
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+                }
+                ctx.restore();
+            }
+
             function dessinerHabillageVideo(ctx, largeur, hauteur) {
                 const echelle = Math.min(largeur / 1920, hauteur / 1080);
                 const marge = 58 * echelle;
@@ -14038,7 +14082,13 @@ def accueil():
                 ctx.textBaseline = 'top';
                 ctx.fillStyle = '#65e6d4';
                 ctx.font = '700 ' + petit + 'px Arial, sans-serif';
-                ctx.fillText('MAILLONS', marge, marge * 0.72);
+                // Logo puis le mot MAILLONS, alignés au centre sur la même ligne.
+                const tailleLogo = petit * 1.9;
+                const yLogo = marge * 0.5;
+                dessinerLogoVideo(ctx, marge, yLogo, tailleLogo);
+                ctx.textBaseline = 'middle';
+                ctx.fillText('MAILLONS', marge + tailleLogo + petit * 0.6, yLogo + tailleLogo / 2);
+                ctx.textBaseline = 'top';
                 ctx.fillStyle = '#ffffff';
                 ctx.font = '700 ' + grand + 'px Arial, sans-serif';
                 ctx.shadowColor = 'rgba(0,0,0,0.45)';
