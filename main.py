@@ -13888,7 +13888,7 @@ def accueil():
                 // On la calcule périodiquement, sans réduire les points GPS ni la fréquence
                 // de déplacement de la caméra.
                 v3d.compteCadrage = (v3d.compteCadrage || 0) + 1;
-                if (typeof carte.project === 'function' && !brusque && v3d.compteCadrage % 6 === 0) {
+                if (typeof carte.project === 'function' && !brusque && v3d.compteCadrage % 12 === 0) {
                     try {
                         const ecran = carte.project(centre);
                         if (ecran && isFinite(ecran.y)) {
@@ -13935,9 +13935,9 @@ def accueil():
                 verifierPhotosV3d(avant, v3d.f * v3d.total);
 
                 // Le calcul du parcours continue à chaque image, mais MapLibre ne reçoit
-                // que 30 mises à jour caméra/point par seconde au maximum.
+                // que 60 mises à jour caméra/point par seconde au maximum.
                 // Cela évite de relancer le rendu complet du relief 3D à 60 Hz sur mobile.
-                const intervalleRendu = 1000 / 30;
+                const intervalleRendu = 1000 / 60;
                 if (t - v3d.dernierRendu >= intervalleRendu - 4 || v3d.f >= 1) {
                     const dtRendu = v3d.dernierRendu
                         ? Math.min(0.15, Math.max(0, (t - v3d.dernierRendu) / 1000))
@@ -13947,10 +13947,10 @@ def accueil():
                     dessinerPositionV3d(v3d.f * v3d.total);
                     v3d.compteImages++;
 
-                    // Repères/progression : environ 10 fois/s ; ligne parcourue : environ 3 fois/s.
-                    if (v3d.compteImages % 3 === 0 || v3d.f >= 1) {
+                    // Repères/progression : environ 10 fois/s ; ligne parcourue : environ 3 fois/s (à 60 images/s).
+                    if (v3d.compteImages % 6 === 0 || v3d.f >= 1) {
                         dessinerAvancement(true, {
-                            ligne: v3d.compteImages % 9 === 0 || v3d.f >= 1,
+                            ligne: v3d.compteImages % 18 === 0 || v3d.f >= 1,
                             reperes: true
                         });
                     }
