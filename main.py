@@ -13570,6 +13570,10 @@ def accueil():
                         && d >= Math.max(0, p.d - 200)
                         && d <= p.d + 100;
                     const el = p.marqueur.getElement();
+                    // Un nom hors de sa fenêtre est retiré de la carte : MapLibre ne le recalcule plus
+                    // à chaque image (relief 3D), ce qui allège beaucoup la lecture.
+                    if (visible && !p.surCarte && v3d.carte) { p.marqueur.addTo(v3d.carte); p.surCarte = true; }
+                    else if (!visible && p.surCarte) { p.marqueur.remove(); p.surCarte = false; }
                     el.classList.toggle('v3d-cache', !visible);
                     if (visible) candidats.push({ panneau: p, element: el });
                 });
@@ -13638,7 +13642,7 @@ def accueil():
                         const marqueur = new window.maplibregl.Marker({ element: el, anchor: 'bottom-left', opacityWhenCovered: '0.75' })
                             .setLngLat(l.coord).addTo(carte);
                         v3d.reperes.push(marqueur);
-                        v3d.panneauxLieux.push({ marqueur: marqueur, d: l.d, rang: l.rang, nom: l.nom });
+                        v3d.panneauxLieux.push({ marqueur: marqueur, d: l.d, rang: l.rang, nom: l.nom, surCarte: true });
                     });
                     majVisibiliteReperesV3d();
                     majBoutonsV3d();
