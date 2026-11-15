@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, Header, BackgroundTasks
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 import base64
+import ast
 import db
 import gpx_import
 import hashlib
@@ -1164,6 +1165,9 @@ def init_db():
             lieux_json TEXT, tentatives INTEGER DEFAULT 0, erreur TEXT, maj_le TEXT
         )
     """)
+    # Versionne le classement afin de reclasser une seule fois tous les parcours
+    # historiques après la correction, sans effacer les noms de la bibliothèque.
+    ajouter_colonne(cursor, "recherche_lieux_gpx", "classification_version", "INTEGER DEFAULT 0")
     conn.commit()
     conn.close()
 
@@ -3526,8 +3530,8 @@ def accueil():
 
             .v3d-pente-repere { height: 52px; overflow: visible; filter: drop-shadow(0 2px 4px rgba(0,0,0,.9)); pointer-events: none; }
             .v3d-pente-repere svg { height: 52px; display: block; overflow: visible; }
-            .v3d-lieu { padding: 4px 7px; border-radius: 6px; color: #fff; background: rgba(15,23,42,.88); border: 1px solid rgba(255,255,255,.8); font-size: 12px; font-weight: 700; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,.45); }
-            .v3d-lieu-haut { background: rgba(20,83,45,.92); }
+            /* Noms de lieux : pas d'ombre floue (le contour sombre suffit), couche dédiée pour glisser sans saccade. */
+            .v3d-pente-repere.v3d-nom-lieu { filter: none; will-change: transform; }
             .v3d-cache { display: none !important; }
             .v3d-tourne { display: inline-block; width: 14px; height: 14px; margin-right: 8px; vertical-align: -2px; border-radius: 50%; border: 2px solid rgba(255,255,255,.35); border-top-color: #fff; animation: v3d-tour .8s linear infinite; }
             @keyframes v3d-tour { to { transform: rotate(360deg); } }
@@ -3605,7 +3609,6 @@ def accueil():
                 border: 1px solid rgba(255,255,255,0.2);
             }
 
-            .v3d-recherche { position: absolute; z-index: 5; left: 50%; top: 64%; transform: translateX(-50%); display: flex; align-items: center; padding: 8px 14px; border-radius: 999px; font-size: 0.85rem; font-weight: 600; white-space: nowrap; color: #fff; background: rgba(10,25,31,0.92); border: 1px solid rgba(255,255,255,0.25); box-shadow: 0 2px 8px rgba(0,0,0,.4); }
 
             .videos-liste {
                 flex: 0 0 100%;
@@ -4610,7 +4613,6 @@ def accueil():
                 <img id="v3dPhotoImg" alt="Photo de la sortie">
             </div>
             <div class="v3d-message" id="v3dMessage" style="display:none;"></div>
-            <div class="v3d-recherche" id="v3dRecherche" style="display:none;"><span class="v3d-tourne"></span>Recherche des noms de lieux…</div>
             <div class="v3d-bas">
                 <input type="range" id="v3dProgres" min="0" max="1000" value="0" aria-label="Avancement du parcours">
                 <div class="v3d-boutons">
@@ -13143,7 +13145,7 @@ def accueil():
                 nomParcours: '', dateParcours: '', cinema: false,
                 canvasVideo: null, ctxVideo: null, rafVideo: 0, fluxVideo: null, videoActif: false,
                 denivelePlus: 0, altitudeDisponible: false, altitudes: [], deniveleCum: [], vitesses: [], vitesseMax: null, vitesseMoyenne: null, profilLongueur: 0,
-                dureeBase: 60, prete: false, compteImages: 0,
+                dureeBase: 60, prete: false, compteImages: 0, dernierRendu: 0,
                 tps: [], decalage: 0, alts: [], surfaces: '', pentes: [], mode: 'pente', autres: [], voirAutres: false, photos: [], marqueurs: [], reperes: [], panneauxPente: [], panneauxLieux: [], repereVisibles: true, prochaine: 0, sortieId: 0, minuteur: 0
             };
 
@@ -13455,18 +13457,7 @@ def accueil():
             }
             // Villes et villages : 500 m autour du parcours ; tout le reste : 200 m.
             function rayonAffichageV3d(genre) {
-                return ['ville', 'village'].includes(String(genre || '').toLowerCase()) ? 500 : 200;
-            }
-            // Ajoute à la liste prioritaire les lieux de la seconde liste qui n'y figurent pas déjà.
-            function fusionnerLieuxV3d(prioritaires, autres) {
-                const fusion = prioritaires.slice();
-                (autres || []).forEach(l => {
-                    if (!l || typeof l.nom !== 'string' || !Array.isArray(l.coord)) return;
-                    const doublon = fusion.some(x => x.nom.toLocaleLowerCase() === l.nom.toLocaleLowerCase()
-                        && distanceM(x.coord, l.coord) < 600);
-                    if (!doublon) fusion.push(l);
-                });
-                return fusion;
+                return ['ville', 'village', 'col', 'sommet'].includes(String(genre || '').toLowerCase()) ? 500 : 200;
             }
             function elementRepereAerienV3d(libelle, taille = 18) {
                 const el = document.createElement('div');
@@ -13477,243 +13468,50 @@ def accueil():
                 el.innerHTML = '<svg viewBox="0 0 ' + largeur + ' 52" width="' + largeur + '" aria-hidden="true"><path d="M0 50 L23 19" fill="none" stroke="rgba(255,255,255,.98)" stroke-width="1.8" stroke-linecap="round"/><circle cx="0" cy="50" r="4.5" fill="#65e6d4" stroke="#fff" stroke-width="1.8"/><text x="29" y="24" dominant-baseline="middle" font-size="' + taille + '" font-weight="900" fill="#fff" stroke="rgba(5,15,25,.9)" stroke-width="3.5" stroke-linejoin="round" paint-order="stroke">' + echapperTexteV3d(libelle) + '</text></svg>';
                 return el;
             }
-            async function chercherLieuxIGNV3d(dist) {
-                if (!v3d.total || v3d.total <= 0) return [];
-                const nombre = Math.min(36, Math.max(1, Math.ceil(v3d.total / 2500)));
-                const pas = v3d.total / nombre;
-                const rayon = Math.max(1200, Math.min(3500, pas * 0.72));
-                const resultats = [];
-                for (let i = 0; i < nombre; i += 4) {
-                    const appels = [];
-                    for (let j = i; j < Math.min(nombre, i + 4); j++) {
-                        const coord = pointA(Math.min(v3d.total, (j + 0.5) * pas));
-                        const zone = { type: 'Circle', coordinates: [coord[0], coord[1]], radius: rayon };
-                        const parametres = [
-                            new URLSearchParams({
-                                index: 'address,poi',
-                                type: 'locality',
-                                category: "zone d'habitation",
-                                searchgeom: JSON.stringify(zone),
-                                lon: String(coord[0]),
-                                lat: String(coord[1]),
-                                limit: '50'
-                            }),
-                            new URLSearchParams({
-                                index: 'poi',
-                                category: 'élément topographique ou forestier',
-                                searchgeom: JSON.stringify(zone),
-                                lon: String(coord[0]),
-                                lat: String(coord[1]),
-                                limit: '50'
-                            })
-                        ];
-                        for (const params of parametres) {
-                            appels.push((async () => {
-                                const ctl = new AbortController();
-                                const timer = setTimeout(() => ctl.abort(), 9000);
-                                try {
-                                    const res = await fetch('https://data.geopf.fr/geocodage/reverse?' + params.toString(), { signal: ctl.signal });
-                                    if (!res.ok) throw new Error('IGN HTTP ' + res.status);
-                                    return await res.json();
-                                } finally {
-                                    clearTimeout(timer);
-                                }
-                            })());
+            function nomGeographiqueTexteV3d(valeur) {
+                if (Array.isArray(valeur)) {
+                    for (const element of valeur) {
+                        const texte = nomGeographiqueTexteV3d(element);
+                        if (texte) return texte;
+                    }
+                    return '';
+                }
+                if (valeur && typeof valeur === 'object') {
+                    for (const cle of ['name', 'nom', 'label', 'value', 'toponyme', 'graphie_du_toponyme']) {
+                        if (Object.prototype.hasOwnProperty.call(valeur, cle)) {
+                            const texte = nomGeographiqueTexteV3d(valeur[cle]);
+                            if (texte) return texte;
                         }
                     }
-                    const reponses = await Promise.allSettled(appels);
-                    reponses.forEach(r => {
-                        if (r.status === 'fulfilled' && r.value && Array.isArray(r.value.features)) {
-                            resultats.push(...r.value.features);
-                        }
-                    });
+                    return '';
                 }
-                const lieux = [];
-                for (const f of resultats) {
-                    const p = f && f.properties ? f.properties : {};
-                    const geom = f && f.geometry ? f.geometry.coordinates : null;
-                    if (!Array.isArray(geom) || geom.length < 2) continue;
-                    const lon = Number(geom[0]), lat = Number(geom[1]);
-                    if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
-                    const nom = String(p.name || p.label || p.toponyme || p.nom || p.title || '').trim();
-                    if (!nom) continue;
-                    const categorie = String([p.category, p.type, p.nature, p.kind, p._type, p.description].filter(Boolean).join(' ')).toLowerCase();
-                    const texte = categorie;
-                    let genre = 'lieu', rang = 6, portee = 2200;
-                    if (/river|rivière|riviere|cours d.?eau|hydrograph/.test(texte)) {
-                        genre = 'riviere'; rang = 5; portee = 1800;
-                    } else if (/mountain.?pass|(^| )col( |$)|saddle|passage/.test(texte)) {
-                        genre = 'col'; rang = 2; portee = 900;
-                    } else if (/peak|summit|sommet|point.?haut|hill|ridge|crête|crete/.test(texte)) {
-                        genre = 'sommet'; rang = 4; portee = 2200;
-                    } else if (/hamlet|hameau/.test(texte)) {
-                        genre = 'hameau'; rang = 4; portee = 3500;
-                    } else if (/village|commune|town|city|municipality/.test(texte)) {
-                        genre = 'village'; rang = 3; portee = 5000;
-                    } else {
-                        continue;
-                    }
-                    const ec = dist(lon, lat);
-                    if (ec > portee) continue;
-                    const doublon = lieux.some(l => l.nom.toLocaleLowerCase() === nom.toLocaleLowerCase()
-                        && distanceM(l.coord, [lon, lat]) < 600);
-                    if (doublon) continue;
-                    const altitude = Number(p.ele || p.altitude || p.z);
-                    lieux.push({
-                        nom: nom,
-                        genre: genre,
-                        rang: rang,
-                        ec: ec,
-                        coord: [lon, lat],
-                        alt: Number.isFinite(altitude) ? altitude : NaN,
-                        source: 'IGN'
-                    });
-                }
-                return lieux;
-            }
-
-            function cleCacheLieuxV3d() {
-                const n = v3d.pts.length;
-                const echantillon = [];
-                for (let i = 0; i < 8; i++) {
-                    const p = v3d.pts[Math.round(i * (n - 1) / 7)];
-                    echantillon.push(p.map(x => Number(x).toFixed(4)).join(','));
-                }
-                return 'maillons-v3d-lieux-v6-' + String(v3d.sortieId) + '-' + n + '-' + echantillon.join('|');
-            }
-            function lireCacheLieuxV3d() {
-                try {
-                    const brut = localStorage.getItem(cleCacheLieuxV3d());
-                    if (!brut) return null;
-                    const lieux = JSON.parse(brut);
-                    if (!Array.isArray(lieux) || !lieux.length || lieux.length > 60) return null;
-                    if (lieux.some(l => !l || typeof l.nom !== 'string' || !Array.isArray(l.coord)
-                        || l.coord.length !== 2 || !Number.isFinite(l.coord[0]) || !Number.isFinite(l.coord[1])
-                        || !Number.isFinite(l.d))) return null;
-                    return lieux;
-                } catch (e) {
-                    return null;
-                }
-            }
-            function enregistrerCacheLieuxV3d(lieux) {
-                if (!Array.isArray(lieux) || !lieux.length) return;
-                try { localStorage.setItem(cleCacheLieuxV3d(), JSON.stringify(lieux)); } catch (e) {}
-            }
-            async function chercherLieuxV3d(bibliothequeSeulement=false, forcerRecherche=false) {
-                if (v3d.pts.length < 2) return [];
-                if (bibliothequeSeulement) {
+                if (valeur === null || valeur === undefined) return '';
+                let texte = String(valeur).trim();
+                if (texte.startsWith('[') && texte.endsWith(']')) {
                     try {
-                        const res = await fetch('/api/sorties/' + encodeURIComponent(v3d.sortieId) + '/lieux/bibliotheque?velo_id=' + encodeURIComponent(veloActifId || 1), { headers: getHeaders() });
-                        if (res.ok) {
-                            const data = await res.json();
-                            const lieux = Array.isArray(data.lieux) ? data.lieux : [];
-                            v3d.lieuxEtat = lieux.length ? 'ok' : 'vide';
-                            console.info('Survol 3D : noms chargés immédiatement depuis la bibliothèque', lieux.length);
-                            return lieux;
-                        }
-                    } catch (e) { console.warn('Bibliothèque géographique momentanément indisponible', e); }
-                    return [];
-                }
-                const cache = forcerRecherche ? null : lireCacheLieuxV3d();
-                if (cache) {
-                    v3d.lieuxEtat = 'ok';
-                    console.info('Survol 3D : noms de lieux chargés depuis la mémoire de cet appareil', cache.length);
-                    return cache;
-                }
-                let lieuxPrepares = [];
-                try {
-                    const res = await fetch('/api/sorties/' + encodeURIComponent(v3d.sortieId) + '/lieux?velo_id=' + encodeURIComponent(veloActifId || 1), { headers: getHeaders() });
-                    if (res.ok) {
-                        const prepares = await res.json();
-                        // Même une préparation encore incomplète apporte des noms : on les garde.
-                        if (Array.isArray(prepares.lieux)) {
-                            lieuxPrepares = prepares.lieux;
-                            console.info('Survol 3D : lieux déjà préparés sur le serveur', lieuxPrepares.length);
+                        const decode = JSON.parse(texte);
+                        if (Array.isArray(decode)) return nomGeographiqueTexteV3d(decode);
+                    } catch (e) {
+                        // Ancien format ['Nom'] : on retire les crochets puis les guillemets.
+                        const interieur = texte.slice(1, -1).trim();
+                        const guillemet = interieur.charAt(0);
+                        if (interieur.length > 1 && (guillemet === "'" || guillemet === '"')
+                            && interieur.charAt(interieur.length - 1) === guillemet) {
+                            return interieur.slice(1, -1).trim();
                         }
                     }
-                } catch (e) { console.warn('Noms pré-calculés indisponibles, recherche directe conservée.', e); }
-                const lons = v3d.pts.map(p => p[0]), lats = v3d.pts.map(p => p[1]), marge = 0.012;
-                const sud = Math.min(...lats)-marge, nord = Math.max(...lats)+marge, ouest = Math.min(...lons)-marge, est = Math.max(...lons)+marge;
-                const zoneValide = nord-sud <= 0.6 && est-ouest <= 0.8;
-                const zone = '('+sud+','+ouest+','+nord+','+est+')';
-                const q = '[out:json][timeout:35];(nwr["place"~"^(city|town|village|hamlet|isolated_dwelling)$"]["name"]'+zone+';way["waterway"="river"]["name"]'+zone+';nwr["natural"~"^(peak|hill|ridge)$"]["name"]'+zone+';nwr["mountain_pass"="yes"]["name"]'+zone+';nwr["natural"="saddle"]["name"]'+zone+';);out center tags;';
-                let data = null;
-                let derniereErreur = null;
-                if (zoneValide) for (const base of ['https://overpass-api.de/api/interpreter','https://overpass.private.coffee/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter']) {
-                    try {
-                        const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 20000);
-                        const res = await fetch(base, {
-                            method:'POST',
-                            headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},
-                            body:'data='+encodeURIComponent(q),
-                            signal:ctl.signal
-                        });
-                        clearTimeout(timer);
-                        if (res.ok) { data = await res.json(); break; }
-                        derniereErreur = 'HTTP '+res.status+' sur '+base;
-                        console.warn('Recherche de lieux OSM :', derniereErreur);
-                    } catch(e) { derniereErreur = String(e); console.warn('Repères OpenStreetMap indisponibles', e); }
                 }
-                const ref = v3d.pts.filter((_,i)=>i%Math.max(1,Math.floor(v3d.pts.length/500))===0);
-                const dist = (lon,lat) => ecartParcoursV3d([lon, lat]);
-                const out=[];
-                const affichable = l => l && ['ville','village','hameau','riviere','col','sommet'].includes(String(l.genre || '').toLowerCase());
-                const prioriteSource = l => {
-                    const source = String(l && l.source || '').toLowerCase();
-                    if (source.includes('bibliotheque')) return 0;
-                    if (source.includes('carto')) return 1;
-                    if (source.includes('ign')) return 2;
-                    if (source.includes('osm') || source.includes('openstreetmap')) return 3;
-                    return 3;
-                };
-                const ajouter = l => {
-                    if (!affichable(l) || typeof l.nom !== 'string' || !Array.isArray(l.coord) || l.coord.length !== 2) return;
-                    const doublon = out.findIndex(x => x.nom.toLocaleLowerCase() === l.nom.toLocaleLowerCase()
-                        && distanceM(x.coord, l.coord) < 600);
-                    if (doublon < 0) out.push(l);
-                    else if (prioriteSource(l) < prioriteSource(out[doublon])) out[doublon] = l;
-                };
-                // Les résultats pré-calculés et ceux de la recherche directe sont complémentaires.
-                lieuxPrepares.forEach(ajouter);
-                if (data && Array.isArray(data.elements)) {
-                    console.info('Survol 3D : objets OpenStreetMap reçus', data.elements.length);
-                    for (const e of data.elements) {
-                        if (!e.tags||!e.tags.name) continue;
-                        const lon = Number.isFinite(e.lon) ? e.lon : e.center && e.center.lon;
-                        const lat = Number.isFinite(e.lat) ? e.lat : e.center && e.center.lat;
-                        if (!Number.isFinite(lon)||!Number.isFinite(lat)) continue;
-                        let genre='',rang=9,portee=5000;
-                        if (['city','town','village','hamlet','isolated_dwelling'].includes(e.tags.place)) {
-                            genre=(e.tags.place==='hamlet' || e.tags.place==='isolated_dwelling')?'hameau':(e.tags.place==='village'?'village':'ville');
-                            rang={city:1,town:2,village:3,hamlet:4,isolated_dwelling:4}[e.tags.place] ?? 3;
-                            portee=5000;
-                        } else if (e.tags.waterway === 'river') { genre='riviere'; rang=5; portee=1800; }
-                        else if (e.tags.mountain_pass === 'yes' || e.tags.natural === 'saddle') { genre='col'; rang=2; portee=900; }
-                        else if (['peak','hill','ridge'].includes(e.tags.natural)) { genre='sommet'; rang=4; portee=2200; }
-                        else continue;
-                        const ec=dist(lon,lat);
-                        if(ec>portee) continue;
-                        ajouter({nom:e.tags.name,genre,rang,ec,coord:[lon,lat],alt:parseFloat(e.tags.ele),source:'CARTO/OSM'});
-                    }
-                } else if (derniereErreur) {
-                    console.warn('OpenStreetMap indisponible ; la recherche IGN reste active.', derniereErreur);
-                }
-                try {
-                    const lieuxIGN = await chercherLieuxIGNV3d(dist);
-                    lieuxIGN.forEach(ajouter);
-                    console.info('Survol 3D : lieux IGN reçus', lieuxIGN.length);
-                } catch (e) {
-                    console.warn('Recherche IGN des lieux indisponible', e);
-                }
-                out.sort((a,b)=>prioriteSource(a)-prioriteSource(b)||a.rang-b.rang||a.ec-b.ec);
+                return texte;
+            }
+            // Calcule la distance parcourue au point le plus proche pour tous les noms,
+            // qui viennent de la bibliothèque.
+            function positionnerLieuxSurParcoursV3d(lieux) {
                 const gardes = [];
-                for (const l of out) {
-                    if (gardes.length >= 60) break;
-                    if (gardes.every(g => !(g.nom.toLocaleLowerCase() === l.nom.toLocaleLowerCase()
-                        && distanceM(g.coord, l.coord) < 600))) gardes.push(l);
-                }
-                // Chaque lieu est rattaché au point du GPX le plus proche : le texte apparaîtra sur le trajet.
-                for (const l of gardes) {
+                for (const lieu of (Array.isArray(lieux) ? lieux : [])) {
+                    if (!lieu || !Array.isArray(lieu.coord) || lieu.coord.length !== 2) continue;
+                    const lon = Number(lieu.coord[0]), lat = Number(lieu.coord[1]);
+                    if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+                    const l = { ...lieu, coord: [lon, lat] };
                     let meilleureDistance = Infinity, meilleurIndex = 0;
                     for (let i = 0; i < v3d.pts.length; i++) {
                         const ecart = distanceM(l.coord, v3d.pts[i]);
@@ -13722,21 +13520,27 @@ def accueil():
                             meilleurIndex = i;
                         }
                     }
-                    // Distance mesurée au segment le plus proche du parcours (la trace est allégée à 400 points).
                     const ecartReel = ecartParcoursV3d(l.coord);
-                    if (ecartReel > rayonAffichageV3d(l.genre)) {
-                        l.d = -1;
-                    } else {
-                        l.ec = ecartReel;
-                        l.d = v3d.cum[meilleurIndex] || 0;
-                    }
+                    if (ecartReel > rayonAffichageV3d(l.genre)) continue;
+                    l.ec = ecartReel;
+                    l.d = v3d.cum[meilleurIndex] || 0;
+                    gardes.push(l);
+                    if (gardes.length >= 60) break;
                 }
-                const lieuxProches = gardes.filter(l => l.d >= 0);
-                gardes.length = 0;
-                gardes.push(...lieuxProches);
-                v3d.lieuxEtat = gardes.length ? 'ok' : (data ? 'vide' : 'panne');
-                enregistrerCacheLieuxV3d(gardes);
                 return gardes;
+            }
+            // Lecture unique : la bibliothèque du serveur (remplie à l'import de la sortie).
+            async function lireBibliothequeV3d() {
+                if (v3d.pts.length < 2) return [];
+                try {
+                    const res = await fetch('/api/sorties/' + encodeURIComponent(v3d.sortieId) + '/lieux/bibliotheque?velo_id=' + encodeURIComponent(veloActifId || 1), { headers: getHeaders() });
+                    if (res.ok) {
+                        const data = await res.json();
+                        const lieux = Array.isArray(data.lieux) ? data.lieux : [];
+                        return positionnerLieuxSurParcoursV3d(lieux);
+                    }
+                } catch (e) { console.warn('Bibliothèque géographique momentanément indisponible', e); }
+                return [];
             }
             function viderReperesV3d() {
                 v3d.reperes.forEach(m => m.remove());
@@ -13751,13 +13555,59 @@ def accueil():
                 v3d.reperes.forEach(m => {
                     m.getElement().classList.toggle('v3d-cache', !v3d.repereVisibles || marqueursLieux.has(m));
                 });
+
+                // Les panneaux de pente et de vitesse passent toujours avant les noms.
+                const rectanglesPrioritaires = [];
                 v3d.panneauxPente.forEach(p => {
                     const visible = v3d.repereVisibles && d >= Math.max(0, p.debut - avanceParSeconde) && d <= p.fin;
-                    p.marqueur.getElement().classList.toggle('v3d-cache', !visible);
+                    const el = p.marqueur.getElement();
+                    el.classList.toggle('v3d-cache', !visible);
+                    if (visible) {
+                        const r = el.getBoundingClientRect();
+                        if (r.width && r.height) rectanglesPrioritaires.push(r);
+                    }
                 });
-                // Les noms géographiques restent visibles sur la carte, indépendamment de la lecture.
+
+                // Un nom apparaît 200 m avant son point et disparaît 100 m après.
+                // En cas de chevauchement, les panneaux prioritaires restent visibles.
+                const candidats = [];
                 v3d.panneauxLieux.forEach(p => {
-                    p.marqueur.getElement().classList.toggle('v3d-cache', !v3d.repereVisibles);
+                    const visible = v3d.repereVisibles
+                        && Number.isFinite(p.d)
+                        && d >= Math.max(0, p.d - 200)
+                        && d <= p.d + 100;
+                    const el = p.marqueur.getElement();
+                    // Un nom hors de sa fenêtre est retiré de la carte : MapLibre ne le recalcule plus
+                    // à chaque image (relief 3D), ce qui allège beaucoup la lecture.
+                    if (visible && !p.surCarte && v3d.carte) { p.marqueur.addTo(v3d.carte); p.surCarte = true; }
+                    else if (!visible && p.surCarte) { p.marqueur.remove(); p.surCarte = false; }
+                    el.classList.toggle('v3d-cache', !visible);
+                    if (visible) candidats.push({ panneau: p, element: el });
+                });
+
+                // Parmi les noms qui se chevauchent, on conserve d'abord le plus proche
+                // du point actuellement parcouru, puis le mieux classé.
+                candidats.sort((a, b) =>
+                    Math.abs(a.panneau.d - d) - Math.abs(b.panneau.d - d)
+                    || (a.panneau.rang ?? 9) - (b.panneau.rang ?? 9)
+                    || String(a.panneau.nom || '').localeCompare(String(b.panneau.nom || ''), 'fr')
+                );
+                const rectanglesNoms = [];
+                const seChevauchent = (a, b) =>
+                    a.left < b.right + 8 && a.right + 8 > b.left
+                    && a.top < b.bottom + 6 && a.bottom + 6 > b.top;
+
+                candidats.forEach(c => {
+                    const r = c.element.getBoundingClientRect();
+                    if (!r.width || !r.height) {
+                        c.element.classList.add('v3d-cache');
+                        return;
+                    }
+                    const prioritaire = rectanglesPrioritaires.some(pr => seChevauchent(r, pr));
+                    const doublonVisuel = rectanglesNoms.some(pr => seChevauchent(r, pr));
+                    const masquer = prioritaire || doublonVisuel;
+                    c.element.classList.toggle('v3d-cache', masquer);
+                    if (!masquer) rectanglesNoms.push(r);
                 });
             }
             async function poserReperesV3d() {
@@ -13795,46 +13645,47 @@ def accueil():
                         const libelle = l.nom + (Number.isFinite(l.alt) && ['sommet', 'col'].includes(l.genre)
                             ? ' · ' + fmtAltitude(l.alt).complet : '');
                         const el = elementRepereAerienV3d(libelle, 16);
+                        el.classList.add('v3d-nom-lieu');
                         // Un nom caché derrière une crête reste lisible (75 % au lieu de 20 % par défaut).
                         const marqueur = new window.maplibregl.Marker({ element: el, anchor: 'bottom-left', opacityWhenCovered: '0.75' })
                             .setLngLat(l.coord).addTo(carte);
                         v3d.reperes.push(marqueur);
-                        v3d.panneauxLieux.push({ marqueur: marqueur, d: l.d });
+                        v3d.panneauxLieux.push({ marqueur: marqueur, d: l.d, rang: l.rang, nom: l.nom, surCarte: true });
                     });
                     majVisibiliteReperesV3d();
                     majBoutonsV3d();
                 };
-                // Affiche d'abord les lieux déjà connus : aucune attente des API IGN/OSM.
-                let lieuxBibliotheque = [];
-                try { lieuxBibliotheque = await chercherLieuxV3d(true); } catch(e) { console.warn(e); }
+                // Les noms viennent uniquement de la bibliothèque (affichage immédiat).
+                let lieuxAffiches = [];
+                try { lieuxAffiches = await lireBibliothequeV3d(); } catch(e) { console.warn(e); }
                 if (v3d.carte !== carte) return;
-                afficherLieux(lieuxBibliotheque);
-                // Complète ensuite en arrière-plan, puis remplace les repères par la liste enrichie.
-                const rech=document.getElementById('v3dRecherche');
-                const htmlRecherche = rech ? rech.innerHTML : '';
-                if(rech) rech.style.display='flex';
-                chercherLieuxV3d(false, true).then(lieux => {
-                    if (v3d.carte !== carte) return;
-                    if (v3d.lieuxEtat==='panne' && !lieuxBibliotheque.length) {
-                        messageV3d('Noms de lieux indisponibles : les services IGN et OpenStreetMap ne répondent pas.');
-                        setTimeout(()=>messageV3d(''),6000);
+                afficherLieux(lieuxAffiches);
+                // Si le serveur n'a pas fini de remplir la bibliothèque, on le réveille puis on relit.
+                try {
+                    const base = '/api/sorties/' + encodeURIComponent(v3d.sortieId);
+                    const suffixe = '?velo_id=' + encodeURIComponent(veloActifId || 1);
+                    const lireEtat = async () => {
+                        const r = await fetch(base + '/lieux/etat' + suffixe, { headers: getHeaders() });
+                        return r.ok ? await r.json() : null;
+                    };
+                    let etat = await lireEtat();
+                    if (etat && etat.statut !== 'termine') {
+                        // Cet appel relance la préparation côté serveur si elle est en attente.
+                        fetch(base + '/lieux' + suffixe, { headers: getHeaders() }).catch(() => {});
+                        for (let essai = 0; essai < 12 && v3d.carte === carte; essai++) {
+                            await new Promise(resolve => setTimeout(resolve, 5000));
+                            if (v3d.carte !== carte) return;
+                            etat = await lireEtat();
+                            const nouveaux = await lireBibliothequeV3d();
+                            if (v3d.carte !== carte) return;
+                            if (nouveaux.length !== lieuxAffiches.length) {
+                                lieuxAffiches = nouveaux;
+                                afficherLieux(lieuxAffiches);
+                            }
+                            if (etat && etat.statut === 'termine') break;
+                        }
                     }
-                    // La bibliothèque reste prioritaire : la recherche complète s'y ajoute, elle ne la remplace pas.
-                    const complets = fusionnerLieuxV3d(lieuxBibliotheque, lieux);
-                    afficherLieux(complets);
-                    // Petit compte-rendu pendant quelques secondes : d'où viennent les noms affichés.
-                    const compter = motifs => complets.filter(l => motifs.some(m => String(l.source || '').toLowerCase().includes(m))).length;
-                    if (rech) {
-                        rech.textContent = 'Noms de lieux : ' + complets.length
-                            + ' (bibliothèque ' + compter(['bibliotheque'])
-                            + ' · OpenStreetMap ' + compter(['osm', 'openstreetmap'])
-                            + ' · IGN ' + compter(['ign']) + ')';
-                        setTimeout(() => { rech.style.display = 'none'; rech.innerHTML = htmlRecherche; }, 8000);
-                    }
-                }).catch(e => {
-                    if (rech) rech.style.display='none';
-                    console.warn('Complément géographique indisponible', e);
-                });
+                } catch (e) { console.warn('Suivi de la bibliothèque indisponible', e); }
             }
 
             function messageV3d(texte) {
@@ -13962,31 +13813,45 @@ def accueil():
                 }
             }
 
-            function dessinerAvancement(positionDejaMiseAJour) {
+            function dessinerAvancement(positionDejaMiseAJour, options) {
                 const carte = v3d.carte;
                 if (!carte || !v3d.prete) return;
+                options = options || {};
 
                 const d = v3d.f * v3d.total;
                 const pos = pointA(d);
                 if (!positionDejaMiseAJour) dessinerPositionV3d(d);
-                const fait = [];
-                for (let i = 0; i < v3d.pts.length && v3d.cum[i] <= d; i++) {
-                    fait.push(v3d.pts[i]);
-                }
-                fait.push(pos);
 
-                const srcFait = carte.getSource('v3d-fait');
-                if (srcFait) {
-                    srcFait.setData({
-                        type: 'Feature',
-                        geometry: { type: 'LineString', coordinates: fait.length > 1 ? fait : [pos, pos] }
-                    });
+                // La ligne parcourue est lourde à reconstruire sur les longues traces.
+                // En lecture, son rafraîchissement est volontairement moins fréquent
+                // que celui du point mobile et des informations à l'écran.
+                if (options.ligne !== false) {
+                    const fait = [];
+                    for (let i = 0; i < v3d.pts.length && v3d.cum[i] <= d; i++) {
+                        fait.push(v3d.pts[i]);
+                    }
+                    fait.push(pos);
+
+                    const srcFait = carte.getSource('v3d-fait');
+                    if (srcFait) {
+                        srcFait.setData({
+                            type: 'Feature',
+                            geometry: { type: 'LineString', coordinates: fait.length > 1 ? fait : [pos, pos] }
+                        });
+                    }
                 }
                 document.getElementById('v3dProgres').value = String(Math.round(v3d.f * 1000));
                 document.getElementById('v3dInfo').textContent =
                     `${fmtDistance(d / 1000, 1).complet} sur ${fmtDistance(v3d.total / 1000, 1).complet}`;
                 majHabillageCinemaV3d();
-                majVisibiliteReperesV3d();
+                if (options.reperes !== false) {
+                    // Pendant la lecture, le calcul des noms (qui mesure l'écran) n'est refait que 4 fois par seconde.
+                    const maintenant = performance.now();
+                    if (!v3d.jouer || maintenant - (v3d.derniereVisibilite || 0) >= 250) {
+                        v3d.derniereVisibilite = maintenant;
+                        majVisibiliteReperesV3d();
+                    }
+                }
             }
 
             // Place la caméra derrière le point courant, orientée vers la suite du parcours.
@@ -14028,7 +13893,7 @@ def accueil():
                 // On la calcule périodiquement, sans réduire les points GPS ni la fréquence
                 // de déplacement de la caméra.
                 v3d.compteCadrage = (v3d.compteCadrage || 0) + 1;
-                if (typeof carte.project === 'function' && !brusque && v3d.compteCadrage % 6 === 0) {
+                if (typeof carte.project === 'function' && !brusque && v3d.compteCadrage % 12 === 0) {
                     try {
                         const ecran = carte.project(centre);
                         if (ecran && isFinite(ecran.y)) {
@@ -14074,15 +13939,31 @@ def accueil():
                 v3d.f = Math.min(1, v3d.f + (dt * v3d.vitesse) / v3d.dureeBase);
                 verifierPhotosV3d(avant, v3d.f * v3d.total);
 
-                placerCamera(dt, false);
-                // Le point mobile est actualisé à chaque image ; seule la ligne complète
-                // et les informations de progression restent limitées à une image sur quatre.
-                dessinerPositionV3d(v3d.f * v3d.total);
-                v3d.compteImages++;
-                if (v3d.compteImages % 4 === 0 || v3d.f >= 1) dessinerAvancement(true);
+                // Le calcul du parcours continue à chaque image, mais MapLibre ne reçoit
+                // que 60 mises à jour caméra/point par seconde au maximum.
+                // Cela évite de relancer le rendu complet du relief 3D à 60 Hz sur mobile.
+                const intervalleRendu = 1000 / 60;
+                if (t - v3d.dernierRendu >= intervalleRendu - 4 || v3d.f >= 1) {
+                    const dtRendu = v3d.dernierRendu
+                        ? Math.min(0.15, Math.max(0, (t - v3d.dernierRendu) / 1000))
+                        : dt;
+                    v3d.dernierRendu = t;
+                    placerCamera(dtRendu, false);
+                    dessinerPositionV3d(v3d.f * v3d.total);
+                    v3d.compteImages++;
+
+                    // Repères/progression : environ 10 fois/s ; ligne parcourue : environ 3 fois/s (à 60 images/s).
+                    if (v3d.compteImages % 6 === 0 || v3d.f >= 1) {
+                        dessinerAvancement(true, {
+                            ligne: v3d.compteImages % 18 === 0 || v3d.f >= 1,
+                            reperes: true
+                        });
+                    }
+                }
 
                 if (v3d.f >= 1) {
                     v3d.jouer = false;
+                    reglerOmbresLectureV3d(false);
                     if (v3d.enregistreur) arreterEnregistrement(true);
                     majBoutonsV3d();
                     return;
@@ -14090,13 +13971,28 @@ def accueil():
                 v3d.raf = requestAnimationFrame(imageV3d);
             }
 
+            // Le relief 3D reste actif pendant la lecture ; seule la couche d'ombres,
+            // coûteuse à recalculer à chaque mouvement, est masquée temporairement.
+            function reglerOmbresLectureV3d(enLecture) {
+                const carte = v3d.carte;
+                if (!carte || !carte.getLayer('v3d-relief-ombres')) return;
+                try {
+                    carte.setLayoutProperty('v3d-relief-ombres', 'visibility',
+                        enLecture && !v3d.enregistreur ? 'none' : 'visible');
+                } catch (e) {
+                    console.warn('Réglage des ombres 3D indisponible', e);
+                }
+            }
+
             function lectureV3d(jouer) {
                 if (!v3d.prete) return;
                 if (jouer && v3d.f >= 1) v3d.f = 0;
                 v3d.jouer = jouer;
+                reglerOmbresLectureV3d(jouer);
                 if (jouer) {
                     messageV3d('');
                     v3d.dernier = performance.now();
+                    v3d.dernierRendu = 0;
                     placerCamera(0, v3d.f === 0);
                     dessinerAvancement();
                     if (!v3d.raf) v3d.raf = requestAnimationFrame(imageV3d);
@@ -14518,7 +14414,7 @@ def accueil():
                         const demarrage = await fetch(url, { method: 'POST', headers: getHeaders() });
                         const resultat = await demarrage.json().catch(() => ({}));
                         if (!demarrage.ok) throw new Error(resultat.detail || 'Impossible de relancer la recherche.');
-                        messageV3d('Recherche IGN et OpenStreetMap relancée. Cela peut prendre quelques minutes…');
+                        messageV3d('Recherche des noms relancée. Cela peut prendre quelques minutes…');
                         let termine = false;
                         for (let essai = 0; essai < 120; essai++) {
                             await new Promise(resolve => setTimeout(resolve, 2500));
@@ -14531,7 +14427,6 @@ def accueil():
                         }
                         if (!v3d.carte) return;
                         if (!termine) throw new Error('La recherche prend plus de temps que prévu. Les résultats continueront en arrière-plan.');
-                        localStorage.removeItem(cleCacheLieuxV3d());
                         await poserReperesV3d();
                         messageV3d('Recherche terminée. Les noms du parcours ont été actualisés.');
                         setTimeout(() => messageV3d(''), 5000);
@@ -19898,8 +19793,8 @@ def ecart_parcours_m(coord, points):
 
 
 def rayon_affichage_m(genre):
-    """Rayon autour du parcours : plus large pour les villes et villages, 200 m pour le reste."""
-    return 500 if str(genre or "").casefold() in ("ville", "village") else 200
+    """Rayon autour du parcours : 500 m pour villes, villages, cols et sommets, 200 m pour le reste."""
+    return 500 if str(genre or "").casefold() in ("ville", "village", "col", "sommet") else 200
 
 
 def interroger_overpass(requete, erreurs=None):
@@ -19907,6 +19802,7 @@ def interroger_overpass(requete, erreurs=None):
     Un tableau vide sans message d'erreur est une réponse valide."""
     corps = urllib.parse.urlencode({"data": requete}).encode("utf-8")
     serveurs = (
+        "https://overpass.openstreetmap.fr/api/interpreter",
         "https://overpass-api.de/api/interpreter",
         "https://overpass.kumi.systems/api/interpreter",
         "https://overpass.private.coffee/api/interpreter",
@@ -19921,7 +19817,7 @@ def interroger_overpass(requete, erreurs=None):
                     "User-Agent": "Maillons/1.0 (recherche de lieux geographiques)"
                 }
             )
-            with urllib.request.urlopen(req, timeout=6) as reponse:
+            with urllib.request.urlopen(req, timeout=15) as reponse:
                 donnees = json.loads(reponse.read().decode("utf-8"))
             remarque = str((donnees or {}).get("remark") or "").casefold()
             elements = (donnees or {}).get("elements")
@@ -19946,7 +19842,7 @@ def lieux_osm_points(elements, points):
     resultats = []
     for e in elements:
         tags = e.get("tags") or {}
-        nom = str(tags.get("name") or "").strip()
+        nom = nom_geographique_texte(tags.get("name"))
         centre = e.get("center") or {}
         try:
             lon = float(e.get("lon", centre.get("lon")))
@@ -19961,7 +19857,8 @@ def lieux_osm_points(elements, points):
             genre = "hameau" if place == "hamlet" else ("village" if place == "village" else "ville")
             rang = {"city": 1, "town": 2, "village": 3, "hamlet": 4}.get(place, 3)
         elif place == "isolated_dwelling":
-            genre, rang = "hameau", 4
+            # Une habitation isolée n'est pas un hameau : on la conserve en bibliothèque.
+            genre, rang = "lieu_dit", 9
         elif nat in ("peak", "hill"):
             genre, rang = "sommet", 4
         elif tags.get("mountain_pass") == "yes" or nat == "saddle":
@@ -19981,6 +19878,38 @@ def lieux_osm_points(elements, points):
     return resultats
 
 
+def nom_geographique_texte(valeur):
+    """Convertit proprement un nom IGN/WFS en texte, même si l'API renvoie une liste."""
+    if isinstance(valeur, (list, tuple)):
+        for element in valeur:
+            texte = nom_geographique_texte(element)
+            if texte:
+                return texte
+        return ""
+    if isinstance(valeur, dict):
+        for cle in ("name", "nom", "label", "value", "toponyme", "graphie_du_toponyme"):
+            if cle in valeur:
+                texte = nom_geographique_texte(valeur.get(cle))
+                if texte:
+                    return texte
+        return ""
+    if valeur is None:
+        return ""
+    texte = str(valeur).strip()
+    # Certains anciens résultats ont déjà été enregistrés sous la forme
+    # littérale "['Nom']" dans la bibliothèque géographique.
+    if texte.startswith(("[", "(" , "{")) and texte.endswith(("]", ")", "}")):
+        try:
+            decode = ast.literal_eval(texte)
+            if isinstance(decode, (list, tuple, dict)):
+                return nom_geographique_texte(decode)
+        except (ValueError, SyntaxError):
+            pass
+    if texte.casefold() in ("none", "null", "[]", "{}", "()", "['']", '[""]'):
+        return ""
+    return texte
+
+
 def densifier_m(coords, pas=25.0):
     """Ajoute des points intermédiaires sur une ligne (tous les 'pas' mètres), sans la déplacer."""
     if len(coords) < 2:
@@ -19996,38 +19925,33 @@ def densifier_m(coords, pas=25.0):
     return sortie
 
 
-def lieux_osm_rivieres(elements, points):
-    """Rivières : le nom est posé sur le point de la rivière le plus proche du parcours,
-    et non au centre de la rivière entière."""
-    resultats = []
-    for e in elements:
-        tags = e.get("tags") or {}
-        nom = str(tags.get("name") or "").strip()
-        if not nom or tags.get("waterway") != "river":
-            continue
-        trace_riviere = []
-        for g in e.get("geometry") or []:
-            try:
-                trace_riviere.append((float(g["lon"]), float(g["lat"])))
-            except (KeyError, TypeError, ValueError):
-                continue
-        meilleur = None
-        for c in densifier_m(trace_riviere):
-            ec = ecart_parcours_m(c, points)
-            if meilleur is None or ec < meilleur[0]:
-                meilleur = (ec, c)
-        if meilleur is None or meilleur[0] > rayon_affichage_m("riviere"):
-            continue
-        resultats.append({"nom": nom, "genre": "riviere", "rang": 5, "ec": round(meilleur[0], 1),
-                          "coord": [meilleur[1][0], meilleur[1][1]], "alt": None, "source": "OpenStreetMap"})
-    return resultats
-
-
 def enregistrer_lieu_bibliotheque(cursor, l, source):
+    nom = nom_geographique_texte(l.get("nom"))
+    if not nom:
+        return
+    l["nom"] = nom
     lon, lat = l["coord"]
-    cle = hashlib.sha256((unicodedata.normalize("NFKD", l["nom"]).casefold() + "|" + str(round(lon, 4)) + "|" + str(round(lat, 4))).encode()).hexdigest()
+    cle = hashlib.sha256((unicodedata.normalize("NFKD", nom).casefold() + "|" + str(round(lon, 4)) + "|" + str(round(lat, 4))).encode()).hexdigest()
+    # La même étiquette peut avoir des coordonnées légèrement différentes
+    # selon IGN/OSM. Met à jour le classement des doublons proches sans toucher
+    # à leur nom, à leurs coordonnées ni à leur présence dans la bibliothèque.
+    marge_lat = 600 / 110540
+    marge_lon = marge_lat / max(0.2, math.cos(math.radians(lat)))
     cursor.execute(
-        """INSERT INTO bibliotheque_lieux_geo (cle,nom,genre,rang,lon,lat,altitude,source,maj_le) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT (cle) DO UPDATE SET nom=excluded.nom,genre=excluded.genre,rang=excluded.rang,altitude=excluded.altitude,source=excluded.source,maj_le=excluded.maj_le""",
+        """SELECT cle, lon, lat FROM bibliotheque_lieux_geo
+           WHERE lower(nom) = lower(?) AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?""",
+        (nom, lat - marge_lat, lat + marge_lat, lon - marge_lon, lon + marge_lon)
+    )
+    for ancienne_cle, ancienne_lon, ancienne_lat in cursor.fetchall():
+        dx = (float(ancienne_lon) - lon) * 111320 * math.cos(math.radians((float(ancienne_lat) + lat) / 2))
+        dy = (float(ancienne_lat) - lat) * 110540
+        if math.hypot(dx, dy) <= 600:
+            cursor.execute(
+                "UPDATE bibliotheque_lieux_geo SET genre = ?, rang = ? WHERE cle = ? AND COALESCE(rang, 9) > ?",
+                (l["genre"], l["rang"], ancienne_cle, l["rang"])
+            )
+    cursor.execute(
+        """INSERT INTO bibliotheque_lieux_geo (cle,nom,genre,rang,lon,lat,altitude,source,maj_le) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT (cle) DO UPDATE SET nom=excluded.nom,genre=CASE WHEN excluded.rang < COALESCE(bibliotheque_lieux_geo.rang, 9) THEN excluded.genre ELSE bibliotheque_lieux_geo.genre END,rang=CASE WHEN excluded.rang < COALESCE(bibliotheque_lieux_geo.rang, 9) THEN excluded.rang ELSE bibliotheque_lieux_geo.rang END,altitude=excluded.altitude,maj_le=excluded.maj_le""",
         (cle, l["nom"], l["genre"], l["rang"], lon, lat, l.get("alt"), source, datetime.now(timezone.utc).isoformat())
     )
 
@@ -20040,6 +19964,7 @@ _lieux_traitements_verrou = threading.Lock()
 
 
 def preparer_lieux_sortie(sortie_id):
+    t_total = time.perf_counter()
     with _lieux_traitements_verrou:
         if sortie_id in _lieux_traitements_actifs:
             print(f"[Maillons lieux] Sortie {sortie_id} déjà en cours : doublon ignoré.")
@@ -20075,7 +20000,9 @@ def preparer_lieux_sortie(sortie_id):
             "ign_appels_ok": 0, "ign_features": 0, "ign_noms_acceptes": 0,
             "wfs_appels_ok": 0, "wfs_features": 0, "wfs_noms_acceptes": 0,
             "osm_troncons": 0, "osm_reponses_ok": 0, "osm_points": 0,
-            "osm_rivieres": 0, "osm_noms_acceptes": 0, "osm_erreurs": []
+            "osm_noms_acceptes": 0, "osm_erreurs": [],
+            "duree_ign_s": 0, "duree_wfs_s": 0, "duree_osm_s": 0,
+            "duree_bibliotheque_s": 0, "duree_totale_s": 0
         }
         erreurs_overpass = diagnostic["osm_erreurs"]
         if len(points) >= 2:
@@ -20088,6 +20015,7 @@ def preparer_lieux_sortie(sortie_id):
                 x=(a[0]-b[0])*111320*math.cos(math.radians((a[1]+b[1])/2)); y=(a[1]-b[1])*110540
                 return math.hypot(x,y)
 
+            t_ign = time.perf_counter()
             # 1) IGN en priorité : lieux-dits BAN et toponymes BD TOPO.
             # L'index address contient les lieux-dits de la BAN ; les catégories
             # zone d'habitation et élément topographique couvrent ceux de la BD TOPO.
@@ -20139,13 +20067,16 @@ def preparer_lieux_sortie(sortie_id):
                             if not isinstance(geom, list) or len(geom) < 2: continue
                             try: lon, lat = float(geom[0]), float(geom[1])
                             except (TypeError, ValueError): continue
-                            nom = str(prop.get("name") or prop.get("label") or prop.get("toponyme") or prop.get("nom") or prop.get("title") or "").strip()
+                            nom = nom_geographique_texte(prop.get("name") or prop.get("label") or prop.get("toponyme") or prop.get("nom") or prop.get("title"))
                             if not nom: continue
                             categorie = " ".join(str(prop.get(k) or "") for k in ("category","type","nature","kind","_type","description","poi_type","poiType")).casefold()
                             texte = categorie.replace("’", "'").replace("–", "-")
                             if any(m in texte for m in ("river","rivière","riviere","cours d'eau","hydrographie")):
-                                genre, rang, portee = "riviere", 5, 1800
-                            elif any(m in texte for m in ("lieu-dit habité","lieu dit habité","hameau","hamlet","locality","localité")):
+                                continue
+                            elif any(m in texte for m in ("lieu-dit habité","lieu dit habité")):
+                                # Un lieu-dit habité est un petit hameau : il est affiché.
+                                genre, rang, portee = "hameau", 4, 3500
+                            elif any(m in texte for m in ("hameau","hamlet","locality","localité")):
                                 genre, rang, portee = "hameau", 4, 3500
                             elif any(m in texte.split() for m in ("col","saddle","mountain_pass")):
                                 genre, rang, portee = "col", 2, 2200
@@ -20179,6 +20110,8 @@ def preparer_lieux_sortie(sortie_id):
             if ign_erreurs:
                 print("[Maillons IGN] Échecs de requêtes : " + " | ".join(ign_erreurs))
 
+            diagnostic["duree_ign_s"] = round(time.perf_counter() - t_ign, 2)
+            t_wfs = time.perf_counter()
             # 1 bis) Recherche vectorielle directe dans les couches IGN WFS.
             # Contrairement au géocodage inverse, GetFeature renvoie les objets
             # nommés présents dans l'emprise ; leur position d'origine est conservée.
@@ -20186,7 +20119,6 @@ def preparer_lieux_sortie(sortie_id):
             # boîte englobante et les réponses trop volumineuses.
             wfs_layers = (
                 ("BDTOPO_V3:zone_d_habitation", "IGN-BD-TOPO"),
-                ("BDTOPO_V3:cours_d_eau", "IGN-BD-TOPO"),
                 ("BDTOPO_V3:lieu_dit_non_habite", "IGN-BD-TOPO"),
                 # Cette couche porte les noms cartographiques et leurs points d'ancrage.
                 ("BDTOPO_V3:toponymie", "IGN-BD-TOPO"),
@@ -20235,14 +20167,14 @@ def preparer_lieux_sortie(sortie_id):
                             prop = feature.get("properties") or {}
                             geom = feature.get("geometry") or {}
                             nature = str(prop.get("nature") or prop.get("NATURE") or "").casefold()
-                            nom = str(
+                            nom = nom_geographique_texte(
                                 prop.get("toponyme") or prop.get("TOPONYME")
                                 or prop.get("graphie_du_toponyme") or prop.get("GRAPHIE")
                                 or prop.get("nom") or prop.get("NOM")
                                 or prop.get("name") or prop.get("NAME")
                                 or prop.get("libelle") or prop.get("LIBELLE")
-                                or prop.get("label") or prop.get("LABEL") or ""
-                            ).strip()
+                                or prop.get("label") or prop.get("LABEL")
+                            )
                             if not nom:
                                 continue
                             type_geom = geom.get("type")
@@ -20259,47 +20191,36 @@ def preparer_lieux_sortie(sortie_id):
                                 ec = ecart_parcours_m(position, points)
                                 classe_top = str(prop.get("classe_de_l_objet") or prop.get("CLASSE") or "").casefold().replace("_", " ")
                                 nature_top = str(prop.get("nature_de_l_objet") or prop.get("NATURE") or "").casefold()
-                                if "détail orographique" in classe_top or "detail orographique" in classe_top:
-                                    if "col" in nature_top:
+                                relief_top = any(x in nature_top for x in (
+                                    "sommet", "pic", "montagne", "colline", "butte",
+                                    "crête", "crete", "point culminant", "hill", "peak",
+                                    "summit", "mountain", "ridge", "knoll"
+                                ))
+                                if ("détail orographique" in classe_top or "detail orographique" in classe_top or relief_top):
+                                    if re.search(r"\bcol\b|saddle|mountain.?pass", nature_top):
                                         genre_wfs, rang_wfs = "col", 2
-                                    elif any(x in nature_top for x in ("sommet", "pic", "montagne")):
+                                    elif relief_top:
                                         genre_wfs, rang_wfs = "sommet", 2
                                     else:
                                         genre_wfs, rang_wfs = "lieu_dit", 9
                                 elif any(x in classe_top for x in ("cours d'eau", "tronçon hydrographique", "detail hydrographique", "détail hydrographique")):
-                                    genre_wfs, rang_wfs = "riviere", 5
+                                    continue
                                 elif "zone d'habitation" in classe_top:
-                                    genre_wfs, rang_wfs = "hameau", 4
+                                    # Une zone d'habitation n'est pas forcément un hameau :
+                                    # seuls les objets explicitement nommés hameau, bourg
+                                    # ou village sont affichés. Les lieux-dits restent en bibliothèque.
+                                    if any(x in nature_top for x in ("hameau", "bourg", "village", "lieu-dit habité", "lieu dit habité")):
+                                        genre_wfs, rang_wfs = "hameau", 4
+                                    else:
+                                        genre_wfs, rang_wfs = "lieu_dit", 9
                                 elif "commune" in classe_top:
                                     genre_wfs, rang_wfs = "village", 3
                                 else:
                                     # Les autres noms restent conservés dans la bibliothèque,
                                     # sans être affichés automatiquement sur le parcours.
                                     genre_wfs, rang_wfs = "lieu_dit", 9
-                                portee_top = 500 if genre_wfs == "village" else 200
-                                if ec > portee_top:
+                                if ec > rayon_affichage_m(genre_wfs):
                                     continue
-                            elif couche == "BDTOPO_V3:cours_d_eau":
-                                if type_geom == "LineString" and isinstance(coord, list):
-                                    lignes = [coord]
-                                elif type_geom == "MultiLineString" and isinstance(coord, list):
-                                    lignes = coord
-                                else:
-                                    lignes = []
-                                trace_eau = []
-                                for ligne_eau in lignes:
-                                    for xy in ligne_eau:
-                                        try: trace_eau.append((float(xy[0]), float(xy[1])))
-                                        except (TypeError, ValueError, IndexError): continue
-                                meilleur = None
-                                for point_eau in densifier_m(trace_eau):
-                                    ec_eau = ecart_parcours_m(point_eau, points)
-                                    if meilleur is None or ec_eau < meilleur[0]:
-                                        meilleur = (ec_eau, point_eau)
-                                if meilleur is None or meilleur[0] > 200:
-                                    continue
-                                ec, position = meilleur
-                                genre_wfs, rang_wfs = "riviere", 5
                             elif couche == "BDTOPO_V3:zone_d_habitation":
                                 if nature and not any(x in nature for x in ("lieu-dit habité", "lieu dit habité", "bourg", "village", "hameau")):
                                     continue
@@ -20321,13 +20242,23 @@ def preparer_lieux_sortie(sortie_id):
                                 ec = ecart_parcours_m(position, points)
                                 if ec > 500:
                                     continue
-                                genre_wfs, rang_wfs = "hameau", 4
+                                if any(x in nature for x in ("hameau", "bourg", "village", "lieu-dit habité", "lieu dit habité")):
+                                    genre_wfs, rang_wfs = "hameau", 4
+                                else:
+                                    genre_wfs, rang_wfs = "lieu_dit", 9
                             else:
                                 if type_geom != "Point" or not isinstance(coord, list) or len(coord) < 2:
                                     continue
                                 position = (float(coord[0]), float(coord[1]))
                                 ec = ecart_parcours_m(position, points)
-                                if ec > 200:
+                                # Couches de lieux-dits non habités : la nature dit s'il s'agit
+                                # d'un col ou d'un sommet (ces deux-là sont affichés).
+                                mots_nature = set(nature.replace("-", " ").replace("'", " ").split())
+                                if mots_nature & {"col", "passage", "saddle"}:
+                                    genre_wfs, rang_wfs = "col", 2
+                                elif mots_nature & {"sommet", "pic", "montagne", "colline", "butte", "puy", "mont", "summit", "peak"}:
+                                    genre_wfs, rang_wfs = "sommet", 2
+                                if ec > rayon_affichage_m(genre_wfs):
                                     continue
                             lon, lat = position
                             diagnostic["wfs_noms_acceptes"] += 1
@@ -20339,6 +20270,8 @@ def preparer_lieux_sortie(sortie_id):
                     except Exception:
                         continue
 
+            diagnostic["duree_wfs_s"] = round(time.perf_counter() - t_wfs, 2)
+            t_osm = time.perf_counter()
             # 2) OpenStreetMap complète les noms absents de l'IGN.
             # Recherche légère, autour du tracé : seulement les catégories affichées.
             # Une réponse vide d'erreur ou incomplète n'est jamais prise pour un succès.
@@ -20357,22 +20290,25 @@ def preparer_lieux_sortie(sortie_id):
                     'nwr["natural"~"^(peak|hill)$"]["name"](around:200,LISTE);'
                     'nwr["mountain_pass"="yes"]["name"](around:200,LISTE);'
                     'nwr["natural"="saddle"]["name"](around:200,LISTE);'
-                    'way["waterway"="river"]["name"](around:200,LISTE);'
-                    ');out tags geom;'
+                    ');out center tags;'
                 ).replace("LISTE", liste_points)
                 diagnostic["osm_troncons"] += 1
                 elements = interroger_overpass(requete_complete, erreurs_overpass)
                 if elements is None:
                     osm_complet = False
+                    # Aucun serveur OpenStreetMap ne répond : inutile d'attendre sur chaque tronçon.
+                    if diagnostic["osm_reponses_ok"] == 0:
+                        break
                 else:
                     diagnostic["osm_reponses_ok"] += 1
                     diagnostic["osm_points"] += len(elements)
-                    diagnostic["osm_rivieres"] += sum(1 for e in elements if (e.get("tags") or {}).get("waterway") == "river")
                     api_ok = True
-                trouves = lieux_osm_points(elements or [], points) + lieux_osm_rivieres(elements or [], points)
+                trouves = lieux_osm_points(elements or [], points)
                 diagnostic["osm_noms_acceptes"] += len(trouves)
                 for l in trouves:
                     lieux.append(l)
+            diagnostic["duree_osm_s"] = round(time.perf_counter() - t_osm, 2)
+            t_bibliotheque = time.perf_counter()
             # Tous les appels réseau sont terminés. On ouvre maintenant une
             # connexion fraîche et courte pour écrire et relire la bibliothèque.
             conn = db.connect()
@@ -20390,6 +20326,9 @@ def preparer_lieux_sortie(sortie_id):
                 (sud-0.05,nord+0.05,ouest-0.05,est+0.05)
             )
             for nom,genre,rang,lon,lat,alt in cursor.fetchall():
+                nom = nom_geographique_texte(nom)
+                if not nom:
+                    continue
                 coord=(float(lon),float(lat))
                 ec=ecart_parcours_m(coord, points)
                 portee=5000 if genre in ("ville","village") else (900 if genre=="col" else (2200 if genre=="sommet" else 1800))
@@ -20399,13 +20338,21 @@ def preparer_lieux_sortie(sortie_id):
                     if doublon is None:
                         lieux.append(entree_bibliotheque)
                     else:
+                        # Une classification fraîche IGN "lieu_dit" doit empêcher
+                        # qu'une ancienne entrée de bibliothèque classée hameau
+                        # réapparaisse sur ce parcours. La ligne de bibliothèque
+                        # elle-même n'est pas supprimée ni modifiée.
+                        if str(lieux[doublon].get("genre", "")).casefold() == "lieu_dit":
+                            entree_bibliotheque["genre"] = "lieu_dit"
+                            entree_bibliotheque["rang"] = 9
                         lieux[doublon]=entree_bibliotheque
-            if not api_ok and not lieux:
+            diagnostic["duree_bibliotheque_s"] = round(time.perf_counter() - t_bibliotheque, 2)
+            if not api_ok:
                 raise RuntimeError("Les services cartographiques sont indisponibles ; la recherche sera reprise.")
             # La bibliothèque reste prioritaire ; les résultats CARTO/OSM
             # viennent ensuite, puis IGN. Les autres catégories restent
             # conservées dans la bibliothèque mais ne sont pas affichées.
-            lieux = [l for l in lieux if str(l.get("genre", "")).casefold() in ("ville", "village", "hameau", "riviere", "col", "sommet") and float(l.get("ec", 999999)) <= rayon_affichage_m(l.get("genre"))]
+            lieux = [l for l in lieux if str(l.get("genre", "")).casefold() in ("ville", "village", "hameau", "col", "sommet") and float(l.get("ec", 999999)) <= rayon_affichage_m(l.get("genre"))]
             def priorite_source(l):
                 source = str(l.get("source", "")).casefold()
                 if "bibliotheque" in source: return 0
@@ -20427,12 +20374,13 @@ def preparer_lieux_sortie(sortie_id):
         cursor.execute("SELECT tentatives FROM recherche_lieux_gpx WHERE sortie_id = ?", (sortie_id,))
         ligne_essais = cursor.fetchone()
         essais = int(ligne_essais[0] or 0) if ligne_essais else 0
-        statut_final = "termine" if (osm_complet or essais >= 4) else "en_attente"
+        statut_final = "termine" if (osm_complet or essais >= 2) else "en_attente"
         message_final = None if statut_final == "termine" else "Recherche OpenStreetMap incomplète : nouvel essai à la prochaine consultation."
-        cursor.execute("UPDATE recherche_lieux_gpx SET statut = ?, lieux_json = ?, erreur = ?, maj_le = ? WHERE sortie_id = ?", (statut_final,json.dumps(lieux,ensure_ascii=False),message_final,datetime.now(timezone.utc).isoformat(),sortie_id))
+        cursor.execute("UPDATE recherche_lieux_gpx SET statut = ?, lieux_json = ?, erreur = ?, maj_le = ?, classification_version = ? WHERE sortie_id = ?", (statut_final,json.dumps(lieux,ensure_ascii=False),message_final,datetime.now(timezone.utc).isoformat(),4,sortie_id))
         diagnostic["noms_finaux_affichables"] = len(lieux)
         diagnostic["points_gpx"] = len(points)
         diagnostic["tentative"] = essais
+        diagnostic["duree_totale_s"] = round(time.perf_counter() - t_total, 2)
         conn.commit()
         print("[Maillons lieux] " + json.dumps({"sortie_id": sortie_id, **diagnostic, "statut": statut_final}, ensure_ascii=False))
     except Exception as exc:
@@ -20495,6 +20443,10 @@ def reprendre_lieux_au_demarrage():
     conn = db.connect()
     cursor = conn.cursor()
     try:
+        cursor.execute(
+            "UPDATE recherche_lieux_gpx SET statut = ?, tentatives = 0 WHERE classification_version < ?",
+            ("en_attente", 4)
+        )
         cursor.execute(
             "UPDATE recherche_lieux_gpx SET statut = ? WHERE statut = ?",
             ("en_attente", "en_cours")
@@ -20726,6 +20678,9 @@ def obtenir_lieux_bibliotheque(sortie_id: int, velo_id: int = 1, x_code_acces: O
         ligne = cursor.fetchone()
         if ligne is None:
             raise HTTPException(status_code=404, detail="Sortie introuvable.")
+        # La bibliothèque reste consultable immédiatement pendant le reclassement
+        # en arrière-plan. Le filtre des catégories affichables ci-dessous s'applique
+        # toujours ; les entrées sont corrigées au fil des recherches IGN/OSM.
         try:
             trace = json.loads(ligne[0] or "[]")
         except (TypeError, ValueError):
@@ -20761,8 +20716,11 @@ def obtenir_lieux_bibliotheque(sortie_id: int, velo_id: int = 1, x_code_acces: O
         cumul = [0.0]
         for i in range(1, len(points)):
             cumul.append(cumul[-1] + distance(points[i - 1], points[i]))
-        genres = ("ville", "village", "hameau", "riviere", "col", "sommet")
+        genres = ("ville", "village", "hameau", "col", "sommet")
         for nom, genre, rang, lon, lat, altitude in cursor.fetchall():
+            nom = nom_geographique_texte(nom)
+            if not nom:
+                continue
             genre = str(genre or "").casefold()
             if genre not in genres:
                 continue
@@ -20838,14 +20796,30 @@ def obtenir_lieux_prepares(sortie_id: int, background_tasks: BackgroundTasks, ve
     try:
         cursor.execute("SELECT id FROM sorties WHERE id = ? AND velo_id = ?", (sortie_id,velo_id))
         if cursor.fetchone() is None: raise HTTPException(status_code=404, detail="Sortie introuvable.")
-        cursor.execute("SELECT statut,lieux_json,erreur FROM recherche_lieux_gpx WHERE sortie_id = ?", (sortie_id,))
+        cursor.execute("SELECT statut,lieux_json,erreur,classification_version FROM recherche_lieux_gpx WHERE sortie_id = ?", (sortie_id,))
         row=cursor.fetchone()
         if row is None: return {"statut":"absent","lieux":[]}
+        if int(row[3] or 0) < 4:
+            if row[0] != "en_attente":
+                cursor.execute("UPDATE recherche_lieux_gpx SET statut = ?, tentatives = 0 WHERE sortie_id = ?", ("en_attente", sortie_id))
+                conn.commit()
+            background_tasks.add_task(preparer_lieux_sortie, sortie_id)
+            return {"statut":"en_attente","lieux":[],"erreur":None}
         if row[0] == "en_attente":
             background_tasks.add_task(preparer_lieux_sortie, sortie_id)
         try: lieux=json.loads(row[1] or "[]")
         except (TypeError,ValueError): lieux=[]
-        return {"statut":row[0],"lieux":lieux,"erreur":row[2]}
+        lieux_propres = []
+        if isinstance(lieux, list):
+            for lieu in lieux:
+                if not isinstance(lieu, dict):
+                    continue
+                nom_propre = nom_geographique_texte(lieu.get("nom"))
+                if not nom_propre:
+                    continue
+                lieu["nom"] = nom_propre
+                lieux_propres.append(lieu)
+        return {"statut":row[0],"lieux":lieux_propres,"erreur":row[2]}
     finally: conn.close()
 
 @app.post("/api/sorties/{sortie_id}/verifier")
