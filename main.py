@@ -13522,6 +13522,92 @@ def accueil():
                 el.innerHTML = '<svg viewBox="0 0 ' + largeur + ' 52" width="' + largeur + '" aria-hidden="true"><path d="M0 50 L23 19" fill="none" stroke="rgba(255,255,255,.98)" stroke-width="1.8" stroke-linecap="round"/><circle cx="0" cy="50" r="4.5" fill="#65e6d4" stroke="#fff" stroke-width="1.8"/><text x="29" y="24" dominant-baseline="middle" font-size="' + taille + '" font-weight="900" fill="#fff" stroke="rgba(5,15,25,.9)" stroke-width="3.5" stroke-linejoin="round" paint-order="stroke">' + echapperTexteV3d(libelle) + '</text></svg>';
                 return el;
             }
+            // Noms de lieux : chaque nom est dessiné en petite image (même aspect que les panneaux :
+            // texte blanc à contour sombre, trait et point turquoise), puis posé dans une couche native
+            // de la carte. C'est la carte elle-même qui les place sur le relief, donc sans décalage.
+            const MARGE_NOM_V3D = 8;
+            function dessinerNomLieuV3d(libelle, taille) {
+                const ratio = Math.min(3, Math.max(2, Math.round(window.devicePixelRatio || 2)));
+                const famille = getComputedStyle(document.body).fontFamily || 'sans-serif';
+                const police = '900 ' + taille + 'px ' + famille;
+                const mesure = document.createElement('canvas').getContext('2d');
+                mesure.font = police;
+                const largeurTexte = Math.ceil(mesure.measureText(libelle).width);
+                const largeur = MARGE_NOM_V3D + 29 + largeurTexte + 8;
+                const hauteur = 58;
+                const toile = document.createElement('canvas');
+                toile.width = Math.ceil(largeur * ratio);
+                toile.height = Math.ceil(hauteur * ratio);
+                const ctx = toile.getContext('2d');
+                ctx.scale(ratio, ratio);
+                // Le point turquoise est en bas à gauche, à la marge près : c'est lui qui est posé sur les coordonnées.
+                const cx = MARGE_NOM_V3D, cy = hauteur - MARGE_NOM_V3D;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.beginPath();
+                ctx.moveTo(cx, cy);
+                ctx.lineTo(cx + 23, cy - 31);
+                ctx.strokeStyle = 'rgba(255,255,255,0.98)';
+                ctx.lineWidth = 1.8;
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(cx, cy, 4.5, 0, Math.PI * 2);
+                ctx.fillStyle = '#65e6d4';
+                ctx.fill();
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 1.8;
+                ctx.stroke();
+                ctx.font = police;
+                ctx.textBaseline = 'middle';
+                ctx.lineWidth = 3.5;
+                ctx.strokeStyle = 'rgba(5,15,25,0.9)';
+                ctx.strokeText(libelle, cx + 29, cy - 26);
+                ctx.fillStyle = '#ffffff';
+                ctx.fillText(libelle, cx + 29, cy - 26);
+                return {
+                    image: ctx.getImageData(0, 0, toile.width, toile.height),
+                    ratio: ratio,
+                    // Zone occupée à l'écran, par rapport au point (gauche, droite, haut, bas) : sert à éviter les chevauchements.
+                    boite: { g: -6, d: 29 + largeurTexte + 2, h: -(26 + taille / 2 + 3), b: 6 }
+                };
+            }
+            function preparerCoucheNomsV3d(carte) {
+                if (carte.getSource('v3d-lieux')) return;
+                carte.addSource('v3d-lieux', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+                carte.addLayer({
+                    id: 'v3d-lieux-noms', type: 'symbol', source: 'v3d-lieux',
+                    layout: {
+                        'icon-image': ['get', 'img'],
+                        'icon-anchor': 'bottom-left',
+                        'icon-offset': [-MARGE_NOM_V3D, MARGE_NOM_V3D],
+                        'icon-allow-overlap': true,
+                        'icon-ignore-placement': true,
+                        'icon-pitch-alignment': 'viewport',
+                        'icon-rotation-alignment': 'viewport'
+                    },
+                    // Un nom n'est visible que pendant sa fenêtre (200 m avant, 100 m après) : état « v » mis à jour par majVisibiliteReperesV3d.
+                    paint: { 'icon-opacity': ['case', ['boolean', ['feature-state', 'v'], false], 1, 0] }
+                });
+            }
+            function viderNomsV3d() {
+                const carte = v3d.carte;
+                const anciennes = v3d.imagesNoms || [];
+                v3d.imagesNoms = [];
+                v3d.panneauxLieux = [];
+                if (!carte) return;
+                try {
+                    const src = carte.getSource('v3d-lieux');
+                    if (src) {
+                        carte.removeFeatureState({ source: 'v3d-lieux' });
+                        src.setData({ type: 'FeatureCollection', features: [] });
+                    }
+                } catch (e) { console.warn(e); }
+                // Les anciennes images sont retirées un peu plus tard, quand la carte n'en a plus besoin.
+                setTimeout(() => {
+                    if (v3d.carte !== carte) return;
+                    anciennes.forEach(id => { try { if (carte.hasImage(id)) carte.removeImage(id); } catch (e) { console.warn(e); } });
+                }, 2000);
+            }
             function nomGeographiqueTexteV3d(valeur) {
                 if (Array.isArray(valeur)) {
                     for (const element of valeur) {
@@ -13600,14 +13686,13 @@ def accueil():
                 v3d.reperes.forEach(m => m.remove());
                 v3d.reperes = [];
                 v3d.panneauxPente = [];
-                v3d.panneauxLieux = [];
+                viderNomsV3d();
             }
             function majVisibiliteReperesV3d() {
                 const d = v3d.f * v3d.total;
                 const avanceParSeconde = v3d.total / Math.max(1, v3d.dureeBase) * v3d.vitesse;
-                const marqueursLieux = new Set(v3d.panneauxLieux.map(p => p.marqueur));
                 v3d.reperes.forEach(m => {
-                    m.getElement().classList.toggle('v3d-cache', !v3d.repereVisibles || marqueursLieux.has(m));
+                    m.getElement().classList.toggle('v3d-cache', !v3d.repereVisibles);
                 });
 
                 // Les panneaux de pente et de vitesse passent toujours avant les noms.
@@ -13624,44 +13709,49 @@ def accueil():
 
                 // Un nom apparaît 200 m avant son point et disparaît 100 m après.
                 // En cas de chevauchement, les panneaux prioritaires restent visibles.
-                const candidats = [];
-                v3d.panneauxLieux.forEach(p => {
-                    const visible = v3d.repereVisibles
-                        && Number.isFinite(p.d)
-                        && d >= Math.max(0, p.d - 200)
-                        && d <= p.d + 100;
-                    const el = p.marqueur.getElement();
-                    // Un nom hors de sa fenêtre est retiré de la carte : MapLibre ne le recalcule plus
-                    // à chaque image (relief 3D), ce qui allège beaucoup la lecture.
-                    if (visible && !p.surCarte && v3d.carte) { p.marqueur.addTo(v3d.carte); p.surCarte = true; }
-                    else if (!visible && p.surCarte) { p.marqueur.remove(); p.surCarte = false; }
-                    el.classList.toggle('v3d-cache', !visible);
-                    if (visible) candidats.push({ panneau: p, element: el });
-                });
+                const carte = v3d.carte;
+                if (!carte || !v3d.panneauxLieux.length || !carte.getSource('v3d-lieux')) return;
+                const candidats = v3d.panneauxLieux.filter(p =>
+                    v3d.repereVisibles
+                    && Number.isFinite(p.d)
+                    && d >= Math.max(0, p.d - 200)
+                    && d <= p.d + 100
+                );
 
                 // Parmi les noms qui se chevauchent, on conserve d'abord le plus proche
                 // du point actuellement parcouru, puis le mieux classé.
                 candidats.sort((a, b) =>
-                    Math.abs(a.panneau.d - d) - Math.abs(b.panneau.d - d)
-                    || (a.panneau.rang ?? 9) - (b.panneau.rang ?? 9)
-                    || String(a.panneau.nom || '').localeCompare(String(b.panneau.nom || ''), 'fr')
+                    Math.abs(a.d - d) - Math.abs(b.d - d)
+                    || (a.rang ?? 9) - (b.rang ?? 9)
+                    || String(a.nom || '').localeCompare(String(b.nom || ''), 'fr')
                 );
                 const rectanglesNoms = [];
                 const seChevauchent = (a, b) =>
                     a.left < b.right + 8 && a.right + 8 > b.left
                     && a.top < b.bottom + 6 && a.bottom + 6 > b.top;
 
-                candidats.forEach(c => {
-                    const r = c.element.getBoundingClientRect();
-                    if (!r.width || !r.height) {
-                        c.element.classList.add('v3d-cache');
-                        return;
-                    }
+                // Position à l'écran (relief compris) de chaque nom retenu, par rapport à la page.
+                const zone = carte.getCanvas().getBoundingClientRect();
+                const montres = new Set();
+                candidats.forEach(p => {
+                    const pt = carte.project(p.coord);
+                    const r = {
+                        left: zone.left + pt.x + p.boite.g, right: zone.left + pt.x + p.boite.d,
+                        top: zone.top + pt.y + p.boite.h, bottom: zone.top + pt.y + p.boite.b
+                    };
                     const prioritaire = rectanglesPrioritaires.some(pr => seChevauchent(r, pr));
                     const doublonVisuel = rectanglesNoms.some(pr => seChevauchent(r, pr));
-                    const masquer = prioritaire || doublonVisuel;
-                    c.element.classList.toggle('v3d-cache', masquer);
-                    if (!masquer) rectanglesNoms.push(r);
+                    if (prioritaire || doublonVisuel) return;
+                    rectanglesNoms.push(r);
+                    montres.add(p);
+                });
+
+                // Seuls les noms dont l'état change sont mis à jour sur la carte.
+                v3d.panneauxLieux.forEach(p => {
+                    const voulu = montres.has(p);
+                    if (voulu === p.visible) return;
+                    p.visible = voulu;
+                    carte.setFeatureState({ source: 'v3d-lieux', id: p.id }, { v: voulu });
                 });
             }
             async function poserReperesV3d() {
@@ -13691,21 +13781,23 @@ def accueil():
                 }
                 majVisibiliteReperesV3d(); majBoutonsV3d();
                 const afficherLieux = lieux => {
-                    v3d.panneauxLieux.forEach(p => p.marqueur.remove());
-                    const anciens = new Set(v3d.panneauxLieux.map(p => p.marqueur));
-                    v3d.reperes = v3d.reperes.filter(m => !anciens.has(m));
-                    v3d.panneauxLieux = [];
-                    lieux.forEach(l => {
+                    viderNomsV3d();
+                    try { preparerCoucheNomsV3d(carte); } catch (e) { console.warn('Couche des noms indisponible', e); return; }
+                    v3d.generationNoms = (v3d.generationNoms || 0) + 1;
+                    const objets = [];
+                    lieux.forEach((l, i) => {
                         const libelle = l.nom + (Number.isFinite(l.alt) && ['sommet', 'col'].includes(l.genre)
                             ? ' · ' + fmtAltitude(l.alt).complet : '');
-                        const el = elementRepereAerienV3d(libelle, 16);
-                        el.classList.add('v3d-nom-lieu');
-                        // Un nom caché derrière une crête reste lisible (75 % au lieu de 20 % par défaut).
-                        const marqueur = new window.maplibregl.Marker({ element: el, anchor: 'bottom-left', opacityWhenCovered: '0.75' })
-                            .setLngLat(l.coord).addTo(carte);
-                        v3d.reperes.push(marqueur);
-                        v3d.panneauxLieux.push({ marqueur: marqueur, d: l.d, rang: l.rang, nom: l.nom, surCarte: true });
+                        const idImage = 'v3d-lieu-' + v3d.generationNoms + '-' + i;
+                        try {
+                            const dessin = dessinerNomLieuV3d(libelle, 16);
+                            carte.addImage(idImage, dessin.image, { pixelRatio: dessin.ratio });
+                            v3d.imagesNoms.push(idImage);
+                            objets.push({ type: 'Feature', id: i, properties: { img: idImage }, geometry: { type: 'Point', coordinates: l.coord } });
+                            v3d.panneauxLieux.push({ id: i, coord: l.coord, d: l.d, rang: l.rang, nom: l.nom, boite: dessin.boite, visible: false });
+                        } catch (e) { console.warn('Nom de lieu non dessiné', e); }
                     });
+                    carte.getSource('v3d-lieux').setData({ type: 'FeatureCollection', features: objets });
                     majVisibiliteReperesV3d();
                     majBoutonsV3d();
                 };
@@ -14595,7 +14687,7 @@ def accueil():
                                     id: 'v3d-autres-ligne', type: 'line', source: 'v3d-autres',
                                     layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'visible' },
                                     paint: { 'line-color': '#ffffff', 'line-width': 3, 'line-opacity': 0.9 }
-                                });
+                                }, v3d.carte.getLayer('v3d-lieux-noms') ? 'v3d-lieux-noms' : undefined);
                             } else {
                                 v3d.voirAutres = false;
                             }
