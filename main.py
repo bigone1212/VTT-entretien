@@ -3428,7 +3428,15 @@ def accueil():
             }
 
             .vue3d.cinema .v3d-cinema-hud { opacity: 1; transform: translateY(0); }
-            .v3d-cinema-marque { color: #65e6d4; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.19em; }
+            /* Bouton « Commandes » : fait apparaître les boutons du bas par-dessus le survol, et efface l'encart pour ne pas se chevaucher. */
+            .vue3d.cinema.commandes .v3d-bas {
+                opacity: 1;
+                pointer-events: auto;
+                transform: translateY(0);
+            }
+            .vue3d.cinema.commandes .v3d-cinema-hud { opacity: 0; transform: translateY(-8px); }
+            .v3d-cinema-marque { display: flex; align-items: center; gap: 9px; color: #65e6d4; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.19em; }
+            .v3d-cinema-logo { width: 22px; height: 22px; flex-shrink: 0; border-radius: 6px; }
             .v3d-cinema-nom { margin-top: 7px; font-size: clamp(1.05rem, 2.2vw, 1.65rem); font-weight: 750; line-height: 1.15; text-shadow: 0 2px 8px rgba(0,0,0,0.5); }
             .v3d-cinema-date { margin-top: 5px; color: rgba(255,255,255,0.72); font-size: 0.78rem; letter-spacing: 0.06em; }
             .v3d-cinema-stats { display: flex; flex-wrap: wrap; gap: 12px 20px; margin-top: 13px; }
@@ -4581,12 +4589,13 @@ def accueil():
             <div class="v3d-haut">
                 <strong id="v3dTitre"></strong>
                 <div style="display:flex;align-items:center;gap:8px;">
-                    <button type="button" id="v3dCinema" aria-pressed="false">Mode Cinéma</button>
+                    <button type="button" id="v3dLectureHaut"></button>
+                    <button type="button" id="v3dCinema" aria-pressed="false">Commandes</button>
                     <button type="button" id="v3dFermer" aria-label="Fermer"></button>
                 </div>
             </div>
             <div class="v3d-cinema-hud" id="v3dCinemaHud" aria-hidden="true">
-                <div class="v3d-cinema-marque">MAILLONS · CARNET VTT</div>
+                <div class="v3d-cinema-marque"><svg class="v3d-cinema-logo" role="img" aria-label="Maillons"><use href="#logo-maillon"/></svg><span>MAILLONS</span></div>
                 <div class="v3d-cinema-nom" id="v3dCinemaNom"></div>
                 <div class="v3d-cinema-date" id="v3dCinemaDate"></div>
                 <div class="v3d-cinema-stats">
@@ -11080,7 +11089,53 @@ def accueil():
                 u: { couleur: '#475569', nom: 'Inconnu' }
             };
 
+            // Descentes à partir de 4 % : dégradé de bleu clair vers bleu foncé, de plus en plus foncé quand la descente est raide.
+            const ARRETS_DESCENTE = [
+                { pourcent: 4, rvb: [125, 211, 252] },
+                { pourcent: 12, rvb: [37, 99, 235] },
+                { pourcent: 20, rvb: [23, 37, 110] }
+            ];
+            const DEGRADE_DESCENTE_CSS = 'linear-gradient(90deg, #7dd3fc, #2563eb, #17256e)';
+
+            function rvbVersHex(rvb) {
+                return '#' + rvb.map(v => Math.round(v).toString(16).padStart(2, '0')).join('');
+            }
+
+            function couleurDescente(pourcent) {
+                const a = Math.abs(pourcent);
+                const arrets = ARRETS_DESCENTE;
+                if (a <= arrets[0].pourcent) return rvbVersHex(arrets[0].rvb);
+                for (let k = 1; k < arrets.length; k++) {
+                    if (a <= arrets[k].pourcent) {
+                        const part = (a - arrets[k - 1].pourcent) / (arrets[k].pourcent - arrets[k - 1].pourcent);
+                        return rvbVersHex(arrets[k - 1].rvb.map((v, j) => v + (arrets[k].rvb[j] - v) * part));
+                    }
+                }
+                return rvbVersHex(arrets[arrets.length - 1].rvb);
+            }
+
+            // Classes de descente pour les légendes et la répartition (couleur prise au milieu de chaque classe).
+            const CLASSES_DESCENTE = [
+                { max: 8, couleur: couleurDescente(6), nom: 'descente 4 à 8 %' },
+                { max: 12, couleur: couleurDescente(10), nom: 'descente 8 à 12 %' },
+                { max: 16, couleur: couleurDescente(14), nom: 'descente 12 à 16 %' },
+                { max: 1000, couleur: couleurDescente(20), nom: 'descente plus de 16 %' }
+            ];
+            const CLASSES_PENTE_COMPLETES = COULEURS_PENTE.concat(CLASSES_DESCENTE);
+            const LEGENDE_PENTES = COULEURS_PENTE.map(c => ({ couleur: c.couleur, texte: c.nom }))
+                .concat([{ couleur: DEGRADE_DESCENTE_CSS, texte: 'descente : plus foncé = plus raide' }]);
+
+            function indexClassePente(pourcent) {
+                if (pourcent <= -4) {
+                    const k = CLASSES_DESCENTE.findIndex(c => -pourcent < c.max);
+                    return COULEURS_PENTE.length + (k < 0 ? CLASSES_DESCENTE.length - 1 : k);
+                }
+                const k = COULEURS_PENTE.findIndex(c => Math.abs(pourcent) < c.max);
+                return k < 0 ? COULEURS_PENTE.length - 1 : k;
+            }
+
             function couleurPente(pourcent) {
+                if (pourcent <= -4) return couleurDescente(pourcent);
                 const a = Math.abs(pourcent);
                 return COULEURS_PENTE.find(c => a < c.max).couleur;
             }
@@ -11354,7 +11409,7 @@ def accueil():
 
             function legendesProfil(s, profil) {
                 const zone = document.createElement('div');
-                zone.appendChild(legendeProfil(COULEURS_PENTE.map(c => ({ couleur: c.couleur, texte: c.nom }))));
+                zone.appendChild(legendeProfil(LEGENDE_PENTES));
                 const codes = s.surfaces && s.surfaces.length === s.trace.length ? s.surfaces : null;
                 if (codes) {
                     zone.appendChild(legendeProfil(
@@ -12985,14 +13040,13 @@ def accueil():
                     // Pentes
                     if (profil) {
                         const blocPentes = bloc('Pentes');
-                        const km = COULEURS_PENTE.map(() => 0);
+                        const km = CLASSES_PENTE_COMPLETES.map(() => 0);
                         for (let i = 0; i < profil.pentes.length; i++) {
                             const d = profil.cum[i + 1] - profil.cum[i];
-                            const k = COULEURS_PENTE.findIndex(c => Math.abs(profil.pentes[i]) < c.max);
-                            km[k < 0 ? km.length - 1 : k] += d / 1000;
+                            km[indexClassePente(profil.pentes[i])] += d / 1000;
                         }
                         blocPentes.appendChild(barreRepartition(
-                            COULEURS_PENTE.map((c, i) => ({ couleur: c.couleur, libelle: c.nom, km: km[i] })).filter(p => p.km > 0)
+                            CLASSES_PENTE_COMPLETES.map((c, i) => ({ couleur: c.couleur, libelle: c.nom, km: km[i] })).filter(p => p.km > 0)
                         ));
                     }
 
@@ -13142,7 +13196,7 @@ def accueil():
                 carte: null, pts: [], cum: [], total: 0, f: 0, jouer: false, centreCamera: null,
                 vitesse: 1, inclinaison: 45, cap: 0, dernier: 0, raf: 0,
                 fond: 'sat', enregistreur: null, morceaux: [], titre: '',
-                nomParcours: '', dateParcours: '', cinema: false,
+                nomParcours: '', dateParcours: '', cinema: true, commandes: false,
                 canvasVideo: null, ctxVideo: null, rafVideo: 0, fluxVideo: null, videoActif: false,
                 denivelePlus: 0, altitudeDisponible: false, altitudes: [], deniveleCum: [], vitesses: [], vitesseMax: null, vitesseMoyenne: null, profilLongueur: 0,
                 dureeBase: 60, prete: false, compteImages: 0, dernierRendu: 0,
@@ -13814,13 +13868,22 @@ def accueil():
                 const en_cours = !!v3d.enregistreur;
                 remplirBouton(enr, 'enreg', en_cours ? 'Arrêter et enregistrer' : 'Enregistrer');
                 enr.classList.toggle('enreg', en_cours);
+                // Le survol s'affiche toujours en mode cinéma ; le bouton du haut montre ou cache les autres boutons.
                 const cinema = document.getElementById('v3dCinema');
                 if (cinema) {
-                    cinema.textContent = v3d.cinema ? 'Quitter cinéma' : 'Mode Cinéma';
-                    cinema.classList.toggle('actif', v3d.cinema);
-                    cinema.setAttribute('aria-pressed', v3d.cinema ? 'true' : 'false');
+                    cinema.textContent = v3d.commandes ? 'Masquer' : 'Commandes';
+                    cinema.classList.toggle('actif', v3d.commandes);
+                    cinema.setAttribute('aria-pressed', v3d.commandes ? 'true' : 'false');
                 }
-                document.getElementById('vue3d').classList.toggle('cinema', v3d.cinema);
+                // Lecture / Pause reste toujours à portée de doigt, même quand les commandes sont cachées.
+                const lectureHaut = document.getElementById('v3dLectureHaut');
+                if (lectureHaut) {
+                    remplirBouton(lectureHaut, v3d.jouer ? 'pause' : 'lecture', v3d.jouer ? 'Pause' : 'Lecture');
+                    lectureHaut.classList.toggle('actif', !v3d.jouer);
+                }
+                const vue = document.getElementById('vue3d');
+                vue.classList.toggle('cinema', v3d.cinema);
+                vue.classList.toggle('commandes', v3d.commandes);
                 majHabillageCinemaV3d();
             }
 
@@ -14003,7 +14066,7 @@ def accueil():
                     center: v3d.centreCamera,
                     bearing: v3d.cap,
                     pitch: v3d.inclinaison,
-                    zoom: 14.6,
+                    zoom: 14.3,
                     padding: { top: v3d.decalage, bottom: 0, left: 0, right: 0 }
                 });
 
@@ -14095,11 +14158,57 @@ def accueil():
                 majBoutonsV3d();
             }
 
+            // Rectangle aux coins arrondis (dessiné à la main pour fonctionner sur tous les navigateurs).
+            function cheminArrondiVideo(ctx, x, y, l, h, r) {
+                ctx.beginPath();
+                ctx.moveTo(x + r, y);
+                ctx.arcTo(x + l, y, x + l, y + h, r);
+                ctx.arcTo(x + l, y + h, x, y + h, r);
+                ctx.arcTo(x, y + h, x, y, r);
+                ctx.arcTo(x, y, x + l, y, r);
+                ctx.closePath();
+            }
+
+            // Logo Maillons (mêmes formes et mêmes couleurs que le logo de l'en-tête de l'appli).
+            function dessinerLogoVideo(ctx, x, y, taille) {
+                const styles = getComputedStyle(document.documentElement);
+                const couleur1 = styles.getPropertyValue('--ac1').trim() || '#65e6d4';
+                const couleur2 = styles.getPropertyValue('--ac2').trim() || '#0f9aa0';
+                ctx.save();
+                ctx.translate(x, y);
+                ctx.scale(taille / 96, taille / 96);
+                const fond = ctx.createLinearGradient(0, 0, 96, 96);
+                fond.addColorStop(0, couleur1);
+                fond.addColorStop(1, couleur2);
+                ctx.fillStyle = fond;
+                cheminArrondiVideo(ctx, 0, 0, 96, 96, 24);
+                ctx.fill();
+                ctx.lineJoin = 'round';
+                const maillons = [[14, 34, 35, 45], [40, 42, 61, 53]];
+                const traits = [['#06262b', 9], ['#ffffff', 5]];
+                for (const trait of traits) {
+                    for (const m of maillons) {
+                        ctx.save();
+                        ctx.translate(m[2], m[3]);
+                        ctx.rotate(-32 * Math.PI / 180);
+                        ctx.translate(-m[2], -m[3]);
+                        ctx.strokeStyle = trait[0];
+                        ctx.lineWidth = trait[1];
+                        cheminArrondiVideo(ctx, m[0], m[1], 42, 22, 11);
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+                }
+                ctx.restore();
+            }
+
             function dessinerHabillageVideo(ctx, largeur, hauteur) {
-                const echelle = Math.min(largeur / 1920, hauteur / 1080);
+                // Échelle d'après le petit côté de la vidéo : lisible aussi quand le téléphone est tenu à la verticale.
+                const echelle = Math.min(largeur, hauteur) / 1080;
                 const marge = 58 * echelle;
-                const grand = 34 * echelle;
-                const petit = 17 * echelle;
+                const agrandi = echelle * 1.2;
+                const grand = 34 * agrandi;
+                const petit = 17 * agrandi;
                 ctx.save();
 
                 const haut = ctx.createLinearGradient(0, 0, 0, hauteur * 0.25);
@@ -14112,7 +14221,13 @@ def accueil():
                 ctx.textBaseline = 'top';
                 ctx.fillStyle = '#65e6d4';
                 ctx.font = '700 ' + petit + 'px Arial, sans-serif';
-                ctx.fillText('MAILLONS  /  CARNET VTT', marge, marge * 0.72);
+                // Logo puis le mot MAILLONS, alignés au centre sur la même ligne.
+                const tailleLogo = petit * 1.9;
+                const yLogo = marge * 0.5;
+                dessinerLogoVideo(ctx, marge, yLogo, tailleLogo);
+                ctx.textBaseline = 'middle';
+                ctx.fillText('MAILLONS', marge + tailleLogo + petit * 0.6, yLogo + tailleLogo / 2);
+                ctx.textBaseline = 'top';
                 ctx.fillStyle = '#ffffff';
                 ctx.font = '700 ' + grand + 'px Arial, sans-serif';
                 ctx.shadowColor = 'rgba(0,0,0,0.45)';
@@ -14237,6 +14352,7 @@ def accueil():
                 v3d.enregistreur = rec;
                 v3d.f = 0;
                 v3d.cinema = true;
+                v3d.commandes = false;
                 majBoutonsV3d();
                 dessinerCadreVideo();
                 rec.start(1000);
@@ -14310,7 +14426,7 @@ def accueil():
                         .filter(k => v3d.surfaces.includes(k))
                         .map(k => ({ couleur: TYPES_CHEMIN[k].couleur, texte: TYPES_CHEMIN[k].nom }));
                 } else if (v3d.pentes.length) {
-                    lignes = COULEURS_PENTE.map(c => ({ couleur: c.couleur, texte: c.nom }));
+                    lignes = LEGENDE_PENTES;
                 }
                 el.style.display = lignes.length ? 'flex' : 'none';
                 lignes.forEach(l => {
@@ -14429,7 +14545,8 @@ def accueil():
                 v3d.titre = (sortie.debut || '').slice(0, 10);
                 v3d.nomParcours = sortie.nom || 'Sortie VTT';
                 v3d.dateParcours = new Date(sortie.debut).toLocaleDateString('fr-FR');
-                v3d.cinema = false;
+                v3d.cinema = true;
+                v3d.commandes = false;
                 v3d.sortieId = sortie.id;
                 v3d.photos = placerPhotos(sortie);
                 v3d.voirAutres = false;
@@ -14492,9 +14609,10 @@ def accueil():
 
                 bouton('v3dFermer', fermerV3d);
                 bouton('v3dCinema', () => {
-                    v3d.cinema = !v3d.cinema;
+                    v3d.commandes = !v3d.commandes;
                     majBoutonsV3d();
                 });
+                bouton('v3dLectureHaut', () => lectureV3d(!v3d.jouer));
                 bouton('v3dReperes', () => { v3d.repereVisibles = !v3d.repereVisibles; majVisibiliteReperesV3d(); majBoutonsV3d(); });
                 bouton('v3dRelancerLieux', async () => {
                     const relancer = document.getElementById('v3dRelancerLieux');
