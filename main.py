@@ -14420,6 +14420,30 @@ def accueil():
                 ctx.restore();
             }
 
+            // Photo affichée à l'écran (cadre blanc, en haut au centre) : reprise dans la vidéo tant qu'elle est visible.
+            function dessinerPhotoVideo(ctx, largeur, hauteur) {
+                const cadre = document.getElementById('v3dPhoto');
+                const img = document.getElementById('v3dPhotoImg');
+                if (!cadre || !img || cadre.style.display === 'none' || !img.complete || !img.naturalWidth) return;
+                const echelle = Math.min(largeur, hauteur) / 1080;
+                const bord = 12 * echelle;
+                const r = Math.min((Math.min(largeur * 0.78, 900 * echelle) - 2 * bord) / img.naturalWidth, (hauteur * 0.38 - 2 * bord) / img.naturalHeight);
+                const l = img.naturalWidth * r, h = img.naturalHeight * r;
+                const x = (largeur - l) / 2, y = 230 * echelle;
+                ctx.save();
+                ctx.shadowColor = 'rgba(0,0,0,0.5)';
+                ctx.shadowBlur = 30 * echelle;
+                ctx.shadowOffsetY = 8 * echelle;
+                ctx.fillStyle = 'rgba(255,255,255,0.95)';
+                cheminArrondiVideo(ctx, x - bord, y - bord, l + 2 * bord, h + 2 * bord, 24 * echelle);
+                ctx.fill();
+                ctx.shadowColor = 'transparent';
+                cheminArrondiVideo(ctx, x, y, l, h, 16 * echelle);
+                ctx.clip();
+                ctx.drawImage(img, x, y, l, h);
+                ctx.restore();
+            }
+
             function dessinerCadreVideo() {
                 if (!v3d.videoActif || !v3d.canvasVideo || !v3d.ctxVideo) return;
                 const source = v3d.carte && v3d.carte.getCanvas ? v3d.carte.getCanvas() : null;
@@ -14427,6 +14451,7 @@ def accueil():
                     try {
                         v3d.ctxVideo.drawImage(source, 0, 0, v3d.canvasVideo.width, v3d.canvasVideo.height);
                         dessinerHabillageVideo(v3d.ctxVideo, v3d.canvasVideo.width, v3d.canvasVideo.height);
+                        dessinerPhotoVideo(v3d.ctxVideo, v3d.canvasVideo.width, v3d.canvasVideo.height);
                     } catch (e) {
                         console.warn('Image vidéo momentanément indisponible', e);
                     }
