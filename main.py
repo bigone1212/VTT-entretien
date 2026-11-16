@@ -13981,12 +13981,11 @@ def accueil():
                     carte.setFeatureState({ source: 'v3d-lieux', id: p.id }, { v: voulu });
                 });
 
-                // Sommets : le triangle rouge apparaît (et monte en tournant) dès que le sommet entre dans sa fenêtre,
-                // même si son nom est masqué par un panneau prioritaire.
-                const dansFenetre = new Set(candidats);
+                // Sommets : le triangle rouge apparaît (et monte en tournant) 200 m avant le sommet et reste 300 m après
+                // (le nom, lui, disparaît 100 m après), même si le nom est masqué par un panneau prioritaire.
                 v3d.panneauxLieux.forEach(p => {
                     if (!p.idPointe) return;
-                    const voulu = dansFenetre.has(p);
+                    const voulu = v3d.repereVisibles && Number.isFinite(p.d) && d >= Math.max(0, p.d - 200) && d <= p.d + 300;
                     if (voulu === p.pointeVisible) return;
                     p.pointeVisible = voulu;
                     if (voulu) demarrerPointeV3d(p);
@@ -20796,9 +20795,9 @@ def preparer_lieux_sortie(sortie_id):
                     '[out:json][timeout:12];('
                     'nwr["place"~"^(city|town|village)$"]["name"](around:500,LISTE);'
                     'nwr["place"~"^(hamlet|isolated_dwelling)$"]["name"](around:200,LISTE);'
-                    'nwr["natural"~"^(peak|hill)$"]["name"](around:200,LISTE);'
-                    'nwr["mountain_pass"="yes"]["name"](around:200,LISTE);'
-                    'nwr["natural"="saddle"]["name"](around:200,LISTE);'
+                    'nwr["natural"~"^(peak|hill)$"]["name"](around:500,LISTE);'
+                    'nwr["mountain_pass"="yes"]["name"](around:500,LISTE);'
+                    'nwr["natural"="saddle"]["name"](around:500,LISTE);'
                     ');out center tags;'
                 ).replace("LISTE", liste_points)
                 diagnostic["osm_troncons"] += 1
