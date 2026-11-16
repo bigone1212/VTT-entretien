@@ -13607,6 +13607,53 @@ def accueil():
                 ctx.fillText('📷', c, c + 1);
                 return { image: ctx.getImageData(0, 0, toile.width, toile.height), ratio: ratio };
             }
+            // Sommets : un triangle rouge monte du sommet au bout d'un fin trait vertical, en faisant un tour sur lui-même.
+            // avancement : 0 (rien) à 1 (triangle en haut, de face). Image de taille fixe, redessinée à chaque image de l'animation.
+            const LARGEUR_POINTE_V3D = 40, HAUTEUR_POINTE_V3D = 104, DUREE_POINTE_V3D = 1400;
+            function dessinerPointeV3d(avancement) {
+                const ratio = Math.min(3, Math.max(2, Math.round(window.devicePixelRatio || 2)));
+                const toile = document.createElement('canvas');
+                toile.width = LARGEUR_POINTE_V3D * ratio;
+                toile.height = HAUTEUR_POINTE_V3D * ratio;
+                const ctx = toile.getContext('2d');
+                ctx.scale(ratio, ratio);
+                const a = Math.max(0, Math.min(1, avancement));
+                const montee = 1 - Math.pow(1 - a, 3);
+                const tour = a < 0.5 ? 2 * a * a : 1 - Math.pow(-2 * a + 2, 2) / 2;
+                const cx = LARGEUR_POINTE_V3D / 2;
+                const base = HAUTEUR_POINTE_V3D - 2;
+                const yTriangle = base - 10 - 74 * montee;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                // Fin trait vertical, du sommet jusqu'au triangle.
+                ctx.beginPath();
+                ctx.moveTo(cx, base);
+                ctx.lineTo(cx, yTriangle + 8);
+                ctx.strokeStyle = 'rgba(5,15,25,0.85)';
+                ctx.lineWidth = 3.4;
+                ctx.stroke();
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 1.4;
+                ctx.stroke();
+                // Triangle rouge qui tourne sur son axe vertical (un tour complet : 360°).
+                let echelle = Math.cos(2 * Math.PI * tour);
+                if (Math.abs(echelle) < 0.06) echelle = echelle < 0 ? -0.06 : 0.06;
+                ctx.save();
+                ctx.translate(cx, yTriangle);
+                ctx.scale(echelle, 1);
+                ctx.beginPath();
+                ctx.moveTo(0, -11);
+                ctx.lineTo(10, 8);
+                ctx.lineTo(-10, 8);
+                ctx.closePath();
+                ctx.fillStyle = '#ff2d2d';
+                ctx.fill();
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = '#ffffff';
+                ctx.stroke();
+                ctx.restore();
+                return { image: ctx.getImageData(0, 0, toile.width, toile.height), ratio: ratio };
+            }
             // Couches natives du survol : halo Vmax, noms de lieux, panneaux (pentes et Vmax), icônes photos (de bas en haut).
             function preparerCouchesV3d(carte) {
                 if (carte.getSource('v3d-lieux')) return;
@@ -13637,6 +13684,19 @@ def accueil():
                 });
                 carte.addSource('v3d-lieux', { type: 'geojson', data: vide });
                 carte.addLayer({ id: 'v3d-lieux-noms', type: 'symbol', source: 'v3d-lieux', layout: miseEnPage, paint: opacite });
+                carte.addSource('v3d-pointes', { type: 'geojson', data: vide });
+                carte.addLayer({
+                    id: 'v3d-pointes-triangles', type: 'symbol', source: 'v3d-pointes',
+                    layout: {
+                        'icon-image': ['get', 'img'],
+                        'icon-anchor': 'bottom',
+                        'icon-allow-overlap': true,
+                        'icon-ignore-placement': true,
+                        'icon-pitch-alignment': 'viewport',
+                        'icon-rotation-alignment': 'viewport'
+                    },
+                    paint: opacite
+                });
                 carte.addSource('v3d-reperes', { type: 'geojson', data: vide });
                 carte.addLayer({ id: 'v3d-reperes-etiquettes', type: 'symbol', source: 'v3d-reperes', layout: miseEnPage, paint: opacite });
                 carte.addSource('v3d-photos', { type: 'geojson', data: vide });
@@ -13718,17 +13778,55 @@ def accueil():
                     anciennes.forEach(id => { try { if (carte.hasImage(id)) carte.removeImage(id); } catch (e) { console.warn(e); } });
                 }, 2000);
             }
+            // Animation des sommets : une seule boucle pour tous les triangles en cours de montée.
+            function boucleSommetsV3d() {
+                const carte = v3d.carte;
+                if (!carte || v3d.rafPointes) return;
+                const pas = maintenant => {
+                    v3d.rafPointes = 0;
+                    if (v3d.carte !== carte || !v3d.pointesActives || !v3d.pointesActives.size) return;
+                    v3d.pointesActives.forEach(p => {
+                        const t = Math.min(1, (maintenant - p.debutPointe) / DUREE_POINTE_V3D);
+                        try { if (carte.hasImage(p.idPointe)) carte.updateImage(p.idPointe, dessinerPointeV3d(t).image); } catch (e) { console.warn(e); }
+                        if (t >= 1) v3d.pointesActives.delete(p);
+                    });
+                    if (v3d.pointesActives.size) v3d.rafPointes = requestAnimationFrame(pas);
+                };
+                v3d.rafPointes = requestAnimationFrame(pas);
+            }
+            function demarrerPointeV3d(p) {
+                const carte = v3d.carte;
+                if (!carte || !carte.hasImage(p.idPointe)) return;
+                const reduit = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                try { carte.updateImage(p.idPointe, dessinerPointeV3d(reduit ? 1 : 0).image); } catch (e) { console.warn(e); return; }
+                if (reduit) return;
+                p.debutPointe = performance.now();
+                if (!v3d.pointesActives) v3d.pointesActives = new Set();
+                v3d.pointesActives.add(p);
+                boucleSommetsV3d();
+            }
+            function arreterPointeV3d(p) {
+                if (v3d.pointesActives) v3d.pointesActives.delete(p);
+            }
             function viderNomsV3d() {
                 const carte = v3d.carte;
                 const anciennes = v3d.imagesNoms || [];
                 v3d.imagesNoms = [];
                 v3d.panneauxLieux = [];
+                if (v3d.rafPointes) cancelAnimationFrame(v3d.rafPointes);
+                v3d.rafPointes = 0;
+                v3d.pointesActives = new Set();
                 if (!carte) return;
                 try {
                     const src = carte.getSource('v3d-lieux');
                     if (src) {
                         carte.removeFeatureState({ source: 'v3d-lieux' });
                         src.setData({ type: 'FeatureCollection', features: [] });
+                    }
+                    const pointes = carte.getSource('v3d-pointes');
+                    if (pointes) {
+                        carte.removeFeatureState({ source: 'v3d-pointes' });
+                        pointes.setData({ type: 'FeatureCollection', features: [] });
                     }
                 } catch (e) { console.warn(e); }
                 // Les anciennes images sont retirées un peu plus tard, quand la carte n'en a plus besoin.
@@ -13882,6 +13980,19 @@ def accueil():
                     p.visible = voulu;
                     carte.setFeatureState({ source: 'v3d-lieux', id: p.id }, { v: voulu });
                 });
+
+                // Sommets : le triangle rouge apparaît (et monte en tournant) dès que le sommet entre dans sa fenêtre,
+                // même si son nom est masqué par un panneau prioritaire.
+                const dansFenetre = new Set(candidats);
+                v3d.panneauxLieux.forEach(p => {
+                    if (!p.idPointe) return;
+                    const voulu = dansFenetre.has(p);
+                    if (voulu === p.pointeVisible) return;
+                    p.pointeVisible = voulu;
+                    if (voulu) demarrerPointeV3d(p);
+                    else arreterPointeV3d(p);
+                    carte.setFeatureState({ source: 'v3d-pointes', id: p.id }, { v: voulu });
+                });
             }
             async function poserReperesV3d() {
                 const carte=v3d.carte; viderReperesV3d();
@@ -13935,6 +14046,7 @@ def accueil():
                     try { preparerCouchesV3d(carte); } catch (e) { console.warn('Couche des noms indisponible', e); return; }
                     v3d.generationNoms = (v3d.generationNoms || 0) + 1;
                     const objets = [];
+                    const objetsPointes = [];
                     lieux.forEach((l, i) => {
                         const libelle = l.nom + (Number.isFinite(l.alt) && ['sommet', 'col'].includes(l.genre)
                             ? ' · ' + fmtAltitude(l.alt).complet : '');
@@ -13944,10 +14056,22 @@ def accueil():
                             carte.addImage(idImage, dessin.image, { pixelRatio: dessin.ratio });
                             v3d.imagesNoms.push(idImage);
                             objets.push({ type: 'Feature', id: i, properties: { img: idImage }, geometry: { type: 'Point', coordinates: l.coord } });
-                            v3d.panneauxLieux.push({ id: i, coord: l.coord, d: l.d, rang: l.rang, nom: l.nom, boite: dessin.boite, visible: false });
+                            const lieu = { id: i, coord: l.coord, d: l.d, rang: l.rang, nom: l.nom, boite: dessin.boite, visible: false };
+                            // Sommet : triangle rouge animé, posé sur le même point (visible pendant la même fenêtre que le nom).
+                            if (l.genre === 'sommet') {
+                                const idPointe = 'v3d-pointe-' + v3d.generationNoms + '-' + i;
+                                const pointe = dessinerPointeV3d(1);
+                                carte.addImage(idPointe, pointe.image, { pixelRatio: pointe.ratio });
+                                v3d.imagesNoms.push(idPointe);
+                                objetsPointes.push({ type: 'Feature', id: i, properties: { img: idPointe }, geometry: { type: 'Point', coordinates: l.coord } });
+                                lieu.idPointe = idPointe;
+                                lieu.pointeVisible = false;
+                            }
+                            v3d.panneauxLieux.push(lieu);
                         } catch (e) { console.warn('Nom de lieu non dessiné', e); }
                     });
                     carte.getSource('v3d-lieux').setData({ type: 'FeatureCollection', features: objets });
+                    carte.getSource('v3d-pointes').setData({ type: 'FeatureCollection', features: objetsPointes });
                     majVisibiliteReperesV3d();
                     majBoutonsV3d();
                 };
