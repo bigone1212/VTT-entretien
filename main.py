@@ -3541,11 +3541,6 @@ def accueil():
             /* Noms de lieux : pas d'ombre floue (le contour sombre suffit), couche dédiée pour glisser sans saccade. */
             .v3d-pente-repere.v3d-nom-lieu { filter: none; will-change: transform; }
             .v3d-cache { display: none !important; }
-            /* Panneau Vmax : halo orange qui pulse autour du point le plus rapide. */
-            .v3d-halo { transform-box: fill-box; transform-origin: center; vector-effect: non-scaling-stroke; animation: v3d-halo 1.3s ease-out infinite; }
-            .v3d-halo2 { animation-delay: .65s; }
-            @keyframes v3d-halo { 0% { transform: scale(1); opacity: .95; } 100% { transform: scale(5.5); opacity: 0; } }
-            @media (prefers-reduced-motion: reduce) { .v3d-halo { animation: none; opacity: .6; } }
             .v3d-tourne { display: inline-block; width: 14px; height: 14px; margin-right: 8px; vertical-align: -2px; border-radius: 50%; border: 2px solid rgba(255,255,255,.35); border-top-color: #fff; animation: v3d-tour .8s linear infinite; }
             @keyframes v3d-tour { to { transform: rotate(360deg); } }
 
@@ -13461,21 +13456,19 @@ def accueil():
                 v3d.marqueurs.forEach(m => m.remove());
                 v3d.marqueurs = [];
                 viderReperesV3d();
-                v3d.photos.forEach(photo => {
-                    const el = document.createElement('button');
-                    el.type = 'button';
-                    el.className = 'v3d-marqueur';
-                    el.textContent = '📷';
-                    el.setAttribute('aria-label', 'Voir la photo');
-                    el.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        montrerPhotoV3d(photo);
+                // Icônes photos : une image dessinée, posée dans une couche native (cliquable), comme les noms de lieux.
+                const carte = v3d.carte;
+                try {
+                    preparerCouchesV3d(carte);
+                    if (!carte.hasImage('v3d-photo-icone')) {
+                        const icone = dessinerPhotoV3d();
+                        carte.addImage('v3d-photo-icone', icone.image, { pixelRatio: icone.ratio });
+                    }
+                    carte.getSource('v3d-photos').setData({
+                        type: 'FeatureCollection',
+                        features: v3d.photos.map((photo, i) => ({ type: 'Feature', id: i, properties: { idx: i }, geometry: { type: 'Point', coordinates: photo.coord } }))
                     });
-                    const marqueur = new window.maplibregl.Marker({ element: el })
-                        .setLngLat(photo.coord)
-                        .addTo(v3d.carte);
-                    v3d.marqueurs.push(marqueur);
-                });
+                } catch (e) { console.warn('Icônes photos indisponibles', e); }
             }
 
 
@@ -13531,13 +13524,14 @@ def accueil():
             // texte blanc à contour sombre, trait et point turquoise), puis posé dans une couche native
             // de la carte. C'est la carte elle-même qui les place sur le relief, donc sans décalage.
             const MARGE_NOM_V3D = 8;
-            function dessinerNomLieuV3d(libelle, taille) {
+            function dessinerEtiquetteV3d(libelle, taille, largeurTexteRef) {
                 const ratio = Math.min(3, Math.max(2, Math.round(window.devicePixelRatio || 2)));
                 const famille = getComputedStyle(document.body).fontFamily || 'sans-serif';
                 const police = '900 ' + taille + 'px ' + famille;
                 const mesure = document.createElement('canvas').getContext('2d');
                 mesure.font = police;
-                const largeurTexte = Math.ceil(mesure.measureText(libelle).width);
+                // largeurTexteRef : largeur du texte final, pour que l'image garde la même taille pendant le compteur Vmax.
+                const largeurTexte = largeurTexteRef || Math.ceil(mesure.measureText(libelle).width);
                 const largeur = MARGE_NOM_V3D + 29 + largeurTexte + 8;
                 const hauteur = 58;
                 const toile = document.createElement('canvas');
@@ -13572,27 +13566,157 @@ def accueil():
                 return {
                     image: ctx.getImageData(0, 0, toile.width, toile.height),
                     ratio: ratio,
+                    largeurTexte: largeurTexte,
                     // Zone occupée à l'écran, par rapport au point (gauche, droite, haut, bas) : sert à éviter les chevauchements.
                     boite: { g: -6, d: 29 + largeurTexte + 2, h: -(26 + taille / 2 + 3), b: 6 }
                 };
             }
-            function preparerCoucheNomsV3d(carte) {
+            // Icône photo : même aspect que l'ancien bouton rond (dégradé aux couleurs de l'appli, bord blanc, appareil photo).
+            function dessinerPhotoV3d() {
+                const ratio = Math.min(3, Math.max(2, Math.round(window.devicePixelRatio || 2)));
+                const taille = 44;
+                const toile = document.createElement('canvas');
+                toile.width = taille * ratio;
+                toile.height = taille * ratio;
+                const ctx = toile.getContext('2d');
+                ctx.scale(ratio, ratio);
+                const style = getComputedStyle(document.documentElement);
+                const c1 = style.getPropertyValue('--ac1').trim() || '#2dd4bf';
+                const c2 = style.getPropertyValue('--ac2').trim() || '#3b82f6';
+                const c = taille / 2;
+                const degrade = ctx.createLinearGradient(c - 15, c - 15, c + 15, c + 15);
+                degrade.addColorStop(0, c1);
+                degrade.addColorStop(1, c2);
+                ctx.shadowColor = 'rgba(0,0,0,0.5)';
+                ctx.shadowBlur = 8 * ratio;
+                ctx.shadowOffsetY = 2 * ratio;
+                ctx.beginPath();
+                ctx.arc(c, c, 15, 0, Math.PI * 2);
+                ctx.fillStyle = degrade;
+                ctx.fill();
+                ctx.shadowColor = 'transparent';
+                ctx.beginPath();
+                ctx.arc(c, c, 14, 0, Math.PI * 2);
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = '#ffffff';
+                ctx.stroke();
+                ctx.font = '15px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = '#ffffff';
+                ctx.fillText('📷', c, c + 1);
+                return { image: ctx.getImageData(0, 0, toile.width, toile.height), ratio: ratio };
+            }
+            // Couches natives du survol : halo Vmax, noms de lieux, panneaux (pentes et Vmax), icônes photos (de bas en haut).
+            function preparerCouchesV3d(carte) {
                 if (carte.getSource('v3d-lieux')) return;
-                carte.addSource('v3d-lieux', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+                const vide = { type: 'FeatureCollection', features: [] };
+                const miseEnPage = {
+                    'icon-image': ['get', 'img'],
+                    'icon-anchor': 'bottom-left',
+                    'icon-offset': [-MARGE_NOM_V3D, MARGE_NOM_V3D],
+                    'icon-allow-overlap': true,
+                    'icon-ignore-placement': true,
+                    'icon-pitch-alignment': 'viewport',
+                    'icon-rotation-alignment': 'viewport'
+                };
+                // Une étiquette n'est visible que pendant sa fenêtre : état « v » mis à jour par majVisibiliteReperesV3d.
+                const opacite = { 'icon-opacity': ['case', ['boolean', ['feature-state', 'v'], false], 1, 0] };
+                carte.addSource('v3d-halo', { type: 'geojson', data: vide });
                 carte.addLayer({
-                    id: 'v3d-lieux-noms', type: 'symbol', source: 'v3d-lieux',
-                    layout: {
-                        'icon-image': ['get', 'img'],
-                        'icon-anchor': 'bottom-left',
-                        'icon-offset': [-MARGE_NOM_V3D, MARGE_NOM_V3D],
-                        'icon-allow-overlap': true,
-                        'icon-ignore-placement': true,
-                        'icon-pitch-alignment': 'viewport',
-                        'icon-rotation-alignment': 'viewport'
-                    },
-                    // Un nom n'est visible que pendant sa fenêtre (200 m avant, 100 m après) : état « v » mis à jour par majVisibiliteReperesV3d.
-                    paint: { 'icon-opacity': ['case', ['boolean', ['feature-state', 'v'], false], 1, 0] }
+                    id: 'v3d-halo-anneaux', type: 'circle', source: 'v3d-halo',
+                    paint: {
+                        'circle-radius': ['coalesce', ['feature-state', 'r'], 0],
+                        'circle-opacity': 0,
+                        'circle-stroke-color': '#ffb02e',
+                        'circle-stroke-width': 2.5,
+                        'circle-stroke-opacity': ['coalesce', ['feature-state', 'o'], 0],
+                        'circle-pitch-alignment': 'viewport',
+                        'circle-pitch-scale': 'viewport'
+                    }
                 });
+                carte.addSource('v3d-lieux', { type: 'geojson', data: vide });
+                carte.addLayer({ id: 'v3d-lieux-noms', type: 'symbol', source: 'v3d-lieux', layout: miseEnPage, paint: opacite });
+                carte.addSource('v3d-reperes', { type: 'geojson', data: vide });
+                carte.addLayer({ id: 'v3d-reperes-etiquettes', type: 'symbol', source: 'v3d-reperes', layout: miseEnPage, paint: opacite });
+                carte.addSource('v3d-photos', { type: 'geojson', data: vide });
+                carte.addLayer({
+                    id: 'v3d-photos-icones', type: 'symbol', source: 'v3d-photos',
+                    layout: { 'icon-image': 'v3d-photo-icone', 'icon-allow-overlap': true, 'icon-pitch-alignment': 'viewport', 'icon-rotation-alignment': 'viewport' }
+                });
+                carte.on('click', 'v3d-photos-icones', e => {
+                    const f = e.features && e.features[0];
+                    const photo = f ? v3d.photos[f.properties.idx] : null;
+                    if (photo) montrerPhotoV3d(photo);
+                });
+                carte.on('mouseenter', 'v3d-photos-icones', () => { carte.getCanvas().style.cursor = 'pointer'; });
+                carte.on('mouseleave', 'v3d-photos-icones', () => { carte.getCanvas().style.cursor = ''; });
+            }
+            // Panneau Vmax : le chiffre grimpe de 0 à la vitesse max (image redessinée) et deux anneaux orange pulsent (couche cercle).
+            function majImageVmaxV3d(p, valeur) {
+                const carte = v3d.carte;
+                if (!carte || !carte.hasImage(p.idImage)) return;
+                carte.updateImage(p.idImage, dessinerEtiquetteV3d('Vmax ' + valeur + ' km/h', 16, p.largeurTexte).image);
+                p.valeurAffichee = valeur;
+            }
+            function arreterAnimationVmaxV3d(p) {
+                p.jeton = (p.jeton || 0) + 1;
+                if (p.raf) cancelAnimationFrame(p.raf);
+                p.raf = 0;
+                const carte = v3d.carte;
+                if (!carte) return;
+                try {
+                    [0, 1].forEach(k => carte.setFeatureState({ source: 'v3d-halo', id: k }, { r: 0, o: 0 }));
+                    if (p.valeurAffichee !== p.valeurVmax) majImageVmaxV3d(p, p.valeurVmax);
+                } catch (e) { console.warn(e); }
+            }
+            function demarrerAnimationVmaxV3d(p) {
+                const carte = v3d.carte;
+                if (!carte) return;
+                arreterAnimationVmaxV3d(p);
+                const reduit = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                if (reduit) {
+                    [0, 1].forEach(k => carte.setFeatureState({ source: 'v3d-halo', id: k }, { r: 9, o: 0.6 }));
+                    return;
+                }
+                const jeton = p.jeton;
+                const debut = performance.now();
+                const pas = maintenant => {
+                    if (p.jeton !== jeton || v3d.carte !== carte) return;
+                    const ecoule = maintenant - debut;
+                    const t = Math.min(1, ecoule / 900);
+                    const valeur = Math.round(p.valeurVmax * (1 - Math.pow(1 - t, 3)));
+                    if (valeur !== p.valeurAffichee) majImageVmaxV3d(p, valeur);
+                    [0, 1].forEach(k => {
+                        const phase = ((ecoule + k * 650) % 1300) / 1300;
+                        carte.setFeatureState({ source: 'v3d-halo', id: k }, { r: 5 + 22.5 * phase, o: 0.95 * (1 - phase) });
+                    });
+                    p.raf = requestAnimationFrame(pas);
+                };
+                p.raf = requestAnimationFrame(pas);
+            }
+            function viderPanneauxV3d() {
+                const carte = v3d.carte;
+                const anciennes = v3d.imagesPanneaux || [];
+                v3d.panneauxPente.forEach(p => { if (p.vmax) { p.jeton = (p.jeton || 0) + 1; if (p.raf) cancelAnimationFrame(p.raf); p.raf = 0; } });
+                v3d.imagesPanneaux = [];
+                v3d.panneauxPente = [];
+                if (!carte) return;
+                try {
+                    const vide = { type: 'FeatureCollection', features: [] };
+                    if (carte.getSource('v3d-reperes')) {
+                        carte.removeFeatureState({ source: 'v3d-reperes' });
+                        carte.getSource('v3d-reperes').setData(vide);
+                    }
+                    if (carte.getSource('v3d-halo')) {
+                        carte.removeFeatureState({ source: 'v3d-halo' });
+                        carte.getSource('v3d-halo').setData(vide);
+                    }
+                } catch (e) { console.warn(e); }
+                setTimeout(() => {
+                    if (v3d.carte !== carte) return;
+                    anciennes.forEach(id => { try { if (carte.hasImage(id)) carte.removeImage(id); } catch (e) { console.warn(e); } });
+                }, 2000);
             }
             function viderNomsV3d() {
                 const carte = v3d.carte;
@@ -13688,65 +13812,40 @@ def accueil():
                 return [];
             }
             function viderReperesV3d() {
-                v3d.reperes.forEach(m => m.remove());
-                v3d.reperes = [];
-                v3d.panneauxPente = [];
+                viderPanneauxV3d();
                 viderNomsV3d();
-            }
-            // Panneau Vmax : le chiffre grimpe de 0 jusqu'à la vitesse max quand le panneau apparaît.
-            function texteVmaxV3d(p, valeur) {
-                const t = p.marqueur.getElement().querySelector('text');
-                if (t) t.textContent = 'Vmax ' + valeur + ' km/h';
-            }
-            function animerCompteurVmaxV3d(p) {
-                p.jeton = (p.jeton || 0) + 1;
-                const jeton = p.jeton;
-                if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-                    texteVmaxV3d(p, p.valeurVmax);
-                    return;
-                }
-                const debut = performance.now(), duree = 900;
-                const pas = maintenant => {
-                    if (p.jeton !== jeton) return;
-                    const t = Math.min(1, (maintenant - debut) / duree);
-                    texteVmaxV3d(p, Math.round(p.valeurVmax * (1 - Math.pow(1 - t, 3))));
-                    if (t < 1) requestAnimationFrame(pas);
-                };
-                texteVmaxV3d(p, 0);
-                requestAnimationFrame(pas);
-            }
-            function arreterCompteurVmaxV3d(p) {
-                p.jeton = (p.jeton || 0) + 1;
-                texteVmaxV3d(p, p.valeurVmax);
             }
             function majVisibiliteReperesV3d() {
                 const d = v3d.f * v3d.total;
                 const avanceParSeconde = v3d.total / Math.max(1, v3d.dureeBase) * v3d.vitesse;
-                v3d.reperes.forEach(m => {
-                    m.getElement().classList.toggle('v3d-cache', !v3d.repereVisibles);
-                });
+                const carte = v3d.carte;
+                if (!carte || !carte.getSource('v3d-lieux')) return;
+                // Position à l'écran (relief compris) de chaque étiquette, par rapport à la page.
+                const zone = carte.getCanvas().getBoundingClientRect();
+                const rectangleDe = p => {
+                    const pt = carte.project(p.coord);
+                    return {
+                        left: zone.left + pt.x + p.boite.g, right: zone.left + pt.x + p.boite.d,
+                        top: zone.top + pt.y + p.boite.h, bottom: zone.top + pt.y + p.boite.b
+                    };
+                };
 
                 // Les panneaux de pente et de vitesse passent toujours avant les noms.
                 const rectanglesPrioritaires = [];
                 v3d.panneauxPente.forEach(p => {
                     const visible = v3d.repereVisibles && d >= Math.max(0, p.debut - avanceParSeconde) && d <= p.fin;
-                    const el = p.marqueur.getElement();
-                    const etaitCache = el.classList.contains('v3d-cache');
-                    el.classList.toggle('v3d-cache', !visible);
+                    if (visible) rectanglesPrioritaires.push(rectangleDe(p));
+                    if (visible === p.visible) return;
+                    p.visible = visible;
+                    carte.setFeatureState({ source: 'v3d-reperes', id: p.id }, { v: visible });
                     if (p.vmax) {
-                        if (visible && etaitCache) animerCompteurVmaxV3d(p);
-                        else if (!visible && !etaitCache) arreterCompteurVmaxV3d(p);
-                    }
-                    if (visible) {
-                        const r = el.getBoundingClientRect();
-                        if (r.width && r.height) rectanglesPrioritaires.push(r);
+                        if (visible) demarrerAnimationVmaxV3d(p);
+                        else arreterAnimationVmaxV3d(p);
                     }
                 });
 
                 // Un nom apparaît 200 m avant son point et disparaît 100 m après.
                 // En cas de chevauchement, les panneaux prioritaires restent visibles.
-                const carte = v3d.carte;
-                if (!carte || !v3d.panneauxLieux.length || !carte.getSource('v3d-lieux')) return;
                 const candidats = v3d.panneauxLieux.filter(p =>
                     v3d.repereVisibles
                     && Number.isFinite(p.d)
@@ -13766,15 +13865,9 @@ def accueil():
                     a.left < b.right + 8 && a.right + 8 > b.left
                     && a.top < b.bottom + 6 && a.bottom + 6 > b.top;
 
-                // Position à l'écran (relief compris) de chaque nom retenu, par rapport à la page.
-                const zone = carte.getCanvas().getBoundingClientRect();
                 const montres = new Set();
                 candidats.forEach(p => {
-                    const pt = carte.project(p.coord);
-                    const r = {
-                        left: zone.left + pt.x + p.boite.g, right: zone.left + pt.x + p.boite.d,
-                        top: zone.top + pt.y + p.boite.h, bottom: zone.top + pt.y + p.boite.b
-                    };
+                    const r = rectangleDe(p);
                     const prioritaire = rectanglesPrioritaires.some(pr => seChevauchent(r, pr));
                     const doublonVisuel = rectanglesNoms.some(pr => seChevauchent(r, pr));
                     if (prioritaire || doublonVisuel) return;
@@ -13792,12 +13885,28 @@ def accueil():
             }
             async function poserReperesV3d() {
                 const carte=v3d.carte; viderReperesV3d();
+                try { preparerCouchesV3d(carte); } catch (e) { console.warn('Couches des repères indisponibles', e); return; }
+                // Panneaux de pente et Vmax : dessinés en images dans une couche native (comme les noms de lieux).
+                v3d.generationPanneaux = (v3d.generationPanneaux || 0) + 1;
+                v3d.imagesPanneaux = [];
+                const objetsReperes = [];
+                const poserPanneau = (libelle, taille, coord, donnees) => {
+                    const id = v3d.panneauxPente.length;
+                    const idImage = 'v3d-panneau-' + v3d.generationPanneaux + '-' + id;
+                    try {
+                        const dessin = dessinerEtiquetteV3d(libelle, taille);
+                        carte.addImage(idImage, dessin.image, { pixelRatio: dessin.ratio });
+                        v3d.imagesPanneaux.push(idImage);
+                        objetsReperes.push({ type: 'Feature', id: id, properties: { img: idImage }, geometry: { type: 'Point', coordinates: coord } });
+                        const p = Object.assign({ id: id, coord: coord, boite: dessin.boite, visible: false, idImage: idImage, largeurTexte: dessin.largeurTexte }, donnees);
+                        v3d.panneauxPente.push(p);
+                        return p;
+                    } catch (e) { console.warn('Panneau non dessiné', e); return null; }
+                };
                 const raides=tronconsRaidesV3d(15), liste=raides.length?raides:tronconsRaidesV3d(10).sort((a,b)=>b.valeur-a.valeur).slice(0,3);
                 liste.sort((a,b)=>b.valeur-a.valeur).slice(0,8).forEach(t=>{
                     const libelle=(t.signe>0?'+':'−')+Math.round(t.valeur)+' %';
-                    const m=new window.maplibregl.Marker({element:elementRepereAerienV3d(libelle,19),anchor:'bottom-left'}).setLngLat(pointA(t.debut)).addTo(carte);
-                    v3d.reperes.push(m);
-                    v3d.panneauxPente.push({marqueur:m,debut:t.debut,fin:t.fin});
+                    poserPanneau(libelle, 19, pointA(t.debut), { debut: t.debut, fin: t.fin });
                 });
                 if (v3d.vitesseMax !== null) {
                     let indexMax = -1;
@@ -13805,25 +13914,25 @@ def accueil():
                         if (v !== null && isFinite(v) && v <= 150 && (indexMax < 0 || v > v3d.vitesses[indexMax])) indexMax = i;
                     });
                     if (indexMax >= 0) {
-                        const libelle='Vmax '+Math.round(v3d.vitesseMax)+' km/h';
-                        const marqueurMax=new window.maplibregl.Marker({element:elementRepereAerienV3d(libelle,16),anchor:'bottom-left'}).setLngLat(pointA(v3d.cum[indexMax])).addTo(carte);
-                        v3d.reperes.push(marqueurMax);
-                        // Halo orange (deux anneaux décalés) sous le point, animé en CSS.
-                        const svgMax = marqueurMax.getElement().querySelector('svg');
-                        if (svgMax) svgMax.insertAdjacentHTML('afterbegin', '<circle class="v3d-halo" cx="0" cy="50" r="5" fill="none" stroke="#ffb02e" stroke-width="2.5"/><circle class="v3d-halo v3d-halo2" cx="0" cy="50" r="5" fill="none" stroke="#ffb02e" stroke-width="2.5"/>');
-                        v3d.panneauxPente.push({
+                        const valeurVmax = Math.round(v3d.vitesseMax);
+                        const coordMax = pointA(v3d.cum[indexMax]);
+                        const panneauMax = poserPanneau('Vmax '+valeurVmax+' km/h', 16, coordMax, {
                             vmax: true,
-                            valeurVmax: Math.round(v3d.vitesseMax),
-                            marqueur: marqueurMax,
+                            valeurVmax: valeurVmax,
+                            valeurAffichee: valeurVmax,
                             debut: v3d.cum[indexMax],
                             fin: v3d.cum[indexMax] + (v3d.total / Math.max(1, v3d.dureeBase) * v3d.vitesse) * 1.5
                         });
+                        // Deux anneaux orange (couche cercle) pulsent autour du point pendant l'affichage du panneau.
+                        if (panneauMax) carte.getSource('v3d-halo').setData({ type: 'FeatureCollection', features: [0, 1].map(k => (
+                            { type: 'Feature', id: k, properties: {}, geometry: { type: 'Point', coordinates: coordMax } })) });
                     }
                 }
+                carte.getSource('v3d-reperes').setData({ type: 'FeatureCollection', features: objetsReperes });
                 majVisibiliteReperesV3d(); majBoutonsV3d();
                 const afficherLieux = lieux => {
                     viderNomsV3d();
-                    try { preparerCoucheNomsV3d(carte); } catch (e) { console.warn('Couche des noms indisponible', e); return; }
+                    try { preparerCouchesV3d(carte); } catch (e) { console.warn('Couche des noms indisponible', e); return; }
                     v3d.generationNoms = (v3d.generationNoms || 0) + 1;
                     const objets = [];
                     lieux.forEach((l, i) => {
@@ -13831,7 +13940,7 @@ def accueil():
                             ? ' · ' + fmtAltitude(l.alt).complet : '');
                         const idImage = 'v3d-lieu-' + v3d.generationNoms + '-' + i;
                         try {
-                            const dessin = dessinerNomLieuV3d(libelle, 16);
+                            const dessin = dessinerEtiquetteV3d(libelle, 16);
                             carte.addImage(idImage, dessin.image, { pixelRatio: dessin.ratio });
                             v3d.imagesNoms.push(idImage);
                             objets.push({ type: 'Feature', id: i, properties: { img: idImage }, geometry: { type: 'Point', coordinates: l.coord } });
@@ -13901,7 +14010,7 @@ def accueil():
                 const rep = document.getElementById('v3dReperes');
                 remplirBouton(rep, 'montagne', 'Repères');
                 rep.classList.toggle('actif', v3d.repereVisibles);
-                rep.style.display = (v3d.reperes.length || v3d.prete) ? '' : 'none';
+                rep.style.display = (v3d.panneauxPente.length || v3d.panneauxLieux.length || v3d.prete) ? '' : 'none';
                 remplirBouton(autres, 'incl', 'Mes parcours');
                 autres.classList.toggle('actif', v3d.voirAutres);
                 autres.style.display = sortiesConnues.some(o => o.id !== v3d.sortieId && Array.isArray(o.trace) && o.trace.length >= 2) ? '' : 'none';
