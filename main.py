@@ -3541,6 +3541,11 @@ def accueil():
             /* Noms de lieux : pas d'ombre floue (le contour sombre suffit), couche dédiée pour glisser sans saccade. */
             .v3d-pente-repere.v3d-nom-lieu { filter: none; will-change: transform; }
             .v3d-cache { display: none !important; }
+            /* Panneau Vmax : halo orange qui pulse autour du point le plus rapide. */
+            .v3d-halo { transform-box: fill-box; transform-origin: center; vector-effect: non-scaling-stroke; animation: v3d-halo 1.3s ease-out infinite; }
+            .v3d-halo2 { animation-delay: .65s; }
+            @keyframes v3d-halo { 0% { transform: scale(1); opacity: .95; } 100% { transform: scale(5.5); opacity: 0; } }
+            @media (prefers-reduced-motion: reduce) { .v3d-halo { animation: none; opacity: .6; } }
             .v3d-tourne { display: inline-block; width: 14px; height: 14px; margin-right: 8px; vertical-align: -2px; border-radius: 50%; border: 2px solid rgba(255,255,255,.35); border-top-color: #fff; animation: v3d-tour .8s linear infinite; }
             @keyframes v3d-tour { to { transform: rotate(360deg); } }
 
@@ -13688,6 +13693,32 @@ def accueil():
                 v3d.panneauxPente = [];
                 viderNomsV3d();
             }
+            // Panneau Vmax : le chiffre grimpe de 0 jusqu'à la vitesse max quand le panneau apparaît.
+            function texteVmaxV3d(p, valeur) {
+                const t = p.marqueur.getElement().querySelector('text');
+                if (t) t.textContent = 'Vmax ' + valeur + ' km/h';
+            }
+            function animerCompteurVmaxV3d(p) {
+                p.jeton = (p.jeton || 0) + 1;
+                const jeton = p.jeton;
+                if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                    texteVmaxV3d(p, p.valeurVmax);
+                    return;
+                }
+                const debut = performance.now(), duree = 900;
+                const pas = maintenant => {
+                    if (p.jeton !== jeton) return;
+                    const t = Math.min(1, (maintenant - debut) / duree);
+                    texteVmaxV3d(p, Math.round(p.valeurVmax * (1 - Math.pow(1 - t, 3))));
+                    if (t < 1) requestAnimationFrame(pas);
+                };
+                texteVmaxV3d(p, 0);
+                requestAnimationFrame(pas);
+            }
+            function arreterCompteurVmaxV3d(p) {
+                p.jeton = (p.jeton || 0) + 1;
+                texteVmaxV3d(p, p.valeurVmax);
+            }
             function majVisibiliteReperesV3d() {
                 const d = v3d.f * v3d.total;
                 const avanceParSeconde = v3d.total / Math.max(1, v3d.dureeBase) * v3d.vitesse;
@@ -13700,7 +13731,12 @@ def accueil():
                 v3d.panneauxPente.forEach(p => {
                     const visible = v3d.repereVisibles && d >= Math.max(0, p.debut - avanceParSeconde) && d <= p.fin;
                     const el = p.marqueur.getElement();
+                    const etaitCache = el.classList.contains('v3d-cache');
                     el.classList.toggle('v3d-cache', !visible);
+                    if (p.vmax) {
+                        if (visible && etaitCache) animerCompteurVmaxV3d(p);
+                        else if (!visible && !etaitCache) arreterCompteurVmaxV3d(p);
+                    }
                     if (visible) {
                         const r = el.getBoundingClientRect();
                         if (r.width && r.height) rectanglesPrioritaires.push(r);
@@ -13772,7 +13808,12 @@ def accueil():
                         const libelle='Vmax '+Math.round(v3d.vitesseMax)+' km/h';
                         const marqueurMax=new window.maplibregl.Marker({element:elementRepereAerienV3d(libelle,16),anchor:'bottom-left'}).setLngLat(pointA(v3d.cum[indexMax])).addTo(carte);
                         v3d.reperes.push(marqueurMax);
+                        // Halo orange (deux anneaux décalés) sous le point, animé en CSS.
+                        const svgMax = marqueurMax.getElement().querySelector('svg');
+                        if (svgMax) svgMax.insertAdjacentHTML('afterbegin', '<circle class="v3d-halo" cx="0" cy="50" r="5" fill="none" stroke="#ffb02e" stroke-width="2.5"/><circle class="v3d-halo v3d-halo2" cx="0" cy="50" r="5" fill="none" stroke="#ffb02e" stroke-width="2.5"/>');
                         v3d.panneauxPente.push({
+                            vmax: true,
+                            valeurVmax: Math.round(v3d.vitesseMax),
                             marqueur: marqueurMax,
                             debut: v3d.cum[indexMax],
                             fin: v3d.cum[indexMax] + (v3d.total / Math.max(1, v3d.dureeBase) * v3d.vitesse) * 1.5
