@@ -13609,11 +13609,21 @@ def accueil():
             }
             // Sommets : un triangle rouge monte du sommet au bout d'un fin trait vertical, en faisant un tour sur lui-même.
             // avancement : 0 (rien) à 1 (triangle en haut, de face). Image de taille fixe, redessinée à chaque image de l'animation.
+            // Une fois le triangle en haut, le nom du sommet s'écrit à côté, lettre par lettre, de gauche à droite.
+            // info : { libelle, largeurTexte } ; nbLettres : nombre de lettres déjà écrites. L'image garde toujours la même taille.
             const LARGEUR_POINTE_V3D = 40, HAUTEUR_POINTE_V3D = 104, DUREE_POINTE_V3D = 1400;
-            function dessinerPointeV3d(avancement) {
+            const POLICE_SOMMET_V3D = 16;
+            function mesurerNomSommetV3d(libelle) {
+                const famille = getComputedStyle(document.body).fontFamily || 'sans-serif';
+                const mesure = document.createElement('canvas').getContext('2d');
+                mesure.font = '900 ' + POLICE_SOMMET_V3D + 'px ' + famille;
+                return Math.ceil(mesure.measureText(libelle).width);
+            }
+            function dessinerPointeV3d(avancement, info, nbLettres) {
                 const ratio = Math.min(3, Math.max(2, Math.round(window.devicePixelRatio || 2)));
+                const largeurImage = LARGEUR_POINTE_V3D + (info ? info.largeurTexte + 14 : 0);
                 const toile = document.createElement('canvas');
-                toile.width = LARGEUR_POINTE_V3D * ratio;
+                toile.width = largeurImage * ratio;
                 toile.height = HAUTEUR_POINTE_V3D * ratio;
                 const ctx = toile.getContext('2d');
                 ctx.scale(ratio, ratio);
@@ -13652,6 +13662,18 @@ def accueil():
                 ctx.strokeStyle = '#ffffff';
                 ctx.stroke();
                 ctx.restore();
+                // Nom du sommet : écrit à droite du triangle une fois celui-ci arrivé en haut.
+                if (info && a >= 1 && nbLettres > 0) {
+                    const lettres = Array.from(info.libelle).slice(0, nbLettres).join('');
+                    ctx.font = '900 ' + POLICE_SOMMET_V3D + 'px ' + (getComputedStyle(document.body).fontFamily || 'sans-serif');
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'middle';
+                    ctx.lineWidth = 3.5;
+                    ctx.strokeStyle = 'rgba(5,15,25,0.9)';
+                    ctx.strokeText(lettres, cx + 16, yTriangle);
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillText(lettres, cx + 16, yTriangle);
+                }
                 return { image: ctx.getImageData(0, 0, toile.width, toile.height), ratio: ratio };
             }
             // Couches natives du survol : halo Vmax, noms de lieux, panneaux (pentes et Vmax), icônes photos (de bas en haut).
@@ -13689,7 +13711,8 @@ def accueil():
                     id: 'v3d-pointes-triangles', type: 'symbol', source: 'v3d-pointes',
                     layout: {
                         'icon-image': ['get', 'img'],
-                        'icon-anchor': 'bottom',
+                        'icon-anchor': 'bottom-left',
+                        'icon-offset': [-LARGEUR_POINTE_V3D / 2, 0],
                         'icon-allow-overlap': true,
                         'icon-ignore-placement': true,
                         'icon-pitch-alignment': 'viewport',
@@ -13786,9 +13809,12 @@ def accueil():
                     v3d.rafPointes = 0;
                     if (v3d.carte !== carte || !v3d.pointesActives || !v3d.pointesActives.size) return;
                     v3d.pointesActives.forEach(p => {
-                        const t = Math.min(1, (maintenant - p.debutPointe) / DUREE_POINTE_V3D);
-                        try { if (carte.hasImage(p.idPointe)) carte.updateImage(p.idPointe, dessinerPointeV3d(t).image); } catch (e) { console.warn(e); }
-                        if (t >= 1) v3d.pointesActives.delete(p);
+                        const ecoule = maintenant - p.debutPointe;
+                        const t = Math.min(1, ecoule / DUREE_POINTE_V3D);
+                        const partie = Math.max(0, Math.min(1, (ecoule - DUREE_POINTE_V3D) / p.dureeTexte));
+                        const lettres = Math.ceil(partie * p.nbLettres);
+                        try { if (carte.hasImage(p.idPointe)) carte.updateImage(p.idPointe, dessinerPointeV3d(t, p.infoPointe, lettres).image); } catch (e) { console.warn(e); }
+                        if (partie >= 1) v3d.pointesActives.delete(p);
                     });
                     if (v3d.pointesActives.size) v3d.rafPointes = requestAnimationFrame(pas);
                 };
@@ -13798,7 +13824,7 @@ def accueil():
                 const carte = v3d.carte;
                 if (!carte || !carte.hasImage(p.idPointe)) return;
                 const reduit = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-                try { carte.updateImage(p.idPointe, dessinerPointeV3d(reduit ? 1 : 0).image); } catch (e) { console.warn(e); return; }
+                try { carte.updateImage(p.idPointe, dessinerPointeV3d(reduit ? 1 : 0, p.infoPointe, reduit ? p.nbLettres : 0).image); } catch (e) { console.warn(e); return; }
                 if (reduit) return;
                 p.debutPointe = performance.now();
                 if (!v3d.pointesActives) v3d.pointesActives = new Set();
@@ -13945,7 +13971,8 @@ def accueil():
                 // Un nom apparaît 200 m avant son point et disparaît 100 m après.
                 // En cas de chevauchement, les panneaux prioritaires restent visibles.
                 const candidats = v3d.panneauxLieux.filter(p =>
-                    v3d.repereVisibles
+                    !p.idPointe
+                    && v3d.repereVisibles
                     && Number.isFinite(p.d)
                     && d >= Math.max(0, p.d - 200)
                     && d <= p.d + 100
@@ -14051,21 +14078,27 @@ def accueil():
                             ? ' · ' + fmtAltitude(l.alt).complet : '');
                         const idImage = 'v3d-lieu-' + v3d.generationNoms + '-' + i;
                         try {
+                            // Sommet : triangle rouge animé, et le nom s'écrit à côté (pas d'étiquette dans la couche des noms).
+                            if (l.genre === 'sommet') {
+                                const idPointe = 'v3d-pointe-' + v3d.generationNoms + '-' + i;
+                                const info = { libelle: libelle, largeurTexte: mesurerNomSommetV3d(libelle) };
+                                const nbLettres = Array.from(libelle).length;
+                                const pointe = dessinerPointeV3d(1, info, nbLettres);
+                                carte.addImage(idPointe, pointe.image, { pixelRatio: pointe.ratio });
+                                v3d.imagesNoms.push(idPointe);
+                                objetsPointes.push({ type: 'Feature', id: i, properties: { img: idPointe }, geometry: { type: 'Point', coordinates: l.coord } });
+                                v3d.panneauxLieux.push({
+                                    id: i, coord: l.coord, d: l.d, rang: l.rang, nom: l.nom, boite: { g: 0, d: 0, h: 0, b: 0 }, visible: false,
+                                    idPointe: idPointe, pointeVisible: false, infoPointe: info, nbLettres: nbLettres,
+                                    dureeTexte: Math.max(600, Math.min(1600, nbLettres * 55))
+                                });
+                                return;
+                            }
                             const dessin = dessinerEtiquetteV3d(libelle, 16);
                             carte.addImage(idImage, dessin.image, { pixelRatio: dessin.ratio });
                             v3d.imagesNoms.push(idImage);
                             objets.push({ type: 'Feature', id: i, properties: { img: idImage }, geometry: { type: 'Point', coordinates: l.coord } });
                             const lieu = { id: i, coord: l.coord, d: l.d, rang: l.rang, nom: l.nom, boite: dessin.boite, visible: false };
-                            // Sommet : triangle rouge animé, posé sur le même point (visible pendant la même fenêtre que le nom).
-                            if (l.genre === 'sommet') {
-                                const idPointe = 'v3d-pointe-' + v3d.generationNoms + '-' + i;
-                                const pointe = dessinerPointeV3d(1);
-                                carte.addImage(idPointe, pointe.image, { pixelRatio: pointe.ratio });
-                                v3d.imagesNoms.push(idPointe);
-                                objetsPointes.push({ type: 'Feature', id: i, properties: { img: idPointe }, geometry: { type: 'Point', coordinates: l.coord } });
-                                lieu.idPointe = idPointe;
-                                lieu.pointeVisible = false;
-                            }
                             v3d.panneauxLieux.push(lieu);
                         } catch (e) { console.warn('Nom de lieu non dessiné', e); }
                     });
@@ -20301,8 +20334,11 @@ def ecart_parcours_m(coord, points):
 
 
 def rayon_affichage_m(genre):
-    """Rayon autour du parcours : 500 m pour villes, villages, cols et sommets, 200 m pour le reste."""
-    return 500 if str(genre or "").casefold() in ("ville", "village", "col", "sommet") else 200
+    """Rayon autour du parcours : 500 m pour villes, villages, cols et sommets, 300 m pour les hameaux, 200 m pour le reste."""
+    g = str(genre or "").casefold()
+    if g in ("ville", "village", "col", "sommet"):
+        return 500
+    return 300 if g == "hameau" else 200
 
 
 def interroger_overpass(requete, erreurs=None):
@@ -20794,7 +20830,7 @@ def preparer_lieux_sortie(sortie_id):
                 requete_complete = (
                     '[out:json][timeout:12];('
                     'nwr["place"~"^(city|town|village)$"]["name"](around:500,LISTE);'
-                    'nwr["place"~"^(hamlet|isolated_dwelling)$"]["name"](around:200,LISTE);'
+                    'nwr["place"~"^(hamlet|isolated_dwelling)$"]["name"](around:300,LISTE);'
                     'nwr["natural"~"^(peak|hill)$"]["name"](around:500,LISTE);'
                     'nwr["mountain_pass"="yes"]["name"](around:500,LISTE);'
                     'nwr["natural"="saddle"]["name"](around:500,LISTE);'
