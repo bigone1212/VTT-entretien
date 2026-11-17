@@ -3602,6 +3602,41 @@ def accueil():
             .profil-legende { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; font-size: 0.74rem; color: var(--text-muted); }
             .profil-legende i { display: inline-block; width: 12px; height: 6px; border-radius: 3px; margin-right: 4px; vertical-align: middle; }
 
+            .v3d-diag {
+                position: absolute;
+                z-index: 6;
+                left: calc(8px + env(safe-area-inset-left));
+                right: calc(8px + env(safe-area-inset-right));
+                top: calc(52px + env(safe-area-inset-top));
+                bottom: calc(8px + env(safe-area-inset-bottom));
+                display: none;
+                flex-direction: column;
+                padding: 10px;
+                border-radius: 12px;
+                font-size: 0.78rem;
+                background: rgba(10,25,31,0.97);
+                border: 1px solid rgba(255,255,255,0.2);
+            }
+            .v3d-diag.ouvert { display: flex; }
+            .v3d-diag-entete { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-weight: 800; font-size: 0.9rem; }
+            .v3d-diag-entete span { flex: 1; }
+            .v3d-diag-resume { margin-bottom: 8px; line-height: 1.35; opacity: 0.85; }
+            .v3d-diag input {
+                width: 100%;
+                box-sizing: border-box;
+                padding: 8px 10px;
+                margin-bottom: 8px;
+                border-radius: 8px;
+                font-size: 0.9rem;
+                color: inherit;
+                background: rgba(255,255,255,0.08);
+                border: 1px solid rgba(255,255,255,0.25);
+            }
+            .v3d-diag-liste { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+            .v3d-diag-ligne { padding: 6px 8px; border-radius: 8px; line-height: 1.35; background: rgba(255,255,255,0.06); border-left: 3px solid #ffb02e; }
+            .v3d-diag-ligne.oui { border-left-color: #65e6d4; }
+            .v3d-diag-ligne b { font-size: 0.86rem; }
+
             .v3d-message {
                 position: absolute;
                 z-index: 4;
@@ -4622,6 +4657,15 @@ def accueil():
                 <img id="v3dPhotoImg" alt="Photo de la sortie">
             </div>
             <div class="v3d-message" id="v3dMessage" style="display:none;"></div>
+            <div class="v3d-diag" id="v3dDiag">
+                <div class="v3d-diag-entete">
+                    <span>Diagnostic des noms</span>
+                    <button type="button" id="v3dDiagFermer" aria-label="Fermer le diagnostic">Fermer</button>
+                </div>
+                <div class="v3d-diag-resume" id="v3dDiagResume"></div>
+                <input type="search" id="v3dDiagFiltre" placeholder="Chercher un nom (Glassac, Goutrens…)" autocomplete="off">
+                <div class="v3d-diag-liste" id="v3dDiagListe"></div>
+            </div>
             <div class="v3d-bas">
                 <input type="range" id="v3dProgres" min="0" max="1000" value="0" aria-label="Avancement du parcours">
                 <div class="v3d-boutons">
@@ -4632,6 +4676,7 @@ def accueil():
                     <button type="button" id="v3dAutres"></button>
                     <button type="button" id="v3dReperes"></button>
                     <button type="button" id="v3dRelancerLieux">Relancer les noms</button>
+                    <button type="button" id="v3dDiagnostic">Diagnostic des noms</button>
                     <button type="button" id="v3dCouleur"></button>
                     <button type="button" id="v3dEnreg"></button>
                 </div>
@@ -15021,6 +15066,72 @@ def accueil():
                         relancer.disabled = false;
                     }
                 });
+                // Diagnostic des noms (lecture seule) : liste les lieux de la bibliothèque proches du parcours.
+                const sansAccentV3d = (texte) => Array.from(String(texte || '').toLowerCase().normalize('NFD'))
+                    .filter(c => c.charCodeAt(0) < 768 || c.charCodeAt(0) > 879).join('');
+                function dessinerDiagnosticV3d() {
+                    const liste = document.getElementById('v3dDiagListe');
+                    const resume = document.getElementById('v3dDiagResume');
+                    const donnees = v3d.diagnostic;
+                    if (!liste || !resume || !donnees) return;
+                    const etats = {
+                        affiche: 'Affiché sur le survol',
+                        limite: 'Non affiché : au-delà de la limite de ' + (donnees.limite || 60) + ' noms',
+                        doublon: 'Non affiché : doublon (même nom à moins de 600 m)',
+                        trop_loin: 'Non affiché : trop loin du tracé pour ce type',
+                        non_affiche_genre: 'Non affiché : lieu-dit ou autre type'
+                    };
+                    const tous = Array.isArray(donnees.lieux) ? donnees.lieux : [];
+                    const nbAffiches = tous.filter(l => l.etat === 'affiche').length;
+                    const km = (Number(donnees.longueur_m || 0) / 1000).toFixed(1).replace('.', ',');
+                    const pas = donnees.points_trace > 1 ? Math.round(Number(donnees.longueur_m || 0) / (donnees.points_trace - 1)) : 0;
+                    resume.textContent = 'Tracé : ' + donnees.points_trace + ' points pour ' + km + ' km (un point tous les ' + pas + ' m environ). '
+                        + tous.length + ' lieux à moins de 800 m, dont ' + nbAffiches + ' affichés.';
+                    const filtre = sansAccentV3d(document.getElementById('v3dDiagFiltre').value.trim());
+                    const visibles = tous.filter(l => !filtre || sansAccentV3d(l.nom).indexOf(filtre) !== -1);
+                    liste.textContent = '';
+                    if (!visibles.length) {
+                        liste.textContent = filtre ? 'Aucun lieu de ce nom à moins de 800 m du tracé dans la bibliothèque.' : 'Aucun lieu trouvé.';
+                        return;
+                    }
+                    visibles.forEach(l => {
+                        const ligne = document.createElement('div');
+                        ligne.className = 'v3d-diag-ligne' + (l.etat === 'affiche' ? ' oui' : '');
+                        const titre = document.createElement('b');
+                        titre.textContent = l.nom;
+                        const detail1 = document.createElement('div');
+                        detail1.textContent = (l.genre || 'type inconnu') + ' (rang ' + l.rang + ') · source : ' + (l.source || 'inconnue')
+                            + (l.alt != null && l.alt !== '' ? ' · ' + Math.round(Number(l.alt)) + ' m' : '');
+                        const detail2 = document.createElement('div');
+                        detail2.textContent = 'À ' + Math.round(l.ec) + ' m du tracé · position ' + l.lat + ' ; ' + l.lon;
+                        const detail3 = document.createElement('div');
+                        detail3.textContent = etats[l.etat] || l.etat;
+                        ligne.appendChild(titre);
+                        ligne.appendChild(detail1);
+                        ligne.appendChild(detail2);
+                        ligne.appendChild(detail3);
+                        liste.appendChild(ligne);
+                    });
+                }
+                bouton('v3dDiagnostic', async () => {
+                    const panneau = document.getElementById('v3dDiag');
+                    const liste = document.getElementById('v3dDiagListe');
+                    if (!v3d.sortieId || !panneau || !liste) return;
+                    panneau.classList.add('ouvert');
+                    document.getElementById('v3dDiagResume').textContent = '';
+                    liste.textContent = 'Chargement du diagnostic…';
+                    try {
+                        const reponse = await fetch('/api/sorties/' + encodeURIComponent(v3d.sortieId) + '/lieux/diagnostic?velo_id=' + encodeURIComponent(veloActifId || 1), { headers: getHeaders() });
+                        if (!reponse.ok) throw new Error('Diagnostic indisponible pour le moment.');
+                        v3d.diagnostic = await reponse.json();
+                        dessinerDiagnosticV3d();
+                    } catch (e) {
+                        liste.textContent = e.message || 'Diagnostic indisponible pour le moment.';
+                    }
+                });
+                bouton('v3dDiagFermer', () => document.getElementById('v3dDiag').classList.remove('ouvert'));
+                bouton('v3dFermer', () => document.getElementById('v3dDiag').classList.remove('ouvert'));
+                document.getElementById('v3dDiagFiltre').addEventListener('input', dessinerDiagnosticV3d);
                 bouton('v3dLecture', () => lectureV3d(!v3d.jouer));
                 bouton('v3dVitesse', () => {
                     v3d.vitesse = VITESSES[(VITESSES.indexOf(v3d.vitesse) + 1) % VITESSES.length];
@@ -21330,6 +21441,97 @@ def obtenir_lieux_bibliotheque(sortie_id: int, velo_id: int = 1, x_code_acces: O
                 retenus[doublon] = entree
         retenus.sort(key=lambda x: (x["rang"], x["ec"]))
         return {"statut": "bibliotheque", "lieux": retenus[:60]}
+    finally:
+        conn.close()
+
+
+@app.get("/api/sorties/{sortie_id}/lieux/diagnostic")
+def diagnostic_lieux_sortie(sortie_id: int, velo_id: int = 1, x_code_acces: Optional[str] = Header(default=None)):
+    """Lecture seule : tous les lieux de la bibliothèque à moins de 800 m du parcours,
+    avec leur source, leurs coordonnées et la raison pour laquelle ils sont affichés ou non.
+    Ne modifie rien."""
+    controle_acces(x_code_acces, velo_id)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT trace FROM sorties WHERE id = ? AND velo_id = ?", (sortie_id, velo_id))
+        ligne = cursor.fetchone()
+        if ligne is None:
+            raise HTTPException(status_code=404, detail="Sortie introuvable.")
+        try:
+            trace = json.loads(ligne[0] or "[]")
+        except (TypeError, ValueError):
+            trace = []
+        points = []
+        for p in trace:
+            try:
+                lat, lon = float(p[0]), float(p[1])
+                if -90 <= lat <= 90 and -180 <= lon <= 180:
+                    points.append((lon, lat))
+            except (TypeError, ValueError, IndexError):
+                continue
+        if len(points) < 2:
+            return {"points_trace": len(points), "longueur_m": 0, "limite": 60, "lieux": []}
+
+        def distance(a, b):
+            x = (a[0] - b[0]) * 111320 * math.cos(math.radians((a[1] + b[1]) / 2))
+            y = (a[1] - b[1]) * 110540
+            return math.hypot(x, y)
+
+        longueur = sum(distance(points[i - 1], points[i]) for i in range(1, len(points)))
+        refs = points[::max(1, len(points) // 1000)]
+        sud, nord = min(p[1] for p in refs), max(p[1] for p in refs)
+        ouest, est = min(p[0] for p in refs), max(p[0] for p in refs)
+        marge_lat = 800 / 110540 + 0.0002
+        marge_lon = marge_lat / max(0.2, math.cos(math.radians((sud + nord) / 2)))
+        cursor.execute(
+            """SELECT nom, genre, rang, lon, lat, altitude, source
+               FROM bibliotheque_lieux_geo
+               WHERE lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?""",
+            (sud - marge_lat, nord + marge_lat, ouest - marge_lon, est + marge_lon)
+        )
+        genres = ("ville", "village", "hameau", "col", "sommet")
+        entrees = []
+        for nom, genre, rang, lon, lat, altitude, source in cursor.fetchall():
+            nom = nom_geographique_texte(nom)
+            if not nom:
+                continue
+            genre = str(genre or "").casefold()
+            coord = (float(lon), float(lat))
+            ec = ecart_parcours_m(coord, points)
+            if ec > 800:
+                continue
+            etat = "affiche"
+            if genre not in genres:
+                etat = "non_affiche_genre"
+            elif ec > rayon_affichage_m(genre):
+                etat = "trop_loin"
+            entrees.append({
+                "nom": str(nom), "genre": genre, "rang": int(rang or 9), "source": str(source or ""),
+                "ec": round(ec, 1), "lon": round(coord[0], 6), "lat": round(coord[1], 6),
+                "alt": altitude, "etat": etat
+            })
+        # Même règle que l'affichage : doublons de même nom à moins de 600 m (on garde le mieux classé),
+        # puis les 60 premiers par rang et par distance au parcours.
+        gardes = []
+        for e in entrees:
+            if e["etat"] != "affiche":
+                continue
+            doublon = next((i for i, x in enumerate(gardes)
+                            if x["nom"].casefold() == e["nom"].casefold()
+                            and distance((x["lon"], x["lat"]), (e["lon"], e["lat"])) < 600), None)
+            if doublon is None:
+                gardes.append(e)
+            elif e["rang"] < gardes[doublon]["rang"]:
+                gardes[doublon]["etat"] = "doublon"
+                gardes[doublon] = e
+            else:
+                e["etat"] = "doublon"
+        gardes.sort(key=lambda x: (x["rang"], x["ec"]))
+        for e in gardes[60:]:
+            e["etat"] = "limite"
+        entrees.sort(key=lambda x: (x["nom"].casefold(), x["ec"]))
+        return {"points_trace": len(points), "longueur_m": round(longueur), "limite": 60, "lieux": entrees[:500]}
     finally:
         conn.close()
 
