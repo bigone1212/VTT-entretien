@@ -13621,7 +13621,11 @@ def accueil():
             }
             function dessinerPointeV3d(avancement, info, nbLettres) {
                 const ratio = Math.min(3, Math.max(2, Math.round(window.devicePixelRatio || 2)));
-                const largeurImage = LARGEUR_POINTE_V3D + (info ? info.largeurTexte + 14 : 0);
+                const sansTriangle = !!(info && info.sansTriangle);
+                // Nom de lieu : image centrée sur le trait (le nom est centré au-dessus du trait).
+                const largeurImage = sansTriangle
+                    ? Math.max(LARGEUR_POINTE_V3D, info.largeurTexte + 20)
+                    : LARGEUR_POINTE_V3D + (info ? info.largeurTexte + 14 : 0);
                 const toile = document.createElement('canvas');
                 toile.width = largeurImage * ratio;
                 toile.height = HAUTEUR_POINTE_V3D * ratio;
@@ -13630,16 +13634,17 @@ def accueil():
                 const a = Math.max(0, Math.min(1, avancement));
                 const montee = 1 - Math.pow(1 - a, 3);
                 const tour = a < 0.5 ? 2 * a * a : 1 - Math.pow(-2 * a + 2, 2) / 2;
-                const cx = LARGEUR_POINTE_V3D / 2;
+                const cx = sansTriangle ? largeurImage / 2 : LARGEUR_POINTE_V3D / 2;
                 const base = HAUTEUR_POINTE_V3D - 2;
                 const yTriangle = base - 10 - 74 * montee;
+                // Nom de lieu : trait de 56 px au maximum, le nom est écrit au-dessus.
+                const hautTrait = base - 56 * montee;
                 ctx.lineCap = 'round';
                 ctx.lineJoin = 'round';
                 // Fin trait vertical, du point jusqu'au triangle (ou jusqu'au bout du trait pour un nom de lieu sans triangle).
-                const sansTriangle = !!(info && info.sansTriangle);
                 ctx.beginPath();
                 ctx.moveTo(cx, base);
-                ctx.lineTo(cx, yTriangle + (sansTriangle ? 10 : 8));
+                ctx.lineTo(cx, sansTriangle ? hautTrait : yTriangle + 8);
                 ctx.strokeStyle = 'rgba(5,15,25,0.85)';
                 ctx.lineWidth = 3.4;
                 ctx.stroke();
@@ -13665,12 +13670,12 @@ def accueil():
                     ctx.stroke();
                     ctx.restore();
                 }
-                // Nom : écrit à droite une fois le trait arrivé en haut. Sommet : à hauteur du triangle.
-                // Nom de lieu : au milieu du trait (à droite de celui-ci).
+                // Nom : écrit lettre par lettre, de gauche à droite, une fois le trait arrivé en haut.
+                // Sommet : à droite du triangle. Nom de lieu : centré au-dessus du trait (le trait passe au milieu du nom).
                 if (info && a >= 1 && nbLettres > 0) {
                     const lettres = Array.from(info.libelle).slice(0, nbLettres).join('');
-                    const xTexte = sansTriangle ? cx + 8 : cx + 16;
-                    const yTexte = sansTriangle ? base - 37 : yTriangle;
+                    const xTexte = sansTriangle ? cx - info.largeurTexte / 2 : cx + 16;
+                    const yTexte = sansTriangle ? base - 56 - 13 : yTriangle;
                     ctx.font = '900 ' + POLICE_SOMMET_V3D + 'px ' + (getComputedStyle(document.body).fontFamily || 'sans-serif');
                     ctx.textAlign = 'left';
                     ctx.textBaseline = 'middle';
@@ -13715,10 +13720,26 @@ def accueil():
                 carte.addSource('v3d-pointes', { type: 'geojson', data: vide });
                 carte.addLayer({
                     id: 'v3d-pointes-triangles', type: 'symbol', source: 'v3d-pointes',
+                    filter: ['==', ['get', 's'], 1],
                     layout: {
                         'icon-image': ['get', 'img'],
                         'icon-anchor': 'bottom-left',
                         'icon-offset': [-LARGEUR_POINTE_V3D / 2, 0],
+                        'icon-allow-overlap': true,
+                        'icon-ignore-placement': true,
+                        'icon-pitch-alignment': 'viewport',
+                        'icon-rotation-alignment': 'viewport'
+                    },
+                    paint: opacite
+                });
+                // Noms de lieux : trait qui monte avec le nom centré au-dessus (image centrée sur le point).
+                carte.addLayer({
+                    id: 'v3d-pointes-noms', type: 'symbol', source: 'v3d-pointes',
+                    filter: ['==', ['get', 's'], 0],
+                    layout: {
+                        'icon-image': ['get', 'img'],
+                        'icon-anchor': 'bottom',
+                        'icon-offset': [0, 0],
                         'icon-allow-overlap': true,
                         'icon-ignore-placement': true,
                         'icon-pitch-alignment': 'viewport',
@@ -14091,11 +14112,11 @@ def accueil():
                             const pointe = dessinerPointeV3d(1, info, nbLettres);
                             carte.addImage(idPointe, pointe.image, { pixelRatio: pointe.ratio });
                             v3d.imagesNoms.push(idPointe);
-                            objetsPointes.push({ type: 'Feature', id: i, properties: { img: idPointe }, geometry: { type: 'Point', coordinates: l.coord } });
+                            objetsPointes.push({ type: 'Feature', id: i, properties: { img: idPointe, s: estSommet ? 1 : 0 }, geometry: { type: 'Point', coordinates: l.coord } });
                             // Zone occupée à l'écran, par rapport au point : sert à éviter les chevauchements.
                             const boite = estSommet
                                 ? { g: -12, d: 16 + largeurTexte + 4, h: -98, b: 4 }
-                                : { g: -6, d: 8 + largeurTexte + 6, h: -49, b: -25 };
+                                : { g: -(largeurTexte / 2 + 6), d: largeurTexte / 2 + 6, h: -83, b: -57 };
                             v3d.panneauxLieux.push({
                                 id: i, coord: l.coord, d: l.d, rang: l.rang, nom: l.nom, boite: boite, sommet: estSommet,
                                 idPointe: idPointe, pointeVisible: false, infoPointe: info, nbLettres: nbLettres,
