@@ -13635,44 +13635,50 @@ def accueil():
                 const yTriangle = base - 10 - 74 * montee;
                 ctx.lineCap = 'round';
                 ctx.lineJoin = 'round';
-                // Fin trait vertical, du sommet jusqu'au triangle.
+                // Fin trait vertical, du point jusqu'au triangle (ou jusqu'au bout du trait pour un nom de lieu sans triangle).
+                const sansTriangle = !!(info && info.sansTriangle);
                 ctx.beginPath();
                 ctx.moveTo(cx, base);
-                ctx.lineTo(cx, yTriangle + 8);
+                ctx.lineTo(cx, yTriangle + (sansTriangle ? 10 : 8));
                 ctx.strokeStyle = 'rgba(5,15,25,0.85)';
                 ctx.lineWidth = 3.4;
                 ctx.stroke();
                 ctx.strokeStyle = '#ffffff';
                 ctx.lineWidth = 1.4;
                 ctx.stroke();
-                // Triangle rouge qui tourne sur son axe vertical (un tour complet : 360°).
-                let echelle = Math.cos(2 * Math.PI * tour);
-                if (Math.abs(echelle) < 0.06) echelle = echelle < 0 ? -0.06 : 0.06;
-                ctx.save();
-                ctx.translate(cx, yTriangle);
-                ctx.scale(echelle, 1);
-                ctx.beginPath();
-                ctx.moveTo(0, -11);
-                ctx.lineTo(10, 8);
-                ctx.lineTo(-10, 8);
-                ctx.closePath();
-                ctx.fillStyle = '#ff2d2d';
-                ctx.fill();
-                ctx.lineWidth = 2;
-                ctx.strokeStyle = '#ffffff';
-                ctx.stroke();
-                ctx.restore();
-                // Nom du sommet : écrit à droite du triangle une fois celui-ci arrivé en haut.
+                // Triangle rouge qui tourne sur son axe vertical (un tour complet : 360°). Pas de triangle pour un nom de lieu.
+                if (!sansTriangle) {
+                    let echelle = Math.cos(2 * Math.PI * tour);
+                    if (Math.abs(echelle) < 0.06) echelle = echelle < 0 ? -0.06 : 0.06;
+                    ctx.save();
+                    ctx.translate(cx, yTriangle);
+                    ctx.scale(echelle, 1);
+                    ctx.beginPath();
+                    ctx.moveTo(0, -11);
+                    ctx.lineTo(10, 8);
+                    ctx.lineTo(-10, 8);
+                    ctx.closePath();
+                    ctx.fillStyle = '#ff2d2d';
+                    ctx.fill();
+                    ctx.lineWidth = 2;
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.stroke();
+                    ctx.restore();
+                }
+                // Nom : écrit à droite une fois le trait arrivé en haut. Sommet : à hauteur du triangle.
+                // Nom de lieu : au milieu du trait (à droite de celui-ci).
                 if (info && a >= 1 && nbLettres > 0) {
                     const lettres = Array.from(info.libelle).slice(0, nbLettres).join('');
+                    const xTexte = sansTriangle ? cx + 8 : cx + 16;
+                    const yTexte = sansTriangle ? base - 37 : yTriangle;
                     ctx.font = '900 ' + POLICE_SOMMET_V3D + 'px ' + (getComputedStyle(document.body).fontFamily || 'sans-serif');
                     ctx.textAlign = 'left';
                     ctx.textBaseline = 'middle';
                     ctx.lineWidth = 3.5;
                     ctx.strokeStyle = 'rgba(5,15,25,0.9)';
-                    ctx.strokeText(lettres, cx + 16, yTriangle);
+                    ctx.strokeText(lettres, xTexte, yTexte);
                     ctx.fillStyle = '#ffffff';
-                    ctx.fillText(lettres, cx + 16, yTriangle);
+                    ctx.fillText(lettres, xTexte, yTexte);
                 }
                 return { image: ctx.getImageData(0, 0, toile.width, toile.height), ratio: ratio };
             }
@@ -13827,8 +13833,8 @@ def accueil():
                 try { carte.updateImage(p.idPointe, dessinerPointeV3d(reduit ? 1 : 0, p.infoPointe, reduit ? p.nbLettres : 0).image); } catch (e) { console.warn(e); return; }
                 if (reduit) return;
                 p.debutPointe = performance.now();
-                // Petit zoom arrière de 3 s pendant la lecture (jamais quand on déplace le curseur).
-                if (v3d.jouer && !v3d.zoomSommet) v3d.zoomSommet = { ecoule: 0 };
+                // Petit zoom arrière doux pendant la lecture, pour les sommets seulement (jamais quand on déplace le curseur).
+                if (p.sommet && v3d.jouer && !v3d.zoomSommet) v3d.zoomSommet = { ecoule: 0 };
                 if (!v3d.pointesActives) v3d.pointesActives = new Set();
                 v3d.pointesActives.add(p);
                 boucleSommetsV3d();
@@ -13970,29 +13976,36 @@ def accueil():
                     }
                 });
 
-                // Un nom apparaît 200 m avant son point et disparaît 100 m après.
-                // En cas de chevauchement, les panneaux prioritaires restent visibles.
-                const candidats = v3d.panneauxLieux.filter(p =>
-                    !p.idPointe
-                    && v3d.repereVisibles
-                    && Number.isFinite(p.d)
-                    && d >= Math.max(0, p.d - 200)
-                    && d <= p.d + 100
-                );
+                // Sommets et noms de lieux : un trait vertical monte du point (avec un triangle rouge pour un sommet),
+                // puis le nom s'écrit lettre par lettre. Affichage d'au moins 5 s : apparition au moins 200 m (ou 1,5 s)
+                // avant le point, disparition au moins 300 m (ou 3,5 s) après.
+                const dansFenetre = p => v3d.repereVisibles && Number.isFinite(p.d)
+                    && d >= Math.max(0, p.d - Math.max(200, avanceParSeconde * 1.5))
+                    && d <= p.d + Math.max(300, avanceParSeconde * 3.5);
+                const seChevauchent = (a, b) =>
+                    a.left < b.right + 8 && a.right + 8 > b.left
+                    && a.top < b.bottom + 6 && a.bottom + 6 > b.top;
+                const montres = new Set();
 
-                // Parmi les noms qui se chevauchent, on conserve d'abord le plus proche
-                // du point actuellement parcouru, puis le mieux classé.
+                // Les sommets sont toujours montrés : ils passent avant les noms de lieux (mais après les panneaux).
+                v3d.panneauxLieux.forEach(p => {
+                    if (!p.sommet || !dansFenetre(p)) return;
+                    montres.add(p);
+                    rectanglesPrioritaires.push(rectangleDe(p));
+                });
+
+                // Noms de lieux : en cas de chevauchement, les panneaux et les sommets restent visibles.
+                const candidats = v3d.panneauxLieux.filter(p => !p.sommet && dansFenetre(p));
+
+                // Parmi les noms qui se chevauchent, on garde d'abord celui déjà affiché (pour ne pas relancer
+                // son animation), puis le plus proche du point actuellement parcouru, puis le mieux classé.
                 candidats.sort((a, b) =>
-                    Math.abs(a.d - d) - Math.abs(b.d - d)
+                    (a.pointeVisible ? 0 : 1) - (b.pointeVisible ? 0 : 1)
+                    || Math.abs(a.d - d) - Math.abs(b.d - d)
                     || (a.rang ?? 9) - (b.rang ?? 9)
                     || String(a.nom || '').localeCompare(String(b.nom || ''), 'fr')
                 );
                 const rectanglesNoms = [];
-                const seChevauchent = (a, b) =>
-                    a.left < b.right + 8 && a.right + 8 > b.left
-                    && a.top < b.bottom + 6 && a.bottom + 6 > b.top;
-
-                const montres = new Set();
                 candidats.forEach(p => {
                     const r = rectangleDe(p);
                     const prioritaire = rectanglesPrioritaires.some(pr => seChevauchent(r, pr));
@@ -14005,18 +14018,6 @@ def accueil():
                 // Seuls les noms dont l'état change sont mis à jour sur la carte.
                 v3d.panneauxLieux.forEach(p => {
                     const voulu = montres.has(p);
-                    if (voulu === p.visible) return;
-                    p.visible = voulu;
-                    carte.setFeatureState({ source: 'v3d-lieux', id: p.id }, { v: voulu });
-                });
-
-                // Sommets : le triangle rouge apparaît (et monte en tournant) au moins 200 m (ou 1 s) avant le sommet et reste
-                // au moins 300 m (ou 3,5 s) après, avec le nom écrit à côté.
-                v3d.panneauxLieux.forEach(p => {
-                    if (!p.idPointe) return;
-                    const voulu = v3d.repereVisibles && Number.isFinite(p.d)
-                        && d >= Math.max(0, p.d - Math.max(200, avanceParSeconde))
-                        && d <= p.d + Math.max(300, avanceParSeconde * 3.5);
                     if (voulu === p.pointeVisible) return;
                     p.pointeVisible = voulu;
                     if (voulu) demarrerPointeV3d(p);
@@ -14080,30 +14081,26 @@ def accueil():
                     lieux.forEach((l, i) => {
                         const libelle = l.nom + (Number.isFinite(l.alt) && ['sommet', 'col'].includes(l.genre)
                             ? ' · ' + fmtAltitude(l.alt).complet : '');
-                        const idImage = 'v3d-lieu-' + v3d.generationNoms + '-' + i;
                         try {
-                            // Sommet : triangle rouge animé, et le nom s'écrit à côté (pas d'étiquette dans la couche des noms).
-                            if (l.genre === 'sommet') {
-                                const idPointe = 'v3d-pointe-' + v3d.generationNoms + '-' + i;
-                                const info = { libelle: libelle, largeurTexte: mesurerNomSommetV3d(libelle) };
-                                const nbLettres = Array.from(libelle).length;
-                                const pointe = dessinerPointeV3d(1, info, nbLettres);
-                                carte.addImage(idPointe, pointe.image, { pixelRatio: pointe.ratio });
-                                v3d.imagesNoms.push(idPointe);
-                                objetsPointes.push({ type: 'Feature', id: i, properties: { img: idPointe }, geometry: { type: 'Point', coordinates: l.coord } });
-                                v3d.panneauxLieux.push({
-                                    id: i, coord: l.coord, d: l.d, rang: l.rang, nom: l.nom, boite: { g: 0, d: 0, h: 0, b: 0 }, visible: false,
-                                    idPointe: idPointe, pointeVisible: false, infoPointe: info, nbLettres: nbLettres,
-                                    dureeTexte: Math.max(600, Math.min(1600, nbLettres * 55))
-                                });
-                                return;
-                            }
-                            const dessin = dessinerEtiquetteV3d(libelle, 16);
-                            carte.addImage(idImage, dessin.image, { pixelRatio: dessin.ratio });
-                            v3d.imagesNoms.push(idImage);
-                            objets.push({ type: 'Feature', id: i, properties: { img: idImage }, geometry: { type: 'Point', coordinates: l.coord } });
-                            const lieu = { id: i, coord: l.coord, d: l.d, rang: l.rang, nom: l.nom, boite: dessin.boite, visible: false };
-                            v3d.panneauxLieux.push(lieu);
+                            // Sommet : trait + triangle rouge animé. Autre lieu : même animation, sans triangle, nom au milieu du trait.
+                            const estSommet = l.genre === 'sommet';
+                            const idPointe = 'v3d-pointe-' + v3d.generationNoms + '-' + i;
+                            const largeurTexte = mesurerNomSommetV3d(libelle);
+                            const info = { libelle: libelle, largeurTexte: largeurTexte, sansTriangle: !estSommet };
+                            const nbLettres = Array.from(libelle).length;
+                            const pointe = dessinerPointeV3d(1, info, nbLettres);
+                            carte.addImage(idPointe, pointe.image, { pixelRatio: pointe.ratio });
+                            v3d.imagesNoms.push(idPointe);
+                            objetsPointes.push({ type: 'Feature', id: i, properties: { img: idPointe }, geometry: { type: 'Point', coordinates: l.coord } });
+                            // Zone occupée à l'écran, par rapport au point : sert à éviter les chevauchements.
+                            const boite = estSommet
+                                ? { g: -12, d: 16 + largeurTexte + 4, h: -98, b: 4 }
+                                : { g: -6, d: 8 + largeurTexte + 6, h: -49, b: -25 };
+                            v3d.panneauxLieux.push({
+                                id: i, coord: l.coord, d: l.d, rang: l.rang, nom: l.nom, boite: boite, sommet: estSommet,
+                                idPointe: idPointe, pointeVisible: false, infoPointe: info, nbLettres: nbLettres,
+                                dureeTexte: Math.max(600, Math.min(1600, nbLettres * 55))
+                            });
                         } catch (e) { console.warn('Nom de lieu non dessiné', e); }
                     });
                     carte.getSource('v3d-lieux').setData({ type: 'FeatureCollection', features: objets });
@@ -14319,7 +14316,14 @@ def accueil():
                 }
             }
 
-            const DUREE_ZOOM_SOMMET_V3D = 3, AMPLITUDE_ZOOM_SOMMET_V3D = 0.7;
+            // Zoom arrière doux : 6 s en tout (2,4 s pour reculer, 1,2 s de pause, 2,4 s pour revenir), de 14,3 à 13,8.
+            const DUREE_ZOOM_SOMMET_V3D = 6, AMPLITUDE_ZOOM_SOMMET_V3D = 0.5;
+            function formeZoomSommetV3d(u) {
+                const doux = x => x * x * x * (x * (x * 6 - 15) + 10);
+                if (u < 0.4) return doux(u / 0.4);
+                if (u < 0.6) return 1;
+                return doux((1 - u) / 0.4);
+            }
             // Place la caméra derrière le point courant, orientée vers la suite du parcours.
             function placerCamera(dt, brusque) {
                 const carte = v3d.carte;
@@ -14373,7 +14377,7 @@ def accueil():
                     }
                 }
 
-                // Zoom arrière en cloche pendant DUREE_ZOOM_SOMMET_V3D s (temps réel, sans dépendre de la vitesse de lecture).
+                // Zoom arrière doux pendant DUREE_ZOOM_SOMMET_V3D s (temps réel, sans dépendre de la vitesse de lecture).
                 let zoomCamera = 14.3;
                 if (v3d.zoomSommet) {
                     if (brusque) {
@@ -14382,7 +14386,7 @@ def accueil():
                         v3d.zoomSommet.ecoule += dt;
                         const u = v3d.zoomSommet.ecoule / DUREE_ZOOM_SOMMET_V3D;
                         if (u >= 1) v3d.zoomSommet = null;
-                        else zoomCamera = 14.3 - AMPLITUDE_ZOOM_SOMMET_V3D * 0.5 * (1 - Math.cos(2 * Math.PI * u));
+                        else zoomCamera = 14.3 - AMPLITUDE_ZOOM_SOMMET_V3D * formeZoomSommetV3d(u);
                     }
                 }
 
