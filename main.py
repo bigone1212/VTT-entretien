@@ -13827,6 +13827,8 @@ def accueil():
                 try { carte.updateImage(p.idPointe, dessinerPointeV3d(reduit ? 1 : 0, p.infoPointe, reduit ? p.nbLettres : 0).image); } catch (e) { console.warn(e); return; }
                 if (reduit) return;
                 p.debutPointe = performance.now();
+                // Petit zoom arrière de 3 s pendant la lecture (jamais quand on déplace le curseur).
+                if (v3d.jouer && !v3d.zoomSommet) v3d.zoomSommet = { ecoule: 0 };
                 if (!v3d.pointesActives) v3d.pointesActives = new Set();
                 v3d.pointesActives.add(p);
                 boucleSommetsV3d();
@@ -14008,11 +14010,13 @@ def accueil():
                     carte.setFeatureState({ source: 'v3d-lieux', id: p.id }, { v: voulu });
                 });
 
-                // Sommets : le triangle rouge apparaît (et monte en tournant) 200 m avant le sommet et reste 300 m après
-                // (le nom, lui, disparaît 100 m après), même si le nom est masqué par un panneau prioritaire.
+                // Sommets : le triangle rouge apparaît (et monte en tournant) au moins 200 m (ou 1 s) avant le sommet et reste
+                // au moins 300 m (ou 3,5 s) après, avec le nom écrit à côté.
                 v3d.panneauxLieux.forEach(p => {
                     if (!p.idPointe) return;
-                    const voulu = v3d.repereVisibles && Number.isFinite(p.d) && d >= Math.max(0, p.d - 200) && d <= p.d + 300;
+                    const voulu = v3d.repereVisibles && Number.isFinite(p.d)
+                        && d >= Math.max(0, p.d - Math.max(200, avanceParSeconde))
+                        && d <= p.d + Math.max(300, avanceParSeconde * 3.5);
                     if (voulu === p.pointeVisible) return;
                     p.pointeVisible = voulu;
                     if (voulu) demarrerPointeV3d(p);
@@ -14315,6 +14319,7 @@ def accueil():
                 }
             }
 
+            const DUREE_ZOOM_SOMMET_V3D = 3, AMPLITUDE_ZOOM_SOMMET_V3D = 0.7;
             // Place la caméra derrière le point courant, orientée vers la suite du parcours.
             function placerCamera(dt, brusque) {
                 const carte = v3d.carte;
@@ -14368,11 +14373,24 @@ def accueil():
                     }
                 }
 
+                // Zoom arrière en cloche pendant DUREE_ZOOM_SOMMET_V3D s (temps réel, sans dépendre de la vitesse de lecture).
+                let zoomCamera = 14.3;
+                if (v3d.zoomSommet) {
+                    if (brusque) {
+                        v3d.zoomSommet = null;
+                    } else {
+                        v3d.zoomSommet.ecoule += dt;
+                        const u = v3d.zoomSommet.ecoule / DUREE_ZOOM_SOMMET_V3D;
+                        if (u >= 1) v3d.zoomSommet = null;
+                        else zoomCamera = 14.3 - AMPLITUDE_ZOOM_SOMMET_V3D * 0.5 * (1 - Math.cos(2 * Math.PI * u));
+                    }
+                }
+
                 carte.jumpTo({
                     center: v3d.centreCamera,
                     bearing: v3d.cap,
                     pitch: v3d.inclinaison,
-                    zoom: 14.3,
+                    zoom: zoomCamera,
                     padding: { top: v3d.decalage, bottom: 0, left: 0, right: 0 }
                 });
 
