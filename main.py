@@ -3494,7 +3494,7 @@ def accueil():
 
             .vue3d button.actif { background: linear-gradient(135deg, var(--ac1), var(--ac2)); color: var(--on-grad); border-color: transparent; }
             .vue3d button.enreg { background: #dc2626; border-color: transparent; }
-            #v3dFermer { width: 38px; height: 38px; padding: 0; justify-content: center; }
+            #v3dFermer, #v3dCinema { width: 38px; height: 38px; padding: 0; justify-content: center; }
 
             .v3d-info {
                 margin-top: 8px;
@@ -3504,6 +3504,34 @@ def accueil():
                 text-shadow: 0 1px 3px rgba(0,0,0,0.7);
             }
 
+            /* Commandes de lecture au centre de l'écran (comme dans les vidéos) : visibles 3 s en lecture, toujours en pause. */
+            .v3d-ctrl {
+                position: absolute;
+                left: 50%;
+                top: 50%;
+                transform: translate(-50%, -50%);
+                z-index: 6;
+                display: flex;
+                align-items: center;
+                gap: 30px;
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.35s ease;
+            }
+            .v3d-ctrl.visible { opacity: 1; }
+            .vue3d .v3d-ctrl button {
+                padding: 0;
+                justify-content: center;
+                border-radius: 50%;
+                color: #fff;
+                background: rgba(8,20,26,0.5);
+                border: 2px solid rgba(255,255,255,0.88);
+                pointer-events: none;
+            }
+            .v3d-ctrl.visible button { pointer-events: auto; }
+            .vue3d .v3d-ctrl .v3d-ctrl-centre { width: 78px; height: 78px; }
+            .vue3d .v3d-ctrl .v3d-ctrl-cote { width: 54px; height: 54px; border-width: 0; background: rgba(8,20,26,0.38); }
+            .v3d-ctrl svg { display: block; }
             /* Calque de l'alerte de pente : grand panneau au milieu de l'écran, posé sur la carte (sans bloquer les touches). */
             #v3dAlertePente { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 3; pointer-events: none; }
             .v3d-photo {
@@ -3559,7 +3587,12 @@ def accueil():
                 font-size: 0.72rem;
                 font-weight: 700;
                 background: rgba(10,25,31,0.72);
+                /* Légende visible 10 s seulement : elle apparaît au lancement de la lecture puis s'efface en douceur. */
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.6s ease;
             }
+            .v3d-legende.visible { opacity: 1; }
 
             .v3d-legende span i {
                 display: inline-block;
@@ -4624,11 +4657,16 @@ def accueil():
         <div id="vue3d" class="vue3d" style="display:none;" role="dialog" aria-label="Survol 3D du parcours">
             <div id="carte3d"></div>
             <canvas id="v3dAlertePente" aria-hidden="true"></canvas>
+            <div class="v3d-ctrl" id="v3dCtrl">
+                <button type="button" id="v3dReculer" class="v3d-ctrl-cote" aria-label="Reculer de 10 secondes" title="Reculer de 10 secondes"></button>
+                <button type="button" id="v3dCentre" class="v3d-ctrl-centre" aria-label="Lecture"></button>
+                <button type="button" id="v3dAvancer" class="v3d-ctrl-cote" aria-label="Avancer de 10 secondes" title="Avancer de 10 secondes"></button>
+            </div>
             <div class="v3d-haut">
                 <strong id="v3dTitre"></strong>
                 <div style="display:flex;align-items:center;gap:8px;">
                     <button type="button" id="v3dLectureHaut"></button>
-                    <button type="button" id="v3dCinema" aria-pressed="false">Commandes</button>
+                    <button type="button" id="v3dCinema" aria-pressed="false" aria-label="Commandes" title="Commandes"></button>
                     <button type="button" id="v3dFermer" aria-label="Fermer"></button>
                 </div>
             </div>
@@ -8505,6 +8543,9 @@ def accueil():
             ICONES.video = '<rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/>';
             ICONES.montagne = '<path d="M2 20l6.5-11 4 6.5L15 12l7 8z"/><path d="M8.5 9l1.8 3"/><circle cx="18" cy="5.5" r="1.6" fill="currentColor"/>';
             ICONES.lecture = '<path d="M8 5v14l11-7z" fill="currentColor"/>';
+            ICONES.engrenage = '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>';
+            ICONES.recul10 = '<path d="M12 5a8 8 0 1 1-7.5 5.2"/><path d="M12 1.5L8 5l4 3.5"/><text x="12" y="15.6" text-anchor="middle" font-size="7.5" font-weight="700" fill="currentColor" stroke="none">10</text>';
+            ICONES.avance10 = '<path d="M12 5a8 8 0 1 0 7.5 5.2"/><path d="M12 1.5L16 5l-4 3.5"/><text x="12" y="15.6" text-anchor="middle" font-size="7.5" font-weight="700" fill="currentColor" stroke="none">10</text>';
             ICONES.pause = '<path d="M8 5v14M16 5v14"/>';
             ICONES.vitesse = '<path d="M5 6l6 6-6 6M13 6l6 6-6 6"/>';
             ICONES.incl = '<path d="M3 18l9-12 9 12z"/>';
@@ -13933,6 +13974,13 @@ def accueil():
                     const photo = f ? v3d.photos[f.properties.idx] : null;
                     if (photo) montrerPhotoV3d(photo);
                 });
+                // Toucher l'écran : pause ou reprise (sauf sur une icône de photo).
+                carte.on('click', e => {
+                    if (!v3d.prete) return;
+                    const photos = carte.getLayer('v3d-photos-icones') ? carte.queryRenderedFeatures(e.point, { layers: ['v3d-photos-icones'] }) : [];
+                    if (photos.length) return;
+                    lectureV3d(!v3d.jouer);
+                });
                 carte.on('mouseenter', 'v3d-photos-icones', () => { carte.getCanvas().style.cursor = 'pointer'; });
                 carte.on('mouseleave', 'v3d-photos-icones', () => { carte.getCanvas().style.cursor = ''; });
             }
@@ -14048,19 +14096,20 @@ def accueil():
                 ctx.globalAlpha = opacite;
                 ctx.translate(x, y);
                 ctx.scale(echelle * ex, echelle * ey);
-                // Juste le nombre : fin contour sombre pour rester lisible sur la carte, puis le nombre en couleur de pente avec un halo qui flashe.
+                // Juste le nombre, en couleur de pente, entouré d'un léger halo blanc qui flashe avec lui.
                 ctx.font = POIDS_ALERTE_V3D + ' ' + POLICE_ALERTE_V3D + 'px ' + famille;
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
                 ctx.lineJoin = 'round';
-                ctx.lineWidth = 6;
-                ctx.strokeStyle = 'rgba(5,15,25,0.6)';
+                ctx.lineWidth = 7;
+                ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+                ctx.shadowColor = 'rgba(255,255,255,0.9)';
+                ctx.shadowBlur = 6 + 10 * eclat;
                 ctx.strokeText(p.libelleAlerte, 0, 3);
-                ctx.shadowColor = p.couleurAlerte;
-                ctx.shadowBlur = 10 + 30 * eclat;
+                ctx.shadowBlur = 0;
+                ctx.shadowColor = 'transparent';
                 ctx.fillStyle = p.couleurAlerte;
                 ctx.fillText(p.libelleAlerte, 0, 3);
-                ctx.shadowBlur = 0;
                 ctx.restore();
             }
             // Lance l'alerte d'un panneau de pente. Renvoie false si elle ne peut pas être montrée (le panneau s'affiche alors tout de suite).
@@ -14553,7 +14602,9 @@ def accueil():
                 // Le survol s'affiche toujours en mode cinéma ; le bouton du haut montre ou cache les autres boutons.
                 const cinema = document.getElementById('v3dCinema');
                 if (cinema) {
-                    cinema.textContent = v3d.commandes ? 'Masquer' : 'Commandes';
+                    remplirBouton(cinema, 'engrenage', '');
+                    cinema.setAttribute('aria-label', v3d.commandes ? 'Masquer les commandes' : 'Commandes');
+                    cinema.title = v3d.commandes ? 'Masquer les commandes' : 'Commandes';
                     cinema.classList.toggle('actif', v3d.commandes);
                     cinema.setAttribute('aria-pressed', v3d.commandes ? 'true' : 'false');
                 }
@@ -14563,6 +14614,7 @@ def accueil():
                     remplirBouton(lectureHaut, v3d.jouer ? 'pause' : 'lecture', v3d.jouer ? 'Pause' : 'Lecture');
                     lectureHaut.classList.toggle('actif', !v3d.jouer);
                 }
+                majCommandesLectureV3d();
                 const vue = document.getElementById('vue3d');
                 vue.classList.toggle('cinema', v3d.cinema);
                 vue.classList.toggle('commandes', v3d.commandes);
@@ -14874,9 +14926,78 @@ def accueil():
                 }
             }
 
+            // Légende des pentes : visible 10 s (au lancement de la lecture, et à chaque reprise depuis le départ).
+            const DUREE_LEGENDE_V3D = 10000;
+            function montrerLegendeV3d() {
+                const el = document.getElementById('v3dLegende');
+                if (!el) return;
+                if (v3d.minuteurLegende) clearTimeout(v3d.minuteurLegende);
+                v3d.legendeVisible = true;
+                v3d.legendeMontree = true;
+                el.classList.add('visible');
+                v3d.minuteurLegende = setTimeout(() => {
+                    v3d.minuteurLegende = 0;
+                    v3d.legendeVisible = false;
+                    el.classList.remove('visible');
+                }, DUREE_LEGENDE_V3D);
+            }
+            function cacherLegendeV3d() {
+                if (v3d.minuteurLegende) clearTimeout(v3d.minuteurLegende);
+                v3d.minuteurLegende = 0;
+                v3d.legendeVisible = false;
+                v3d.legendeMontree = false;
+                const el = document.getElementById('v3dLegende');
+                if (el) el.classList.remove('visible');
+            }
+            // Commandes de lecture au centre : visibles 3 s en lecture, restent affichées en pause.
+            const DUREE_COMMANDES_V3D = 3000;
+            const SAUT_V3D = 10;
+            function majCommandesLectureV3d() {
+                const centre = document.getElementById('v3dCentre');
+                if (!centre) return;
+                centre.innerHTML = '<svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true">'
+                    + (v3d.jouer ? '<path d="M9 6v12M15 6v12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>'
+                        : '<path d="M8.5 5.5v13l10.5-6.5z" fill="currentColor"/>') + '</svg>';
+                centre.setAttribute('aria-label', v3d.jouer ? 'Pause' : 'Lecture');
+                for (const [id, icone] of [['v3dReculer', 'recul10'], ['v3dAvancer', 'avance10']]) {
+                    const b = document.getElementById(id);
+                    if (b && !b.firstChild) b.innerHTML = '<svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICONES[icone] + '</svg>';
+                }
+            }
+            function montrerCommandesLectureV3d() {
+                const el = document.getElementById('v3dCtrl');
+                if (!el) return;
+                if (v3d.minuteurCtrl) clearTimeout(v3d.minuteurCtrl);
+                v3d.minuteurCtrl = 0;
+                majCommandesLectureV3d();
+                el.classList.add('visible');
+                if (v3d.jouer) {
+                    v3d.minuteurCtrl = setTimeout(() => {
+                        v3d.minuteurCtrl = 0;
+                        el.classList.remove('visible');
+                    }, DUREE_COMMANDES_V3D);
+                }
+            }
+            function cacherCommandesLectureV3d() {
+                if (v3d.minuteurCtrl) clearTimeout(v3d.minuteurCtrl);
+                v3d.minuteurCtrl = 0;
+                const el = document.getElementById('v3dCtrl');
+                if (el) el.classList.remove('visible');
+            }
+            function sauterV3d(secondes) {
+                if (!v3d.prete || !v3d.dureeBase) return;
+                const delta = secondes * v3d.vitesse / v3d.dureeBase;
+                v3d.f = Math.max(0, Math.min(1, v3d.f + delta));
+                messageV3d('');
+                placerCamera(0, true);
+                dessinerAvancement();
+                document.getElementById('v3dProgres').value = String(Math.round(v3d.f * 1000));
+                montrerCommandesLectureV3d();
+            }
             function lectureV3d(jouer) {
                 if (!v3d.prete) return;
                 if (jouer && v3d.f >= 1) v3d.f = 0;
+                if (jouer && (v3d.f < 0.01 || !v3d.legendeMontree)) montrerLegendeV3d();
                 v3d.jouer = jouer;
                 reglerOmbresLectureV3d(jouer);
                 if (jouer) {
@@ -14891,6 +15012,7 @@ def accueil():
                     v3d.raf = 0;
                 }
                 majBoutonsV3d();
+                montrerCommandesLectureV3d();
             }
 
             // Rectangle aux coins arrondis (dessiné à la main pour fonctionner sur tous les navigateurs).
@@ -15036,6 +15158,43 @@ def accueil():
                 ctx.drawImage(calque, 0, 0, largeur, hauteur);
             }
 
+            // Légende des pentes (visible 10 s) : reprise dans la vidéo, sous le titre, tant qu'elle est affichée à l'écran.
+            function dessinerLegendeVideo(ctx, largeur, hauteur) {
+                const lignes = v3d.lignesLegende;
+                if (!v3d.legendeVisible || !Array.isArray(lignes) || !lignes.length) return;
+                const echelle = Math.min(largeur, hauteur) / 1080;
+                const taille = 24 * echelle, hLigne = 38 * echelle, marge = 58 * echelle, pad = 18 * echelle;
+                ctx.save();
+                ctx.font = '700 ' + taille + 'px Arial, sans-serif';
+                let largeurTexte = 0;
+                lignes.forEach(l => { largeurTexte = Math.max(largeurTexte, ctx.measureText(l.texte).width); });
+                const puce = 44 * echelle;
+                const l = pad * 2 + puce + 12 * echelle + largeurTexte, h = pad * 2 + hLigne * lignes.length - (hLigne - taille);
+                const x = marge, y = 190 * echelle;
+                cheminArrondiVideo(ctx, x, y, l, h, 16 * echelle);
+                ctx.fillStyle = 'rgba(10,25,31,0.72)';
+                ctx.fill();
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'middle';
+                lignes.forEach((ligne, i) => {
+                    const cy = y + pad + taille / 2 + i * hLigne;
+                    if (ligne.degrade) {
+                        const g = ctx.createLinearGradient(x + pad, 0, x + pad + puce, 0);
+                        g.addColorStop(0, '#7dd3fc');
+                        g.addColorStop(0.5, '#2563eb');
+                        g.addColorStop(1, '#17256e');
+                        ctx.fillStyle = g;
+                    } else {
+                        ctx.fillStyle = ligne.couleur;
+                    }
+                    cheminArrondiVideo(ctx, x + pad, cy - 6 * echelle, puce, 12 * echelle, 6 * echelle);
+                    ctx.fill();
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillText(ligne.texte, x + pad + puce + 12 * echelle, cy);
+                });
+                ctx.restore();
+            }
+
             function dessinerCadreVideo() {
                 if (!v3d.videoActif || !v3d.canvasVideo || !v3d.ctxVideo) return;
                 const source = v3d.carte && v3d.carte.getCanvas ? v3d.carte.getCanvas() : null;
@@ -15043,6 +15202,7 @@ def accueil():
                     try {
                         v3d.ctxVideo.drawImage(source, 0, 0, v3d.canvasVideo.width, v3d.canvasVideo.height);
                         dessinerHabillageVideo(v3d.ctxVideo, v3d.canvasVideo.width, v3d.canvasVideo.height);
+                        dessinerLegendeVideo(v3d.ctxVideo, v3d.canvasVideo.width, v3d.canvasVideo.height);
                         dessinerAlerteVideo(v3d.ctxVideo, v3d.canvasVideo.width, v3d.canvasVideo.height);
                         dessinerPhotoVideo(v3d.ctxVideo, v3d.canvasVideo.width, v3d.canvasVideo.height);
                     } catch (e) {
@@ -15194,8 +15354,13 @@ def accueil():
                         .filter(k => v3d.surfaces.includes(k))
                         .map(k => ({ couleur: TYPES_CHEMIN[k].couleur, texte: TYPES_CHEMIN[k].nom }));
                 } else if (v3d.pentes.length) {
-                    lignes = LEGENDE_PENTES;
+                    // Légende des pentes du survol : juste « inférieur à x % » (et « supérieur à » pour la dernière classe).
+                    lignes = COULEURS_PENTE.map((c, i) => ({
+                        couleur: c.couleur,
+                        texte: c.max >= 1000 ? 'supérieur à ' + COULEURS_PENTE[i - 1].max + ' %' : 'inférieur à ' + c.max + ' %'
+                    })).concat([{ couleur: DEGRADE_DESCENTE_CSS, texte: 'descente : plus foncé = plus raide', degrade: true }]);
                 }
+                v3d.lignesLegende = lignes;
                 el.style.display = lignes.length ? 'flex' : 'none';
                 lignes.forEach(l => {
                     const sp = document.createElement('span');
@@ -15284,6 +15449,8 @@ def accueil():
                 v3d.jouer = false;
                 v3d.zoomSommet = null;
                 arreterAlertePenteV3d();
+                cacherLegendeV3d();
+                cacherCommandesLectureV3d();
                 if (v3d.raf) {
                     cancelAnimationFrame(v3d.raf);
                     v3d.raf = 0;
@@ -15383,6 +15550,9 @@ def accueil():
                     majBoutonsV3d();
                 });
                 bouton('v3dLectureHaut', () => lectureV3d(!v3d.jouer));
+                bouton('v3dCentre', () => lectureV3d(!v3d.jouer));
+                bouton('v3dReculer', () => sauterV3d(-SAUT_V3D));
+                bouton('v3dAvancer', () => sauterV3d(SAUT_V3D));
                 bouton('v3dReperes', () => { v3d.repereVisibles = !v3d.repereVisibles; majVisibiliteReperesV3d(); majBoutonsV3d(); });
                 bouton('v3dRelancerLieux', async () => {
                     const relancer = document.getElementById('v3dRelancerLieux');
