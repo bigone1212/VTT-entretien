@@ -13657,7 +13657,21 @@ def accueil():
             // Une fois le triangle en haut, le nom du sommet s'écrit à côté, lettre par lettre, de gauche à droite.
             // info : { libelle, largeurTexte } ; nbLettres : nombre de lettres déjà écrites. L'image garde toujours la même taille.
             const LARGEUR_POINTE_V3D = 40, HAUTEUR_POINTE_V3D = 104, DUREE_POINTE_V3D = 1400;
-            const POLICE_SOMMET_V3D = 16;
+            // Sommet : image plus haute (place pour l'altitude au-dessus du triangle) et point posé à 36 px du bord gauche.
+            const CX_SOMMET_V3D = 36, HAUTEUR_SOMMET_V3D = 128;
+            const POLICE_SOMMET_V3D = 16, POLICE_ALTITUDE_V3D = 13;
+            function mesurerTexteV3d(texte, taille) {
+                const famille = getComputedStyle(document.body).fontFamily || 'sans-serif';
+                const mesure = document.createElement('canvas').getContext('2d');
+                mesure.font = '900 ' + taille + 'px ' + famille;
+                return Math.ceil(mesure.measureText(texte).width);
+            }
+            // Taille de police de l'altitude : 13 px, réduite si le texte dépasse la place disponible autour du triangle.
+            function policeAltitudeV3d(texte) {
+                let taille = POLICE_ALTITUDE_V3D;
+                while (taille > 9 && mesurerTexteV3d(texte, taille) > 2 * (CX_SOMMET_V3D - 3)) taille--;
+                return taille;
+            }
             function mesurerNomSommetV3d(libelle) {
                 const famille = getComputedStyle(document.body).fontFamily || 'sans-serif';
                 const mesure = document.createElement('canvas').getContext('2d');
@@ -13670,17 +13684,18 @@ def accueil():
                 // Nom de lieu : image centrée sur le trait (le nom est centré au-dessus du trait).
                 const largeurImage = sansTriangle
                     ? Math.max(LARGEUR_POINTE_V3D, info.largeurTexte + 20)
-                    : LARGEUR_POINTE_V3D + (info ? info.largeurTexte + 14 : 0);
+                    : CX_SOMMET_V3D + 24 + (info ? info.largeurTexte : 0);
+                const hauteurImage = sansTriangle ? HAUTEUR_POINTE_V3D : HAUTEUR_SOMMET_V3D;
                 const toile = document.createElement('canvas');
                 toile.width = largeurImage * ratio;
-                toile.height = HAUTEUR_POINTE_V3D * ratio;
+                toile.height = hauteurImage * ratio;
                 const ctx = toile.getContext('2d');
                 ctx.scale(ratio, ratio);
                 const a = Math.max(0, Math.min(1, avancement));
                 const montee = 1 - Math.pow(1 - a, 3);
                 const tour = a < 0.5 ? 2 * a * a : 1 - Math.pow(-2 * a + 2, 2) / 2;
-                const cx = sansTriangle ? largeurImage / 2 : LARGEUR_POINTE_V3D / 2;
-                const base = HAUTEUR_POINTE_V3D - 2;
+                const cx = sansTriangle ? largeurImage / 2 : CX_SOMMET_V3D;
+                const base = hauteurImage - 2;
                 const yTriangle = base - 10 - 74 * montee;
                 // Nom de lieu : trait de 56 px au maximum, le nom est écrit au-dessus.
                 const hautTrait = base - 56 * montee;
@@ -13714,6 +13729,21 @@ def accueil():
                     ctx.strokeStyle = '#ffffff';
                     ctx.stroke();
                     ctx.restore();
+                    // Altitude du sommet : centrée juste au-dessus du triangle, elle monte avec lui.
+                    if (info && info.altitude) {
+                        const tailleAlt = policeAltitudeV3d(info.altitude);
+                        ctx.save();
+                        ctx.globalAlpha = montee;
+                        ctx.font = '900 ' + tailleAlt + 'px ' + (getComputedStyle(document.body).fontFamily || 'sans-serif');
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.lineWidth = 3.5;
+                        ctx.strokeStyle = 'rgba(5,15,25,0.9)';
+                        ctx.strokeText(info.altitude, cx, yTriangle - 22);
+                        ctx.fillStyle = '#ffffff';
+                        ctx.fillText(info.altitude, cx, yTriangle - 22);
+                        ctx.restore();
+                    }
                 }
                 // Nom : écrit lettre par lettre, de gauche à droite, une fois le trait arrivé en haut.
                 // Sommet : à droite du triangle. Nom de lieu : centré au-dessus du trait (le trait passe au milieu du nom).
@@ -13769,7 +13799,7 @@ def accueil():
                     layout: {
                         'icon-image': ['get', 'img'],
                         'icon-anchor': 'bottom-left',
-                        'icon-offset': [-LARGEUR_POINTE_V3D / 2, 0],
+                        'icon-offset': [-CX_SOMMET_V3D, 0],
                         'icon-allow-overlap': true,
                         'icon-ignore-placement': true,
                         'icon-pitch-alignment': 'viewport',
@@ -13900,7 +13930,11 @@ def accueil():
                 if (reduit) return;
                 p.debutPointe = performance.now();
                 // Petit zoom arrière doux pendant la lecture, pour les sommets seulement (jamais quand on déplace le curseur).
-                if (p.sommet && v3d.jouer && !v3d.zoomSommet) v3d.zoomSommet = { ecoule: 0 };
+                // Le recul dure jusqu'à la fin de l'écriture du nom (montée du triangle + lettres), puis 1 s de lecture.
+                if (p.sommet && v3d.jouer && !v3d.zoomSommet) {
+                    v3d.zoomSommet = { ecoule: 0, p: p, tFin: (DUREE_POINTE_V3D + p.dureeTexte) / 1000,
+                        amplitude: AMPLITUDE_MIN_ZOOM_SOMMET_V3D, cible: AMPLITUDE_MIN_ZOOM_SOMMET_V3D };
+                }
                 if (!v3d.pointesActives) v3d.pointesActives = new Set();
                 v3d.pointesActives.add(p);
                 boucleSommetsV3d();
@@ -14043,10 +14077,10 @@ def accueil():
                 });
 
                 // Sommets et noms de lieux : un trait vertical monte du point (avec un triangle rouge pour un sommet),
-                // puis le nom s'écrit lettre par lettre. Affichage d'au moins 5 s : apparition au moins 200 m (ou 1,5 s)
+                // puis le nom s'écrit lettre par lettre. Affichage d'au moins 5,5 s : apparition au moins 300 m (ou 2 s)
                 // avant le point, disparition au moins 300 m (ou 3,5 s) après.
                 const dansFenetre = p => v3d.repereVisibles && Number.isFinite(p.d)
-                    && d >= Math.max(0, p.d - Math.max(200, avanceParSeconde * 1.5))
+                    && d >= Math.max(0, p.d - Math.max(300, avanceParSeconde * 2))
                     && d <= p.d + Math.max(300, avanceParSeconde * 3.5);
                 const seChevauchent = (a, b) =>
                     a.left < b.right + 8 && a.right + 8 > b.left
@@ -14145,14 +14179,15 @@ def accueil():
                     const objets = [];
                     const objetsPointes = [];
                     lieux.forEach((l, i) => {
-                        const libelle = l.nom + (Number.isFinite(l.alt) && ['sommet', 'col'].includes(l.genre)
-                            ? ' · ' + fmtAltitude(l.alt).complet : '');
+                        const estSommet = l.genre === 'sommet';
+                        const altitudeTexte = Number.isFinite(l.alt) ? fmtAltitude(l.alt).complet : '';
+                        // Sommet : le nom seul à droite du triangle, l'altitude au-dessus du triangle. Col : altitude après le nom.
+                        const libelle = l.nom + (!estSommet && altitudeTexte && l.genre === 'col' ? ' · ' + altitudeTexte : '');
                         try {
                             // Sommet : trait + triangle rouge animé. Autre lieu : même animation, sans triangle, nom au milieu du trait.
-                            const estSommet = l.genre === 'sommet';
                             const idPointe = 'v3d-pointe-' + v3d.generationNoms + '-' + i;
                             const largeurTexte = mesurerNomSommetV3d(libelle);
-                            const info = { libelle: libelle, largeurTexte: largeurTexte, sansTriangle: !estSommet };
+                            const info = { libelle: libelle, largeurTexte: largeurTexte, sansTriangle: !estSommet, altitude: estSommet ? altitudeTexte : '' };
                             const nbLettres = Array.from(libelle).length;
                             const pointe = dessinerPointeV3d(1, info, nbLettres);
                             carte.addImage(idPointe, pointe.image, { pixelRatio: pointe.ratio });
@@ -14160,7 +14195,7 @@ def accueil():
                             objetsPointes.push({ type: 'Feature', id: i, properties: { img: idPointe, s: estSommet ? 1 : 0 }, geometry: { type: 'Point', coordinates: l.coord } });
                             // Zone occupée à l'écran, par rapport au point : sert à éviter les chevauchements.
                             const boite = estSommet
-                                ? { g: -12, d: 16 + largeurTexte + 4, h: -98, b: 4 }
+                                ? { g: -(CX_SOMMET_V3D - 3), d: 16 + largeurTexte + 4, h: -(HAUTEUR_SOMMET_V3D - 2), b: 4 }
                                 : { g: -(largeurTexte / 2 + 6), d: largeurTexte / 2 + 6, h: -83, b: -57 };
                             v3d.panneauxLieux.push({
                                 id: i, coord: l.coord, d: l.d, rang: l.rang, nom: l.nom, boite: boite, sommet: estSommet,
@@ -14382,13 +14417,35 @@ def accueil():
                 }
             }
 
-            // Zoom arrière doux : 6 s en tout (2,4 s pour reculer, 1,2 s de pause, 2,4 s pour revenir), de 14,3 à 13,8.
-            const DUREE_ZOOM_SOMMET_V3D = 6, AMPLITUDE_ZOOM_SOMMET_V3D = 0.5;
-            function formeZoomSommetV3d(u) {
+            // Zoom arrière doux sur un sommet : on recule pendant que le triangle monte et que le nom s'écrit,
+            // on reste 1 s au zoom le plus reculé (nom entier lisible), puis on revient en 1,8 s.
+            // Reculer d'au moins 0,5 niveau de zoom, et autant que nécessaire (jusqu'à 2,4) pour que le nom entier tienne à l'écran.
+            const AMPLITUDE_MIN_ZOOM_SOMMET_V3D = 0.5, AMPLITUDE_MAX_ZOOM_SOMMET_V3D = 2.4;
+            const DUREE_LECTURE_NOM_V3D = 1, DUREE_RETOUR_ZOOM_SOMMET_V3D = 1.8, ZOOM_NORMAL_V3D = 14.3;
+            function formeZoomSommetV3d(t, tFin) {
                 const doux = x => x * x * x * (x * (x * 6 - 15) + 10);
-                if (u < 0.4) return doux(u / 0.4);
-                if (u < 0.6) return 1;
-                return doux((1 - u) / 0.4);
+                if (t < tFin) return doux(Math.max(0, t / tFin));
+                if (t < tFin + DUREE_LECTURE_NOM_V3D) return 1;
+                return doux(Math.max(0, 1 - (t - tFin - DUREE_LECTURE_NOM_V3D) / DUREE_RETOUR_ZOOM_SOMMET_V3D));
+            }
+            // Combien de niveaux de zoom faut-il reculer pour que le triangle et le nom entier du sommet tiennent à l'écran ?
+            // Mesuré d'après la position actuelle du sommet à l'écran, ramenée au zoom normal (un niveau de zoom divise les écarts par 2).
+            function amplitudeZoomSommetV3d(zs, carte, zoomActuel) {
+                try {
+                    const ecran = carte.project(zs.p.coord);
+                    const largeur = carte.getCanvas().clientWidth || 360;
+                    if (!ecran || !isFinite(ecran.x)) return AMPLITUDE_MIN_ZOOM_SOMMET_V3D;
+                    const ecart = ecran.x - largeur / 2;
+                    const marge = 14;
+                    // Place disponible entre le centre de l'écran et le bord, du côté où le nom s'étend (à droite) ou du côté du triangle (à gauche).
+                    const place = ecart >= 0 ? largeur / 2 - marge - zs.p.boite.d : largeur / 2 - marge + zs.p.boite.g;
+                    const ecartNormal = Math.abs(ecart) * Math.pow(2, ZOOM_NORMAL_V3D - zoomActuel);
+                    if (place < 8) return AMPLITUDE_MAX_ZOOM_SOMMET_V3D;
+                    const besoin = Math.log(ecartNormal / place) / Math.LN2;
+                    return Math.max(AMPLITUDE_MIN_ZOOM_SOMMET_V3D, Math.min(AMPLITUDE_MAX_ZOOM_SOMMET_V3D, isFinite(besoin) ? besoin : AMPLITUDE_MIN_ZOOM_SOMMET_V3D));
+                } catch (e) {
+                    return AMPLITUDE_MIN_ZOOM_SOMMET_V3D;
+                }
             }
             // Place la caméra derrière le point courant, orientée vers la suite du parcours.
             function placerCamera(dt, brusque) {
@@ -14443,16 +14500,26 @@ def accueil():
                     }
                 }
 
-                // Zoom arrière doux pendant DUREE_ZOOM_SOMMET_V3D s (temps réel, sans dépendre de la vitesse de lecture).
-                let zoomCamera = 14.3;
-                if (v3d.zoomSommet) {
+                // Zoom arrière doux sur un sommet (temps réel, sans dépendre de la vitesse de lecture).
+                let zoomCamera = ZOOM_NORMAL_V3D;
+                const zs = v3d.zoomSommet;
+                if (zs) {
                     if (brusque) {
                         v3d.zoomSommet = null;
                     } else {
-                        v3d.zoomSommet.ecoule += dt;
-                        const u = v3d.zoomSommet.ecoule / DUREE_ZOOM_SOMMET_V3D;
-                        if (u >= 1) v3d.zoomSommet = null;
-                        else zoomCamera = 14.3 - AMPLITUDE_ZOOM_SOMMET_V3D * formeZoomSommetV3d(u);
+                        zs.ecoule += dt;
+                        if (zs.ecoule >= zs.tFin + DUREE_LECTURE_NOM_V3D + DUREE_RETOUR_ZOOM_SOMMET_V3D) {
+                            v3d.zoomSommet = null;
+                        } else {
+                            // Toutes les 6 images, on mesure où se trouve le sommet à l'écran et on ajuste l'ampleur du recul.
+                            zs.images = (zs.images || 0) + 1;
+                            if (zs.images % 6 === 1) {
+                                const zoomVu = ZOOM_NORMAL_V3D - zs.amplitude * formeZoomSommetV3d(zs.ecoule, zs.tFin);
+                                zs.cible = amplitudeZoomSommetV3d(zs, carte, zoomVu);
+                            }
+                            zs.amplitude += (zs.cible - zs.amplitude) * (1 - Math.exp(-dt * 2.5));
+                            zoomCamera = ZOOM_NORMAL_V3D - zs.amplitude * formeZoomSommetV3d(zs.ecoule, zs.tFin);
+                        }
                     }
                 }
 
@@ -14933,6 +15000,7 @@ def accueil():
             function fermerV3d() {
                 if (v3d.enregistreur) arreterEnregistrement(false);
                 v3d.jouer = false;
+                v3d.zoomSommet = null;
                 if (v3d.raf) {
                     cancelAnimationFrame(v3d.raf);
                     v3d.raf = 0;
