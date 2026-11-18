@@ -13992,7 +13992,7 @@ def accueil():
                     l.ec = ecartReel;
                     l.d = v3d.cum[meilleurIndex] || 0;
                     gardes.push(l);
-                    if (gardes.length >= 60) break;
+                    if (gardes.length >= 300) break;
                 }
                 return gardes;
             }
@@ -20495,6 +20495,16 @@ def rayon_affichage_m(genre):
     return 300 if g == "hameau" else 200
 
 
+def limite_noms_parcours(longueur_m):
+    """Nombre maximal de noms gardés pour un parcours : 60 jusqu'à 25 km,
+    puis 2,4 noms par kilomètre pour que les longues sorties ne perdent pas leurs hameaux."""
+    try:
+        km = float(longueur_m) / 1000.0
+    except (TypeError, ValueError):
+        km = 0.0
+    return max(60, int(math.ceil(km * 2.4)))
+
+
 def interroger_overpass(requete, erreurs=None):
     """Retourne les éléments OSM ; None signifie que tous les serveurs ont échoué.
     Un tableau vide sans message d'erreur est une réponse valide."""
@@ -21437,10 +21447,11 @@ def obtenir_lieux_bibliotheque(sortie_id: int, velo_id: int = 1, x_code_acces: O
                             and distance(tuple(x["coord"]), coord) < 600), None)
             if doublon is None:
                 retenus.append(entree)
-            elif entree["rang"] < retenus[doublon]["rang"]:
+            elif (entree["rang"], entree["ec"]) < (retenus[doublon]["rang"], retenus[doublon]["ec"]):
+                # Même nom : on garde le mieux classé, et à rang égal le plus proche du parcours.
                 retenus[doublon] = entree
         retenus.sort(key=lambda x: (x["rang"], x["ec"]))
-        return {"statut": "bibliotheque", "lieux": retenus[:60]}
+        return {"statut": "bibliotheque", "lieux": retenus[:limite_noms_parcours(cumul[-1])]}
     finally:
         conn.close()
 
@@ -21522,16 +21533,17 @@ def diagnostic_lieux_sortie(sortie_id: int, velo_id: int = 1, x_code_acces: Opti
                             and distance((x["lon"], x["lat"]), (e["lon"], e["lat"])) < 600), None)
             if doublon is None:
                 gardes.append(e)
-            elif e["rang"] < gardes[doublon]["rang"]:
+            elif (e["rang"], e["ec"]) < (gardes[doublon]["rang"], gardes[doublon]["ec"]):
                 gardes[doublon]["etat"] = "doublon"
                 gardes[doublon] = e
             else:
                 e["etat"] = "doublon"
         gardes.sort(key=lambda x: (x["rang"], x["ec"]))
-        for e in gardes[60:]:
+        limite = limite_noms_parcours(longueur)
+        for e in gardes[limite:]:
             e["etat"] = "limite"
         entrees.sort(key=lambda x: (x["nom"].casefold(), x["ec"]))
-        return {"points_trace": len(points), "longueur_m": round(longueur), "limite": 60, "lieux": entrees[:500]}
+        return {"points_trace": len(points), "longueur_m": round(longueur), "limite": limite, "lieux": entrees[:500]}
     finally:
         conn.close()
 
