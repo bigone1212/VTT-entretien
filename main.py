@@ -13767,7 +13767,7 @@ def accueil():
             }
             // Drapeau à damier d'arrivée : un mât monte du point d'arrivée (comme le trait des noms de lieux), puis le drapeau
             // se déploie et flotte au vent. Image de taille fixe, redessinée à chaque image ; temps = millisecondes depuis l'apparition.
-            const POTEAU_DRAPEAU_V3D = 14, LARGEUR_DRAPEAU_V3D = 96, HAUTEUR_DRAPEAU_V3D = 112;
+            const POTEAU_DRAPEAU_V3D = 10, LARGEUR_DRAPEAU_V3D = 66, HAUTEUR_DRAPEAU_V3D = 76;
             function dessinerDrapeauV3d(temps) {
                 const ratio = Math.min(3, Math.max(2, Math.round(window.devicePixelRatio || 2)));
                 const toile = document.createElement('canvas');
@@ -13779,7 +13779,7 @@ def accueil():
                 const montee = 1 - Math.pow(1 - monte, 3);
                 const deploiement = Math.max(0, Math.min(1, (temps - 900) / 500));
                 const ouverture = 1 - Math.pow(1 - deploiement, 3);
-                const x = POTEAU_DRAPEAU_V3D, base = HAUTEUR_DRAPEAU_V3D - 2, haut = base - 96 * montee;
+                const x = POTEAU_DRAPEAU_V3D, base = HAUTEUR_DRAPEAU_V3D - 2, haut = base - 62 * montee;
                 ctx.lineCap = 'round';
                 ctx.lineJoin = 'round';
                 // Mât : même style que le trait des noms de lieux.
@@ -13794,14 +13794,14 @@ def accueil():
                 ctx.stroke();
                 // Tissu à damier : 8 colonnes x 5 lignes, déformé par une onde qui part du mât et grandit vers le bout.
                 if (ouverture > 0) {
-                    const colonnes = 8, lignes = 5, cote = 9;
+                    const colonnes = 8, lignes = 5, cote = 6;
                     const longueur = colonnes * cote * ouverture, largeur = lignes * cote;
                     const omega = 2 * Math.PI * temps / 900;
                     const point = (u, v) => {
                         const phase = omega - u * 5.2 + v * 0.5;
                         return [
-                            x + u * longueur - 2.2 * u * (1 - Math.cos(phase)) * 0.5,
-                            haut + 3 + v * largeur + 4.2 * u * Math.sin(phase)
+                            x + u * longueur - 1.4 * u * (1 - Math.cos(phase)) * 0.5,
+                            haut + 2 + v * largeur + 2.8 * u * Math.sin(phase)
                         ];
                     };
                     for (let i = 0; i < colonnes; i++) {
@@ -13838,7 +13838,7 @@ def accueil():
                 }
                 // Petite boule turquoise au sommet du mât.
                 ctx.beginPath();
-                ctx.arc(x, haut, 3.6, 0, Math.PI * 2);
+                ctx.arc(x, haut, 3, 0, Math.PI * 2);
                 ctx.fillStyle = '#65e6d4';
                 ctx.fill();
                 ctx.strokeStyle = '#ffffff';
@@ -13982,7 +13982,8 @@ def accueil():
             // Alerte de pente : un grand panneau aux couleurs de la pente apparaît au milieu de l'écran, puis tombe et
             // s'écrase à l'emplacement du panneau de pente, qui apparaît à l'impact (et reste affiché comme avant).
             // Dessinée sur un calque posé sur la carte, repris dans la vidéo enregistrée.
-            const POLICE_ALERTE_V3D = 54, TAILLE_PANNEAU_PENTE_V3D = 19;
+            // Alerte : juste le nombre, en couleur de pente, écriture légère, qui clignote (pas d'encart).
+            const POLICE_ALERTE_V3D = 76, POIDS_ALERTE_V3D = '500', TAILLE_PANNEAU_PENTE_V3D = 19;
             const ALERTE_APPARITION_MS = 220, ALERTE_ATTENTE_MS = 480, ALERTE_CHUTE_MS = 340;
             function effacerCalqueAlerteV3d() {
                 const cv = document.getElementById('v3dAlertePente');
@@ -14008,19 +14009,26 @@ def accueil():
                 ctx.clearRect(0, 0, a.largeur, a.hauteur);
                 const p = a.p;
                 const centreX = a.largeur / 2, centreY = a.hauteur / 2;
-                let x = centreX, y = centreY, echelle = 1, ex = 1, ey = 1, opacite = 1;
+                let x = centreX, y = centreY, echelle = 1, ex = 1, ey = 1, opacite = 1, eclat = 1;
+                const finAttente = ALERTE_APPARITION_MS + ALERTE_ATTENTE_MS;
+                if (t < finAttente) {
+                    // Le nombre clignote : 3 éclairs avant la chute (pleine lumière au début et à la fin).
+                    eclat = 0.5 + 0.5 * Math.cos(2 * Math.PI * 3 * t / finAttente);
+                    opacite = 0.3 + 0.7 * eclat;
+                }
                 if (t < ALERTE_APPARITION_MS) {
-                    // Apparition : le panneau grossit avec un petit rebond.
+                    // Apparition : le nombre grossit avec un petit rebond.
                     const u = t / ALERTE_APPARITION_MS, c1 = 1.70158, c3 = c1 + 1;
                     const rebond = 1 + c3 * Math.pow(u - 1, 3) + c1 * Math.pow(u - 1, 2);
                     echelle = 0.35 + 0.65 * rebond;
-                    opacite = Math.min(1, u * 2.2);
-                } else if (t < ALERTE_APPARITION_MS + ALERTE_ATTENTE_MS) {
+                    opacite *= Math.min(1, u * 3);
+                } else if (t < finAttente) {
                     echelle = 1 + 0.03 * Math.sin(((t - ALERTE_APPARITION_MS) / ALERTE_ATTENTE_MS) * Math.PI * 3);
                 } else {
                     // Chute vers le panneau de pente (de plus en plus vite), puis écrasement à l'impact.
                     const u = Math.min(1, (t - ALERTE_APPARITION_MS - ALERTE_ATTENTE_MS) / ALERTE_CHUTE_MS);
                     const e = u * u * u;
+                    eclat = 1 - e;
                     let cibleX = centreX, cibleY = centreY;
                     try {
                         const pt = carte.project(p.coord);
@@ -14040,32 +14048,19 @@ def accueil():
                 ctx.globalAlpha = opacite;
                 ctx.translate(x, y);
                 ctx.scale(echelle * ex, echelle * ey);
-                const l = a.largeurTexte + 52, h = 88, r = 22;
-                ctx.beginPath();
-                ctx.moveTo(-l / 2 + r, -h / 2);
-                ctx.arcTo(l / 2, -h / 2, l / 2, h / 2, r);
-                ctx.arcTo(l / 2, h / 2, -l / 2, h / 2, r);
-                ctx.arcTo(-l / 2, h / 2, -l / 2, -h / 2, r);
-                ctx.arcTo(-l / 2, -h / 2, l / 2, -h / 2, r);
-                ctx.closePath();
-                ctx.shadowColor = 'rgba(0,0,0,0.55)';
-                ctx.shadowBlur = 26;
-                ctx.shadowOffsetY = 8;
-                ctx.fillStyle = p.couleurAlerte;
-                ctx.fill();
-                ctx.shadowColor = 'transparent';
-                ctx.lineWidth = 5;
-                ctx.strokeStyle = '#ffffff';
-                ctx.stroke();
-                ctx.font = '900 ' + POLICE_ALERTE_V3D + 'px ' + famille;
+                // Juste le nombre : fin contour sombre pour rester lisible sur la carte, puis le nombre en couleur de pente avec un halo qui flashe.
+                ctx.font = POIDS_ALERTE_V3D + ' ' + POLICE_ALERTE_V3D + 'px ' + famille;
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
                 ctx.lineJoin = 'round';
-                ctx.lineWidth = 7;
-                ctx.strokeStyle = 'rgba(5,15,25,0.9)';
+                ctx.lineWidth = 6;
+                ctx.strokeStyle = 'rgba(5,15,25,0.6)';
                 ctx.strokeText(p.libelleAlerte, 0, 3);
-                ctx.fillStyle = '#ffffff';
+                ctx.shadowColor = p.couleurAlerte;
+                ctx.shadowBlur = 10 + 30 * eclat;
+                ctx.fillStyle = p.couleurAlerte;
                 ctx.fillText(p.libelleAlerte, 0, 3);
+                ctx.shadowBlur = 0;
                 ctx.restore();
             }
             // Lance l'alerte d'un panneau de pente. Renvoie false si elle ne peut pas être montrée (le panneau s'affiche alors tout de suite).
@@ -14079,7 +14074,7 @@ def accueil():
                 cv.width = Math.round(largeur * ratio);
                 cv.height = Math.round(hauteur * ratio);
                 const mesure = document.createElement('canvas').getContext('2d');
-                mesure.font = '900 ' + POLICE_ALERTE_V3D + 'px ' + (getComputedStyle(document.body).fontFamily || 'sans-serif');
+                mesure.font = POIDS_ALERTE_V3D + ' ' + POLICE_ALERTE_V3D + 'px ' + (getComputedStyle(document.body).fontFamily || 'sans-serif');
                 const a = { p: p, debut: performance.now(), raf: 0, largeur: largeur, hauteur: hauteur, ratio: ratio,
                     largeurTexte: Math.ceil(mesure.measureText(p.libelleAlerte).width) };
                 v3d.alerte = a;
