@@ -3494,7 +3494,9 @@ def accueil():
 
             .vue3d button.actif { background: linear-gradient(135deg, var(--ac1), var(--ac2)); color: var(--on-grad); border-color: transparent; }
             .vue3d button.enreg { background: #dc2626; border-color: transparent; }
-            #v3dFermer, #v3dCinema { width: 38px; height: 38px; padding: 0; justify-content: center; }
+            #v3dFermer, #v3dCinema { width: 38px; height: 38px; padding: 0; gap: 0; justify-content: center; }
+            #v3dFermer span, #v3dCinema span { display: none; }
+            #v3dFermer svg, #v3dCinema svg { display: block; margin: 0; }
 
             .v3d-info {
                 margin-top: 8px;
@@ -3529,7 +3531,7 @@ def accueil():
                 pointer-events: none;
             }
             .v3d-ctrl.visible button { pointer-events: auto; }
-            .vue3d .v3d-ctrl .v3d-ctrl-centre { width: 78px; height: 78px; }
+            .vue3d .v3d-ctrl .v3d-ctrl-centre { width: 78px; height: 78px; border-width: 0; background: rgba(8,20,26,0.38); }
             .vue3d .v3d-ctrl .v3d-ctrl-cote { width: 54px; height: 54px; border-width: 0; background: rgba(8,20,26,0.38); }
             .v3d-ctrl svg { display: block; }
             /* Calque de l'alerte de pente : grand panneau au milieu de l'écran, posé sur la carte (sans bloquer les touches). */
@@ -3581,8 +3583,8 @@ def accueil():
                 top: calc(58px + env(safe-area-inset-top));
                 display: flex;
                 flex-direction: column;
-                gap: 3px;
-                padding: 8px 10px;
+                gap: 2px;
+                padding: 6px 9px;
                 border-radius: 10px;
                 font-size: 0.72rem;
                 font-weight: 700;
@@ -4061,6 +4063,31 @@ def accueil():
             :root.paysage .vue3d button { padding: 5px 11px; font-size: 0.78rem; }
             :root.paysage .v3d-info { margin-top: 4px; }
             :root.paysage .v3d-legende { top: calc(46px + env(safe-area-inset-top)); left: calc(12px + env(safe-area-inset-left)); padding: 5px 8px; font-size: 0.68rem; }
+            /* Téléphone à l'horizontale : l'encart (nom, chiffres, profil) est bas et étiré sur toute la largeur de l'écran. */
+            :root.paysage .v3d-cinema-hud {
+                left: calc(10px + env(safe-area-inset-left));
+                right: calc(10px + env(safe-area-inset-right));
+                bottom: calc(8px + env(safe-area-inset-bottom));
+                max-width: none;
+                max-height: none;
+                padding: 6px 12px;
+                display: grid;
+                grid-template-columns: auto minmax(0, 1fr) minmax(0, 34%);
+                grid-template-areas: "marque stats profil" "nom stats profil" "date stats profil";
+                column-gap: 18px;
+                align-items: center;
+            }
+            :root.paysage .v3d-cinema-marque { grid-area: marque; font-size: 0.6rem; }
+            :root.paysage .v3d-cinema-logo { width: 16px; height: 16px; }
+            :root.paysage .v3d-cinema-nom { grid-area: nom; margin-top: 2px; font-size: 0.95rem; max-width: 24vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            :root.paysage .v3d-cinema-date { grid-area: date; margin-top: 1px; font-size: 0.66rem; }
+            :root.paysage .v3d-cinema-stats { grid-area: stats; margin-top: 0; gap: 4px 12px; justify-content: space-between; }
+            :root.paysage .v3d-cinema-stat { min-width: 0; }
+            :root.paysage .v3d-cinema-stat strong { font-size: 0.82rem; }
+            :root.paysage .v3d-cinema-stat span { font-size: 0.5rem; }
+            :root.paysage .v3d-cinema-profil { grid-area: profil; margin-top: 0; }
+            :root.paysage .v3d-cinema-profil-titre { display: none; }
+            :root.paysage .v3d-cinema-profil svg { height: 34px; }
             :root.paysage .v3d-photo { top: calc(46px + env(safe-area-inset-top)); left: auto; right: calc(12px + env(safe-area-inset-right)); transform: none; }
             :root.paysage .v3d-photo img { max-width: 40vw; max-height: 52vh; }
             :root.paysage .v3d-message { top: calc(46px + env(safe-area-inset-top)); left: calc(170px + env(safe-area-inset-left)); max-width: 420px; }
@@ -4665,7 +4692,6 @@ def accueil():
             <div class="v3d-haut">
                 <strong id="v3dTitre"></strong>
                 <div style="display:flex;align-items:center;gap:8px;">
-                    <button type="button" id="v3dLectureHaut"></button>
                     <button type="button" id="v3dCinema" aria-pressed="false" aria-label="Commandes" title="Commandes"></button>
                     <button type="button" id="v3dFermer" aria-label="Fermer"></button>
                 </div>
@@ -13613,7 +13639,7 @@ def accueil():
             // texte blanc à contour sombre, trait et point turquoise), puis posé dans une couche native
             // de la carte. C'est la carte elle-même qui les place sur le relief, donc sans décalage.
             const MARGE_NOM_V3D = 8;
-            function dessinerEtiquetteV3d(libelle, taille, largeurTexteRef) {
+            function dessinerEtiquetteV3d(libelle, taille, largeurTexteRef, couleurTexte) {
                 const ratio = Math.min(3, Math.max(2, Math.round(window.devicePixelRatio || 2)));
                 const famille = getComputedStyle(document.body).fontFamily || 'sans-serif';
                 const police = '900 ' + taille + 'px ' + famille;
@@ -13647,10 +13673,16 @@ def accueil():
                 ctx.stroke();
                 ctx.font = police;
                 ctx.textBaseline = 'middle';
-                ctx.lineWidth = 3.5;
+                if (couleurTexte) {
+                    // Texte en couleur (pente) : double contour, blanc puis sombre, lisible quelle que soit la couleur.
+                    ctx.lineWidth = 6;
+                    ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+                    ctx.strokeText(libelle, cx + 29, cy - 26);
+                }
+                ctx.lineWidth = couleurTexte ? 3.2 : 3.5;
                 ctx.strokeStyle = 'rgba(5,15,25,0.9)';
                 ctx.strokeText(libelle, cx + 29, cy - 26);
-                ctx.fillStyle = '#ffffff';
+                ctx.fillStyle = couleurTexte || '#ffffff';
                 ctx.fillText(libelle, cx + 29, cy - 26);
                 return {
                     image: ctx.getImageData(0, 0, toile.width, toile.height),
@@ -13721,6 +13753,20 @@ def accueil():
                 const mesure = document.createElement('canvas').getContext('2d');
                 mesure.font = '900 ' + POLICE_SOMMET_V3D + 'px ' + famille;
                 return Math.ceil(mesure.measureText(libelle).width);
+            }
+            // Nom de sommet long : coupé en deux lignes (au espace le plus proche du milieu) pour ne pas trop dézoomer.
+            const LARGEUR_MAX_LIGNE_SOMMET_V3D = 150;
+            function decouperNomSommetV3d(libelle) {
+                if (mesurerTexteV3d(libelle, POLICE_SOMMET_V3D) <= LARGEUR_MAX_LIGNE_SOMMET_V3D) return [libelle];
+                let meilleur = null, meilleurPire = Infinity;
+                for (let i = 1; i < libelle.length - 1; i++) {
+                    if (libelle[i] !== ' ') continue;
+                    const l1 = libelle.slice(0, i), l2 = libelle.slice(i + 1);
+                    if (!l1 || !l2) continue;
+                    const pire = Math.max(mesurerTexteV3d(l1, POLICE_SOMMET_V3D), mesurerTexteV3d(l2, POLICE_SOMMET_V3D));
+                    if (pire < meilleurPire) { meilleurPire = pire; meilleur = [l1, l2]; }
+                }
+                return meilleur || [libelle];
             }
             function dessinerPointeV3d(avancement, info, nbLettres) {
                 const ratio = Math.min(3, Math.max(2, Math.round(window.devicePixelRatio || 2)));
@@ -13795,14 +13841,29 @@ def accueil():
                     const lettres = Array.from(info.libelle).slice(0, nbLettres).join('');
                     const xTexte = sansTriangle ? cx - info.largeurTexte / 2 : cx + 16;
                     const yTexte = sansTriangle ? base - 56 - 13 : yTriangle;
+                    const lignes = (!sansTriangle && info.lignes && info.lignes.length === 2) ? info.lignes : null;
                     ctx.font = '900 ' + POLICE_SOMMET_V3D + 'px ' + (getComputedStyle(document.body).fontFamily || 'sans-serif');
                     ctx.textAlign = 'left';
                     ctx.textBaseline = 'middle';
                     ctx.lineWidth = 3.5;
                     ctx.strokeStyle = 'rgba(5,15,25,0.9)';
-                    ctx.strokeText(lettres, xTexte, yTexte);
-                    ctx.fillStyle = '#ffffff';
-                    ctx.fillText(lettres, xTexte, yTexte);
+                    if (lignes) {
+                        // Deux lignes : la première s'écrit, puis la seconde.
+                        const n1 = Array.from(lignes[0]).length;
+                        const lettresListe = Array.from(info.libelle).slice(0, nbLettres);
+                        const t1 = lettresListe.slice(0, n1).join('');
+                        const t2 = lettresListe.slice(n1 + 1).join('');
+                        [[t1, yTexte - 9], [t2, yTexte + 9]].forEach(([t, y]) => {
+                            if (!t) return;
+                            ctx.strokeText(t, xTexte, y);
+                            ctx.fillStyle = '#ffffff';
+                            ctx.fillText(t, xTexte, y);
+                        });
+                    } else {
+                        ctx.strokeText(lettres, xTexte, yTexte);
+                        ctx.fillStyle = '#ffffff';
+                        ctx.fillText(lettres, xTexte, yTexte);
+                    }
                 }
                 return { image: ctx.getImageData(0, 0, toile.width, toile.height), ratio: ratio };
             }
@@ -14443,7 +14504,7 @@ def accueil():
                     const id = v3d.panneauxPente.length;
                     const idImage = 'v3d-panneau-' + v3d.generationPanneaux + '-' + id;
                     try {
-                        const dessin = dessinerEtiquetteV3d(libelle, taille);
+                        const dessin = dessinerEtiquetteV3d(libelle, taille, 0, donnees && donnees.couleurAlerte);
                         carte.addImage(idImage, dessin.image, { pixelRatio: dessin.ratio });
                         v3d.imagesPanneaux.push(idImage);
                         objetsReperes.push({ type: 'Feature', id: id, properties: { img: idImage }, geometry: { type: 'Point', coordinates: coord } });
@@ -14509,8 +14570,9 @@ def accueil():
                         try {
                             // Sommet : trait + triangle rouge animé. Autre lieu : même animation, sans triangle, nom au milieu du trait.
                             const idPointe = 'v3d-pointe-' + v3d.generationNoms + '-' + i;
-                            const largeurTexte = mesurerNomSommetV3d(libelle);
-                            const info = { libelle: libelle, largeurTexte: largeurTexte, sansTriangle: !estSommet, altitude: estSommet ? altitudeTexte : '' };
+                            const lignesNom = estSommet ? decouperNomSommetV3d(libelle) : [libelle];
+                            const largeurTexte = Math.max.apply(null, lignesNom.map(t => mesurerNomSommetV3d(t)));
+                            const info = { libelle: libelle, largeurTexte: largeurTexte, sansTriangle: !estSommet, altitude: estSommet ? altitudeTexte : '', lignes: lignesNom };
                             const nbLettres = Array.from(libelle).length;
                             const pointe = dessinerPointeV3d(1, info, nbLettres);
                             carte.addImage(idPointe, pointe.image, { pixelRatio: pointe.ratio });
@@ -14609,11 +14671,6 @@ def accueil():
                     cinema.setAttribute('aria-pressed', v3d.commandes ? 'true' : 'false');
                 }
                 // Lecture / Pause reste toujours à portée de doigt, même quand les commandes sont cachées.
-                const lectureHaut = document.getElementById('v3dLectureHaut');
-                if (lectureHaut) {
-                    remplirBouton(lectureHaut, v3d.jouer ? 'pause' : 'lecture', v3d.jouer ? 'Pause' : 'Lecture');
-                    lectureHaut.classList.toggle('actif', !v3d.jouer);
-                }
                 majCommandesLectureV3d();
                 const vue = document.getElementById('vue3d');
                 vue.classList.toggle('cinema', v3d.cinema);
@@ -15354,11 +15411,11 @@ def accueil():
                         .filter(k => v3d.surfaces.includes(k))
                         .map(k => ({ couleur: TYPES_CHEMIN[k].couleur, texte: TYPES_CHEMIN[k].nom }));
                 } else if (v3d.pentes.length) {
-                    // Légende des pentes du survol : juste « inférieur à x % » (et « supérieur à » pour la dernière classe).
+                    // Légende des pentes du survol : juste « < x % » (et « > x % » pour la dernière classe), sans ligne descente.
                     lignes = COULEURS_PENTE.map((c, i) => ({
                         couleur: c.couleur,
-                        texte: c.max >= 1000 ? 'supérieur à ' + COULEURS_PENTE[i - 1].max + ' %' : 'inférieur à ' + c.max + ' %'
-                    })).concat([{ couleur: DEGRADE_DESCENTE_CSS, texte: 'descente : plus foncé = plus raide', degrade: true }]);
+                        texte: c.max >= 1000 ? '> ' + COULEURS_PENTE[i - 1].max + ' %' : '< ' + c.max + ' %'
+                    }));
                 }
                 v3d.lignesLegende = lignes;
                 el.style.display = lignes.length ? 'flex' : 'none';
@@ -15528,6 +15585,7 @@ def accueil():
                             : 'Appuie sur Lecture pour lancer le survol.');
                         majBoutonsV3d();
                         dessinerAvancement();
+                        montrerCommandesLectureV3d();
 
                         // Les repères (pentes, Vmax et lieux) se préparent sans bloquer le bouton Lecture.
                         poserReperesV3d().catch(e => console.warn('Préparation des repères 3D :', e));
@@ -15549,7 +15607,6 @@ def accueil():
                     v3d.commandes = !v3d.commandes;
                     majBoutonsV3d();
                 });
-                bouton('v3dLectureHaut', () => lectureV3d(!v3d.jouer));
                 bouton('v3dCentre', () => lectureV3d(!v3d.jouer));
                 bouton('v3dReculer', () => sauterV3d(-SAUT_V3D));
                 bouton('v3dAvancer', () => sauterV3d(SAUT_V3D));
