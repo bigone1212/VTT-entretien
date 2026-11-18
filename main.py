@@ -3504,6 +3504,8 @@ def accueil():
                 text-shadow: 0 1px 3px rgba(0,0,0,0.7);
             }
 
+            /* Calque de l'alerte de pente : grand panneau au milieu de l'écran, posé sur la carte (sans bloquer les touches). */
+            #v3dAlertePente { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 3; pointer-events: none; }
             .v3d-photo {
                 position: absolute;
                 z-index: 4;
@@ -4621,6 +4623,7 @@ def accueil():
 
         <div id="vue3d" class="vue3d" style="display:none;" role="dialog" aria-label="Survol 3D du parcours">
             <div id="carte3d"></div>
+            <canvas id="v3dAlertePente" aria-hidden="true"></canvas>
             <div class="v3d-haut">
                 <strong id="v3dTitre"></strong>
                 <div style="display:flex;align-items:center;gap:8px;">
@@ -13762,6 +13765,87 @@ def accueil():
                 }
                 return { image: ctx.getImageData(0, 0, toile.width, toile.height), ratio: ratio };
             }
+            // Drapeau à damier d'arrivée : un mât monte du point d'arrivée (comme le trait des noms de lieux), puis le drapeau
+            // se déploie et flotte au vent. Image de taille fixe, redessinée à chaque image ; temps = millisecondes depuis l'apparition.
+            const POTEAU_DRAPEAU_V3D = 14, LARGEUR_DRAPEAU_V3D = 96, HAUTEUR_DRAPEAU_V3D = 112;
+            function dessinerDrapeauV3d(temps) {
+                const ratio = Math.min(3, Math.max(2, Math.round(window.devicePixelRatio || 2)));
+                const toile = document.createElement('canvas');
+                toile.width = LARGEUR_DRAPEAU_V3D * ratio;
+                toile.height = HAUTEUR_DRAPEAU_V3D * ratio;
+                const ctx = toile.getContext('2d');
+                ctx.scale(ratio, ratio);
+                const monte = Math.min(1, temps / 1000);
+                const montee = 1 - Math.pow(1 - monte, 3);
+                const deploiement = Math.max(0, Math.min(1, (temps - 900) / 500));
+                const ouverture = 1 - Math.pow(1 - deploiement, 3);
+                const x = POTEAU_DRAPEAU_V3D, base = HAUTEUR_DRAPEAU_V3D - 2, haut = base - 96 * montee;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                // Mât : même style que le trait des noms de lieux.
+                ctx.beginPath();
+                ctx.moveTo(x, base);
+                ctx.lineTo(x, haut);
+                ctx.strokeStyle = 'rgba(5,15,25,0.85)';
+                ctx.lineWidth = 3.4;
+                ctx.stroke();
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 1.4;
+                ctx.stroke();
+                // Tissu à damier : 8 colonnes x 5 lignes, déformé par une onde qui part du mât et grandit vers le bout.
+                if (ouverture > 0) {
+                    const colonnes = 8, lignes = 5, cote = 9;
+                    const longueur = colonnes * cote * ouverture, largeur = lignes * cote;
+                    const omega = 2 * Math.PI * temps / 900;
+                    const point = (u, v) => {
+                        const phase = omega - u * 5.2 + v * 0.5;
+                        return [
+                            x + u * longueur - 2.2 * u * (1 - Math.cos(phase)) * 0.5,
+                            haut + 3 + v * largeur + 4.2 * u * Math.sin(phase)
+                        ];
+                    };
+                    for (let i = 0; i < colonnes; i++) {
+                        for (let j = 0; j < lignes; j++) {
+                            const u0 = i / colonnes, u1 = (i + 1) / colonnes, v0 = j / lignes, v1 = (j + 1) / lignes;
+                            const clair = Math.cos(omega - ((u0 + u1) / 2) * 5.2);
+                            const blanc = Math.round(255 - 38 * (0.5 - 0.5 * clair));
+                            const noir = Math.round(16 + 30 * (0.5 + 0.5 * clair));
+                            const gris = (i + j) % 2 === 0 ? blanc : noir;
+                            const couleur = 'rgb(' + gris + ',' + gris + ',' + gris + ')';
+                            const a = point(u0, v0), b = point(u1, v0), c = point(u1, v1), d = point(u0, v1);
+                            ctx.beginPath();
+                            ctx.moveTo(a[0], a[1]);
+                            ctx.lineTo(b[0], b[1]);
+                            ctx.lineTo(c[0], c[1]);
+                            ctx.lineTo(d[0], d[1]);
+                            ctx.closePath();
+                            ctx.fillStyle = couleur;
+                            ctx.fill();
+                            ctx.lineWidth = 0.6;
+                            ctx.strokeStyle = couleur;
+                            ctx.stroke();
+                        }
+                    }
+                    // Contour sombre fin autour du tissu.
+                    ctx.beginPath();
+                    for (let i = 0; i <= colonnes; i++) { const q = point(i / colonnes, 0); if (i === 0) ctx.moveTo(q[0], q[1]); else ctx.lineTo(q[0], q[1]); }
+                    for (let j = 1; j <= lignes; j++) { const q = point(1, j / lignes); ctx.lineTo(q[0], q[1]); }
+                    for (let i = colonnes - 1; i >= 0; i--) { const q = point(i / colonnes, 1); ctx.lineTo(q[0], q[1]); }
+                    ctx.closePath();
+                    ctx.strokeStyle = 'rgba(5,15,25,0.85)';
+                    ctx.lineWidth = 1.3;
+                    ctx.stroke();
+                }
+                // Petite boule turquoise au sommet du mât.
+                ctx.beginPath();
+                ctx.arc(x, haut, 3.6, 0, Math.PI * 2);
+                ctx.fillStyle = '#65e6d4';
+                ctx.fill();
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 1.4;
+                ctx.stroke();
+                return { image: ctx.getImageData(0, 0, toile.width, toile.height), ratio: ratio };
+            }
             // Couches natives du survol : halo Vmax, noms de lieux, panneaux (pentes et Vmax), icônes photos (de bas en haut).
             function preparerCouchesV3d(carte) {
                 if (carte.getSource('v3d-lieux')) return;
@@ -13815,6 +13899,21 @@ def accueil():
                         'icon-image': ['get', 'img'],
                         'icon-anchor': 'bottom',
                         'icon-offset': [0, 0],
+                        'icon-allow-overlap': true,
+                        'icon-ignore-placement': true,
+                        'icon-pitch-alignment': 'viewport',
+                        'icon-rotation-alignment': 'viewport'
+                    },
+                    paint: opacite
+                });
+                // Drapeau à damier d'arrivée (image redessinée à chaque image pendant qu'il est visible).
+                carte.addSource('v3d-drapeau', { type: 'geojson', data: vide });
+                carte.addLayer({
+                    id: 'v3d-drapeau-image', type: 'symbol', source: 'v3d-drapeau',
+                    layout: {
+                        'icon-image': ['get', 'img'],
+                        'icon-anchor': 'bottom-left',
+                        'icon-offset': [-POTEAU_DRAPEAU_V3D, 0],
                         'icon-allow-overlap': true,
                         'icon-ignore-placement': true,
                         'icon-pitch-alignment': 'viewport',
@@ -13880,9 +13979,156 @@ def accueil():
                 };
                 p.raf = requestAnimationFrame(pas);
             }
+            // Alerte de pente : un grand panneau aux couleurs de la pente apparaît au milieu de l'écran, puis tombe et
+            // s'écrase à l'emplacement du panneau de pente, qui apparaît à l'impact (et reste affiché comme avant).
+            // Dessinée sur un calque posé sur la carte, repris dans la vidéo enregistrée.
+            const POLICE_ALERTE_V3D = 54, TAILLE_PANNEAU_PENTE_V3D = 19;
+            const ALERTE_APPARITION_MS = 220, ALERTE_ATTENTE_MS = 480, ALERTE_CHUTE_MS = 340;
+            function effacerCalqueAlerteV3d() {
+                const cv = document.getElementById('v3dAlertePente');
+                if (!cv) return;
+                const ctx = cv.getContext('2d');
+                ctx.setTransform(1, 0, 0, 1, 0, 0);
+                ctx.clearRect(0, 0, cv.width, cv.height);
+            }
+            function arreterAlertePenteV3d(p) {
+                const a = v3d.alerte;
+                if (!a || (p && a.p !== p)) return;
+                if (a.raf) cancelAnimationFrame(a.raf);
+                v3d.alerte = null;
+                effacerCalqueAlerteV3d();
+            }
+            // Position, taille et écrasement de l'alerte à l'instant t (en ms depuis son début), puis dessin.
+            function dessinerAlertePenteV3d(a, t) {
+                const cv = document.getElementById('v3dAlertePente');
+                const carte = v3d.carte;
+                if (!cv || !carte) return;
+                const ctx = cv.getContext('2d');
+                ctx.setTransform(a.ratio, 0, 0, a.ratio, 0, 0);
+                ctx.clearRect(0, 0, a.largeur, a.hauteur);
+                const p = a.p;
+                const centreX = a.largeur / 2, centreY = a.hauteur / 2;
+                let x = centreX, y = centreY, echelle = 1, ex = 1, ey = 1, opacite = 1;
+                if (t < ALERTE_APPARITION_MS) {
+                    // Apparition : le panneau grossit avec un petit rebond.
+                    const u = t / ALERTE_APPARITION_MS, c1 = 1.70158, c3 = c1 + 1;
+                    const rebond = 1 + c3 * Math.pow(u - 1, 3) + c1 * Math.pow(u - 1, 2);
+                    echelle = 0.35 + 0.65 * rebond;
+                    opacite = Math.min(1, u * 2.2);
+                } else if (t < ALERTE_APPARITION_MS + ALERTE_ATTENTE_MS) {
+                    echelle = 1 + 0.03 * Math.sin(((t - ALERTE_APPARITION_MS) / ALERTE_ATTENTE_MS) * Math.PI * 3);
+                } else {
+                    // Chute vers le panneau de pente (de plus en plus vite), puis écrasement à l'impact.
+                    const u = Math.min(1, (t - ALERTE_APPARITION_MS - ALERTE_ATTENTE_MS) / ALERTE_CHUTE_MS);
+                    const e = u * u * u;
+                    let cibleX = centreX, cibleY = centreY;
+                    try {
+                        const pt = carte.project(p.coord);
+                        if (pt && isFinite(pt.x) && isFinite(pt.y)) { cibleX = pt.x + 29 + p.largeurTexte / 2; cibleY = pt.y - 26; }
+                    } catch (erreur) { console.warn(erreur); }
+                    x = centreX + (cibleX - centreX) * e;
+                    y = centreY + (cibleY - centreY) * e;
+                    echelle = 1 + (TAILLE_PANNEAU_PENTE_V3D / POLICE_ALERTE_V3D - 1) * e;
+                    if (u > 0.75) {
+                        const w = (u - 0.75) / 0.25;
+                        ey = 1 - 0.5 * w;
+                        ex = 1 + 0.3 * w;
+                    }
+                }
+                const famille = getComputedStyle(document.body).fontFamily || 'sans-serif';
+                ctx.save();
+                ctx.globalAlpha = opacite;
+                ctx.translate(x, y);
+                ctx.scale(echelle * ex, echelle * ey);
+                const l = a.largeurTexte + 52, h = 88, r = 22;
+                ctx.beginPath();
+                ctx.moveTo(-l / 2 + r, -h / 2);
+                ctx.arcTo(l / 2, -h / 2, l / 2, h / 2, r);
+                ctx.arcTo(l / 2, h / 2, -l / 2, h / 2, r);
+                ctx.arcTo(-l / 2, h / 2, -l / 2, -h / 2, r);
+                ctx.arcTo(-l / 2, -h / 2, l / 2, -h / 2, r);
+                ctx.closePath();
+                ctx.shadowColor = 'rgba(0,0,0,0.55)';
+                ctx.shadowBlur = 26;
+                ctx.shadowOffsetY = 8;
+                ctx.fillStyle = p.couleurAlerte;
+                ctx.fill();
+                ctx.shadowColor = 'transparent';
+                ctx.lineWidth = 5;
+                ctx.strokeStyle = '#ffffff';
+                ctx.stroke();
+                ctx.font = '900 ' + POLICE_ALERTE_V3D + 'px ' + famille;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.lineJoin = 'round';
+                ctx.lineWidth = 7;
+                ctx.strokeStyle = 'rgba(5,15,25,0.9)';
+                ctx.strokeText(p.libelleAlerte, 0, 3);
+                ctx.fillStyle = '#ffffff';
+                ctx.fillText(p.libelleAlerte, 0, 3);
+                ctx.restore();
+            }
+            // Lance l'alerte d'un panneau de pente. Renvoie false si elle ne peut pas être montrée (le panneau s'affiche alors tout de suite).
+            function demarrerAlertePenteV3d(p) {
+                const carte = v3d.carte, cv = document.getElementById('v3dAlertePente');
+                if (!carte || !cv || !p.libelleAlerte || !p.couleurAlerte) return false;
+                const reduit = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                const largeur = carte.getCanvas().clientWidth, hauteur = carte.getCanvas().clientHeight;
+                if (reduit || !largeur || !hauteur) return false;
+                const ratio = Math.min(2, window.devicePixelRatio || 1);
+                cv.width = Math.round(largeur * ratio);
+                cv.height = Math.round(hauteur * ratio);
+                const mesure = document.createElement('canvas').getContext('2d');
+                mesure.font = '900 ' + POLICE_ALERTE_V3D + 'px ' + (getComputedStyle(document.body).fontFamily || 'sans-serif');
+                const a = { p: p, debut: performance.now(), raf: 0, largeur: largeur, hauteur: hauteur, ratio: ratio,
+                    largeurTexte: Math.ceil(mesure.measureText(p.libelleAlerte).width) };
+                v3d.alerte = a;
+                const duree = ALERTE_APPARITION_MS + ALERTE_ATTENTE_MS + ALERTE_CHUTE_MS;
+                const pas = maintenant => {
+                    a.raf = 0;
+                    if (v3d.alerte !== a || v3d.carte !== carte) return;
+                    const t = maintenant - a.debut;
+                    if (t >= duree) {
+                        // Impact : l'alerte disparaît et le panneau de pente apparaît à sa place.
+                        arreterAlertePenteV3d(p);
+                        try { if (p.visible && v3d.panneauxPente.includes(p)) carte.setFeatureState({ source: 'v3d-reperes', id: p.id }, { v: true }); } catch (erreur) { console.warn(erreur); }
+                        return;
+                    }
+                    dessinerAlertePenteV3d(a, t);
+                    a.raf = requestAnimationFrame(pas);
+                };
+                a.raf = requestAnimationFrame(pas);
+                return true;
+            }
+            // Drapeau d'arrivée : une seule boucle d'animation tant qu'il est visible.
+            function boucleDrapeauV3d() {
+                const carte = v3d.carte, dr = v3d.drapeau;
+                if (!carte || !dr || dr.raf) return;
+                const pas = maintenant => {
+                    dr.raf = 0;
+                    if (v3d.carte !== carte || v3d.drapeau !== dr || !dr.visible) return;
+                    try { if (carte.hasImage(dr.idImage)) carte.updateImage(dr.idImage, dessinerDrapeauV3d(maintenant - dr.debut).image); } catch (e) { console.warn(e); }
+                    dr.raf = requestAnimationFrame(pas);
+                };
+                dr.raf = requestAnimationFrame(pas);
+            }
+            function viderDrapeauV3d() {
+                const carte = v3d.carte, dr = v3d.drapeau;
+                v3d.drapeau = null;
+                if (dr && dr.raf) cancelAnimationFrame(dr.raf);
+                if (!carte) return;
+                try {
+                    if (carte.getSource('v3d-drapeau')) {
+                        carte.removeFeatureState({ source: 'v3d-drapeau' });
+                        carte.getSource('v3d-drapeau').setData({ type: 'FeatureCollection', features: [] });
+                    }
+                } catch (e) { console.warn(e); }
+            }
             function viderPanneauxV3d() {
                 const carte = v3d.carte;
                 const anciennes = v3d.imagesPanneaux || [];
+                viderDrapeauV3d();
+                arreterAlertePenteV3d();
                 v3d.panneauxPente.forEach(p => { if (p.vmax) { p.jeton = (p.jeton || 0) + 1; if (p.raf) cancelAnimationFrame(p.raf); p.raf = 0; } });
                 v3d.imagesPanneaux = [];
                 v3d.panneauxPente = [];
@@ -14069,12 +14315,29 @@ def accueil():
                     if (visible) rectanglesPrioritaires.push(rectangleDe(p));
                     if (visible === p.visible) return;
                     p.visible = visible;
-                    carte.setFeatureState({ source: 'v3d-reperes', id: p.id }, { v: visible });
+                    // Pente : en lecture, une grosse alerte tombe d'abord du centre de l'écran ; le panneau apparaît à l'impact.
+                    // Sans alerte (curseur déplacé à la main, autre alerte en cours...), le panneau s'affiche tout de suite comme avant.
+                    const avecAlerte = visible && !p.vmax && v3d.jouer && !v3d.alerte && demarrerAlertePenteV3d(p);
+                    if (!visible && v3d.alerte && v3d.alerte.p === p) arreterAlertePenteV3d(p);
+                    if (!avecAlerte) carte.setFeatureState({ source: 'v3d-reperes', id: p.id }, { v: visible });
                     if (p.vmax) {
                         if (visible) demarrerAnimationVmaxV3d(p);
                         else arreterAnimationVmaxV3d(p);
                     }
                 });
+
+                // Drapeau à damier d'arrivée : apparaît comme un nom de lieu (au moins 300 m ou 2 s avant l'arrivée) et reste jusqu'au bout.
+                const dr = v3d.drapeau;
+                if (dr) {
+                    const drapeauVisible = !!v3d.repereVisibles && d >= Math.max(0, dr.d - Math.max(300, avanceParSeconde * 2));
+                    if (drapeauVisible) rectanglesPrioritaires.push(rectangleDe(dr));
+                    if (drapeauVisible !== dr.visible) {
+                        dr.visible = drapeauVisible;
+                        carte.setFeatureState({ source: 'v3d-drapeau', id: 0 }, { v: drapeauVisible });
+                        if (drapeauVisible && !dr.fixe) { dr.debut = performance.now(); boucleDrapeauV3d(); }
+                        else if (!drapeauVisible && dr.raf) { cancelAnimationFrame(dr.raf); dr.raf = 0; }
+                    }
+                }
 
                 // Sommets et noms de lieux : un trait vertical monte du point (avec un triangle rouge pour un sommet),
                 // puis le nom s'écrit lettre par lettre. Affichage d'au moins 5,5 s : apparition au moins 300 m (ou 2 s)
@@ -14148,7 +14411,8 @@ def accueil():
                 const raides=tronconsRaidesV3d(15), liste=raides.length?raides:tronconsRaidesV3d(10).sort((a,b)=>b.valeur-a.valeur).slice(0,3);
                 liste.sort((a,b)=>b.valeur-a.valeur).slice(0,8).forEach(t=>{
                     const libelle=(t.signe>0?'+':'−')+Math.round(t.valeur)+' %';
-                    poserPanneau(libelle, 19, pointA(t.debut), { debut: t.debut, fin: t.fin });
+                    poserPanneau(libelle, TAILLE_PANNEAU_PENTE_V3D, pointA(t.debut), { debut: t.debut, fin: t.fin,
+                        libelleAlerte: libelle, couleurAlerte: couleurPente(t.signe * t.valeur) });
                 });
                 if (v3d.vitesseMax !== null) {
                     let indexMax = -1;
@@ -14170,6 +14434,21 @@ def accueil():
                             { type: 'Feature', id: k, properties: {}, geometry: { type: 'Point', coordinates: coordMax } })) });
                     }
                 }
+                // Drapeau à damier au point d'arrivée : même affichage que les noms de lieux (apparition avant l'arrivée).
+                try {
+                    const idDrapeau = 'v3d-drapeau-' + v3d.generationPanneaux;
+                    const reduit = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                    const dessinDrapeau = dessinerDrapeauV3d(reduit ? 2500 : 0);
+                    carte.addImage(idDrapeau, dessinDrapeau.image, { pixelRatio: dessinDrapeau.ratio });
+                    v3d.imagesPanneaux.push(idDrapeau);
+                    const coordArrivee = pointA(v3d.total);
+                    carte.getSource('v3d-drapeau').setData({ type: 'FeatureCollection', features: [
+                        { type: 'Feature', id: 0, properties: { img: idDrapeau }, geometry: { type: 'Point', coordinates: coordArrivee } }] });
+                    v3d.drapeau = {
+                        coord: coordArrivee, d: v3d.total, idImage: idDrapeau, visible: false, raf: 0, debut: 0, fixe: !!reduit,
+                        boite: { g: -(POTEAU_DRAPEAU_V3D + 4), d: LARGEUR_DRAPEAU_V3D - POTEAU_DRAPEAU_V3D + 4, h: -(HAUTEUR_DRAPEAU_V3D - 2), b: 4 }
+                    };
+                } catch (e) { console.warn('Drapeau d arrivée non dessiné', e); }
                 carte.getSource('v3d-reperes').setData({ type: 'FeatureCollection', features: objetsReperes });
                 majVisibiliteReperesV3d(); majBoutonsV3d();
                 const afficherLieux = lieux => {
@@ -14419,8 +14698,8 @@ def accueil():
 
             // Zoom arrière doux sur un sommet : on recule pendant que le triangle monte et que le nom s'écrit,
             // on reste 1 s au zoom le plus reculé (nom entier lisible), puis on revient en 1,8 s.
-            // Reculer d'au moins 0,5 niveau de zoom, et autant que nécessaire (jusqu'à 2,4) pour que le nom entier tienne à l'écran.
-            const AMPLITUDE_MIN_ZOOM_SOMMET_V3D = 0.5, AMPLITUDE_MAX_ZOOM_SOMMET_V3D = 2.4;
+            // Reculer d'au moins 0,5 niveau de zoom, et autant que nécessaire (jusqu'à 3,2) pour que le nom entier tienne à l'écran.
+            const AMPLITUDE_MIN_ZOOM_SOMMET_V3D = 0.5, AMPLITUDE_MAX_ZOOM_SOMMET_V3D = 3.2;
             const DUREE_LECTURE_NOM_V3D = 1, DUREE_RETOUR_ZOOM_SOMMET_V3D = 1.8, ZOOM_NORMAL_V3D = 14.3;
             function formeZoomSommetV3d(t, tFin) {
                 const doux = x => x * x * x * (x * (x * 6 - 15) + 10);
@@ -14755,6 +15034,13 @@ def accueil():
                 ctx.restore();
             }
 
+            // Alerte de pente (calque posé sur la carte) : reprise dans la vidéo tant qu'elle est affichée.
+            function dessinerAlerteVideo(ctx, largeur, hauteur) {
+                const calque = document.getElementById('v3dAlertePente');
+                if (!calque || !v3d.alerte || !calque.width || !calque.height) return;
+                ctx.drawImage(calque, 0, 0, largeur, hauteur);
+            }
+
             function dessinerCadreVideo() {
                 if (!v3d.videoActif || !v3d.canvasVideo || !v3d.ctxVideo) return;
                 const source = v3d.carte && v3d.carte.getCanvas ? v3d.carte.getCanvas() : null;
@@ -14762,6 +15048,7 @@ def accueil():
                     try {
                         v3d.ctxVideo.drawImage(source, 0, 0, v3d.canvasVideo.width, v3d.canvasVideo.height);
                         dessinerHabillageVideo(v3d.ctxVideo, v3d.canvasVideo.width, v3d.canvasVideo.height);
+                        dessinerAlerteVideo(v3d.ctxVideo, v3d.canvasVideo.width, v3d.canvasVideo.height);
                         dessinerPhotoVideo(v3d.ctxVideo, v3d.canvasVideo.width, v3d.canvasVideo.height);
                     } catch (e) {
                         console.warn('Image vidéo momentanément indisponible', e);
@@ -15001,6 +15288,7 @@ def accueil():
                 if (v3d.enregistreur) arreterEnregistrement(false);
                 v3d.jouer = false;
                 v3d.zoomSommet = null;
+                arreterAlertePenteV3d();
                 if (v3d.raf) {
                     cancelAnimationFrame(v3d.raf);
                     v3d.raf = 0;
