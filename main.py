@@ -21145,6 +21145,25 @@ def rayon_affichage_m(genre):
     return 300 if g == "hameau" else 200
 
 
+# Position d'un village : le centre OpenStreetMap (mairie, église) est préféré à celui de l'IGN, parfois décalé.
+# Il peut être un peu plus loin du parcours : on l'accepte jusqu'à 900 m, seulement s'il remplace un doublon IGN affiché.
+RAYON_CENTRE_VILLAGE_M = 900
+
+
+def est_centre_village_osm(genre, source):
+    return str(genre or "").casefold() in ("ville", "village") and "openstreetmap" in str(source or "").casefold()
+
+
+def rayon_candidat_m(genre, source):
+    return RAYON_CENTRE_VILLAGE_M if est_centre_village_osm(genre, source) else rayon_affichage_m(genre)
+
+
+def cle_doublon_lieu(genre, source, rang, ec):
+    """Même nom à moins de 600 m : le centre OpenStreetMap d'un village passe avant l'IGN ;
+    sinon on garde le mieux classé, puis le plus proche du parcours (plus petit = meilleur)."""
+    return (0 if est_centre_village_osm(genre, source) else 1, rang, ec)
+
+
 def limite_noms_parcours(longueur_m):
     """Nombre maximal de noms gardés pour un parcours : 60 jusqu'à 25 km,
     puis 2,4 noms par kilomètre pour que les longues sorties ne perdent pas leurs hameaux."""
@@ -21224,7 +21243,7 @@ def lieux_osm_points(elements, points):
         else:
             continue
         ec = ecart_parcours_m((lon, lat), points)
-        if ec > rayon_affichage_m(genre):
+        if ec > rayon_candidat_m(genre, "OpenStreetMap"):
             continue
         alt = None
         try:
@@ -21643,7 +21662,7 @@ def preparer_lieux_sortie(sortie_id):
                 liste_points = ",".join("%.6f,%.6f" % (p[1], p[0]) for p in troncon)
                 requete_complete = (
                     '[out:json][timeout:12];('
-                    'nwr["place"~"^(city|town|village)$"]["name"](around:500,LISTE);'
+                    'nwr["place"~"^(city|town|village)$"]["name"](around:900,LISTE);'
                     'nwr["place"~"^(hamlet|isolated_dwelling)$"]["name"](around:300,LISTE);'
                     'nwr["natural"~"^(peak|hill)$"]["name"](around:500,LISTE);'
                     'nwr["mountain_pass"="yes"]["name"](around:500,LISTE);'
@@ -22065,17 +22084,17 @@ def obtenir_lieux_bibliotheque(sortie_id: int, velo_id: int = 1, x_code_acces: O
         marge_lat = 500 / 110540 + 0.0002
         marge_lon = marge_lat / max(0.2, math.cos(math.radians((sud + nord) / 2)))
         cursor.execute(
-            """SELECT nom, genre, rang, lon, lat, altitude
+            """SELECT nom, genre, rang, lon, lat, altitude, source
                FROM bibliotheque_lieux_geo
                WHERE lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?""",
-            (sud - marge_lat, nord + marge_lat, ouest - marge_lon, est + marge_lon)
+            (sud - marge_lat - 0.0036, nord + marge_lat + 0.0036, ouest - marge_lon - 0.0055, est + marge_lon + 0.0055)
         )
         retenus = []
         cumul = [0.0]
         for i in range(1, len(points)):
             cumul.append(cumul[-1] + distance(points[i - 1], points[i]))
         genres = ("ville", "village", "hameau", "col", "sommet")
-        for nom, genre, rang, lon, lat, altitude in cursor.fetchall():
+        for nom, genre, rang, lon, lat, altitude, source in cursor.fetchall():
             nom = nom_geographique_texte(nom)
             if not nom:
                 continue
@@ -22084,22 +22103,30 @@ def obtenir_lieux_bibliotheque(sortie_id: int, velo_id: int = 1, x_code_acces: O
                 continue
             coord = (float(lon), float(lat))
             ec = ecart_parcours_m(coord, points)
-            if ec > rayon_affichage_m(genre):
+            if ec > rayon_candidat_m(genre, source):
                 continue
             index = min(range(len(points)), key=lambda i: distance(coord, points[i]))
             entree = {
                 "nom": str(nom), "genre": genre, "rang": int(rang or 9),
                 "ec": round(ec, 1), "coord": [coord[0], coord[1]],
-                "alt": altitude, "source": "bibliotheque", "d": round(cumul[index], 1)
+                "alt": altitude, "source": "bibliotheque", "d": round(cumul[index], 1),
+                "_cle": cle_doublon_lieu(genre, source, int(rang or 9), round(ec, 1))
             }
             doublon = next((i for i, x in enumerate(retenus)
                             if x["nom"].casefold() == entree["nom"].casefold()
                             and distance(tuple(x["coord"]), coord) < 600), None)
             if doublon is None:
                 retenus.append(entree)
-            elif (entree["rang"], entree["ec"]) < (retenus[doublon]["rang"], retenus[doublon]["ec"]):
-                # Même nom : on garde le mieux classé, et à rang égal le plus proche du parcours.
-                retenus[doublon] = entree
+            else:
+                # Même nom : centre OpenStreetMap d'un village d'abord, sinon le mieux classé, puis le plus proche du parcours.
+                if entree["_cle"] < retenus[doublon]["_cle"]:
+                    retenus[doublon] = entree
+                retenus[doublon]["_dup"] = True
+        # Un centre OSM éloigné (plus de 500 m) n'est gardé que s'il a un doublon (la même localité vue par l'IGN, affichée).
+        retenus = [x for x in retenus if x["ec"] <= rayon_affichage_m(x["genre"]) or x.get("_dup")]
+        for x in retenus:
+            x.pop("_cle", None)
+            x.pop("_dup", None)
         retenus.sort(key=lambda x: (x["rang"], x["ec"]))
         return {"statut": "bibliotheque", "lieux": retenus[:limite_noms_parcours(cumul[-1])]}
     finally:
@@ -22143,7 +22170,7 @@ def diagnostic_lieux_sortie(sortie_id: int, velo_id: int = 1, x_code_acces: Opti
         refs = points[::max(1, len(points) // 1000)]
         sud, nord = min(p[1] for p in refs), max(p[1] for p in refs)
         ouest, est = min(p[0] for p in refs), max(p[0] for p in refs)
-        marge_lat = 800 / 110540 + 0.0002
+        marge_lat = 900 / 110540 + 0.0002
         marge_lon = marge_lat / max(0.2, math.cos(math.radians((sud + nord) / 2)))
         cursor.execute(
             """SELECT nom, genre, rang, lon, lat, altitude, source
@@ -22160,12 +22187,12 @@ def diagnostic_lieux_sortie(sortie_id: int, velo_id: int = 1, x_code_acces: Opti
             genre = str(genre or "").casefold()
             coord = (float(lon), float(lat))
             ec = ecart_parcours_m(coord, points)
-            if ec > 800:
+            if ec > 900:
                 continue
             etat = "affiche"
             if genre not in genres:
                 etat = "non_affiche_genre"
-            elif ec > rayon_affichage_m(genre):
+            elif ec > rayon_candidat_m(genre, source):
                 etat = "trop_loin"
             entrees.append({
                 "nom": str(nom), "genre": genre, "rang": int(rang or 9), "source": str(source or ""),
@@ -22181,13 +22208,25 @@ def diagnostic_lieux_sortie(sortie_id: int, velo_id: int = 1, x_code_acces: Opti
             doublon = next((i for i, x in enumerate(gardes)
                             if x["nom"].casefold() == e["nom"].casefold()
                             and distance((x["lon"], x["lat"]), (e["lon"], e["lat"])) < 600), None)
+            cle = cle_doublon_lieu(e["genre"], e["source"], e["rang"], e["ec"])
+            e["_cle"] = cle
             if doublon is None:
                 gardes.append(e)
-            elif (e["rang"], e["ec"]) < (gardes[doublon]["rang"], gardes[doublon]["ec"]):
-                gardes[doublon]["etat"] = "doublon"
-                gardes[doublon] = e
             else:
-                e["etat"] = "doublon"
+                if cle < gardes[doublon]["_cle"]:
+                    gardes[doublon]["etat"] = "doublon"
+                    gardes[doublon] = e
+                else:
+                    e["etat"] = "doublon"
+                gardes[doublon]["_dup"] = True
+        # Un centre OSM éloigné (plus de 500 m) sans doublon affiché n'est pas affiché.
+        for e in list(gardes):
+            if e["ec"] > rayon_affichage_m(e["genre"]) and not e.get("_dup"):
+                e["etat"] = "trop_loin"
+                gardes.remove(e)
+        for e in entrees:
+            e.pop("_cle", None)
+            e.pop("_dup", None)
         gardes.sort(key=lambda x: (x["rang"], x["ec"]))
         limite = limite_noms_parcours(longueur)
         for e in gardes[limite:]:
