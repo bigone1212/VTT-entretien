@@ -3535,6 +3535,25 @@ def accueil():
             .vue3d .v3d-ctrl .v3d-ctrl-centre { width: 78px; height: 78px; border-width: 0; background: rgba(8,20,26,0.14); }
             .vue3d .v3d-ctrl .v3d-ctrl-cote { width: 52px; height: 52px; border-width: 0; background: rgba(8,20,26,0.14); }
             .vue3d .v3d-ctrl .v3d-ctrl-rapide { position: relative; width: 46px; height: 46px; border-width: 0; background: rgba(8,20,26,0.14); }
+            .vue3d .v3d-ctrl .v3d-ctrl-enreg { position: absolute; left: 50%; top: calc(100% + 18px); transform: translateX(-50%); width: 52px; height: 52px; border-width: 0; background: rgba(8,20,26,0.14); color: #ff4d4d; }
+            .vue3d .v3d-ctrl .v3d-ctrl-enreg.enreg { background: rgba(220,38,38,0.55); color: #fff; }
+            .v3d-ctrl .v3d-ctrl-enreg span { display: none; }
+            .v3d-ctrl .v3d-ctrl-enreg svg { width: 26px; height: 26px; }
+            /* Petits boutons ronds en haut à gauche : angle de vue, fond de carte, repères, mes parcours (icône seule). */
+            .v3d-rapides {
+                position: absolute;
+                left: calc(12px + env(safe-area-inset-left));
+                top: calc(10px + env(safe-area-inset-top));
+                z-index: 8;
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+            }
+            .vue3d .v3d-rapides button { width: 38px; height: 38px; padding: 0; gap: 0; justify-content: center; border-radius: 50%; }
+            .v3d-rapides button span { display: none; }
+            .v3d-rapides button svg { display: block; margin: 0; }
+            /* Boutons du panneau Commandes devenus inutiles (remplacés par les commandes au centre) : masqués, code conservé. */
+            .vue3d #v3dLecture, .vue3d #v3dVitesse, .vue3d #v3dRelancerLieux, .vue3d #v3dDiagnostic { display: none !important; }
             .v3d-ctrl svg { filter: drop-shadow(0 0 3px rgba(0,0,0,0.75)); }
             .v3d-ctrl .v3d-ctrl-rapide[data-vit]::after { content: attr(data-vit); position: absolute; left: 0; right: 0; bottom: -15px; font-size: 0.72rem; font-weight: 800; text-align: center; color: #fff; text-shadow: 0 0 3px rgba(0,0,0,0.85); }
             .v3d-ctrl svg { display: block; }
@@ -3583,8 +3602,8 @@ def accueil():
             .v3d-legende {
                 position: absolute;
                 z-index: 3;
-                left: 12px;
-                top: calc(58px + env(safe-area-inset-top));
+                left: calc(60px + env(safe-area-inset-left));
+                top: calc(10px + env(safe-area-inset-top));
                 display: flex;
                 flex-direction: column;
                 gap: 2px;
@@ -4066,7 +4085,7 @@ def accueil():
             :root.paysage .v3d-bas input[type="range"] { margin-bottom: 6px; }
             :root.paysage .vue3d button { padding: 5px 11px; font-size: 0.78rem; }
             :root.paysage .v3d-info { margin-top: 4px; }
-            :root.paysage .v3d-legende { top: calc(46px + env(safe-area-inset-top)); left: calc(12px + env(safe-area-inset-left)); padding: 5px 8px; font-size: 0.68rem; }
+            :root.paysage .v3d-legende { top: calc(8px + env(safe-area-inset-top)); left: calc(60px + env(safe-area-inset-left)); padding: 5px 8px; font-size: 0.68rem; }
             /* Téléphone à l'horizontale : l'encart (nom, chiffres, profil) est bas et étiré sur toute la largeur de l'écran. */
             :root.paysage .v3d-cinema-hud {
                 left: calc(10px + env(safe-area-inset-left));
@@ -4694,6 +4713,13 @@ def accueil():
                 <button type="button" id="v3dCentre" class="v3d-ctrl-centre" aria-label="Lecture"></button>
                 <button type="button" id="v3dAvancer" class="v3d-ctrl-cote" aria-label="Avancer de 10 secondes" title="Avancer de 10 secondes"></button>
                 <button type="button" id="v3dRapideAvant" class="v3d-ctrl-rapide" aria-label="Avance rapide ×2 puis ×4" title="Avance rapide"></button>
+                <button type="button" id="v3dEnreg" class="v3d-ctrl-enreg"></button>
+            </div>
+            <div class="v3d-rapides" id="v3dRapides">
+                <button type="button" id="v3dInclinaison"></button>
+                <button type="button" id="v3dFond"></button>
+                <button type="button" id="v3dReperes"></button>
+                <button type="button" id="v3dAutres"></button>
             </div>
             <div class="v3d-haut">
                 <strong id="v3dTitre"></strong>
@@ -4744,14 +4770,9 @@ def accueil():
                 <div class="v3d-boutons">
                     <button type="button" id="v3dLecture"></button>
                     <button type="button" id="v3dVitesse"></button>
-                    <button type="button" id="v3dInclinaison"></button>
-                    <button type="button" id="v3dFond"></button>
-                    <button type="button" id="v3dAutres"></button>
-                    <button type="button" id="v3dReperes"></button>
                     <button type="button" id="v3dRelancerLieux">Relancer les noms</button>
                     <button type="button" id="v3dDiagnostic">Diagnostic des noms</button>
                     <button type="button" id="v3dCouleur"></button>
-                    <button type="button" id="v3dEnreg"></button>
                 </div>
                 <div class="v3d-info" id="v3dInfo"></div>
             </div>
@@ -8578,6 +8599,10 @@ def accueil():
             ICONES.engrenage = '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>';
             ICONES.recul10 = '<path d="M12 5a8 8 0 1 1-7.5 5.2"/><path d="M12 1.5L8 5l4 3.5"/><text x="12" y="15.6" text-anchor="middle" font-size="7.5" font-weight="700" fill="currentColor" stroke="none">10</text>';
             ICONES.avance10 = '<path d="M12 5a8 8 0 1 0 7.5 5.2"/><path d="M12 1.5L16 5l-4 3.5"/><text x="12" y="15.6" text-anchor="middle" font-size="7.5" font-weight="700" fill="currentColor" stroke="none">10</text>';
+            ICONES.angle = '<path d="M3.5 19.5h17"/><path d="M3.5 19.5L16.5 6.5"/><path d="M11 19.5a7.5 7.5 0 0 0-2.2-5.3"/>';
+            ICONES.satellite = '<g transform="rotate(-45 12 12)"><rect x="9.5" y="9.5" width="5" height="5" rx="1"/><rect x="2" y="10" width="5.5" height="4" rx="0.8"/><rect x="16.5" y="10" width="5.5" height="4" rx="0.8"/><path d="M7.5 12h2M14.5 12h2M12 9.5V6.5"/></g><path d="M16 20a5 5 0 0 0 4-4"/>';
+            ICONES.carteplan = '<path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/>';
+            ICONES.parcours = '<circle cx="6" cy="18" r="2.2"/><circle cx="18" cy="6" r="2.2"/><path d="M8.2 18H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h6.8"/>';
             ICONES.pause = '<path d="M8 5v14M16 5v14"/>';
             ICONES.vitesse = '<path d="M5 6l6 6-6 6M13 6l6 6-6 6"/>';
             ICONES.incl = '<path d="M3 18l9-12 9 12z"/>';
@@ -14648,24 +14673,29 @@ def accueil():
                     v3d.jouer ? 'pause' : 'lecture', v3d.jouer ? 'Pause' : 'Lecture');
                 document.getElementById('v3dLecture').classList.toggle('actif', !v3d.jouer);
                 remplirBouton(document.getElementById('v3dVitesse'), 'vitesse', `${v3d.sens < 0 ? '◀ ' : ''}×${v3d.vitesse}`);
-                remplirBouton(document.getElementById('v3dInclinaison'), 'incl', `${v3d.inclinaison}°`);
-                remplirBouton(document.getElementById('v3dFond'), 'fond',
-                    v3d.fond === 'sat' ? 'Satellite' : 'Plan');
+                const etiqueter = (id, icone, texte) => {
+                    const el = document.getElementById(id);
+                    remplirBouton(el, icone, texte);
+                    el.setAttribute('aria-label', texte);
+                    el.title = texte;
+                };
+                etiqueter('v3dInclinaison', 'angle', `Angle de vue : ${v3d.inclinaison}°`);
+                etiqueter('v3dFond', v3d.fond === 'sat' ? 'satellite' : 'carteplan', v3d.fond === 'sat' ? 'Fond : satellite' : 'Fond : plan');
                 const couleur = document.getElementById('v3dCouleur');
                 const aTerrain = v3d.surfaces && v3d.surfaces.length === v3d.pts.length;
                 couleur.style.display = (v3d.pentes.length && aTerrain) ? '' : 'none';
                 remplirBouton(couleur, 'incl', v3d.mode === 'pente' ? 'Couleurs : pente' : 'Couleurs : terrain');
                 const autres = document.getElementById('v3dAutres');
                 const rep = document.getElementById('v3dReperes');
-                remplirBouton(rep, 'montagne', 'Repères');
+                etiqueter('v3dReperes', 'montagne', 'Repères');
                 rep.classList.toggle('actif', v3d.repereVisibles);
                 rep.style.display = (v3d.panneauxPente.length || v3d.panneauxLieux.length || v3d.prete) ? '' : 'none';
-                remplirBouton(autres, 'incl', 'Mes parcours');
+                etiqueter('v3dAutres', 'parcours', 'Mes parcours');
                 autres.classList.toggle('actif', v3d.voirAutres);
                 autres.style.display = sortiesConnues.some(o => o.id !== v3d.sortieId && Array.isArray(o.trace) && o.trace.length >= 2) ? '' : 'none';
                 const enr = document.getElementById('v3dEnreg');
                 const en_cours = !!v3d.enregistreur;
-                remplirBouton(enr, 'enreg', en_cours ? 'Arrêter et enregistrer' : 'Enregistrer');
+                etiqueter('v3dEnreg', 'enreg', en_cours ? 'Arrêter et enregistrer' : 'Enregistrer');
                 enr.classList.toggle('enreg', en_cours);
                 // Le survol s'affiche toujours en mode cinéma ; le bouton du haut montre ou cache les autres boutons.
                 const cinema = document.getElementById('v3dCinema');
