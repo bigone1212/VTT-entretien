@@ -3381,6 +3381,7 @@ def accueil():
                 background: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0));
             }
 
+            .v3d-haut > div { margin-left: auto; }
             .v3d-haut strong { font-size: 0.95rem; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
 
             .vue3d.cinema .v3d-bas {
@@ -14809,6 +14810,13 @@ def accueil():
             // on reste 1 s au zoom le plus reculé (nom entier lisible), puis on revient en 1,8 s.
             // Reculer d'au moins 0,5 niveau de zoom, et autant que nécessaire (jusqu'à 1,9 : au-delà, le nom long est écrit sur 2 lignes) pour que le nom entier tienne à l'écran.
             const AMPLITUDE_MIN_ZOOM_SOMMET_V3D = 0.5, AMPLITUDE_MAX_ZOOM_SOMMET_V3D = 1.9;
+            // Écran peu haut (téléphone à l'horizontale) : la caméra est plus proche du sol et rentre dans le relief.
+            // On recule le zoom pour garder la même distance caméra-sol que sur un écran de 700 px de haut.
+            const HAUTEUR_REFERENCE_V3D = 700;
+            function reculEcranBasV3d(hauteur) {
+                if (!hauteur || hauteur >= HAUTEUR_REFERENCE_V3D) return 0;
+                return Math.min(1.1, Math.log(HAUTEUR_REFERENCE_V3D / hauteur) / Math.LN2);
+            }
             const DUREE_LECTURE_NOM_V3D = 1, DUREE_RETOUR_ZOOM_SOMMET_V3D = 1.8, ZOOM_NORMAL_V3D = 14.3;
             function formeZoomSommetV3d(t, tFin) {
                 const doux = x => x * x * x * (x * (x * 6 - 15) + 10);
@@ -14818,7 +14826,7 @@ def accueil():
             }
             // Combien de niveaux de zoom faut-il reculer pour que le triangle et le nom entier du sommet tiennent à l'écran ?
             // Mesuré d'après la position actuelle du sommet à l'écran, ramenée au zoom normal (un niveau de zoom divise les écarts par 2).
-            function amplitudeZoomSommetV3d(zs, carte, zoomActuel) {
+            function amplitudeZoomSommetV3d(zs, carte, zoomActuel, zoomNormal) {
                 try {
                     const ecran = carte.project(zs.p.coord);
                     const largeur = carte.getCanvas().clientWidth || 360;
@@ -14827,7 +14835,7 @@ def accueil():
                     const marge = 14;
                     // Place disponible entre le centre de l'écran et le bord, du côté où le nom s'étend (à droite) ou du côté du triangle (à gauche).
                     const place = ecart >= 0 ? largeur / 2 - marge - zs.p.boite.d : largeur / 2 - marge + zs.p.boite.g;
-                    const ecartNormal = Math.abs(ecart) * Math.pow(2, ZOOM_NORMAL_V3D - zoomActuel);
+                    const ecartNormal = Math.abs(ecart) * Math.pow(2, (zoomNormal || ZOOM_NORMAL_V3D) - zoomActuel);
                     if (place < 8) return AMPLITUDE_MAX_ZOOM_SOMMET_V3D;
                     const besoin = Math.log(ecartNormal / place) / Math.LN2;
                     return Math.max(AMPLITUDE_MIN_ZOOM_SOMMET_V3D, Math.min(AMPLITUDE_MAX_ZOOM_SOMMET_V3D, isFinite(besoin) ? besoin : AMPLITUDE_MIN_ZOOM_SOMMET_V3D));
@@ -14890,7 +14898,8 @@ def accueil():
                 }
 
                 // Zoom arrière doux sur un sommet (temps réel, sans dépendre de la vitesse de lecture).
-                let zoomCamera = ZOOM_NORMAL_V3D;
+                const zoomBase = ZOOM_NORMAL_V3D - reculEcranBasV3d(hauteur);
+                let zoomCamera = zoomBase;
                 const zs = v3d.zoomSommet;
                 if (zs) {
                     if (brusque) {
@@ -14903,11 +14912,11 @@ def accueil():
                             // Toutes les 6 images, on mesure où se trouve le sommet à l'écran et on ajuste l'ampleur du recul.
                             zs.images = (zs.images || 0) + 1;
                             if (zs.images % 6 === 1) {
-                                const zoomVu = ZOOM_NORMAL_V3D - zs.amplitude * formeZoomSommetV3d(zs.ecoule, zs.tFin);
-                                zs.cible = amplitudeZoomSommetV3d(zs, carte, zoomVu);
+                                const zoomVu = zoomBase - zs.amplitude * formeZoomSommetV3d(zs.ecoule, zs.tFin);
+                                zs.cible = amplitudeZoomSommetV3d(zs, carte, zoomVu, zoomBase);
                             }
                             zs.amplitude += (zs.cible - zs.amplitude) * (1 - Math.exp(-dt * 2.5));
-                            zoomCamera = ZOOM_NORMAL_V3D - zs.amplitude * formeZoomSommetV3d(zs.ecoule, zs.tFin);
+                            zoomCamera = zoomBase - zs.amplitude * formeZoomSommetV3d(zs.ecoule, zs.tFin);
                         }
                     }
                 }
