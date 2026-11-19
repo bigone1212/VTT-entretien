@@ -3553,7 +3553,8 @@ def accueil():
             .v3d-rapides button span { display: none; }
             .v3d-rapides button svg { display: block; margin: 0; }
             /* Boutons du panneau Commandes devenus inutiles (remplacés par les commandes au centre) : masqués, code conservé. */
-            .vue3d #v3dLecture, .vue3d #v3dVitesse, .vue3d #v3dRelancerLieux, .vue3d #v3dDiagnostic { display: none !important; }
+            .vue3d #v3dLecture, .vue3d #v3dVitesse, .vue3d #v3dRelancerLieux, .vue3d #v3dDiagnostic, .vue3d .v3d-haut #v3dCinema { display: none !important; }
+            /* Bouton engrenage retiré (version finale) : le panneau Commandes n'est plus accessible, code conservé. */
             .v3d-ctrl svg { filter: drop-shadow(0 0 3px rgba(0,0,0,0.75)); }
             .v3d-ctrl .v3d-ctrl-rapide[data-vit]::after { content: attr(data-vit); position: absolute; left: 0; right: 0; bottom: -15px; font-size: 0.72rem; font-weight: 800; text-align: center; color: #fff; text-shadow: 0 0 3px rgba(0,0,0,0.85); }
             .v3d-ctrl svg { display: block; }
