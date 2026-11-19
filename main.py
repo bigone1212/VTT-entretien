@@ -4720,6 +4720,7 @@ def accueil():
                 <button type="button" id="v3dFond"></button>
                 <button type="button" id="v3dReperes"></button>
                 <button type="button" id="v3dAutres"></button>
+                <button type="button" id="v3dCouleur"></button>
             </div>
             <div class="v3d-haut">
                 <strong id="v3dTitre"></strong>
@@ -4772,7 +4773,6 @@ def accueil():
                     <button type="button" id="v3dVitesse"></button>
                     <button type="button" id="v3dRelancerLieux">Relancer les noms</button>
                     <button type="button" id="v3dDiagnostic">Diagnostic des noms</button>
-                    <button type="button" id="v3dCouleur"></button>
                 </div>
                 <div class="v3d-info" id="v3dInfo"></div>
             </div>
@@ -8603,6 +8603,7 @@ def accueil():
             ICONES.satellite = '<g transform="rotate(-45 12 12)"><rect x="9.5" y="9.5" width="5" height="5" rx="1"/><rect x="2" y="10" width="5.5" height="4" rx="0.8"/><rect x="16.5" y="10" width="5.5" height="4" rx="0.8"/><path d="M7.5 12h2M14.5 12h2M12 9.5V6.5"/></g><path d="M16 20a5 5 0 0 0 4-4"/>';
             ICONES.carteplan = '<path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/>';
             ICONES.parcours = '<circle cx="6" cy="18" r="2.2"/><circle cx="18" cy="6" r="2.2"/><path d="M8.2 18H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h6.8"/>';
+            ICONES.palette = '<path d="M12 3a9 9 0 1 0 0 18c1.2 0 2-.8 2-1.8 0-.5-.2-.9-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1 .8-1.8 1.8-1.8H17a4 4 0 0 0 4-4C21 6.5 17 3 12 3z"/><circle cx="7.5" cy="11.5" r="1" fill="currentColor"/><circle cx="10" cy="7.5" r="1" fill="currentColor"/><circle cx="15" cy="7.5" r="1" fill="currentColor"/>';
             ICONES.pause = '<path d="M8 5v14M16 5v14"/>';
             ICONES.vitesse = '<path d="M5 6l6 6-6 6M13 6l6 6-6 6"/>';
             ICONES.incl = '<path d="M3 18l9-12 9 12z"/>';
@@ -14684,7 +14685,7 @@ def accueil():
                 const couleur = document.getElementById('v3dCouleur');
                 const aTerrain = v3d.surfaces && v3d.surfaces.length === v3d.pts.length;
                 couleur.style.display = (v3d.pentes.length && aTerrain) ? '' : 'none';
-                remplirBouton(couleur, 'incl', v3d.mode === 'pente' ? 'Couleurs : pente' : 'Couleurs : terrain');
+                etiqueter('v3dCouleur', 'palette', v3d.mode === 'pente' ? 'Couleurs : pente' : 'Couleurs : terrain');
                 const autres = document.getElementById('v3dAutres');
                 const rep = document.getElementById('v3dReperes');
                 etiqueter('v3dReperes', 'montagne', 'Repères');
