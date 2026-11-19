@@ -3515,7 +3515,7 @@ def accueil():
                 z-index: 6;
                 display: flex;
                 align-items: center;
-                gap: 30px;
+                gap: 10px;
                 opacity: 0;
                 pointer-events: none;
                 transition: opacity 0.35s ease;
@@ -3531,8 +3531,11 @@ def accueil():
                 pointer-events: none;
             }
             .v3d-ctrl.visible button { pointer-events: auto; }
-            .vue3d .v3d-ctrl .v3d-ctrl-centre { width: 78px; height: 78px; border-width: 0; background: rgba(8,20,26,0.38); }
-            .vue3d .v3d-ctrl .v3d-ctrl-cote { width: 54px; height: 54px; border-width: 0; background: rgba(8,20,26,0.38); }
+            .vue3d .v3d-ctrl .v3d-ctrl-centre { width: 78px; height: 78px; border-width: 0; background: rgba(8,20,26,0.14); }
+            .vue3d .v3d-ctrl .v3d-ctrl-cote { width: 52px; height: 52px; border-width: 0; background: rgba(8,20,26,0.14); }
+            .vue3d .v3d-ctrl .v3d-ctrl-rapide { position: relative; width: 46px; height: 46px; border-width: 0; background: rgba(8,20,26,0.14); }
+            .v3d-ctrl svg { filter: drop-shadow(0 0 3px rgba(0,0,0,0.75)); }
+            .v3d-ctrl .v3d-ctrl-rapide[data-vit]::after { content: attr(data-vit); position: absolute; left: 0; right: 0; bottom: -15px; font-size: 0.72rem; font-weight: 800; text-align: center; color: #fff; text-shadow: 0 0 3px rgba(0,0,0,0.85); }
             .v3d-ctrl svg { display: block; }
             /* Calque de l'alerte de pente : grand panneau au milieu de l'écran, posé sur la carte (sans bloquer les touches). */
             #v3dAlertePente { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 3; pointer-events: none; }
@@ -4685,9 +4688,11 @@ def accueil():
             <div id="carte3d"></div>
             <canvas id="v3dAlertePente" aria-hidden="true"></canvas>
             <div class="v3d-ctrl" id="v3dCtrl">
+                <button type="button" id="v3dRapideArriere" class="v3d-ctrl-rapide" aria-label="Retour rapide ×2 puis ×4" title="Retour rapide"></button>
                 <button type="button" id="v3dReculer" class="v3d-ctrl-cote" aria-label="Reculer de 10 secondes" title="Reculer de 10 secondes"></button>
                 <button type="button" id="v3dCentre" class="v3d-ctrl-centre" aria-label="Lecture"></button>
                 <button type="button" id="v3dAvancer" class="v3d-ctrl-cote" aria-label="Avancer de 10 secondes" title="Avancer de 10 secondes"></button>
+                <button type="button" id="v3dRapideAvant" class="v3d-ctrl-rapide" aria-label="Avance rapide ×2 puis ×4" title="Avance rapide"></button>
             </div>
             <div class="v3d-haut">
                 <strong id="v3dTitre"></strong>
@@ -13309,7 +13314,7 @@ def accueil():
 
             const v3d = {
                 carte: null, pts: [], cum: [], total: 0, f: 0, jouer: false, centreCamera: null,
-                vitesse: 1, inclinaison: 45, cap: 0, dernier: 0, raf: 0,
+                vitesse: 1, sens: 1, inclinaison: 45, cap: 0, dernier: 0, raf: 0,
                 fond: 'sat', enregistreur: null, morceaux: [], titre: '',
                 nomParcours: '', dateParcours: '', cinema: true, commandes: false,
                 canvasVideo: null, ctxVideo: null, rafVideo: 0, fluxVideo: null, videoActif: false,
@@ -13755,7 +13760,7 @@ def accueil():
                 return Math.ceil(mesure.measureText(libelle).width);
             }
             // Nom de sommet long : coupé en deux lignes (au espace le plus proche du milieu) pour ne pas trop dézoomer.
-            const LARGEUR_MAX_LIGNE_SOMMET_V3D = 150;
+            const LARGEUR_MAX_LIGNE_SOMMET_V3D = 100;
             function decouperNomSommetV3d(libelle) {
                 if (mesurerTexteV3d(libelle, POLICE_SOMMET_V3D) <= LARGEUR_MAX_LIGNE_SOMMET_V3D) return [libelle];
                 let meilleur = null, meilleurPire = Infinity;
@@ -14282,7 +14287,7 @@ def accueil():
                 p.debutPointe = performance.now();
                 // Petit zoom arrière doux pendant la lecture, pour les sommets seulement (jamais quand on déplace le curseur).
                 // Le recul dure jusqu'à la fin de l'écriture du nom (montée du triangle + lettres), puis 1 s de lecture.
-                if (p.sommet && v3d.jouer && !v3d.zoomSommet) {
+                if (p.sommet && v3d.jouer && v3d.sens > 0 && !v3d.zoomSommet) {
                     v3d.zoomSommet = { ecoule: 0, p: p, tFin: (DUREE_POINTE_V3D + p.dureeTexte) / 1000,
                         amplitude: AMPLITUDE_MIN_ZOOM_SOMMET_V3D, cible: AMPLITUDE_MIN_ZOOM_SOMMET_V3D };
                 }
@@ -14422,7 +14427,7 @@ def accueil():
                     p.visible = visible;
                     // Pente : en lecture, une grosse alerte tombe d'abord du centre de l'écran ; le panneau apparaît à l'impact.
                     // Sans alerte (curseur déplacé à la main, autre alerte en cours...), le panneau s'affiche tout de suite comme avant.
-                    const avecAlerte = visible && !p.vmax && v3d.jouer && !v3d.alerte && demarrerAlertePenteV3d(p);
+                    const avecAlerte = visible && !p.vmax && v3d.jouer && v3d.sens > 0 && !v3d.alerte && demarrerAlertePenteV3d(p);
                     if (!visible && v3d.alerte && v3d.alerte.p === p) arreterAlertePenteV3d(p);
                     if (!avecAlerte) carte.setFeatureState({ source: 'v3d-reperes', id: p.id }, { v: visible });
                     if (p.vmax) {
@@ -14641,7 +14646,7 @@ def accueil():
                 remplirBouton(document.getElementById('v3dLecture'),
                     v3d.jouer ? 'pause' : 'lecture', v3d.jouer ? 'Pause' : 'Lecture');
                 document.getElementById('v3dLecture').classList.toggle('actif', !v3d.jouer);
-                remplirBouton(document.getElementById('v3dVitesse'), 'vitesse', `×${v3d.vitesse}`);
+                remplirBouton(document.getElementById('v3dVitesse'), 'vitesse', `${v3d.sens < 0 ? '◀ ' : ''}×${v3d.vitesse}`);
                 remplirBouton(document.getElementById('v3dInclinaison'), 'incl', `${v3d.inclinaison}°`);
                 remplirBouton(document.getElementById('v3dFond'), 'fond',
                     v3d.fond === 'sat' ? 'Satellite' : 'Plan');
@@ -14802,8 +14807,8 @@ def accueil():
 
             // Zoom arrière doux sur un sommet : on recule pendant que le triangle monte et que le nom s'écrit,
             // on reste 1 s au zoom le plus reculé (nom entier lisible), puis on revient en 1,8 s.
-            // Reculer d'au moins 0,5 niveau de zoom, et autant que nécessaire (jusqu'à 3,2) pour que le nom entier tienne à l'écran.
-            const AMPLITUDE_MIN_ZOOM_SOMMET_V3D = 0.5, AMPLITUDE_MAX_ZOOM_SOMMET_V3D = 3.2;
+            // Reculer d'au moins 0,5 niveau de zoom, et autant que nécessaire (jusqu'à 1,9 : au-delà, le nom long est écrit sur 2 lignes) pour que le nom entier tienne à l'écran.
+            const AMPLITUDE_MIN_ZOOM_SOMMET_V3D = 0.5, AMPLITUDE_MAX_ZOOM_SOMMET_V3D = 1.9;
             const DUREE_LECTURE_NOM_V3D = 1, DUREE_RETOUR_ZOOM_SOMMET_V3D = 1.8, ZOOM_NORMAL_V3D = 14.3;
             function formeZoomSommetV3d(t, tFin) {
                 const doux = x => x * x * x * (x * (x * 6 - 15) + 10);
@@ -14849,8 +14854,9 @@ def accueil():
                     if (v3d.f >= 1) v3d.centreCamera = centre.slice();
                 }
                 const avance = Math.min(700, Math.max(450, v3d.total * 0.035));
-                const devant = pointA(Math.min(v3d.total, d + avance));
-                const arriere = pointA(Math.max(0, d - avance * 0.5));
+                // En marche arrière, la caméra regarde vers le début du parcours.
+                const devant = v3d.sens < 0 ? pointA(Math.max(0, d - avance)) : pointA(Math.min(v3d.total, d + avance));
+                const arriere = v3d.sens < 0 ? pointA(Math.min(v3d.total, d + avance * 0.5)) : pointA(Math.max(0, d - avance * 0.5));
                 let cible = v3d.cap;
                 if (distanceM(arriere, devant) > 5) {
                     cible = capEntre(arriere, devant);
@@ -14935,8 +14941,8 @@ def accueil():
                 const dt = Math.min(0.1, Math.max(0, (t - v3d.dernier) / 1000));
                 v3d.dernier = t;
                 const avant = v3d.f * v3d.total;
-                v3d.f = Math.min(1, v3d.f + (dt * v3d.vitesse) / v3d.dureeBase);
-                verifierPhotosV3d(avant, v3d.f * v3d.total);
+                v3d.f = Math.max(0, Math.min(1, v3d.f + v3d.sens * (dt * v3d.vitesse) / v3d.dureeBase));
+                if (v3d.sens > 0) verifierPhotosV3d(avant, v3d.f * v3d.total);
 
                 // Le calcul du parcours continue à chaque image, mais MapLibre ne reçoit
                 // que 60 mises à jour caméra/point par seconde au maximum.
@@ -14960,8 +14966,10 @@ def accueil():
                     }
                 }
 
-                if (v3d.f >= 1) {
+                if (v3d.f >= 1 || (v3d.sens < 0 && v3d.f <= 0)) {
                     v3d.jouer = false;
+                    v3d.sens = 1;
+                    v3d.vitesse = 1;
                     reglerOmbresLectureV3d(false);
                     if (v3d.enregistreur) arreterEnregistrement(true);
                     majBoutonsV3d();
@@ -15016,6 +15024,12 @@ def accueil():
                     + (v3d.jouer ? '<path d="M9 6v12M15 6v12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>'
                         : '<path d="M8.5 5.5v13l10.5-6.5z" fill="currentColor"/>') + '</svg>';
                 centre.setAttribute('aria-label', v3d.jouer ? 'Pause' : 'Lecture');
+                const rapideAvant = document.getElementById('v3dRapideAvant'), rapideArriere = document.getElementById('v3dRapideArriere');
+                if (rapideAvant && !rapideAvant.firstChild) rapideAvant.innerHTML = '<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICONES.vitesse + '</svg>';
+                if (rapideArriere && !rapideArriere.firstChild) rapideArriere.innerHTML = '<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g transform="translate(24 0) scale(-1 1)">' + ICONES.vitesse + '</g></svg>';
+                const vitesseActive = v3d.jouer && v3d.vitesse > 1 ? '×' + v3d.vitesse : '';
+                if (rapideAvant) { if (vitesseActive && v3d.sens > 0) rapideAvant.setAttribute('data-vit', vitesseActive); else rapideAvant.removeAttribute('data-vit'); }
+                if (rapideArriere) { if (vitesseActive && v3d.sens < 0) rapideArriere.setAttribute('data-vit', vitesseActive); else rapideArriere.removeAttribute('data-vit'); }
                 for (const [id, icone] of [['v3dReculer', 'recul10'], ['v3dAvancer', 'avance10']]) {
                     const b = document.getElementById(id);
                     if (b && !b.firstChild) b.innerHTML = '<svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICONES[icone] + '</svg>';
@@ -15051,9 +15065,22 @@ def accueil():
                 document.getElementById('v3dProgres').value = String(Math.round(v3d.f * 1000));
                 montrerCommandesLectureV3d();
             }
+            // Double flèche : avance rapide (×2, puis ×4, puis retour normal) ; double flèche arrière : même chose en marche arrière.
+            function vitesseRapideV3d(sens) {
+                if (!v3d.prete) return;
+                if (v3d.sens === sens && v3d.vitesse === 1) v3d.vitesse = 2;
+                else if (v3d.sens === sens && v3d.vitesse === 2) v3d.vitesse = 4;
+                else if (v3d.sens === sens && v3d.vitesse === 4) { v3d.vitesse = 1; sens = 1; }
+                else v3d.vitesse = 2;
+                v3d.sens = sens;
+                if (v3d.sens < 0 && v3d.f <= 0) { v3d.sens = 1; v3d.vitesse = 1; }
+                if (!v3d.jouer) lectureV3d(true);
+                else { majBoutonsV3d(); montrerCommandesLectureV3d(); }
+            }
             function lectureV3d(jouer) {
                 if (!v3d.prete) return;
-                if (jouer && v3d.f >= 1) v3d.f = 0;
+                if (jouer && v3d.f >= 1) { v3d.f = 0; v3d.sens = 1; }
+                if (jouer && v3d.sens < 0 && v3d.f <= 0) v3d.sens = 1;
                 if (jouer && (v3d.f < 0.01 || !v3d.legendeMontree)) montrerLegendeV3d();
                 v3d.jouer = jouer;
                 reglerOmbresLectureV3d(jouer);
@@ -15534,6 +15561,7 @@ def accueil():
                 preparerParcours(sortie.trace);
                 v3d.f = 0;
                 v3d.vitesse = 1;
+                v3d.sens = 1;
                 v3d.fond = 'sat';
                 v3d.compteImages = 0;
                 v3d.titre = (sortie.debut || '').slice(0, 10);
@@ -15610,6 +15638,8 @@ def accueil():
                 bouton('v3dCentre', () => lectureV3d(!v3d.jouer));
                 bouton('v3dReculer', () => sauterV3d(-SAUT_V3D));
                 bouton('v3dAvancer', () => sauterV3d(SAUT_V3D));
+                bouton('v3dRapideArriere', () => vitesseRapideV3d(-1));
+                bouton('v3dRapideAvant', () => vitesseRapideV3d(1));
                 bouton('v3dReperes', () => { v3d.repereVisibles = !v3d.repereVisibles; majVisibiliteReperesV3d(); majBoutonsV3d(); });
                 bouton('v3dRelancerLieux', async () => {
                     const relancer = document.getElementById('v3dRelancerLieux');
@@ -15712,6 +15742,7 @@ def accueil():
                 document.getElementById('v3dDiagFiltre').addEventListener('input', dessinerDiagnosticV3d);
                 bouton('v3dLecture', () => lectureV3d(!v3d.jouer));
                 bouton('v3dVitesse', () => {
+                    v3d.sens = 1;
                     v3d.vitesse = VITESSES[(VITESSES.indexOf(v3d.vitesse) + 1) % VITESSES.length];
                     majBoutonsV3d();
                 });
