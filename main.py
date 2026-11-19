@@ -3553,7 +3553,9 @@ def accueil():
             .v3d-rapides button span { display: none; }
             .v3d-rapides button svg { display: block; margin: 0; }
             /* Boutons du panneau Commandes devenus inutiles (remplacés par les commandes au centre) : masqués, code conservé. */
-            .vue3d #v3dLecture, .vue3d #v3dVitesse, .vue3d #v3dRelancerLieux, .vue3d #v3dDiagnostic, .vue3d .v3d-haut #v3dCinema { display: none !important; }
+            .vue3d #v3dLecture, .vue3d #v3dVitesse { display: none !important; }
+            /* Outils de mise au point (engrenage, relancer les noms, diagnostic) : visibles seulement sur la version test. */
+            .vue3d:not(.test) #v3dRelancerLieux, .vue3d:not(.test) #v3dDiagnostic, .vue3d:not(.test) .v3d-haut #v3dCinema { display: none !important; }
             /* Bouton engrenage retiré (version finale) : le panneau Commandes n'est plus accessible, code conservé. */
             .v3d-ctrl svg { filter: drop-shadow(0 0 3px rgba(0,0,0,0.75)); }
             .v3d-ctrl .v3d-ctrl-rapide[data-vit]::after { content: attr(data-vit); position: absolute; left: 0; right: 0; bottom: -15px; font-size: 0.72rem; font-weight: 800; text-align: center; color: #fff; text-shadow: 0 0 3px rgba(0,0,0,0.85); }
@@ -15781,6 +15783,9 @@ def accueil():
                 bouton('v3dDiagFermer', () => document.getElementById('v3dDiag').classList.remove('ouvert'));
                 bouton('v3dFermer', () => document.getElementById('v3dDiag').classList.remove('ouvert'));
                 document.getElementById('v3dDiagFiltre').addEventListener('input', dessinerDiagnosticV3d);
+                try {
+                    if (String(window.location.hostname).indexOf('maillons-test') >= 0) document.getElementById('vue3d').classList.add('test');
+                } catch (e) { /* version test seulement */ }
                 bouton('v3dLecture', () => lectureV3d(!v3d.jouer));
                 bouton('v3dVitesse', () => {
                     v3d.sens = 1;
