@@ -3381,6 +3381,7 @@ def accueil():
                 background: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0));
             }
 
+            .v3d-haut > div { margin-left: auto; }
             .v3d-haut strong { font-size: 0.95rem; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
 
             .vue3d.cinema .v3d-bas {
@@ -3494,7 +3495,9 @@ def accueil():
 
             .vue3d button.actif { background: linear-gradient(135deg, var(--ac1), var(--ac2)); color: var(--on-grad); border-color: transparent; }
             .vue3d button.enreg { background: #dc2626; border-color: transparent; }
-            #v3dFermer { width: 38px; height: 38px; padding: 0; justify-content: center; }
+            #v3dFermer, #v3dCinema { width: 38px; height: 38px; padding: 0; gap: 0; justify-content: center; }
+            #v3dFermer span, #v3dCinema span { display: none; }
+            #v3dFermer svg, #v3dCinema svg { display: block; margin: 0; }
 
             .v3d-info {
                 margin-top: 8px;
@@ -3504,6 +3507,59 @@ def accueil():
                 text-shadow: 0 1px 3px rgba(0,0,0,0.7);
             }
 
+            /* Commandes de lecture au centre de l'écran (comme dans les vidéos) : visibles 3 s en lecture, toujours en pause. */
+            .v3d-ctrl {
+                position: absolute;
+                left: 50%;
+                top: 50%;
+                transform: translate(-50%, -50%);
+                z-index: 6;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.35s ease;
+            }
+            .v3d-ctrl.visible { opacity: 1; }
+            .vue3d .v3d-ctrl button {
+                padding: 0;
+                justify-content: center;
+                border-radius: 50%;
+                color: #fff;
+                background: rgba(8,20,26,0.5);
+                border: 2px solid rgba(255,255,255,0.88);
+                pointer-events: none;
+            }
+            .v3d-ctrl.visible button { pointer-events: auto; }
+            .vue3d .v3d-ctrl .v3d-ctrl-centre { width: 78px; height: 78px; border-width: 0; background: rgba(8,20,26,0.14); }
+            .vue3d .v3d-ctrl .v3d-ctrl-cote { width: 52px; height: 52px; border-width: 0; background: rgba(8,20,26,0.14); }
+            .vue3d .v3d-ctrl .v3d-ctrl-rapide { position: relative; width: 46px; height: 46px; border-width: 0; background: rgba(8,20,26,0.14); }
+            .vue3d .v3d-ctrl .v3d-ctrl-enreg { position: absolute; left: 50%; top: calc(100% + 18px); transform: translateX(-50%); width: 52px; height: 52px; border-width: 0; background: rgba(8,20,26,0.14); color: #ff4d4d; }
+            .vue3d .v3d-ctrl .v3d-ctrl-enreg.enreg { background: rgba(220,38,38,0.55); color: #fff; }
+            .v3d-ctrl .v3d-ctrl-enreg span { display: none; }
+            .v3d-ctrl .v3d-ctrl-enreg svg { width: 26px; height: 26px; }
+            /* Petits boutons ronds en haut à gauche : angle de vue, fond de carte, repères, mes parcours (icône seule). */
+            .v3d-rapides {
+                position: absolute;
+                left: calc(12px + env(safe-area-inset-left));
+                top: calc(10px + env(safe-area-inset-top));
+                z-index: 8;
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+            }
+            .vue3d .v3d-rapides button { width: 38px; height: 38px; padding: 0; gap: 0; justify-content: center; border-radius: 50%; }
+            .v3d-rapides button span { display: none; }
+            .v3d-rapides button svg { display: block; margin: 0; }
+            /* Boutons du panneau Commandes devenus inutiles (remplacés par les commandes au centre) : masqués, code conservé. */
+            .vue3d #v3dLecture, .vue3d #v3dVitesse, .vue3d #v3dRelancerLieux, .vue3d #v3dDiagnostic, .vue3d .v3d-haut #v3dCinema { display: none !important; }
+            /* Bouton engrenage retiré (version finale) : le panneau Commandes n'est plus accessible, code conservé. */
+            .v3d-ctrl svg { filter: drop-shadow(0 0 3px rgba(0,0,0,0.75)); }
+            .v3d-ctrl .v3d-ctrl-rapide[data-vit]::after { content: attr(data-vit); position: absolute; left: 0; right: 0; bottom: -15px; font-size: 0.72rem; font-weight: 800; text-align: center; color: #fff; text-shadow: 0 0 3px rgba(0,0,0,0.85); }
+            .v3d-ctrl svg { display: block; }
+            /* Calque de l'alerte de pente : grand panneau au milieu de l'écran, posé sur la carte (sans bloquer les touches). */
+            #v3dAlertePente { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 3; pointer-events: none; }
             .v3d-photo {
                 position: absolute;
                 z-index: 4;
@@ -3547,17 +3603,22 @@ def accueil():
             .v3d-legende {
                 position: absolute;
                 z-index: 3;
-                left: 12px;
-                top: calc(58px + env(safe-area-inset-top));
+                left: calc(60px + env(safe-area-inset-left));
+                top: calc(10px + env(safe-area-inset-top));
                 display: flex;
                 flex-direction: column;
-                gap: 3px;
-                padding: 8px 10px;
+                gap: 2px;
+                padding: 6px 9px;
                 border-radius: 10px;
                 font-size: 0.72rem;
                 font-weight: 700;
                 background: rgba(10,25,31,0.72);
+                /* Légende visible 10 s seulement : elle apparaît au lancement de la lecture puis s'efface en douceur. */
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.6s ease;
             }
+            .v3d-legende.visible { opacity: 1; }
 
             .v3d-legende span i {
                 display: inline-block;
@@ -3601,6 +3662,41 @@ def accueil():
             .profil-sortie svg { width: 100%; height: auto; display: block; border-radius: 8px; background: var(--fill); }
             .profil-legende { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; font-size: 0.74rem; color: var(--text-muted); }
             .profil-legende i { display: inline-block; width: 12px; height: 6px; border-radius: 3px; margin-right: 4px; vertical-align: middle; }
+
+            .v3d-diag {
+                position: absolute;
+                z-index: 6;
+                left: calc(8px + env(safe-area-inset-left));
+                right: calc(8px + env(safe-area-inset-right));
+                top: calc(52px + env(safe-area-inset-top));
+                bottom: calc(8px + env(safe-area-inset-bottom));
+                display: none;
+                flex-direction: column;
+                padding: 10px;
+                border-radius: 12px;
+                font-size: 0.78rem;
+                background: rgba(10,25,31,0.97);
+                border: 1px solid rgba(255,255,255,0.2);
+            }
+            .v3d-diag.ouvert { display: flex; }
+            .v3d-diag-entete { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-weight: 800; font-size: 0.9rem; }
+            .v3d-diag-entete span { flex: 1; }
+            .v3d-diag-resume { margin-bottom: 8px; line-height: 1.35; opacity: 0.85; }
+            .v3d-diag input {
+                width: 100%;
+                box-sizing: border-box;
+                padding: 8px 10px;
+                margin-bottom: 8px;
+                border-radius: 8px;
+                font-size: 0.9rem;
+                color: inherit;
+                background: rgba(255,255,255,0.08);
+                border: 1px solid rgba(255,255,255,0.25);
+            }
+            .v3d-diag-liste { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+            .v3d-diag-ligne { padding: 6px 8px; border-radius: 8px; line-height: 1.35; background: rgba(255,255,255,0.06); border-left: 3px solid #ffb02e; }
+            .v3d-diag-ligne.oui { border-left-color: #65e6d4; }
+            .v3d-diag-ligne b { font-size: 0.86rem; }
 
             .v3d-message {
                 position: absolute;
@@ -3990,7 +4086,32 @@ def accueil():
             :root.paysage .v3d-bas input[type="range"] { margin-bottom: 6px; }
             :root.paysage .vue3d button { padding: 5px 11px; font-size: 0.78rem; }
             :root.paysage .v3d-info { margin-top: 4px; }
-            :root.paysage .v3d-legende { top: calc(46px + env(safe-area-inset-top)); left: calc(12px + env(safe-area-inset-left)); padding: 5px 8px; font-size: 0.68rem; }
+            :root.paysage .v3d-legende { top: calc(8px + env(safe-area-inset-top)); left: calc(60px + env(safe-area-inset-left)); padding: 5px 8px; font-size: 0.68rem; }
+            /* Téléphone à l'horizontale : l'encart (nom, chiffres, profil) est bas et étiré sur toute la largeur de l'écran. */
+            :root.paysage .v3d-cinema-hud {
+                left: calc(10px + env(safe-area-inset-left));
+                right: calc(10px + env(safe-area-inset-right));
+                bottom: calc(8px + env(safe-area-inset-bottom));
+                max-width: none;
+                max-height: none;
+                padding: 6px 12px;
+                display: grid;
+                grid-template-columns: auto minmax(0, 1fr) minmax(0, 34%);
+                grid-template-areas: "marque stats profil" "nom stats profil" "date stats profil";
+                column-gap: 18px;
+                align-items: center;
+            }
+            :root.paysage .v3d-cinema-marque { grid-area: marque; font-size: 0.6rem; }
+            :root.paysage .v3d-cinema-logo { width: 16px; height: 16px; }
+            :root.paysage .v3d-cinema-nom { grid-area: nom; margin-top: 2px; font-size: 0.95rem; max-width: 24vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            :root.paysage .v3d-cinema-date { grid-area: date; margin-top: 1px; font-size: 0.66rem; }
+            :root.paysage .v3d-cinema-stats { grid-area: stats; margin-top: 0; gap: 4px 12px; justify-content: space-between; }
+            :root.paysage .v3d-cinema-stat { min-width: 0; }
+            :root.paysage .v3d-cinema-stat strong { font-size: 0.82rem; }
+            :root.paysage .v3d-cinema-stat span { font-size: 0.5rem; }
+            :root.paysage .v3d-cinema-profil { grid-area: profil; margin-top: 0; }
+            :root.paysage .v3d-cinema-profil-titre { display: none; }
+            :root.paysage .v3d-cinema-profil svg { height: 34px; }
             :root.paysage .v3d-photo { top: calc(46px + env(safe-area-inset-top)); left: auto; right: calc(12px + env(safe-area-inset-right)); transform: none; }
             :root.paysage .v3d-photo img { max-width: 40vw; max-height: 52vh; }
             :root.paysage .v3d-message { top: calc(46px + env(safe-area-inset-top)); left: calc(170px + env(safe-area-inset-left)); max-width: 420px; }
@@ -4586,11 +4707,26 @@ def accueil():
 
         <div id="vue3d" class="vue3d" style="display:none;" role="dialog" aria-label="Survol 3D du parcours">
             <div id="carte3d"></div>
+            <canvas id="v3dAlertePente" aria-hidden="true"></canvas>
+            <div class="v3d-ctrl" id="v3dCtrl">
+                <button type="button" id="v3dRapideArriere" class="v3d-ctrl-rapide" aria-label="Retour rapide ×2 puis ×4" title="Retour rapide"></button>
+                <button type="button" id="v3dReculer" class="v3d-ctrl-cote" aria-label="Reculer de 10 secondes" title="Reculer de 10 secondes"></button>
+                <button type="button" id="v3dCentre" class="v3d-ctrl-centre" aria-label="Lecture"></button>
+                <button type="button" id="v3dAvancer" class="v3d-ctrl-cote" aria-label="Avancer de 10 secondes" title="Avancer de 10 secondes"></button>
+                <button type="button" id="v3dRapideAvant" class="v3d-ctrl-rapide" aria-label="Avance rapide ×2 puis ×4" title="Avance rapide"></button>
+                <button type="button" id="v3dEnreg" class="v3d-ctrl-enreg"></button>
+            </div>
+            <div class="v3d-rapides" id="v3dRapides">
+                <button type="button" id="v3dInclinaison"></button>
+                <button type="button" id="v3dFond"></button>
+                <button type="button" id="v3dReperes"></button>
+                <button type="button" id="v3dAutres"></button>
+                <button type="button" id="v3dCouleur"></button>
+            </div>
             <div class="v3d-haut">
                 <strong id="v3dTitre"></strong>
                 <div style="display:flex;align-items:center;gap:8px;">
-                    <button type="button" id="v3dLectureHaut"></button>
-                    <button type="button" id="v3dCinema" aria-pressed="false">Commandes</button>
+                    <button type="button" id="v3dCinema" aria-pressed="false" aria-label="Commandes" title="Commandes"></button>
                     <button type="button" id="v3dFermer" aria-label="Fermer"></button>
                 </div>
             </div>
@@ -4622,18 +4758,22 @@ def accueil():
                 <img id="v3dPhotoImg" alt="Photo de la sortie">
             </div>
             <div class="v3d-message" id="v3dMessage" style="display:none;"></div>
+            <div class="v3d-diag" id="v3dDiag">
+                <div class="v3d-diag-entete">
+                    <span>Diagnostic des noms</span>
+                    <button type="button" id="v3dDiagFermer" aria-label="Fermer le diagnostic">Fermer</button>
+                </div>
+                <div class="v3d-diag-resume" id="v3dDiagResume"></div>
+                <input type="search" id="v3dDiagFiltre" placeholder="Chercher un nom (Glassac, Goutrens…)" autocomplete="off">
+                <div class="v3d-diag-liste" id="v3dDiagListe"></div>
+            </div>
             <div class="v3d-bas">
                 <input type="range" id="v3dProgres" min="0" max="1000" value="0" aria-label="Avancement du parcours">
                 <div class="v3d-boutons">
                     <button type="button" id="v3dLecture"></button>
                     <button type="button" id="v3dVitesse"></button>
-                    <button type="button" id="v3dInclinaison"></button>
-                    <button type="button" id="v3dFond"></button>
-                    <button type="button" id="v3dAutres"></button>
-                    <button type="button" id="v3dReperes"></button>
                     <button type="button" id="v3dRelancerLieux">Relancer les noms</button>
-                    <button type="button" id="v3dCouleur"></button>
-                    <button type="button" id="v3dEnreg"></button>
+                    <button type="button" id="v3dDiagnostic">Diagnostic des noms</button>
                 </div>
                 <div class="v3d-info" id="v3dInfo"></div>
             </div>
@@ -8457,6 +8597,14 @@ def accueil():
             ICONES.video = '<rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/>';
             ICONES.montagne = '<path d="M2 20l6.5-11 4 6.5L15 12l7 8z"/><path d="M8.5 9l1.8 3"/><circle cx="18" cy="5.5" r="1.6" fill="currentColor"/>';
             ICONES.lecture = '<path d="M8 5v14l11-7z" fill="currentColor"/>';
+            ICONES.engrenage = '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>';
+            ICONES.recul10 = '<path d="M12 5a8 8 0 1 1-7.5 5.2"/><path d="M12 1.5L8 5l4 3.5"/><text x="12" y="15.6" text-anchor="middle" font-size="7.5" font-weight="700" fill="currentColor" stroke="none">10</text>';
+            ICONES.avance10 = '<path d="M12 5a8 8 0 1 0 7.5 5.2"/><path d="M12 1.5L16 5l-4 3.5"/><text x="12" y="15.6" text-anchor="middle" font-size="7.5" font-weight="700" fill="currentColor" stroke="none">10</text>';
+            ICONES.angle = '<path d="M3.5 19.5h17"/><path d="M3.5 19.5L16.5 6.5"/><path d="M11 19.5a7.5 7.5 0 0 0-2.2-5.3"/>';
+            ICONES.satellite = '<g transform="rotate(-45 12 12)"><rect x="9.5" y="9.5" width="5" height="5" rx="1"/><rect x="2" y="10" width="5.5" height="4" rx="0.8"/><rect x="16.5" y="10" width="5.5" height="4" rx="0.8"/><path d="M7.5 12h2M14.5 12h2M12 9.5V6.5"/></g><path d="M16 20a5 5 0 0 0 4-4"/>';
+            ICONES.carteplan = '<path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/>';
+            ICONES.parcours = '<circle cx="6" cy="18" r="2.2"/><circle cx="18" cy="6" r="2.2"/><path d="M8.2 18H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h6.8"/>';
+            ICONES.palette = '<path d="M12 3a9 9 0 1 0 0 18c1.2 0 2-.8 2-1.8 0-.5-.2-.9-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1 .8-1.8 1.8-1.8H17a4 4 0 0 0 4-4C21 6.5 17 3 12 3z"/><circle cx="7.5" cy="11.5" r="1" fill="currentColor"/><circle cx="10" cy="7.5" r="1" fill="currentColor"/><circle cx="15" cy="7.5" r="1" fill="currentColor"/>';
             ICONES.pause = '<path d="M8 5v14M16 5v14"/>';
             ICONES.vitesse = '<path d="M5 6l6 6-6 6M13 6l6 6-6 6"/>';
             ICONES.incl = '<path d="M3 18l9-12 9 12z"/>';
@@ -13194,7 +13342,7 @@ def accueil():
 
             const v3d = {
                 carte: null, pts: [], cum: [], total: 0, f: 0, jouer: false, centreCamera: null,
-                vitesse: 1, inclinaison: 45, cap: 0, dernier: 0, raf: 0,
+                vitesse: 1, sens: 1, inclinaison: 45, cap: 0, dernier: 0, raf: 0,
                 fond: 'sat', enregistreur: null, morceaux: [], titre: '',
                 nomParcours: '', dateParcours: '', cinema: true, commandes: false,
                 canvasVideo: null, ctxVideo: null, rafVideo: 0, fluxVideo: null, videoActif: false,
@@ -13456,21 +13604,19 @@ def accueil():
                 v3d.marqueurs.forEach(m => m.remove());
                 v3d.marqueurs = [];
                 viderReperesV3d();
-                v3d.photos.forEach(photo => {
-                    const el = document.createElement('button');
-                    el.type = 'button';
-                    el.className = 'v3d-marqueur';
-                    el.textContent = '📷';
-                    el.setAttribute('aria-label', 'Voir la photo');
-                    el.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        montrerPhotoV3d(photo);
+                // Icônes photos : une image dessinée, posée dans une couche native (cliquable), comme les noms de lieux.
+                const carte = v3d.carte;
+                try {
+                    preparerCouchesV3d(carte);
+                    if (!carte.hasImage('v3d-photo-icone')) {
+                        const icone = dessinerPhotoV3d();
+                        carte.addImage('v3d-photo-icone', icone.image, { pixelRatio: icone.ratio });
+                    }
+                    carte.getSource('v3d-photos').setData({
+                        type: 'FeatureCollection',
+                        features: v3d.photos.map((photo, i) => ({ type: 'Feature', id: i, properties: { idx: i }, geometry: { type: 'Point', coordinates: photo.coord } }))
                     });
-                    const marqueur = new window.maplibregl.Marker({ element: el })
-                        .setLngLat(photo.coord)
-                        .addTo(v3d.carte);
-                    v3d.marqueurs.push(marqueur);
-                });
+                } catch (e) { console.warn('Icônes photos indisponibles', e); }
             }
 
 
@@ -13526,13 +13672,14 @@ def accueil():
             // texte blanc à contour sombre, trait et point turquoise), puis posé dans une couche native
             // de la carte. C'est la carte elle-même qui les place sur le relief, donc sans décalage.
             const MARGE_NOM_V3D = 8;
-            function dessinerNomLieuV3d(libelle, taille) {
+            function dessinerEtiquetteV3d(libelle, taille, largeurTexteRef, couleurTexte) {
                 const ratio = Math.min(3, Math.max(2, Math.round(window.devicePixelRatio || 2)));
                 const famille = getComputedStyle(document.body).fontFamily || 'sans-serif';
                 const police = '900 ' + taille + 'px ' + famille;
                 const mesure = document.createElement('canvas').getContext('2d');
                 mesure.font = police;
-                const largeurTexte = Math.ceil(mesure.measureText(libelle).width);
+                // largeurTexteRef : largeur du texte final, pour que l'image garde la même taille pendant le compteur Vmax.
+                const largeurTexte = largeurTexteRef || Math.ceil(mesure.measureText(libelle).width);
                 const largeur = MARGE_NOM_V3D + 29 + largeurTexte + 8;
                 const hauteur = 58;
                 const toile = document.createElement('canvas');
@@ -13559,47 +13706,645 @@ def accueil():
                 ctx.stroke();
                 ctx.font = police;
                 ctx.textBaseline = 'middle';
-                ctx.lineWidth = 3.5;
+                if (couleurTexte) {
+                    // Texte en couleur (pente) : double contour, blanc puis sombre, lisible quelle que soit la couleur.
+                    ctx.lineWidth = 6;
+                    ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+                    ctx.strokeText(libelle, cx + 29, cy - 26);
+                }
+                ctx.lineWidth = couleurTexte ? 3.2 : 3.5;
                 ctx.strokeStyle = 'rgba(5,15,25,0.9)';
                 ctx.strokeText(libelle, cx + 29, cy - 26);
-                ctx.fillStyle = '#ffffff';
+                ctx.fillStyle = couleurTexte || '#ffffff';
                 ctx.fillText(libelle, cx + 29, cy - 26);
                 return {
                     image: ctx.getImageData(0, 0, toile.width, toile.height),
                     ratio: ratio,
+                    largeurTexte: largeurTexte,
                     // Zone occupée à l'écran, par rapport au point (gauche, droite, haut, bas) : sert à éviter les chevauchements.
                     boite: { g: -6, d: 29 + largeurTexte + 2, h: -(26 + taille / 2 + 3), b: 6 }
                 };
             }
-            function preparerCoucheNomsV3d(carte) {
+            // Icône photo : même aspect que l'ancien bouton rond (dégradé aux couleurs de l'appli, bord blanc, appareil photo).
+            function dessinerPhotoV3d() {
+                const ratio = Math.min(3, Math.max(2, Math.round(window.devicePixelRatio || 2)));
+                const taille = 44;
+                const toile = document.createElement('canvas');
+                toile.width = taille * ratio;
+                toile.height = taille * ratio;
+                const ctx = toile.getContext('2d');
+                ctx.scale(ratio, ratio);
+                const style = getComputedStyle(document.documentElement);
+                const c1 = style.getPropertyValue('--ac1').trim() || '#2dd4bf';
+                const c2 = style.getPropertyValue('--ac2').trim() || '#3b82f6';
+                const c = taille / 2;
+                const degrade = ctx.createLinearGradient(c - 15, c - 15, c + 15, c + 15);
+                degrade.addColorStop(0, c1);
+                degrade.addColorStop(1, c2);
+                ctx.shadowColor = 'rgba(0,0,0,0.5)';
+                ctx.shadowBlur = 8 * ratio;
+                ctx.shadowOffsetY = 2 * ratio;
+                ctx.beginPath();
+                ctx.arc(c, c, 15, 0, Math.PI * 2);
+                ctx.fillStyle = degrade;
+                ctx.fill();
+                ctx.shadowColor = 'transparent';
+                ctx.beginPath();
+                ctx.arc(c, c, 14, 0, Math.PI * 2);
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = '#ffffff';
+                ctx.stroke();
+                ctx.font = '15px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = '#ffffff';
+                ctx.fillText('📷', c, c + 1);
+                return { image: ctx.getImageData(0, 0, toile.width, toile.height), ratio: ratio };
+            }
+            // Sommets : un triangle rouge monte du sommet au bout d'un fin trait vertical, en faisant un tour sur lui-même.
+            // avancement : 0 (rien) à 1 (triangle en haut, de face). Image de taille fixe, redessinée à chaque image de l'animation.
+            // Une fois le triangle en haut, le nom du sommet s'écrit à côté, lettre par lettre, de gauche à droite.
+            // info : { libelle, largeurTexte } ; nbLettres : nombre de lettres déjà écrites. L'image garde toujours la même taille.
+            const LARGEUR_POINTE_V3D = 40, HAUTEUR_POINTE_V3D = 104, DUREE_POINTE_V3D = 1400;
+            // Sommet : image plus haute (place pour l'altitude au-dessus du triangle) et point posé à 36 px du bord gauche.
+            const CX_SOMMET_V3D = 36, HAUTEUR_SOMMET_V3D = 128;
+            const POLICE_SOMMET_V3D = 16, POLICE_ALTITUDE_V3D = 13;
+            function mesurerTexteV3d(texte, taille) {
+                const famille = getComputedStyle(document.body).fontFamily || 'sans-serif';
+                const mesure = document.createElement('canvas').getContext('2d');
+                mesure.font = '900 ' + taille + 'px ' + famille;
+                return Math.ceil(mesure.measureText(texte).width);
+            }
+            // Taille de police de l'altitude : 13 px, réduite si le texte dépasse la place disponible autour du triangle.
+            function policeAltitudeV3d(texte) {
+                let taille = POLICE_ALTITUDE_V3D;
+                while (taille > 9 && mesurerTexteV3d(texte, taille) > 2 * (CX_SOMMET_V3D - 3)) taille--;
+                return taille;
+            }
+            function mesurerNomSommetV3d(libelle) {
+                const famille = getComputedStyle(document.body).fontFamily || 'sans-serif';
+                const mesure = document.createElement('canvas').getContext('2d');
+                mesure.font = '900 ' + POLICE_SOMMET_V3D + 'px ' + famille;
+                return Math.ceil(mesure.measureText(libelle).width);
+            }
+            // Nom de sommet long : coupé en deux lignes (au espace le plus proche du milieu) pour ne pas trop dézoomer.
+            const LARGEUR_MAX_LIGNE_SOMMET_V3D = 100;
+            function decouperNomSommetV3d(libelle) {
+                if (mesurerTexteV3d(libelle, POLICE_SOMMET_V3D) <= LARGEUR_MAX_LIGNE_SOMMET_V3D) return [libelle];
+                let meilleur = null, meilleurPire = Infinity;
+                for (let i = 1; i < libelle.length - 1; i++) {
+                    if (libelle[i] !== ' ') continue;
+                    const l1 = libelle.slice(0, i), l2 = libelle.slice(i + 1);
+                    if (!l1 || !l2) continue;
+                    const pire = Math.max(mesurerTexteV3d(l1, POLICE_SOMMET_V3D), mesurerTexteV3d(l2, POLICE_SOMMET_V3D));
+                    if (pire < meilleurPire) { meilleurPire = pire; meilleur = [l1, l2]; }
+                }
+                return meilleur || [libelle];
+            }
+            function dessinerPointeV3d(avancement, info, nbLettres) {
+                const ratio = Math.min(3, Math.max(2, Math.round(window.devicePixelRatio || 2)));
+                const sansTriangle = !!(info && info.sansTriangle);
+                // Nom de lieu : image centrée sur le trait (le nom est centré au-dessus du trait).
+                const largeurImage = sansTriangle
+                    ? Math.max(LARGEUR_POINTE_V3D, info.largeurTexte + 20)
+                    : CX_SOMMET_V3D + 24 + (info ? info.largeurTexte : 0);
+                const hauteurImage = sansTriangle ? HAUTEUR_POINTE_V3D : HAUTEUR_SOMMET_V3D;
+                const toile = document.createElement('canvas');
+                toile.width = largeurImage * ratio;
+                toile.height = hauteurImage * ratio;
+                const ctx = toile.getContext('2d');
+                ctx.scale(ratio, ratio);
+                const a = Math.max(0, Math.min(1, avancement));
+                const montee = 1 - Math.pow(1 - a, 3);
+                const tour = a < 0.5 ? 2 * a * a : 1 - Math.pow(-2 * a + 2, 2) / 2;
+                const cx = sansTriangle ? largeurImage / 2 : CX_SOMMET_V3D;
+                const base = hauteurImage - 2;
+                const yTriangle = base - 10 - 74 * montee;
+                // Nom de lieu : trait de 56 px au maximum, le nom est écrit au-dessus.
+                const hautTrait = base - 56 * montee;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                // Fin trait vertical, du point jusqu'au triangle (ou jusqu'au bout du trait pour un nom de lieu sans triangle).
+                ctx.beginPath();
+                ctx.moveTo(cx, base);
+                ctx.lineTo(cx, sansTriangle ? hautTrait : yTriangle + 8);
+                ctx.strokeStyle = 'rgba(5,15,25,0.85)';
+                ctx.lineWidth = 3.4;
+                ctx.stroke();
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 1.4;
+                ctx.stroke();
+                // Triangle rouge qui tourne sur son axe vertical (un tour complet : 360°). Pas de triangle pour un nom de lieu.
+                if (!sansTriangle) {
+                    let echelle = Math.cos(2 * Math.PI * tour);
+                    if (Math.abs(echelle) < 0.06) echelle = echelle < 0 ? -0.06 : 0.06;
+                    ctx.save();
+                    ctx.translate(cx, yTriangle);
+                    ctx.scale(echelle, 1);
+                    ctx.beginPath();
+                    ctx.moveTo(0, -11);
+                    ctx.lineTo(10, 8);
+                    ctx.lineTo(-10, 8);
+                    ctx.closePath();
+                    ctx.fillStyle = '#ff2d2d';
+                    ctx.fill();
+                    ctx.lineWidth = 2;
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.stroke();
+                    ctx.restore();
+                    // Altitude du sommet : centrée juste au-dessus du triangle, elle monte avec lui.
+                    if (info && info.altitude) {
+                        const tailleAlt = policeAltitudeV3d(info.altitude);
+                        ctx.save();
+                        ctx.globalAlpha = montee;
+                        ctx.font = '900 ' + tailleAlt + 'px ' + (getComputedStyle(document.body).fontFamily || 'sans-serif');
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.lineWidth = 3.5;
+                        ctx.strokeStyle = 'rgba(5,15,25,0.9)';
+                        ctx.strokeText(info.altitude, cx, yTriangle - 22);
+                        ctx.fillStyle = '#ffffff';
+                        ctx.fillText(info.altitude, cx, yTriangle - 22);
+                        ctx.restore();
+                    }
+                }
+                // Nom : écrit lettre par lettre, de gauche à droite, une fois le trait arrivé en haut.
+                // Sommet : à droite du triangle. Nom de lieu : centré au-dessus du trait (le trait passe au milieu du nom).
+                if (info && a >= 1 && nbLettres > 0) {
+                    const lettres = Array.from(info.libelle).slice(0, nbLettres).join('');
+                    const xTexte = sansTriangle ? cx - info.largeurTexte / 2 : cx + 16;
+                    const yTexte = sansTriangle ? base - 56 - 13 : yTriangle;
+                    const lignes = (!sansTriangle && info.lignes && info.lignes.length === 2) ? info.lignes : null;
+                    ctx.font = '900 ' + POLICE_SOMMET_V3D + 'px ' + (getComputedStyle(document.body).fontFamily || 'sans-serif');
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'middle';
+                    ctx.lineWidth = 3.5;
+                    ctx.strokeStyle = 'rgba(5,15,25,0.9)';
+                    if (lignes) {
+                        // Deux lignes : la première s'écrit, puis la seconde.
+                        const n1 = Array.from(lignes[0]).length;
+                        const lettresListe = Array.from(info.libelle).slice(0, nbLettres);
+                        const t1 = lettresListe.slice(0, n1).join('');
+                        const t2 = lettresListe.slice(n1 + 1).join('');
+                        [[t1, yTexte - 9], [t2, yTexte + 9]].forEach(([t, y]) => {
+                            if (!t) return;
+                            ctx.strokeText(t, xTexte, y);
+                            ctx.fillStyle = '#ffffff';
+                            ctx.fillText(t, xTexte, y);
+                        });
+                    } else {
+                        ctx.strokeText(lettres, xTexte, yTexte);
+                        ctx.fillStyle = '#ffffff';
+                        ctx.fillText(lettres, xTexte, yTexte);
+                    }
+                }
+                return { image: ctx.getImageData(0, 0, toile.width, toile.height), ratio: ratio };
+            }
+            // Drapeau à damier d'arrivée : un mât monte du point d'arrivée (comme le trait des noms de lieux), puis le drapeau
+            // se déploie et flotte au vent. Image de taille fixe, redessinée à chaque image ; temps = millisecondes depuis l'apparition.
+            const POTEAU_DRAPEAU_V3D = 10, LARGEUR_DRAPEAU_V3D = 66, HAUTEUR_DRAPEAU_V3D = 76;
+            function dessinerDrapeauV3d(temps) {
+                const ratio = Math.min(3, Math.max(2, Math.round(window.devicePixelRatio || 2)));
+                const toile = document.createElement('canvas');
+                toile.width = LARGEUR_DRAPEAU_V3D * ratio;
+                toile.height = HAUTEUR_DRAPEAU_V3D * ratio;
+                const ctx = toile.getContext('2d');
+                ctx.scale(ratio, ratio);
+                const monte = Math.min(1, temps / 1000);
+                const montee = 1 - Math.pow(1 - monte, 3);
+                const deploiement = Math.max(0, Math.min(1, (temps - 900) / 500));
+                const ouverture = 1 - Math.pow(1 - deploiement, 3);
+                const x = POTEAU_DRAPEAU_V3D, base = HAUTEUR_DRAPEAU_V3D - 2, haut = base - 62 * montee;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                // Mât : même style que le trait des noms de lieux.
+                ctx.beginPath();
+                ctx.moveTo(x, base);
+                ctx.lineTo(x, haut);
+                ctx.strokeStyle = 'rgba(5,15,25,0.85)';
+                ctx.lineWidth = 3.4;
+                ctx.stroke();
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 1.4;
+                ctx.stroke();
+                // Tissu à damier : 8 colonnes x 5 lignes, déformé par une onde qui part du mât et grandit vers le bout.
+                if (ouverture > 0) {
+                    const colonnes = 8, lignes = 5, cote = 6;
+                    const longueur = colonnes * cote * ouverture, largeur = lignes * cote;
+                    const omega = 2 * Math.PI * temps / 900;
+                    const point = (u, v) => {
+                        const phase = omega - u * 5.2 + v * 0.5;
+                        return [
+                            x + u * longueur - 1.4 * u * (1 - Math.cos(phase)) * 0.5,
+                            haut + 2 + v * largeur + 2.8 * u * Math.sin(phase)
+                        ];
+                    };
+                    for (let i = 0; i < colonnes; i++) {
+                        for (let j = 0; j < lignes; j++) {
+                            const u0 = i / colonnes, u1 = (i + 1) / colonnes, v0 = j / lignes, v1 = (j + 1) / lignes;
+                            const clair = Math.cos(omega - ((u0 + u1) / 2) * 5.2);
+                            const blanc = Math.round(255 - 38 * (0.5 - 0.5 * clair));
+                            const noir = Math.round(16 + 30 * (0.5 + 0.5 * clair));
+                            const gris = (i + j) % 2 === 0 ? blanc : noir;
+                            const couleur = 'rgb(' + gris + ',' + gris + ',' + gris + ')';
+                            const a = point(u0, v0), b = point(u1, v0), c = point(u1, v1), d = point(u0, v1);
+                            ctx.beginPath();
+                            ctx.moveTo(a[0], a[1]);
+                            ctx.lineTo(b[0], b[1]);
+                            ctx.lineTo(c[0], c[1]);
+                            ctx.lineTo(d[0], d[1]);
+                            ctx.closePath();
+                            ctx.fillStyle = couleur;
+                            ctx.fill();
+                            ctx.lineWidth = 0.6;
+                            ctx.strokeStyle = couleur;
+                            ctx.stroke();
+                        }
+                    }
+                    // Contour sombre fin autour du tissu.
+                    ctx.beginPath();
+                    for (let i = 0; i <= colonnes; i++) { const q = point(i / colonnes, 0); if (i === 0) ctx.moveTo(q[0], q[1]); else ctx.lineTo(q[0], q[1]); }
+                    for (let j = 1; j <= lignes; j++) { const q = point(1, j / lignes); ctx.lineTo(q[0], q[1]); }
+                    for (let i = colonnes - 1; i >= 0; i--) { const q = point(i / colonnes, 1); ctx.lineTo(q[0], q[1]); }
+                    ctx.closePath();
+                    ctx.strokeStyle = 'rgba(5,15,25,0.85)';
+                    ctx.lineWidth = 1.3;
+                    ctx.stroke();
+                }
+                // Petite boule turquoise au sommet du mât.
+                ctx.beginPath();
+                ctx.arc(x, haut, 3, 0, Math.PI * 2);
+                ctx.fillStyle = '#65e6d4';
+                ctx.fill();
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 1.4;
+                ctx.stroke();
+                return { image: ctx.getImageData(0, 0, toile.width, toile.height), ratio: ratio };
+            }
+            // Couches natives du survol : halo Vmax, noms de lieux, panneaux (pentes et Vmax), icônes photos (de bas en haut).
+            function preparerCouchesV3d(carte) {
                 if (carte.getSource('v3d-lieux')) return;
-                carte.addSource('v3d-lieux', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+                const vide = { type: 'FeatureCollection', features: [] };
+                const miseEnPage = {
+                    'icon-image': ['get', 'img'],
+                    'icon-anchor': 'bottom-left',
+                    'icon-offset': [-MARGE_NOM_V3D, MARGE_NOM_V3D],
+                    'icon-allow-overlap': true,
+                    'icon-ignore-placement': true,
+                    'icon-pitch-alignment': 'viewport',
+                    'icon-rotation-alignment': 'viewport'
+                };
+                // Une étiquette n'est visible que pendant sa fenêtre : état « v » mis à jour par majVisibiliteReperesV3d.
+                const opacite = { 'icon-opacity': ['case', ['boolean', ['feature-state', 'v'], false], 1, 0] };
+                carte.addSource('v3d-halo', { type: 'geojson', data: vide });
                 carte.addLayer({
-                    id: 'v3d-lieux-noms', type: 'symbol', source: 'v3d-lieux',
+                    id: 'v3d-halo-anneaux', type: 'circle', source: 'v3d-halo',
+                    paint: {
+                        'circle-radius': ['coalesce', ['feature-state', 'r'], 0],
+                        'circle-opacity': 0,
+                        'circle-stroke-color': '#ffb02e',
+                        'circle-stroke-width': 2.5,
+                        'circle-stroke-opacity': ['coalesce', ['feature-state', 'o'], 0],
+                        'circle-pitch-alignment': 'viewport',
+                        'circle-pitch-scale': 'viewport'
+                    }
+                });
+                carte.addSource('v3d-lieux', { type: 'geojson', data: vide });
+                carte.addLayer({ id: 'v3d-lieux-noms', type: 'symbol', source: 'v3d-lieux', layout: miseEnPage, paint: opacite });
+                carte.addSource('v3d-pointes', { type: 'geojson', data: vide });
+                carte.addLayer({
+                    id: 'v3d-pointes-triangles', type: 'symbol', source: 'v3d-pointes',
+                    filter: ['==', ['get', 's'], 1],
                     layout: {
                         'icon-image': ['get', 'img'],
                         'icon-anchor': 'bottom-left',
-                        'icon-offset': [-MARGE_NOM_V3D, MARGE_NOM_V3D],
+                        'icon-offset': [-CX_SOMMET_V3D, 0],
                         'icon-allow-overlap': true,
                         'icon-ignore-placement': true,
                         'icon-pitch-alignment': 'viewport',
                         'icon-rotation-alignment': 'viewport'
                     },
-                    // Un nom n'est visible que pendant sa fenêtre (200 m avant, 100 m après) : état « v » mis à jour par majVisibiliteReperesV3d.
-                    paint: { 'icon-opacity': ['case', ['boolean', ['feature-state', 'v'], false], 1, 0] }
+                    paint: opacite
                 });
+                // Noms de lieux : trait qui monte avec le nom centré au-dessus (image centrée sur le point).
+                carte.addLayer({
+                    id: 'v3d-pointes-noms', type: 'symbol', source: 'v3d-pointes',
+                    filter: ['==', ['get', 's'], 0],
+                    layout: {
+                        'icon-image': ['get', 'img'],
+                        'icon-anchor': 'bottom',
+                        'icon-offset': [0, 0],
+                        'icon-allow-overlap': true,
+                        'icon-ignore-placement': true,
+                        'icon-pitch-alignment': 'viewport',
+                        'icon-rotation-alignment': 'viewport'
+                    },
+                    paint: opacite
+                });
+                // Drapeau à damier d'arrivée (image redessinée à chaque image pendant qu'il est visible).
+                carte.addSource('v3d-drapeau', { type: 'geojson', data: vide });
+                carte.addLayer({
+                    id: 'v3d-drapeau-image', type: 'symbol', source: 'v3d-drapeau',
+                    layout: {
+                        'icon-image': ['get', 'img'],
+                        'icon-anchor': 'bottom-left',
+                        'icon-offset': [-POTEAU_DRAPEAU_V3D, 0],
+                        'icon-allow-overlap': true,
+                        'icon-ignore-placement': true,
+                        'icon-pitch-alignment': 'viewport',
+                        'icon-rotation-alignment': 'viewport'
+                    },
+                    paint: opacite
+                });
+                carte.addSource('v3d-reperes', { type: 'geojson', data: vide });
+                carte.addLayer({ id: 'v3d-reperes-etiquettes', type: 'symbol', source: 'v3d-reperes', layout: miseEnPage, paint: opacite });
+                carte.addSource('v3d-photos', { type: 'geojson', data: vide });
+                carte.addLayer({
+                    id: 'v3d-photos-icones', type: 'symbol', source: 'v3d-photos',
+                    layout: { 'icon-image': 'v3d-photo-icone', 'icon-allow-overlap': true, 'icon-pitch-alignment': 'viewport', 'icon-rotation-alignment': 'viewport' }
+                });
+                carte.on('click', 'v3d-photos-icones', e => {
+                    const f = e.features && e.features[0];
+                    const photo = f ? v3d.photos[f.properties.idx] : null;
+                    if (photo) montrerPhotoV3d(photo);
+                });
+                // Toucher l'écran : pause ou reprise (sauf sur une icône de photo).
+                carte.on('click', e => {
+                    if (!v3d.prete) return;
+                    const photos = carte.getLayer('v3d-photos-icones') ? carte.queryRenderedFeatures(e.point, { layers: ['v3d-photos-icones'] }) : [];
+                    if (photos.length) return;
+                    lectureV3d(!v3d.jouer);
+                });
+                carte.on('mouseenter', 'v3d-photos-icones', () => { carte.getCanvas().style.cursor = 'pointer'; });
+                carte.on('mouseleave', 'v3d-photos-icones', () => { carte.getCanvas().style.cursor = ''; });
+            }
+            // Panneau Vmax : le chiffre grimpe de 0 à la vitesse max (image redessinée) et deux anneaux orange pulsent (couche cercle).
+            function majImageVmaxV3d(p, valeur) {
+                const carte = v3d.carte;
+                if (!carte || !carte.hasImage(p.idImage)) return;
+                carte.updateImage(p.idImage, dessinerEtiquetteV3d('Vmax ' + valeur + ' km/h', 16, p.largeurTexte).image);
+                p.valeurAffichee = valeur;
+            }
+            function arreterAnimationVmaxV3d(p) {
+                p.jeton = (p.jeton || 0) + 1;
+                if (p.raf) cancelAnimationFrame(p.raf);
+                p.raf = 0;
+                const carte = v3d.carte;
+                if (!carte) return;
+                try {
+                    [0, 1].forEach(k => carte.setFeatureState({ source: 'v3d-halo', id: k }, { r: 0, o: 0 }));
+                    if (p.valeurAffichee !== p.valeurVmax) majImageVmaxV3d(p, p.valeurVmax);
+                } catch (e) { console.warn(e); }
+            }
+            function demarrerAnimationVmaxV3d(p) {
+                const carte = v3d.carte;
+                if (!carte) return;
+                arreterAnimationVmaxV3d(p);
+                const reduit = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                if (reduit) {
+                    [0, 1].forEach(k => carte.setFeatureState({ source: 'v3d-halo', id: k }, { r: 9, o: 0.6 }));
+                    return;
+                }
+                const jeton = p.jeton;
+                const debut = performance.now();
+                const pas = maintenant => {
+                    if (p.jeton !== jeton || v3d.carte !== carte) return;
+                    const ecoule = maintenant - debut;
+                    const t = Math.min(1, ecoule / 900);
+                    const valeur = Math.round(p.valeurVmax * (1 - Math.pow(1 - t, 3)));
+                    if (valeur !== p.valeurAffichee) majImageVmaxV3d(p, valeur);
+                    [0, 1].forEach(k => {
+                        const phase = ((ecoule + k * 650) % 1300) / 1300;
+                        carte.setFeatureState({ source: 'v3d-halo', id: k }, { r: 5 + 22.5 * phase, o: 0.95 * (1 - phase) });
+                    });
+                    p.raf = requestAnimationFrame(pas);
+                };
+                p.raf = requestAnimationFrame(pas);
+            }
+            // Alerte de pente : un grand panneau aux couleurs de la pente apparaît au milieu de l'écran, puis tombe et
+            // s'écrase à l'emplacement du panneau de pente, qui apparaît à l'impact (et reste affiché comme avant).
+            // Dessinée sur un calque posé sur la carte, repris dans la vidéo enregistrée.
+            // Alerte : juste le nombre, en couleur de pente, écriture légère, qui clignote (pas d'encart).
+            const POLICE_ALERTE_V3D = 76, POIDS_ALERTE_V3D = '500', TAILLE_PANNEAU_PENTE_V3D = 19;
+            const ALERTE_APPARITION_MS = 220, ALERTE_ATTENTE_MS = 480, ALERTE_CHUTE_MS = 340;
+            function effacerCalqueAlerteV3d() {
+                const cv = document.getElementById('v3dAlertePente');
+                if (!cv) return;
+                const ctx = cv.getContext('2d');
+                ctx.setTransform(1, 0, 0, 1, 0, 0);
+                ctx.clearRect(0, 0, cv.width, cv.height);
+            }
+            function arreterAlertePenteV3d(p) {
+                const a = v3d.alerte;
+                if (!a || (p && a.p !== p)) return;
+                if (a.raf) cancelAnimationFrame(a.raf);
+                v3d.alerte = null;
+                effacerCalqueAlerteV3d();
+            }
+            // Position, taille et écrasement de l'alerte à l'instant t (en ms depuis son début), puis dessin.
+            function dessinerAlertePenteV3d(a, t) {
+                const cv = document.getElementById('v3dAlertePente');
+                const carte = v3d.carte;
+                if (!cv || !carte) return;
+                const ctx = cv.getContext('2d');
+                ctx.setTransform(a.ratio, 0, 0, a.ratio, 0, 0);
+                ctx.clearRect(0, 0, a.largeur, a.hauteur);
+                const p = a.p;
+                const centreX = a.largeur / 2, centreY = a.hauteur / 2;
+                let x = centreX, y = centreY, echelle = 1, ex = 1, ey = 1, opacite = 1, eclat = 1;
+                const finAttente = ALERTE_APPARITION_MS + ALERTE_ATTENTE_MS;
+                if (t < finAttente) {
+                    // Le nombre clignote : 3 éclairs avant la chute (pleine lumière au début et à la fin).
+                    eclat = 0.5 + 0.5 * Math.cos(2 * Math.PI * 3 * t / finAttente);
+                    opacite = 0.3 + 0.7 * eclat;
+                }
+                if (t < ALERTE_APPARITION_MS) {
+                    // Apparition : le nombre grossit avec un petit rebond.
+                    const u = t / ALERTE_APPARITION_MS, c1 = 1.70158, c3 = c1 + 1;
+                    const rebond = 1 + c3 * Math.pow(u - 1, 3) + c1 * Math.pow(u - 1, 2);
+                    echelle = 0.35 + 0.65 * rebond;
+                    opacite *= Math.min(1, u * 3);
+                } else if (t < finAttente) {
+                    echelle = 1 + 0.03 * Math.sin(((t - ALERTE_APPARITION_MS) / ALERTE_ATTENTE_MS) * Math.PI * 3);
+                } else {
+                    // Chute vers le panneau de pente (de plus en plus vite), puis écrasement à l'impact.
+                    const u = Math.min(1, (t - ALERTE_APPARITION_MS - ALERTE_ATTENTE_MS) / ALERTE_CHUTE_MS);
+                    const e = u * u * u;
+                    eclat = 1 - e;
+                    let cibleX = centreX, cibleY = centreY;
+                    try {
+                        const pt = carte.project(p.coord);
+                        if (pt && isFinite(pt.x) && isFinite(pt.y)) { cibleX = pt.x + 29 + p.largeurTexte / 2; cibleY = pt.y - 26; }
+                    } catch (erreur) { console.warn(erreur); }
+                    x = centreX + (cibleX - centreX) * e;
+                    y = centreY + (cibleY - centreY) * e;
+                    echelle = 1 + (TAILLE_PANNEAU_PENTE_V3D / POLICE_ALERTE_V3D - 1) * e;
+                    if (u > 0.75) {
+                        const w = (u - 0.75) / 0.25;
+                        ey = 1 - 0.5 * w;
+                        ex = 1 + 0.3 * w;
+                    }
+                }
+                const famille = getComputedStyle(document.body).fontFamily || 'sans-serif';
+                ctx.save();
+                ctx.globalAlpha = opacite;
+                ctx.translate(x, y);
+                ctx.scale(echelle * ex, echelle * ey);
+                // Juste le nombre, en couleur de pente, entouré d'un léger halo blanc qui flashe avec lui.
+                ctx.font = POIDS_ALERTE_V3D + ' ' + POLICE_ALERTE_V3D + 'px ' + famille;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.lineJoin = 'round';
+                ctx.lineWidth = 7;
+                ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+                ctx.shadowColor = 'rgba(255,255,255,0.9)';
+                ctx.shadowBlur = 6 + 10 * eclat;
+                ctx.strokeText(p.libelleAlerte, 0, 3);
+                ctx.shadowBlur = 0;
+                ctx.shadowColor = 'transparent';
+                ctx.fillStyle = p.couleurAlerte;
+                ctx.fillText(p.libelleAlerte, 0, 3);
+                ctx.restore();
+            }
+            // Lance l'alerte d'un panneau de pente. Renvoie false si elle ne peut pas être montrée (le panneau s'affiche alors tout de suite).
+            function demarrerAlertePenteV3d(p) {
+                const carte = v3d.carte, cv = document.getElementById('v3dAlertePente');
+                if (!carte || !cv || !p.libelleAlerte || !p.couleurAlerte) return false;
+                const reduit = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                const largeur = carte.getCanvas().clientWidth, hauteur = carte.getCanvas().clientHeight;
+                if (reduit || !largeur || !hauteur) return false;
+                const ratio = Math.min(2, window.devicePixelRatio || 1);
+                cv.width = Math.round(largeur * ratio);
+                cv.height = Math.round(hauteur * ratio);
+                const mesure = document.createElement('canvas').getContext('2d');
+                mesure.font = POIDS_ALERTE_V3D + ' ' + POLICE_ALERTE_V3D + 'px ' + (getComputedStyle(document.body).fontFamily || 'sans-serif');
+                const a = { p: p, debut: performance.now(), raf: 0, largeur: largeur, hauteur: hauteur, ratio: ratio,
+                    largeurTexte: Math.ceil(mesure.measureText(p.libelleAlerte).width) };
+                v3d.alerte = a;
+                const duree = ALERTE_APPARITION_MS + ALERTE_ATTENTE_MS + ALERTE_CHUTE_MS;
+                const pas = maintenant => {
+                    a.raf = 0;
+                    if (v3d.alerte !== a || v3d.carte !== carte) return;
+                    const t = maintenant - a.debut;
+                    if (t >= duree) {
+                        // Impact : l'alerte disparaît et le panneau de pente apparaît à sa place.
+                        arreterAlertePenteV3d(p);
+                        try { if (p.visible && v3d.panneauxPente.includes(p)) carte.setFeatureState({ source: 'v3d-reperes', id: p.id }, { v: true }); } catch (erreur) { console.warn(erreur); }
+                        return;
+                    }
+                    dessinerAlertePenteV3d(a, t);
+                    a.raf = requestAnimationFrame(pas);
+                };
+                a.raf = requestAnimationFrame(pas);
+                return true;
+            }
+            // Drapeau d'arrivée : une seule boucle d'animation tant qu'il est visible.
+            function boucleDrapeauV3d() {
+                const carte = v3d.carte, dr = v3d.drapeau;
+                if (!carte || !dr || dr.raf) return;
+                const pas = maintenant => {
+                    dr.raf = 0;
+                    if (v3d.carte !== carte || v3d.drapeau !== dr || !dr.visible) return;
+                    try { if (carte.hasImage(dr.idImage)) carte.updateImage(dr.idImage, dessinerDrapeauV3d(maintenant - dr.debut).image); } catch (e) { console.warn(e); }
+                    dr.raf = requestAnimationFrame(pas);
+                };
+                dr.raf = requestAnimationFrame(pas);
+            }
+            function viderDrapeauV3d() {
+                const carte = v3d.carte, dr = v3d.drapeau;
+                v3d.drapeau = null;
+                if (dr && dr.raf) cancelAnimationFrame(dr.raf);
+                if (!carte) return;
+                try {
+                    if (carte.getSource('v3d-drapeau')) {
+                        carte.removeFeatureState({ source: 'v3d-drapeau' });
+                        carte.getSource('v3d-drapeau').setData({ type: 'FeatureCollection', features: [] });
+                    }
+                } catch (e) { console.warn(e); }
+            }
+            function viderPanneauxV3d() {
+                const carte = v3d.carte;
+                const anciennes = v3d.imagesPanneaux || [];
+                viderDrapeauV3d();
+                arreterAlertePenteV3d();
+                v3d.panneauxPente.forEach(p => { if (p.vmax) { p.jeton = (p.jeton || 0) + 1; if (p.raf) cancelAnimationFrame(p.raf); p.raf = 0; } });
+                v3d.imagesPanneaux = [];
+                v3d.panneauxPente = [];
+                if (!carte) return;
+                try {
+                    const vide = { type: 'FeatureCollection', features: [] };
+                    if (carte.getSource('v3d-reperes')) {
+                        carte.removeFeatureState({ source: 'v3d-reperes' });
+                        carte.getSource('v3d-reperes').setData(vide);
+                    }
+                    if (carte.getSource('v3d-halo')) {
+                        carte.removeFeatureState({ source: 'v3d-halo' });
+                        carte.getSource('v3d-halo').setData(vide);
+                    }
+                } catch (e) { console.warn(e); }
+                setTimeout(() => {
+                    if (v3d.carte !== carte) return;
+                    anciennes.forEach(id => { try { if (carte.hasImage(id)) carte.removeImage(id); } catch (e) { console.warn(e); } });
+                }, 2000);
+            }
+            // Animation des sommets : une seule boucle pour tous les triangles en cours de montée.
+            function boucleSommetsV3d() {
+                const carte = v3d.carte;
+                if (!carte || v3d.rafPointes) return;
+                const pas = maintenant => {
+                    v3d.rafPointes = 0;
+                    if (v3d.carte !== carte || !v3d.pointesActives || !v3d.pointesActives.size) return;
+                    v3d.pointesActives.forEach(p => {
+                        const ecoule = maintenant - p.debutPointe;
+                        const t = Math.min(1, ecoule / DUREE_POINTE_V3D);
+                        const partie = Math.max(0, Math.min(1, (ecoule - DUREE_POINTE_V3D) / p.dureeTexte));
+                        const lettres = Math.ceil(partie * p.nbLettres);
+                        try { if (carte.hasImage(p.idPointe)) carte.updateImage(p.idPointe, dessinerPointeV3d(t, p.infoPointe, lettres).image); } catch (e) { console.warn(e); }
+                        if (partie >= 1) v3d.pointesActives.delete(p);
+                    });
+                    if (v3d.pointesActives.size) v3d.rafPointes = requestAnimationFrame(pas);
+                };
+                v3d.rafPointes = requestAnimationFrame(pas);
+            }
+            function demarrerPointeV3d(p) {
+                const carte = v3d.carte;
+                if (!carte || !carte.hasImage(p.idPointe)) return;
+                const reduit = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                try { carte.updateImage(p.idPointe, dessinerPointeV3d(reduit ? 1 : 0, p.infoPointe, reduit ? p.nbLettres : 0).image); } catch (e) { console.warn(e); return; }
+                if (reduit) return;
+                p.debutPointe = performance.now();
+                // Petit zoom arrière doux pendant la lecture, pour les sommets seulement (jamais quand on déplace le curseur).
+                // Le recul dure jusqu'à la fin de l'écriture du nom (montée du triangle + lettres), puis 1 s de lecture.
+                if (p.sommet && v3d.jouer && v3d.sens > 0 && !v3d.zoomSommet) {
+                    v3d.zoomSommet = { ecoule: 0, p: p, tFin: (DUREE_POINTE_V3D + p.dureeTexte) / 1000,
+                        amplitude: AMPLITUDE_MIN_ZOOM_SOMMET_V3D, cible: AMPLITUDE_MIN_ZOOM_SOMMET_V3D };
+                }
+                if (!v3d.pointesActives) v3d.pointesActives = new Set();
+                v3d.pointesActives.add(p);
+                boucleSommetsV3d();
+            }
+            function arreterPointeV3d(p) {
+                if (v3d.pointesActives) v3d.pointesActives.delete(p);
             }
             function viderNomsV3d() {
                 const carte = v3d.carte;
                 const anciennes = v3d.imagesNoms || [];
                 v3d.imagesNoms = [];
                 v3d.panneauxLieux = [];
+                if (v3d.rafPointes) cancelAnimationFrame(v3d.rafPointes);
+                v3d.rafPointes = 0;
+                v3d.pointesActives = new Set();
                 if (!carte) return;
                 try {
                     const src = carte.getSource('v3d-lieux');
                     if (src) {
                         carte.removeFeatureState({ source: 'v3d-lieux' });
                         src.setData({ type: 'FeatureCollection', features: [] });
+                    }
+                    const pointes = carte.getSource('v3d-pointes');
+                    if (pointes) {
+                        carte.removeFeatureState({ source: 'v3d-pointes' });
+                        pointes.setData({ type: 'FeatureCollection', features: [] });
                     }
                 } catch (e) { console.warn(e); }
                 // Les anciennes images sont retirées un peu plus tard, quand la carte n'en a plus besoin.
@@ -13665,7 +14410,7 @@ def accueil():
                     l.ec = ecartReel;
                     l.d = v3d.cum[meilleurIndex] || 0;
                     gardes.push(l);
-                    if (gardes.length >= 60) break;
+                    if (gardes.length >= 300) break;
                 }
                 return gardes;
             }
@@ -13683,62 +14428,87 @@ def accueil():
                 return [];
             }
             function viderReperesV3d() {
-                v3d.reperes.forEach(m => m.remove());
-                v3d.reperes = [];
-                v3d.panneauxPente = [];
+                viderPanneauxV3d();
                 viderNomsV3d();
             }
             function majVisibiliteReperesV3d() {
                 const d = v3d.f * v3d.total;
                 const avanceParSeconde = v3d.total / Math.max(1, v3d.dureeBase) * v3d.vitesse;
-                v3d.reperes.forEach(m => {
-                    m.getElement().classList.toggle('v3d-cache', !v3d.repereVisibles);
-                });
+                const carte = v3d.carte;
+                if (!carte || !carte.getSource('v3d-lieux')) return;
+                // Position à l'écran (relief compris) de chaque étiquette, par rapport à la page.
+                const zone = carte.getCanvas().getBoundingClientRect();
+                const rectangleDe = p => {
+                    const pt = carte.project(p.coord);
+                    return {
+                        left: zone.left + pt.x + p.boite.g, right: zone.left + pt.x + p.boite.d,
+                        top: zone.top + pt.y + p.boite.h, bottom: zone.top + pt.y + p.boite.b
+                    };
+                };
 
                 // Les panneaux de pente et de vitesse passent toujours avant les noms.
                 const rectanglesPrioritaires = [];
                 v3d.panneauxPente.forEach(p => {
                     const visible = v3d.repereVisibles && d >= Math.max(0, p.debut - avanceParSeconde) && d <= p.fin;
-                    const el = p.marqueur.getElement();
-                    el.classList.toggle('v3d-cache', !visible);
-                    if (visible) {
-                        const r = el.getBoundingClientRect();
-                        if (r.width && r.height) rectanglesPrioritaires.push(r);
+                    if (visible) rectanglesPrioritaires.push(rectangleDe(p));
+                    if (visible === p.visible) return;
+                    p.visible = visible;
+                    // Pente : en lecture, une grosse alerte tombe d'abord du centre de l'écran ; le panneau apparaît à l'impact.
+                    // Sans alerte (curseur déplacé à la main, autre alerte en cours...), le panneau s'affiche tout de suite comme avant.
+                    const avecAlerte = visible && !p.vmax && v3d.jouer && v3d.sens > 0 && !v3d.alerte && demarrerAlertePenteV3d(p);
+                    if (!visible && v3d.alerte && v3d.alerte.p === p) arreterAlertePenteV3d(p);
+                    if (!avecAlerte) carte.setFeatureState({ source: 'v3d-reperes', id: p.id }, { v: visible });
+                    if (p.vmax) {
+                        if (visible) demarrerAnimationVmaxV3d(p);
+                        else arreterAnimationVmaxV3d(p);
                     }
                 });
 
-                // Un nom apparaît 200 m avant son point et disparaît 100 m après.
-                // En cas de chevauchement, les panneaux prioritaires restent visibles.
-                const carte = v3d.carte;
-                if (!carte || !v3d.panneauxLieux.length || !carte.getSource('v3d-lieux')) return;
-                const candidats = v3d.panneauxLieux.filter(p =>
-                    v3d.repereVisibles
-                    && Number.isFinite(p.d)
-                    && d >= Math.max(0, p.d - 200)
-                    && d <= p.d + 100
-                );
+                // Drapeau à damier d'arrivée : apparaît comme un nom de lieu (au moins 300 m ou 2 s avant l'arrivée) et reste jusqu'au bout.
+                const dr = v3d.drapeau;
+                if (dr) {
+                    const drapeauVisible = !!v3d.repereVisibles && d >= Math.max(0, dr.d - Math.max(300, avanceParSeconde * 2));
+                    if (drapeauVisible) rectanglesPrioritaires.push(rectangleDe(dr));
+                    if (drapeauVisible !== dr.visible) {
+                        dr.visible = drapeauVisible;
+                        carte.setFeatureState({ source: 'v3d-drapeau', id: 0 }, { v: drapeauVisible });
+                        if (drapeauVisible && !dr.fixe) { dr.debut = performance.now(); boucleDrapeauV3d(); }
+                        else if (!drapeauVisible && dr.raf) { cancelAnimationFrame(dr.raf); dr.raf = 0; }
+                    }
+                }
 
-                // Parmi les noms qui se chevauchent, on conserve d'abord le plus proche
-                // du point actuellement parcouru, puis le mieux classé.
+                // Sommets et noms de lieux : un trait vertical monte du point (avec un triangle rouge pour un sommet),
+                // puis le nom s'écrit lettre par lettre. Affichage d'au moins 5,5 s : apparition au moins 300 m (ou 2 s)
+                // avant le point, disparition au moins 300 m (ou 3,5 s) après.
+                const dansFenetre = p => v3d.repereVisibles && Number.isFinite(p.d)
+                    && d >= Math.max(0, p.d - Math.max(300, avanceParSeconde * 2))
+                    && d <= p.d + Math.max(300, avanceParSeconde * 3.5);
+                const seChevauchent = (a, b) =>
+                    a.left < b.right + 8 && a.right + 8 > b.left
+                    && a.top < b.bottom + 6 && a.bottom + 6 > b.top;
+                const montres = new Set();
+
+                // Les sommets sont toujours montrés : ils passent avant les noms de lieux (mais après les panneaux).
+                v3d.panneauxLieux.forEach(p => {
+                    if (!p.sommet || !dansFenetre(p)) return;
+                    montres.add(p);
+                    rectanglesPrioritaires.push(rectangleDe(p));
+                });
+
+                // Noms de lieux : en cas de chevauchement, les panneaux et les sommets restent visibles.
+                const candidats = v3d.panneauxLieux.filter(p => !p.sommet && dansFenetre(p));
+
+                // Parmi les noms qui se chevauchent, on garde d'abord celui déjà affiché (pour ne pas relancer
+                // son animation), puis le plus proche du point actuellement parcouru, puis le mieux classé.
                 candidats.sort((a, b) =>
-                    Math.abs(a.d - d) - Math.abs(b.d - d)
+                    (a.pointeVisible ? 0 : 1) - (b.pointeVisible ? 0 : 1)
+                    || Math.abs(a.d - d) - Math.abs(b.d - d)
                     || (a.rang ?? 9) - (b.rang ?? 9)
                     || String(a.nom || '').localeCompare(String(b.nom || ''), 'fr')
                 );
                 const rectanglesNoms = [];
-                const seChevauchent = (a, b) =>
-                    a.left < b.right + 8 && a.right + 8 > b.left
-                    && a.top < b.bottom + 6 && a.bottom + 6 > b.top;
-
-                // Position à l'écran (relief compris) de chaque nom retenu, par rapport à la page.
-                const zone = carte.getCanvas().getBoundingClientRect();
-                const montres = new Set();
                 candidats.forEach(p => {
-                    const pt = carte.project(p.coord);
-                    const r = {
-                        left: zone.left + pt.x + p.boite.g, right: zone.left + pt.x + p.boite.d,
-                        top: zone.top + pt.y + p.boite.h, bottom: zone.top + pt.y + p.boite.b
-                    };
+                    const r = rectangleDe(p);
                     const prioritaire = rectanglesPrioritaires.some(pr => seChevauchent(r, pr));
                     const doublonVisuel = rectanglesNoms.some(pr => seChevauchent(r, pr));
                     if (prioritaire || doublonVisuel) return;
@@ -13749,19 +14519,38 @@ def accueil():
                 // Seuls les noms dont l'état change sont mis à jour sur la carte.
                 v3d.panneauxLieux.forEach(p => {
                     const voulu = montres.has(p);
-                    if (voulu === p.visible) return;
-                    p.visible = voulu;
-                    carte.setFeatureState({ source: 'v3d-lieux', id: p.id }, { v: voulu });
+                    if (voulu === p.pointeVisible) return;
+                    p.pointeVisible = voulu;
+                    if (voulu) demarrerPointeV3d(p);
+                    else arreterPointeV3d(p);
+                    carte.setFeatureState({ source: 'v3d-pointes', id: p.id }, { v: voulu });
                 });
             }
             async function poserReperesV3d() {
                 const carte=v3d.carte; viderReperesV3d();
+                try { preparerCouchesV3d(carte); } catch (e) { console.warn('Couches des repères indisponibles', e); return; }
+                // Panneaux de pente et Vmax : dessinés en images dans une couche native (comme les noms de lieux).
+                v3d.generationPanneaux = (v3d.generationPanneaux || 0) + 1;
+                v3d.imagesPanneaux = [];
+                const objetsReperes = [];
+                const poserPanneau = (libelle, taille, coord, donnees) => {
+                    const id = v3d.panneauxPente.length;
+                    const idImage = 'v3d-panneau-' + v3d.generationPanneaux + '-' + id;
+                    try {
+                        const dessin = dessinerEtiquetteV3d(libelle, taille, 0, donnees && donnees.couleurAlerte);
+                        carte.addImage(idImage, dessin.image, { pixelRatio: dessin.ratio });
+                        v3d.imagesPanneaux.push(idImage);
+                        objetsReperes.push({ type: 'Feature', id: id, properties: { img: idImage }, geometry: { type: 'Point', coordinates: coord } });
+                        const p = Object.assign({ id: id, coord: coord, boite: dessin.boite, visible: false, idImage: idImage, largeurTexte: dessin.largeurTexte }, donnees);
+                        v3d.panneauxPente.push(p);
+                        return p;
+                    } catch (e) { console.warn('Panneau non dessiné', e); return null; }
+                };
                 const raides=tronconsRaidesV3d(15), liste=raides.length?raides:tronconsRaidesV3d(10).sort((a,b)=>b.valeur-a.valeur).slice(0,3);
                 liste.sort((a,b)=>b.valeur-a.valeur).slice(0,8).forEach(t=>{
                     const libelle=(t.signe>0?'+':'−')+Math.round(t.valeur)+' %';
-                    const m=new window.maplibregl.Marker({element:elementRepereAerienV3d(libelle,19),anchor:'bottom-left'}).setLngLat(pointA(t.debut)).addTo(carte);
-                    v3d.reperes.push(m);
-                    v3d.panneauxPente.push({marqueur:m,debut:t.debut,fin:t.fin});
+                    poserPanneau(libelle, TAILLE_PANNEAU_PENTE_V3D, pointA(t.debut), { debut: t.debut, fin: t.fin,
+                        libelleAlerte: libelle, couleurAlerte: couleurPente(t.signe * t.valeur) });
                 });
                 if (v3d.vitesseMax !== null) {
                     let indexMax = -1;
@@ -13769,35 +14558,72 @@ def accueil():
                         if (v !== null && isFinite(v) && v <= 150 && (indexMax < 0 || v > v3d.vitesses[indexMax])) indexMax = i;
                     });
                     if (indexMax >= 0) {
-                        const libelle='Vmax '+Math.round(v3d.vitesseMax)+' km/h';
-                        const marqueurMax=new window.maplibregl.Marker({element:elementRepereAerienV3d(libelle,16),anchor:'bottom-left'}).setLngLat(pointA(v3d.cum[indexMax])).addTo(carte);
-                        v3d.reperes.push(marqueurMax);
-                        v3d.panneauxPente.push({
-                            marqueur: marqueurMax,
+                        const valeurVmax = Math.round(v3d.vitesseMax);
+                        const coordMax = pointA(v3d.cum[indexMax]);
+                        const panneauMax = poserPanneau('Vmax '+valeurVmax+' km/h', 16, coordMax, {
+                            vmax: true,
+                            valeurVmax: valeurVmax,
+                            valeurAffichee: valeurVmax,
                             debut: v3d.cum[indexMax],
                             fin: v3d.cum[indexMax] + (v3d.total / Math.max(1, v3d.dureeBase) * v3d.vitesse) * 1.5
                         });
+                        // Deux anneaux orange (couche cercle) pulsent autour du point pendant l'affichage du panneau.
+                        if (panneauMax) carte.getSource('v3d-halo').setData({ type: 'FeatureCollection', features: [0, 1].map(k => (
+                            { type: 'Feature', id: k, properties: {}, geometry: { type: 'Point', coordinates: coordMax } })) });
                     }
                 }
+                // Drapeau à damier au point d'arrivée : même affichage que les noms de lieux (apparition avant l'arrivée).
+                try {
+                    const idDrapeau = 'v3d-drapeau-' + v3d.generationPanneaux;
+                    const reduit = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                    const dessinDrapeau = dessinerDrapeauV3d(reduit ? 2500 : 0);
+                    carte.addImage(idDrapeau, dessinDrapeau.image, { pixelRatio: dessinDrapeau.ratio });
+                    v3d.imagesPanneaux.push(idDrapeau);
+                    const coordArrivee = pointA(v3d.total);
+                    carte.getSource('v3d-drapeau').setData({ type: 'FeatureCollection', features: [
+                        { type: 'Feature', id: 0, properties: { img: idDrapeau }, geometry: { type: 'Point', coordinates: coordArrivee } }] });
+                    v3d.drapeau = {
+                        coord: coordArrivee, d: v3d.total, idImage: idDrapeau, visible: false, raf: 0, debut: 0, fixe: !!reduit,
+                        boite: { g: -(POTEAU_DRAPEAU_V3D + 4), d: LARGEUR_DRAPEAU_V3D - POTEAU_DRAPEAU_V3D + 4, h: -(HAUTEUR_DRAPEAU_V3D - 2), b: 4 }
+                    };
+                } catch (e) { console.warn('Drapeau d arrivée non dessiné', e); }
+                carte.getSource('v3d-reperes').setData({ type: 'FeatureCollection', features: objetsReperes });
                 majVisibiliteReperesV3d(); majBoutonsV3d();
                 const afficherLieux = lieux => {
                     viderNomsV3d();
-                    try { preparerCoucheNomsV3d(carte); } catch (e) { console.warn('Couche des noms indisponible', e); return; }
+                    try { preparerCouchesV3d(carte); } catch (e) { console.warn('Couche des noms indisponible', e); return; }
                     v3d.generationNoms = (v3d.generationNoms || 0) + 1;
                     const objets = [];
+                    const objetsPointes = [];
                     lieux.forEach((l, i) => {
-                        const libelle = l.nom + (Number.isFinite(l.alt) && ['sommet', 'col'].includes(l.genre)
-                            ? ' · ' + fmtAltitude(l.alt).complet : '');
-                        const idImage = 'v3d-lieu-' + v3d.generationNoms + '-' + i;
+                        const estSommet = l.genre === 'sommet';
+                        const altitudeTexte = Number.isFinite(l.alt) ? fmtAltitude(l.alt).complet : '';
+                        // Sommet : le nom seul à droite du triangle, l'altitude au-dessus du triangle. Col : altitude après le nom.
+                        const libelle = l.nom + (!estSommet && altitudeTexte && l.genre === 'col' ? ' · ' + altitudeTexte : '');
                         try {
-                            const dessin = dessinerNomLieuV3d(libelle, 16);
-                            carte.addImage(idImage, dessin.image, { pixelRatio: dessin.ratio });
-                            v3d.imagesNoms.push(idImage);
-                            objets.push({ type: 'Feature', id: i, properties: { img: idImage }, geometry: { type: 'Point', coordinates: l.coord } });
-                            v3d.panneauxLieux.push({ id: i, coord: l.coord, d: l.d, rang: l.rang, nom: l.nom, boite: dessin.boite, visible: false });
+                            // Sommet : trait + triangle rouge animé. Autre lieu : même animation, sans triangle, nom au milieu du trait.
+                            const idPointe = 'v3d-pointe-' + v3d.generationNoms + '-' + i;
+                            const lignesNom = estSommet ? decouperNomSommetV3d(libelle) : [libelle];
+                            const largeurTexte = Math.max.apply(null, lignesNom.map(t => mesurerNomSommetV3d(t)));
+                            const info = { libelle: libelle, largeurTexte: largeurTexte, sansTriangle: !estSommet, altitude: estSommet ? altitudeTexte : '', lignes: lignesNom };
+                            const nbLettres = Array.from(libelle).length;
+                            const pointe = dessinerPointeV3d(1, info, nbLettres);
+                            carte.addImage(idPointe, pointe.image, { pixelRatio: pointe.ratio });
+                            v3d.imagesNoms.push(idPointe);
+                            objetsPointes.push({ type: 'Feature', id: i, properties: { img: idPointe, s: estSommet ? 1 : 0 }, geometry: { type: 'Point', coordinates: l.coord } });
+                            // Zone occupée à l'écran, par rapport au point : sert à éviter les chevauchements.
+                            const boite = estSommet
+                                ? { g: -(CX_SOMMET_V3D - 3), d: 16 + largeurTexte + 4, h: -(HAUTEUR_SOMMET_V3D - 2), b: 4 }
+                                : { g: -(largeurTexte / 2 + 6), d: largeurTexte / 2 + 6, h: -83, b: -57 };
+                            v3d.panneauxLieux.push({
+                                id: i, coord: l.coord, d: l.d, rang: l.rang, nom: l.nom, boite: boite, sommet: estSommet,
+                                idPointe: idPointe, pointeVisible: false, infoPointe: info, nbLettres: nbLettres,
+                                dureeTexte: Math.max(600, Math.min(1600, nbLettres * 55))
+                            });
                         } catch (e) { console.warn('Nom de lieu non dessiné', e); }
                     });
                     carte.getSource('v3d-lieux').setData({ type: 'FeatureCollection', features: objets });
+                    carte.getSource('v3d-pointes').setData({ type: 'FeatureCollection', features: objetsPointes });
                     majVisibiliteReperesV3d();
                     majBoutonsV3d();
                 };
@@ -13848,39 +14674,42 @@ def accueil():
                 remplirBouton(document.getElementById('v3dLecture'),
                     v3d.jouer ? 'pause' : 'lecture', v3d.jouer ? 'Pause' : 'Lecture');
                 document.getElementById('v3dLecture').classList.toggle('actif', !v3d.jouer);
-                remplirBouton(document.getElementById('v3dVitesse'), 'vitesse', `×${v3d.vitesse}`);
-                remplirBouton(document.getElementById('v3dInclinaison'), 'incl', `${v3d.inclinaison}°`);
-                remplirBouton(document.getElementById('v3dFond'), 'fond',
-                    v3d.fond === 'sat' ? 'Satellite' : 'Plan');
+                remplirBouton(document.getElementById('v3dVitesse'), 'vitesse', `${v3d.sens < 0 ? '◀ ' : ''}×${v3d.vitesse}`);
+                const etiqueter = (id, icone, texte) => {
+                    const el = document.getElementById(id);
+                    remplirBouton(el, icone, texte);
+                    el.setAttribute('aria-label', texte);
+                    el.title = texte;
+                };
+                etiqueter('v3dInclinaison', 'angle', `Angle de vue : ${v3d.inclinaison}°`);
+                etiqueter('v3dFond', v3d.fond === 'sat' ? 'satellite' : 'carteplan', v3d.fond === 'sat' ? 'Fond : satellite' : 'Fond : plan');
                 const couleur = document.getElementById('v3dCouleur');
                 const aTerrain = v3d.surfaces && v3d.surfaces.length === v3d.pts.length;
                 couleur.style.display = (v3d.pentes.length && aTerrain) ? '' : 'none';
-                remplirBouton(couleur, 'incl', v3d.mode === 'pente' ? 'Couleurs : pente' : 'Couleurs : terrain');
+                etiqueter('v3dCouleur', 'palette', v3d.mode === 'pente' ? 'Couleurs : pente' : 'Couleurs : terrain');
                 const autres = document.getElementById('v3dAutres');
                 const rep = document.getElementById('v3dReperes');
-                remplirBouton(rep, 'montagne', 'Repères');
+                etiqueter('v3dReperes', 'montagne', 'Repères');
                 rep.classList.toggle('actif', v3d.repereVisibles);
-                rep.style.display = (v3d.reperes.length || v3d.prete) ? '' : 'none';
-                remplirBouton(autres, 'incl', 'Mes parcours');
+                rep.style.display = (v3d.panneauxPente.length || v3d.panneauxLieux.length || v3d.prete) ? '' : 'none';
+                etiqueter('v3dAutres', 'parcours', 'Mes parcours');
                 autres.classList.toggle('actif', v3d.voirAutres);
                 autres.style.display = sortiesConnues.some(o => o.id !== v3d.sortieId && Array.isArray(o.trace) && o.trace.length >= 2) ? '' : 'none';
                 const enr = document.getElementById('v3dEnreg');
                 const en_cours = !!v3d.enregistreur;
-                remplirBouton(enr, 'enreg', en_cours ? 'Arrêter et enregistrer' : 'Enregistrer');
+                etiqueter('v3dEnreg', 'enreg', en_cours ? 'Arrêter et enregistrer' : 'Enregistrer');
                 enr.classList.toggle('enreg', en_cours);
                 // Le survol s'affiche toujours en mode cinéma ; le bouton du haut montre ou cache les autres boutons.
                 const cinema = document.getElementById('v3dCinema');
                 if (cinema) {
-                    cinema.textContent = v3d.commandes ? 'Masquer' : 'Commandes';
+                    remplirBouton(cinema, 'engrenage', '');
+                    cinema.setAttribute('aria-label', v3d.commandes ? 'Masquer les commandes' : 'Commandes');
+                    cinema.title = v3d.commandes ? 'Masquer les commandes' : 'Commandes';
                     cinema.classList.toggle('actif', v3d.commandes);
                     cinema.setAttribute('aria-pressed', v3d.commandes ? 'true' : 'false');
                 }
                 // Lecture / Pause reste toujours à portée de doigt, même quand les commandes sont cachées.
-                const lectureHaut = document.getElementById('v3dLectureHaut');
-                if (lectureHaut) {
-                    remplirBouton(lectureHaut, v3d.jouer ? 'pause' : 'lecture', v3d.jouer ? 'Pause' : 'Lecture');
-                    lectureHaut.classList.toggle('actif', !v3d.jouer);
-                }
+                majCommandesLectureV3d();
                 const vue = document.getElementById('vue3d');
                 vue.classList.toggle('cinema', v3d.cinema);
                 vue.classList.toggle('commandes', v3d.commandes);
@@ -14009,6 +14838,43 @@ def accueil():
                 }
             }
 
+            // Zoom arrière doux sur un sommet : on recule pendant que le triangle monte et que le nom s'écrit,
+            // on reste 1 s au zoom le plus reculé (nom entier lisible), puis on revient en 1,8 s.
+            // Reculer d'au moins 0,5 niveau de zoom, et autant que nécessaire (jusqu'à 1,9 : au-delà, le nom long est écrit sur 2 lignes) pour que le nom entier tienne à l'écran.
+            const AMPLITUDE_MIN_ZOOM_SOMMET_V3D = 0.5, AMPLITUDE_MAX_ZOOM_SOMMET_V3D = 1.9;
+            // Écran peu haut (téléphone à l'horizontale) : la caméra est plus proche du sol et rentre dans le relief.
+            // On recule le zoom pour garder la même distance caméra-sol que sur un écran de 700 px de haut.
+            const HAUTEUR_REFERENCE_V3D = 700;
+            function reculEcranBasV3d(hauteur) {
+                if (!hauteur || hauteur >= HAUTEUR_REFERENCE_V3D) return 0;
+                return Math.min(1.1, Math.log(HAUTEUR_REFERENCE_V3D / hauteur) / Math.LN2);
+            }
+            const DUREE_LECTURE_NOM_V3D = 1, DUREE_RETOUR_ZOOM_SOMMET_V3D = 1.8, ZOOM_NORMAL_V3D = 14.3;
+            function formeZoomSommetV3d(t, tFin) {
+                const doux = x => x * x * x * (x * (x * 6 - 15) + 10);
+                if (t < tFin) return doux(Math.max(0, t / tFin));
+                if (t < tFin + DUREE_LECTURE_NOM_V3D) return 1;
+                return doux(Math.max(0, 1 - (t - tFin - DUREE_LECTURE_NOM_V3D) / DUREE_RETOUR_ZOOM_SOMMET_V3D));
+            }
+            // Combien de niveaux de zoom faut-il reculer pour que le triangle et le nom entier du sommet tiennent à l'écran ?
+            // Mesuré d'après la position actuelle du sommet à l'écran, ramenée au zoom normal (un niveau de zoom divise les écarts par 2).
+            function amplitudeZoomSommetV3d(zs, carte, zoomActuel, zoomNormal) {
+                try {
+                    const ecran = carte.project(zs.p.coord);
+                    const largeur = carte.getCanvas().clientWidth || 360;
+                    if (!ecran || !isFinite(ecran.x)) return AMPLITUDE_MIN_ZOOM_SOMMET_V3D;
+                    const ecart = ecran.x - largeur / 2;
+                    const marge = 14;
+                    // Place disponible entre le centre de l'écran et le bord, du côté où le nom s'étend (à droite) ou du côté du triangle (à gauche).
+                    const place = ecart >= 0 ? largeur / 2 - marge - zs.p.boite.d : largeur / 2 - marge + zs.p.boite.g;
+                    const ecartNormal = Math.abs(ecart) * Math.pow(2, (zoomNormal || ZOOM_NORMAL_V3D) - zoomActuel);
+                    if (place < 8) return AMPLITUDE_MAX_ZOOM_SOMMET_V3D;
+                    const besoin = Math.log(ecartNormal / place) / Math.LN2;
+                    return Math.max(AMPLITUDE_MIN_ZOOM_SOMMET_V3D, Math.min(AMPLITUDE_MAX_ZOOM_SOMMET_V3D, isFinite(besoin) ? besoin : AMPLITUDE_MIN_ZOOM_SOMMET_V3D));
+                } catch (e) {
+                    return AMPLITUDE_MIN_ZOOM_SOMMET_V3D;
+                }
+            }
             // Place la caméra derrière le point courant, orientée vers la suite du parcours.
             function placerCamera(dt, brusque) {
                 const carte = v3d.carte;
@@ -14028,8 +14894,9 @@ def accueil():
                     if (v3d.f >= 1) v3d.centreCamera = centre.slice();
                 }
                 const avance = Math.min(700, Math.max(450, v3d.total * 0.035));
-                const devant = pointA(Math.min(v3d.total, d + avance));
-                const arriere = pointA(Math.max(0, d - avance * 0.5));
+                // En marche arrière, la caméra regarde vers le début du parcours.
+                const devant = v3d.sens < 0 ? pointA(Math.max(0, d - avance)) : pointA(Math.min(v3d.total, d + avance));
+                const arriere = v3d.sens < 0 ? pointA(Math.min(v3d.total, d + avance * 0.5)) : pointA(Math.max(0, d - avance * 0.5));
                 let cible = v3d.cap;
                 if (distanceM(arriere, devant) > 5) {
                     cible = capEntre(arriere, devant);
@@ -14062,11 +14929,35 @@ def accueil():
                     }
                 }
 
+                // Zoom arrière doux sur un sommet (temps réel, sans dépendre de la vitesse de lecture).
+                const zoomBase = ZOOM_NORMAL_V3D - reculEcranBasV3d(hauteur);
+                let zoomCamera = zoomBase;
+                const zs = v3d.zoomSommet;
+                if (zs) {
+                    if (brusque) {
+                        v3d.zoomSommet = null;
+                    } else {
+                        zs.ecoule += dt;
+                        if (zs.ecoule >= zs.tFin + DUREE_LECTURE_NOM_V3D + DUREE_RETOUR_ZOOM_SOMMET_V3D) {
+                            v3d.zoomSommet = null;
+                        } else {
+                            // Toutes les 6 images, on mesure où se trouve le sommet à l'écran et on ajuste l'ampleur du recul.
+                            zs.images = (zs.images || 0) + 1;
+                            if (zs.images % 6 === 1) {
+                                const zoomVu = zoomBase - zs.amplitude * formeZoomSommetV3d(zs.ecoule, zs.tFin);
+                                zs.cible = amplitudeZoomSommetV3d(zs, carte, zoomVu, zoomBase);
+                            }
+                            zs.amplitude += (zs.cible - zs.amplitude) * (1 - Math.exp(-dt * 2.5));
+                            zoomCamera = zoomBase - zs.amplitude * formeZoomSommetV3d(zs.ecoule, zs.tFin);
+                        }
+                    }
+                }
+
                 carte.jumpTo({
                     center: v3d.centreCamera,
                     bearing: v3d.cap,
                     pitch: v3d.inclinaison,
-                    zoom: 14.3,
+                    zoom: zoomCamera,
                     padding: { top: v3d.decalage, bottom: 0, left: 0, right: 0 }
                 });
 
@@ -14091,8 +14982,8 @@ def accueil():
                 const dt = Math.min(0.1, Math.max(0, (t - v3d.dernier) / 1000));
                 v3d.dernier = t;
                 const avant = v3d.f * v3d.total;
-                v3d.f = Math.min(1, v3d.f + (dt * v3d.vitesse) / v3d.dureeBase);
-                verifierPhotosV3d(avant, v3d.f * v3d.total);
+                v3d.f = Math.max(0, Math.min(1, v3d.f + v3d.sens * (dt * v3d.vitesse) / v3d.dureeBase));
+                if (v3d.sens > 0) verifierPhotosV3d(avant, v3d.f * v3d.total);
 
                 // Le calcul du parcours continue à chaque image, mais MapLibre ne reçoit
                 // que 60 mises à jour caméra/point par seconde au maximum.
@@ -14116,8 +15007,10 @@ def accueil():
                     }
                 }
 
-                if (v3d.f >= 1) {
+                if (v3d.f >= 1 || (v3d.sens < 0 && v3d.f <= 0)) {
                     v3d.jouer = false;
+                    v3d.sens = 1;
+                    v3d.vitesse = 1;
                     reglerOmbresLectureV3d(false);
                     if (v3d.enregistreur) arreterEnregistrement(true);
                     majBoutonsV3d();
@@ -14139,9 +15032,97 @@ def accueil():
                 }
             }
 
+            // Légende des pentes : visible 10 s (au lancement de la lecture, et à chaque reprise depuis le départ).
+            const DUREE_LEGENDE_V3D = 10000;
+            function montrerLegendeV3d() {
+                const el = document.getElementById('v3dLegende');
+                if (!el) return;
+                if (v3d.minuteurLegende) clearTimeout(v3d.minuteurLegende);
+                v3d.legendeVisible = true;
+                v3d.legendeMontree = true;
+                el.classList.add('visible');
+                v3d.minuteurLegende = setTimeout(() => {
+                    v3d.minuteurLegende = 0;
+                    v3d.legendeVisible = false;
+                    el.classList.remove('visible');
+                }, DUREE_LEGENDE_V3D);
+            }
+            function cacherLegendeV3d() {
+                if (v3d.minuteurLegende) clearTimeout(v3d.minuteurLegende);
+                v3d.minuteurLegende = 0;
+                v3d.legendeVisible = false;
+                v3d.legendeMontree = false;
+                const el = document.getElementById('v3dLegende');
+                if (el) el.classList.remove('visible');
+            }
+            // Commandes de lecture au centre : visibles 3 s en lecture, restent affichées en pause.
+            const DUREE_COMMANDES_V3D = 3000;
+            const SAUT_V3D = 10;
+            function majCommandesLectureV3d() {
+                const centre = document.getElementById('v3dCentre');
+                if (!centre) return;
+                centre.innerHTML = '<svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true">'
+                    + (v3d.jouer ? '<path d="M9 6v12M15 6v12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>'
+                        : '<path d="M8.5 5.5v13l10.5-6.5z" fill="currentColor"/>') + '</svg>';
+                centre.setAttribute('aria-label', v3d.jouer ? 'Pause' : 'Lecture');
+                const rapideAvant = document.getElementById('v3dRapideAvant'), rapideArriere = document.getElementById('v3dRapideArriere');
+                if (rapideAvant && !rapideAvant.firstChild) rapideAvant.innerHTML = '<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICONES.vitesse + '</svg>';
+                if (rapideArriere && !rapideArriere.firstChild) rapideArriere.innerHTML = '<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g transform="translate(24 0) scale(-1 1)">' + ICONES.vitesse + '</g></svg>';
+                const vitesseActive = v3d.jouer && v3d.vitesse > 1 ? '×' + v3d.vitesse : '';
+                if (rapideAvant) { if (vitesseActive && v3d.sens > 0) rapideAvant.setAttribute('data-vit', vitesseActive); else rapideAvant.removeAttribute('data-vit'); }
+                if (rapideArriere) { if (vitesseActive && v3d.sens < 0) rapideArriere.setAttribute('data-vit', vitesseActive); else rapideArriere.removeAttribute('data-vit'); }
+                for (const [id, icone] of [['v3dReculer', 'recul10'], ['v3dAvancer', 'avance10']]) {
+                    const b = document.getElementById(id);
+                    if (b && !b.firstChild) b.innerHTML = '<svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICONES[icone] + '</svg>';
+                }
+            }
+            function montrerCommandesLectureV3d() {
+                const el = document.getElementById('v3dCtrl');
+                if (!el) return;
+                if (v3d.minuteurCtrl) clearTimeout(v3d.minuteurCtrl);
+                v3d.minuteurCtrl = 0;
+                majCommandesLectureV3d();
+                el.classList.add('visible');
+                if (v3d.jouer) {
+                    v3d.minuteurCtrl = setTimeout(() => {
+                        v3d.minuteurCtrl = 0;
+                        el.classList.remove('visible');
+                    }, DUREE_COMMANDES_V3D);
+                }
+            }
+            function cacherCommandesLectureV3d() {
+                if (v3d.minuteurCtrl) clearTimeout(v3d.minuteurCtrl);
+                v3d.minuteurCtrl = 0;
+                const el = document.getElementById('v3dCtrl');
+                if (el) el.classList.remove('visible');
+            }
+            function sauterV3d(secondes) {
+                if (!v3d.prete || !v3d.dureeBase) return;
+                const delta = secondes * v3d.vitesse / v3d.dureeBase;
+                v3d.f = Math.max(0, Math.min(1, v3d.f + delta));
+                messageV3d('');
+                placerCamera(0, true);
+                dessinerAvancement();
+                document.getElementById('v3dProgres').value = String(Math.round(v3d.f * 1000));
+                montrerCommandesLectureV3d();
+            }
+            // Double flèche : avance rapide (×2, puis ×4, puis retour normal) ; double flèche arrière : même chose en marche arrière.
+            function vitesseRapideV3d(sens) {
+                if (!v3d.prete) return;
+                if (v3d.sens === sens && v3d.vitesse === 1) v3d.vitesse = 2;
+                else if (v3d.sens === sens && v3d.vitesse === 2) v3d.vitesse = 4;
+                else if (v3d.sens === sens && v3d.vitesse === 4) { v3d.vitesse = 1; sens = 1; }
+                else v3d.vitesse = 2;
+                v3d.sens = sens;
+                if (v3d.sens < 0 && v3d.f <= 0) { v3d.sens = 1; v3d.vitesse = 1; }
+                if (!v3d.jouer) lectureV3d(true);
+                else { majBoutonsV3d(); montrerCommandesLectureV3d(); }
+            }
             function lectureV3d(jouer) {
                 if (!v3d.prete) return;
-                if (jouer && v3d.f >= 1) v3d.f = 0;
+                if (jouer && v3d.f >= 1) { v3d.f = 0; v3d.sens = 1; }
+                if (jouer && v3d.sens < 0 && v3d.f <= 0) v3d.sens = 1;
+                if (jouer && (v3d.f < 0.01 || !v3d.legendeMontree)) montrerLegendeV3d();
                 v3d.jouer = jouer;
                 reglerOmbresLectureV3d(jouer);
                 if (jouer) {
@@ -14156,6 +15137,7 @@ def accueil():
                     v3d.raf = 0;
                 }
                 majBoutonsV3d();
+                montrerCommandesLectureV3d();
             }
 
             // Rectangle aux coins arrondis (dessiné à la main pour fonctionner sur tous les navigateurs).
@@ -14270,6 +15252,74 @@ def accueil():
                 ctx.restore();
             }
 
+            // Photo affichée à l'écran (cadre blanc, en haut au centre) : reprise dans la vidéo tant qu'elle est visible.
+            function dessinerPhotoVideo(ctx, largeur, hauteur) {
+                const cadre = document.getElementById('v3dPhoto');
+                const img = document.getElementById('v3dPhotoImg');
+                if (!cadre || !img || cadre.style.display === 'none' || !img.complete || !img.naturalWidth) return;
+                const echelle = Math.min(largeur, hauteur) / 1080;
+                const bord = 12 * echelle;
+                const r = Math.min((Math.min(largeur * 0.78, 900 * echelle) - 2 * bord) / img.naturalWidth, (hauteur * 0.38 - 2 * bord) / img.naturalHeight);
+                const l = img.naturalWidth * r, h = img.naturalHeight * r;
+                const x = (largeur - l) / 2, y = 230 * echelle;
+                ctx.save();
+                ctx.shadowColor = 'rgba(0,0,0,0.5)';
+                ctx.shadowBlur = 30 * echelle;
+                ctx.shadowOffsetY = 8 * echelle;
+                ctx.fillStyle = 'rgba(255,255,255,0.95)';
+                cheminArrondiVideo(ctx, x - bord, y - bord, l + 2 * bord, h + 2 * bord, 24 * echelle);
+                ctx.fill();
+                ctx.shadowColor = 'transparent';
+                cheminArrondiVideo(ctx, x, y, l, h, 16 * echelle);
+                ctx.clip();
+                ctx.drawImage(img, x, y, l, h);
+                ctx.restore();
+            }
+
+            // Alerte de pente (calque posé sur la carte) : reprise dans la vidéo tant qu'elle est affichée.
+            function dessinerAlerteVideo(ctx, largeur, hauteur) {
+                const calque = document.getElementById('v3dAlertePente');
+                if (!calque || !v3d.alerte || !calque.width || !calque.height) return;
+                ctx.drawImage(calque, 0, 0, largeur, hauteur);
+            }
+
+            // Légende des pentes (visible 10 s) : reprise dans la vidéo, sous le titre, tant qu'elle est affichée à l'écran.
+            function dessinerLegendeVideo(ctx, largeur, hauteur) {
+                const lignes = v3d.lignesLegende;
+                if (!v3d.legendeVisible || !Array.isArray(lignes) || !lignes.length) return;
+                const echelle = Math.min(largeur, hauteur) / 1080;
+                const taille = 24 * echelle, hLigne = 38 * echelle, marge = 58 * echelle, pad = 18 * echelle;
+                ctx.save();
+                ctx.font = '700 ' + taille + 'px Arial, sans-serif';
+                let largeurTexte = 0;
+                lignes.forEach(l => { largeurTexte = Math.max(largeurTexte, ctx.measureText(l.texte).width); });
+                const puce = 44 * echelle;
+                const l = pad * 2 + puce + 12 * echelle + largeurTexte, h = pad * 2 + hLigne * lignes.length - (hLigne - taille);
+                const x = marge, y = 190 * echelle;
+                cheminArrondiVideo(ctx, x, y, l, h, 16 * echelle);
+                ctx.fillStyle = 'rgba(10,25,31,0.72)';
+                ctx.fill();
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'middle';
+                lignes.forEach((ligne, i) => {
+                    const cy = y + pad + taille / 2 + i * hLigne;
+                    if (ligne.degrade) {
+                        const g = ctx.createLinearGradient(x + pad, 0, x + pad + puce, 0);
+                        g.addColorStop(0, '#7dd3fc');
+                        g.addColorStop(0.5, '#2563eb');
+                        g.addColorStop(1, '#17256e');
+                        ctx.fillStyle = g;
+                    } else {
+                        ctx.fillStyle = ligne.couleur;
+                    }
+                    cheminArrondiVideo(ctx, x + pad, cy - 6 * echelle, puce, 12 * echelle, 6 * echelle);
+                    ctx.fill();
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillText(ligne.texte, x + pad + puce + 12 * echelle, cy);
+                });
+                ctx.restore();
+            }
+
             function dessinerCadreVideo() {
                 if (!v3d.videoActif || !v3d.canvasVideo || !v3d.ctxVideo) return;
                 const source = v3d.carte && v3d.carte.getCanvas ? v3d.carte.getCanvas() : null;
@@ -14277,6 +15327,9 @@ def accueil():
                     try {
                         v3d.ctxVideo.drawImage(source, 0, 0, v3d.canvasVideo.width, v3d.canvasVideo.height);
                         dessinerHabillageVideo(v3d.ctxVideo, v3d.canvasVideo.width, v3d.canvasVideo.height);
+                        dessinerLegendeVideo(v3d.ctxVideo, v3d.canvasVideo.width, v3d.canvasVideo.height);
+                        dessinerAlerteVideo(v3d.ctxVideo, v3d.canvasVideo.width, v3d.canvasVideo.height);
+                        dessinerPhotoVideo(v3d.ctxVideo, v3d.canvasVideo.width, v3d.canvasVideo.height);
                     } catch (e) {
                         console.warn('Image vidéo momentanément indisponible', e);
                     }
@@ -14426,8 +15479,13 @@ def accueil():
                         .filter(k => v3d.surfaces.includes(k))
                         .map(k => ({ couleur: TYPES_CHEMIN[k].couleur, texte: TYPES_CHEMIN[k].nom }));
                 } else if (v3d.pentes.length) {
-                    lignes = LEGENDE_PENTES;
+                    // Légende des pentes du survol : juste « < x % » (et « > x % » pour la dernière classe), sans ligne descente.
+                    lignes = COULEURS_PENTE.map((c, i) => ({
+                        couleur: c.couleur,
+                        texte: c.max >= 1000 ? '> ' + COULEURS_PENTE[i - 1].max + ' %' : '< ' + c.max + ' %'
+                    }));
                 }
+                v3d.lignesLegende = lignes;
                 el.style.display = lignes.length ? 'flex' : 'none';
                 lignes.forEach(l => {
                     const sp = document.createElement('span');
@@ -14514,6 +15572,10 @@ def accueil():
             function fermerV3d() {
                 if (v3d.enregistreur) arreterEnregistrement(false);
                 v3d.jouer = false;
+                v3d.zoomSommet = null;
+                arreterAlertePenteV3d();
+                cacherLegendeV3d();
+                cacherCommandesLectureV3d();
                 if (v3d.raf) {
                     cancelAnimationFrame(v3d.raf);
                     v3d.raf = 0;
@@ -14540,6 +15602,7 @@ def accueil():
                 preparerParcours(sortie.trace);
                 v3d.f = 0;
                 v3d.vitesse = 1;
+                v3d.sens = 1;
                 v3d.fond = 'sat';
                 v3d.compteImages = 0;
                 v3d.titre = (sortie.debut || '').slice(0, 10);
@@ -14591,6 +15654,7 @@ def accueil():
                             : 'Appuie sur Lecture pour lancer le survol.');
                         majBoutonsV3d();
                         dessinerAvancement();
+                        montrerCommandesLectureV3d();
 
                         // Les repères (pentes, Vmax et lieux) se préparent sans bloquer le bouton Lecture.
                         poserReperesV3d().catch(e => console.warn('Préparation des repères 3D :', e));
@@ -14612,7 +15676,11 @@ def accueil():
                     v3d.commandes = !v3d.commandes;
                     majBoutonsV3d();
                 });
-                bouton('v3dLectureHaut', () => lectureV3d(!v3d.jouer));
+                bouton('v3dCentre', () => lectureV3d(!v3d.jouer));
+                bouton('v3dReculer', () => sauterV3d(-SAUT_V3D));
+                bouton('v3dAvancer', () => sauterV3d(SAUT_V3D));
+                bouton('v3dRapideArriere', () => vitesseRapideV3d(-1));
+                bouton('v3dRapideAvant', () => vitesseRapideV3d(1));
                 bouton('v3dReperes', () => { v3d.repereVisibles = !v3d.repereVisibles; majVisibiliteReperesV3d(); majBoutonsV3d(); });
                 bouton('v3dRelancerLieux', async () => {
                     const relancer = document.getElementById('v3dRelancerLieux');
@@ -14647,8 +15715,75 @@ def accueil():
                         relancer.disabled = false;
                     }
                 });
+                // Diagnostic des noms (lecture seule) : liste les lieux de la bibliothèque proches du parcours.
+                const sansAccentV3d = (texte) => Array.from(String(texte || '').toLowerCase().normalize('NFD'))
+                    .filter(c => c.charCodeAt(0) < 768 || c.charCodeAt(0) > 879).join('');
+                function dessinerDiagnosticV3d() {
+                    const liste = document.getElementById('v3dDiagListe');
+                    const resume = document.getElementById('v3dDiagResume');
+                    const donnees = v3d.diagnostic;
+                    if (!liste || !resume || !donnees) return;
+                    const etats = {
+                        affiche: 'Affiché sur le survol',
+                        limite: 'Non affiché : au-delà de la limite de ' + (donnees.limite || 60) + ' noms',
+                        doublon: 'Non affiché : doublon (même nom à moins de 600 m)',
+                        trop_loin: 'Non affiché : trop loin du tracé pour ce type',
+                        non_affiche_genre: 'Non affiché : lieu-dit ou autre type'
+                    };
+                    const tous = Array.isArray(donnees.lieux) ? donnees.lieux : [];
+                    const nbAffiches = tous.filter(l => l.etat === 'affiche').length;
+                    const km = (Number(donnees.longueur_m || 0) / 1000).toFixed(1).replace('.', ',');
+                    const pas = donnees.points_trace > 1 ? Math.round(Number(donnees.longueur_m || 0) / (donnees.points_trace - 1)) : 0;
+                    resume.textContent = 'Tracé : ' + donnees.points_trace + ' points pour ' + km + ' km (un point tous les ' + pas + ' m environ). '
+                        + tous.length + ' lieux à moins de 800 m, dont ' + nbAffiches + ' affichés.';
+                    const filtre = sansAccentV3d(document.getElementById('v3dDiagFiltre').value.trim());
+                    const visibles = tous.filter(l => !filtre || sansAccentV3d(l.nom).indexOf(filtre) !== -1);
+                    liste.textContent = '';
+                    if (!visibles.length) {
+                        liste.textContent = filtre ? 'Aucun lieu de ce nom à moins de 800 m du tracé dans la bibliothèque.' : 'Aucun lieu trouvé.';
+                        return;
+                    }
+                    visibles.forEach(l => {
+                        const ligne = document.createElement('div');
+                        ligne.className = 'v3d-diag-ligne' + (l.etat === 'affiche' ? ' oui' : '');
+                        const titre = document.createElement('b');
+                        titre.textContent = l.nom;
+                        const detail1 = document.createElement('div');
+                        detail1.textContent = (l.genre || 'type inconnu') + ' (rang ' + l.rang + ') · source : ' + (l.source || 'inconnue')
+                            + (l.alt != null && l.alt !== '' ? ' · ' + Math.round(Number(l.alt)) + ' m' : '');
+                        const detail2 = document.createElement('div');
+                        detail2.textContent = 'À ' + Math.round(l.ec) + ' m du tracé · position ' + l.lat + ' ; ' + l.lon;
+                        const detail3 = document.createElement('div');
+                        detail3.textContent = etats[l.etat] || l.etat;
+                        ligne.appendChild(titre);
+                        ligne.appendChild(detail1);
+                        ligne.appendChild(detail2);
+                        ligne.appendChild(detail3);
+                        liste.appendChild(ligne);
+                    });
+                }
+                bouton('v3dDiagnostic', async () => {
+                    const panneau = document.getElementById('v3dDiag');
+                    const liste = document.getElementById('v3dDiagListe');
+                    if (!v3d.sortieId || !panneau || !liste) return;
+                    panneau.classList.add('ouvert');
+                    document.getElementById('v3dDiagResume').textContent = '';
+                    liste.textContent = 'Chargement du diagnostic…';
+                    try {
+                        const reponse = await fetch('/api/sorties/' + encodeURIComponent(v3d.sortieId) + '/lieux/diagnostic?velo_id=' + encodeURIComponent(veloActifId || 1), { headers: getHeaders() });
+                        if (!reponse.ok) throw new Error('Diagnostic indisponible pour le moment.');
+                        v3d.diagnostic = await reponse.json();
+                        dessinerDiagnosticV3d();
+                    } catch (e) {
+                        liste.textContent = e.message || 'Diagnostic indisponible pour le moment.';
+                    }
+                });
+                bouton('v3dDiagFermer', () => document.getElementById('v3dDiag').classList.remove('ouvert'));
+                bouton('v3dFermer', () => document.getElementById('v3dDiag').classList.remove('ouvert'));
+                document.getElementById('v3dDiagFiltre').addEventListener('input', dessinerDiagnosticV3d);
                 bouton('v3dLecture', () => lectureV3d(!v3d.jouer));
                 bouton('v3dVitesse', () => {
+                    v3d.sens = 1;
                     v3d.vitesse = VITESSES[(VITESSES.indexOf(v3d.vitesse) + 1) % VITESSES.length];
                     majBoutonsV3d();
                 });
@@ -20003,8 +21138,21 @@ def ecart_parcours_m(coord, points):
 
 
 def rayon_affichage_m(genre):
-    """Rayon autour du parcours : 500 m pour villes, villages, cols et sommets, 200 m pour le reste."""
-    return 500 if str(genre or "").casefold() in ("ville", "village", "col", "sommet") else 200
+    """Rayon autour du parcours : 500 m pour villes, villages, cols et sommets, 300 m pour les hameaux, 200 m pour le reste."""
+    g = str(genre or "").casefold()
+    if g in ("ville", "village", "col", "sommet"):
+        return 500
+    return 300 if g == "hameau" else 200
+
+
+def limite_noms_parcours(longueur_m):
+    """Nombre maximal de noms gardés pour un parcours : 60 jusqu'à 25 km,
+    puis 2,4 noms par kilomètre pour que les longues sorties ne perdent pas leurs hameaux."""
+    try:
+        km = float(longueur_m) / 1000.0
+    except (TypeError, ValueError):
+        km = 0.0
+    return max(60, int(math.ceil(km * 2.4)))
 
 
 def interroger_overpass(requete, erreurs=None):
@@ -20496,10 +21644,10 @@ def preparer_lieux_sortie(sortie_id):
                 requete_complete = (
                     '[out:json][timeout:12];('
                     'nwr["place"~"^(city|town|village)$"]["name"](around:500,LISTE);'
-                    'nwr["place"~"^(hamlet|isolated_dwelling)$"]["name"](around:200,LISTE);'
-                    'nwr["natural"~"^(peak|hill)$"]["name"](around:200,LISTE);'
-                    'nwr["mountain_pass"="yes"]["name"](around:200,LISTE);'
-                    'nwr["natural"="saddle"]["name"](around:200,LISTE);'
+                    'nwr["place"~"^(hamlet|isolated_dwelling)$"]["name"](around:300,LISTE);'
+                    'nwr["natural"~"^(peak|hill)$"]["name"](around:500,LISTE);'
+                    'nwr["mountain_pass"="yes"]["name"](around:500,LISTE);'
+                    'nwr["natural"="saddle"]["name"](around:500,LISTE);'
                     ');out center tags;'
                 ).replace("LISTE", liste_points)
                 diagnostic["osm_troncons"] += 1
@@ -20949,10 +22097,103 @@ def obtenir_lieux_bibliotheque(sortie_id: int, velo_id: int = 1, x_code_acces: O
                             and distance(tuple(x["coord"]), coord) < 600), None)
             if doublon is None:
                 retenus.append(entree)
-            elif entree["rang"] < retenus[doublon]["rang"]:
+            elif (entree["rang"], entree["ec"]) < (retenus[doublon]["rang"], retenus[doublon]["ec"]):
+                # Même nom : on garde le mieux classé, et à rang égal le plus proche du parcours.
                 retenus[doublon] = entree
         retenus.sort(key=lambda x: (x["rang"], x["ec"]))
-        return {"statut": "bibliotheque", "lieux": retenus[:60]}
+        return {"statut": "bibliotheque", "lieux": retenus[:limite_noms_parcours(cumul[-1])]}
+    finally:
+        conn.close()
+
+
+@app.get("/api/sorties/{sortie_id}/lieux/diagnostic")
+def diagnostic_lieux_sortie(sortie_id: int, velo_id: int = 1, x_code_acces: Optional[str] = Header(default=None)):
+    """Lecture seule : tous les lieux de la bibliothèque à moins de 800 m du parcours,
+    avec leur source, leurs coordonnées et la raison pour laquelle ils sont affichés ou non.
+    Ne modifie rien."""
+    controle_acces(x_code_acces, velo_id)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT trace FROM sorties WHERE id = ? AND velo_id = ?", (sortie_id, velo_id))
+        ligne = cursor.fetchone()
+        if ligne is None:
+            raise HTTPException(status_code=404, detail="Sortie introuvable.")
+        try:
+            trace = json.loads(ligne[0] or "[]")
+        except (TypeError, ValueError):
+            trace = []
+        points = []
+        for p in trace:
+            try:
+                lat, lon = float(p[0]), float(p[1])
+                if -90 <= lat <= 90 and -180 <= lon <= 180:
+                    points.append((lon, lat))
+            except (TypeError, ValueError, IndexError):
+                continue
+        if len(points) < 2:
+            return {"points_trace": len(points), "longueur_m": 0, "limite": 60, "lieux": []}
+
+        def distance(a, b):
+            x = (a[0] - b[0]) * 111320 * math.cos(math.radians((a[1] + b[1]) / 2))
+            y = (a[1] - b[1]) * 110540
+            return math.hypot(x, y)
+
+        longueur = sum(distance(points[i - 1], points[i]) for i in range(1, len(points)))
+        refs = points[::max(1, len(points) // 1000)]
+        sud, nord = min(p[1] for p in refs), max(p[1] for p in refs)
+        ouest, est = min(p[0] for p in refs), max(p[0] for p in refs)
+        marge_lat = 800 / 110540 + 0.0002
+        marge_lon = marge_lat / max(0.2, math.cos(math.radians((sud + nord) / 2)))
+        cursor.execute(
+            """SELECT nom, genre, rang, lon, lat, altitude, source
+               FROM bibliotheque_lieux_geo
+               WHERE lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?""",
+            (sud - marge_lat, nord + marge_lat, ouest - marge_lon, est + marge_lon)
+        )
+        genres = ("ville", "village", "hameau", "col", "sommet")
+        entrees = []
+        for nom, genre, rang, lon, lat, altitude, source in cursor.fetchall():
+            nom = nom_geographique_texte(nom)
+            if not nom:
+                continue
+            genre = str(genre or "").casefold()
+            coord = (float(lon), float(lat))
+            ec = ecart_parcours_m(coord, points)
+            if ec > 800:
+                continue
+            etat = "affiche"
+            if genre not in genres:
+                etat = "non_affiche_genre"
+            elif ec > rayon_affichage_m(genre):
+                etat = "trop_loin"
+            entrees.append({
+                "nom": str(nom), "genre": genre, "rang": int(rang or 9), "source": str(source or ""),
+                "ec": round(ec, 1), "lon": round(coord[0], 6), "lat": round(coord[1], 6),
+                "alt": altitude, "etat": etat
+            })
+        # Même règle que l'affichage : doublons de même nom à moins de 600 m (on garde le mieux classé),
+        # puis les 60 premiers par rang et par distance au parcours.
+        gardes = []
+        for e in entrees:
+            if e["etat"] != "affiche":
+                continue
+            doublon = next((i for i, x in enumerate(gardes)
+                            if x["nom"].casefold() == e["nom"].casefold()
+                            and distance((x["lon"], x["lat"]), (e["lon"], e["lat"])) < 600), None)
+            if doublon is None:
+                gardes.append(e)
+            elif (e["rang"], e["ec"]) < (gardes[doublon]["rang"], gardes[doublon]["ec"]):
+                gardes[doublon]["etat"] = "doublon"
+                gardes[doublon] = e
+            else:
+                e["etat"] = "doublon"
+        gardes.sort(key=lambda x: (x["rang"], x["ec"]))
+        limite = limite_noms_parcours(longueur)
+        for e in gardes[limite:]:
+            e["etat"] = "limite"
+        entrees.sort(key=lambda x: (x["nom"].casefold(), x["ec"]))
+        return {"points_trace": len(points), "longueur_m": round(longueur), "limite": limite, "lieux": entrees[:500]}
     finally:
         conn.close()
 
