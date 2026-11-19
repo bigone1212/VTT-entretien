@@ -13657,9 +13657,14 @@ def accueil():
                 }
                 return mini;
             }
-            // Villes et villages : 500 m autour du parcours ; tout le reste : 200 m.
+            // Même rayons que le serveur : hameaux 300 m, cols et sommets 500 m, tout le reste 200 m.
+            // Villes et villages : 900 m au plus, car le serveur n'envoie un centre de village au-delà de 500 m
+            // que lorsqu'il remplace la position IGN du même village (qui est, elle, à moins de 500 m).
             function rayonAffichageV3d(genre) {
-                return ['ville', 'village', 'col', 'sommet'].includes(String(genre || '').toLowerCase()) ? 500 : 200;
+                const g = String(genre || '').toLowerCase();
+                if (g === 'ville' || g === 'village') return 900;
+                if (g === 'col' || g === 'sommet') return 500;
+                return g === 'hameau' ? 300 : 200;
             }
             function elementRepereAerienV3d(libelle, taille = 18) {
                 const el = document.createElement('div');
