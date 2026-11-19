@@ -3,6 +3,7 @@ Lecture d'un fichier GPX (export Komoot) : distance, dénivelé, durée, tracé.
 Utilise uniquement la bibliothèque standard de Python.
 """
 
+import heapq
 import json
 import math
 import re
@@ -13,7 +14,8 @@ TAILLE_MAX = 3_000_000       # caractères
 VITESSE_MAX_KMH = 80         # au-delà : saut GPS, on ignore le point
 SEUIL_DENIVELE_M = 3         # on ignore les micro-variations d'altitude
 PAUSE_S = 60                 # intervalle plus long : pause, pas du roulage
-POINTS_TRACE = 400           # nombre de points gardés pour dessiner le parcours
+POINTS_TRACE = 1500          # nombre maximal de points gardés pour dessiner le parcours
+POINTS_REGULIERS = 300       # dont une part régulièrement espacée (altitude, temps, pente)
 
 
 class GpxError(ValueError):
@@ -142,13 +144,79 @@ def _pente_moyenne_en_montee(points):
     return sum(montees) / len(montees) if montees else 0.0
 
 
+def _indices_virages(points, nombre):
+    """Indices des `nombre` points qui dessinent le mieux la forme du parcours.
+
+    On garde d'abord le départ et l'arrivée, puis on ajoute à chaque fois le point
+    le plus éloigné de la ligne droite actuelle (méthode de Douglas-Peucker).
+    Les virages sont donc conservés et les lignes droites sont allégées.
+    """
+    n = len(points)
+
+    if n <= nombre:
+        return list(range(n))
+
+    lat0 = math.radians(sum(p[0] for p in points) / n)
+    kx = 111320.0 * math.cos(lat0)
+    ky = 110540.0
+    xy = [(p[1] * kx, p[0] * ky) for p in points]
+
+    def plus_loin(debut, fin):
+        """Point le plus éloigné de la droite debut-fin : (écart en mètres, indice)."""
+        ax, ay = xy[debut]
+        bx, by = xy[fin]
+        dx, dy = bx - ax, by - ay
+        l2 = dx * dx + dy * dy
+        meilleur, indice = -1.0, debut
+
+        for i in range(debut + 1, fin):
+            px, py = xy[i]
+
+            if l2 > 0:
+                t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / l2))
+                ex, ey = px - (ax + t * dx), py - (ay + t * dy)
+            else:
+                ex, ey = px - ax, py - ay
+
+            ecart = ex * ex + ey * ey
+
+            if ecart > meilleur:
+                meilleur, indice = ecart, i
+
+        return meilleur, indice
+
+    gardes = {0, n - 1}
+    tas = []
+
+    if n > 2:
+        ecart, indice = plus_loin(0, n - 1)
+        heapq.heappush(tas, (-ecart, 0, n - 1, indice))
+
+    while tas and len(gardes) < nombre:
+        _, debut, fin, indice = heapq.heappop(tas)
+        gardes.add(indice)
+
+        for d, f in ((debut, indice), (indice, fin)):
+            if f - d > 1:
+                ecart, i = plus_loin(d, f)
+                heapq.heappush(tas, (-ecart, d, f, i))
+
+    return sorted(gardes)
+
+
 def _tracer(points):
     """Version allégée du parcours, pour le dessiner à l'écran."""
-    if len(points) <= POINTS_TRACE:
+    n = len(points)
+
+    if n <= POINTS_TRACE:
         choisis = points
     else:
-        pas = (len(points) - 1) / (POINTS_TRACE - 1)
-        choisis = [points[round(i * pas)] for i in range(POINTS_TRACE)]
+        # Une partie des points suit la forme du parcours (virages), l'autre est
+        # régulièrement espacée pour garder l'altitude et le temps bien répartis.
+        indices = set(_indices_virages(points, POINTS_TRACE - POINTS_REGULIERS))
+        pas = (n - 1) / (POINTS_REGULIERS - 1)
+        indices.update(round(i * pas) for i in range(POINTS_REGULIERS))
+        choisis = [points[i] for i in sorted(indices)]
 
     # 3e valeur : secondes depuis le départ (photos) ; 4e : altitude en mètres (pente).
     depart = points[0][3]
