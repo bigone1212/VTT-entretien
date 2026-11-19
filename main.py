@@ -11300,7 +11300,18 @@ def accueil():
             }
 
             // Calcule distances cumulées, altitudes lissées et pente (en %) de chaque tronçon.
-            function analyserProfil(trace) {
+            // Distance exacte (calculée à l'import sur tous les points du GPX) : la trace gardée en
+            // coupe un peu les virages, on remet donc les distances cumulées à l'échelle.
+            function echelleDistanceExacte(cum, distanceKm) {
+                const exacte = Number(distanceKm) * 1000;
+                const mesuree = cum[cum.length - 1];
+                if (!(exacte > 0) || !(mesuree > 0)) return;
+                const rapport = exacte / mesuree;
+                if (rapport < 0.99 || rapport > 1.2) return;
+                for (let i = 0; i < cum.length; i++) cum[i] *= rapport;
+            }
+
+            function analyserProfil(trace, distanceKm) {
                 if (!Array.isArray(trace) || trace.length < 3) return null;
                 if (trace.some(p => !Array.isArray(p) || typeof p[3] !== 'number')) return null;
 
@@ -11310,6 +11321,7 @@ def accueil():
                     cum.push(cum[i - 1] + distanceLatLon(trace[i - 1], trace[i]));
                 }
                 if (cum[n - 1] < 100) return null;
+                echelleDistanceExacte(cum, distanceKm);
 
                 const brut = trace.map(p => p[3]);
                 const alt = brut.map((_, i) => {
@@ -11584,7 +11596,7 @@ def accueil():
 
             // Fenêtre plein écran : profil agrandi, on touche le graphique pour lire chaque point.
             function ouvrirProfil(s) {
-                const profil = analyserProfil(s.trace);
+                const profil = analyserProfil(s.trace, s.distance_km);
                 if (!profil) return;
                 profilAffiche = s;
 
@@ -11707,7 +11719,7 @@ def accueil():
 
             // Profil d'une sortie dans la liste : repères en km, clic = fenêtre agrandie.
             function dessinerProfil(s) {
-                const profil = analyserProfil(s.trace);
+                const profil = analyserProfil(s.trace, s.distance_km);
                 if (!profil) return null;
 
                 const g = construireProfil(
@@ -12049,7 +12061,7 @@ def accueil():
                 // Parcours : coloré selon la pente, comme sur la carte de la fiche
                 const complet = (Array.isArray(s.trace) ? s.trace : []);
                 let profilPartage = null;
-                try { profilPartage = analyserProfil(complet); } catch (e) { profilPartage = null; }
+                try { profilPartage = analyserProfil(complet, s.distance_km); } catch (e) { profilPartage = null; }
                 const valides = brut;
                 const pasP = Math.max(1, Math.ceil(valides.length / 1500));
                 const idx = [];
@@ -13085,7 +13097,7 @@ def accueil():
                     boite.textContent = '';
 
                     const trace = Array.isArray(s.trace) ? s.trace : [];
-                    const profil = analyserProfil(trace);
+                    const profil = analyserProfil(trace, s.distance_km);
                     const debut = new Date(s.debut);
                     const dateTexte = isNaN(debut.getTime())
                         ? ''
@@ -13428,11 +13440,11 @@ def accueil():
                 ];
             }
 
-            function preparerParcours(trace) {
+            function preparerParcours(trace, distanceKm) {
                 // La trace est enregistrée en [latitude, longitude] ; la carte veut [longitude, latitude].
                 const valides = trace.filter(p => Array.isArray(p) && p.length >= 2);
                 const pts = valides.map(p => [p[1], p[0]]);
-                const profil = valides.length === trace.length ? analyserProfil(trace) : null;
+                const profil = valides.length === trace.length ? analyserProfil(trace, distanceKm) : null;
                 const altitudes = profil
                     ? profil.alt
                     : valides.map(p => (typeof p[3] === 'number' && isFinite(p[3]) ? p[3] : null));
@@ -13453,6 +13465,7 @@ def accueil():
                 for (let i = 1; i < pts.length; i++) {
                     v3d.cum.push(v3d.cum[i - 1] + distanceM(pts[i - 1], pts[i]));
                 }
+                echelleDistanceExacte(v3d.cum, distanceKm);
                 v3d.total = v3d.cum[v3d.cum.length - 1];
                 v3d.vitesses = pts.map((_, i) => {
                     if (i === 0 || v3d.tps[i] === null || v3d.tps[i - 1] === null) return null;
@@ -15606,7 +15619,7 @@ def accueil():
                 }
 
                 fermerV3d();
-                preparerParcours(sortie.trace);
+                preparerParcours(sortie.trace, sortie.distance_km);
                 v3d.f = 0;
                 v3d.vitesse = 1;
                 v3d.sens = 1;
