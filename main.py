@@ -11365,42 +11365,98 @@ def accueil():
                 return 'u';
             }
 
-            // Interroge OpenStreetMap (Overpass) et attribue un type de chemin à chaque point du tracé.
-            async function chercherTypesChemin(trace) {
-                const lats = trace.map(p => p[0]);
-                const lons = trace.map(p => p[1]);
-                const marge = 0.0004;
-                const sud = Math.min(...lats) - marge;
-                const nord = Math.max(...lats) + marge;
-                const ouest = Math.min(...lons) - marge;
-                const est = Math.max(...lons) + marge;
-                if ((nord - sud) > 0.5 || (est - ouest) > 0.7) {
-                    throw new Error('trop grand');
+            // Découpe la trace en tronçons consécutifs, chacun tenant dans une zone de taille raisonnable
+            // (environ 22 km sur 24 km), pour interroger OpenStreetMap morceau par morceau.
+            function decouperTrace(trace) {
+                const MAX_LAT = 0.2;
+                const MAX_LON = 0.3;
+                const troncons = [];
+                let debut = 0;
+                let minLat = Infinity;
+                let maxLat = -Infinity;
+                let minLon = Infinity;
+                let maxLon = -Infinity;
+
+                for (let i = 0; i < trace.length; i++) {
+                    const la = trace[i][0];
+                    const lo = trace[i][1];
+                    const nMinLat = Math.min(minLat, la);
+                    const nMaxLat = Math.max(maxLat, la);
+                    const nMinLon = Math.min(minLon, lo);
+                    const nMaxLon = Math.max(maxLon, lo);
+
+                    if (i > debut && (nMaxLat - nMinLat > MAX_LAT || nMaxLon - nMinLon > MAX_LON)) {
+                        troncons.push(trace.slice(debut, i));
+                        debut = i;
+                        minLat = la;
+                        maxLat = la;
+                        minLon = lo;
+                        maxLon = lo;
+                    } else {
+                        minLat = nMinLat;
+                        maxLat = nMaxLat;
+                        minLon = nMinLon;
+                        maxLon = nMaxLon;
+                    }
                 }
 
-                const requete = `[out:json][timeout:40];way["highway"](${sud},${ouest},${nord},${est});out tags geom qt;`;
+                troncons.push(trace.slice(debut));
+                return troncons;
+            }
+
+            // Pose la question à OpenStreetMap (Overpass) : deux serveurs, deux tentatives.
+            async function interrogerOverpass(requete) {
                 const serveurs = [
                     'https://overpass-api.de/api/interpreter',
                     'https://overpass.kumi.systems/api/interpreter'
                 ];
-                let donnees = null;
 
-                for (const url of serveurs) {
-                    try {
-                        const res = await fetch(url, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                            body: 'data=' + encodeURIComponent(requete)
-                        });
-                        if (res.ok) {
-                            donnees = await res.json();
-                            break;
+                for (let essai = 0; essai < 2; essai++) {
+                    for (const url of serveurs) {
+                        try {
+                            const res = await fetch(url, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                                body: 'data=' + encodeURIComponent(requete)
+                            });
+                            if (res.ok) {
+                                const donnees = await res.json();
+                                if (donnees && Array.isArray(donnees.elements)) return donnees;
+                            }
+                        } catch (e) {
+                            console.error(e);
                         }
-                    } catch (e) {
-                        console.error(e);
                     }
+                    if (essai === 0) await new Promise(resolve => setTimeout(resolve, 4000));
                 }
-                if (!donnees || !Array.isArray(donnees.elements)) throw new Error('overpass');
+
+                return null;
+            }
+
+            // Type de chemin de chaque point d'un tronçon. Les routes sont rangées dans des cases de 60 m :
+            // chaque point ne se compare qu'aux routes de sa case (même résultat qu'une comparaison avec toutes).
+            async function typesDuTroncon(trace) {
+                const lats = trace.map(p => p[0]);
+                const lons = trace.map(p => p[1]);
+                const marge = 0.0004;
+                let sud = Infinity;
+                let nord = -Infinity;
+                let ouest = Infinity;
+                let est = -Infinity;
+                for (let i = 0; i < trace.length; i++) {
+                    if (lats[i] < sud) sud = lats[i];
+                    if (lats[i] > nord) nord = lats[i];
+                    if (lons[i] < ouest) ouest = lons[i];
+                    if (lons[i] > est) est = lons[i];
+                }
+                sud -= marge;
+                nord += marge;
+                ouest -= marge;
+                est += marge;
+
+                const requete = `[out:json][timeout:40];way["highway"](${sud},${ouest},${nord},${est});out tags geom qt;`;
+                const donnees = await interrogerOverpass(requete);
+                if (!donnees) throw new Error('overpass');
 
                 const lat0 = (sud + nord) / 2;
                 const kx = Math.cos(lat0 * Math.PI / 180) * 111320;
@@ -11412,6 +11468,34 @@ def accueil():
                         pts: e.geometry.map(g => [g.lon * kx, g.lat * ky])
                     }));
 
+                const TOLERANCE = 30;
+                const CASE = 60;
+                const cases = new Map();
+                const cle = (cx, cy) => cx * 1000003 + cy;
+
+                for (const v of voies) {
+                    for (let i = 0; i < v.pts.length - 1; i++) {
+                        const a = v.pts[i];
+                        const b = v.pts[i + 1];
+                        const segment = { a: a, b: b, code: v.code };
+                        const x0 = Math.floor((Math.min(a[0], b[0]) - TOLERANCE) / CASE);
+                        const x1 = Math.floor((Math.max(a[0], b[0]) + TOLERANCE) / CASE);
+                        const y0 = Math.floor((Math.min(a[1], b[1]) - TOLERANCE) / CASE);
+                        const y1 = Math.floor((Math.max(a[1], b[1]) + TOLERANCE) / CASE);
+                        for (let cx = x0; cx <= x1; cx++) {
+                            for (let cy = y0; cy <= y1; cy++) {
+                                const k = cle(cx, cy);
+                                let liste = cases.get(k);
+                                if (!liste) {
+                                    liste = [];
+                                    cases.set(k, liste);
+                                }
+                                liste.push(segment);
+                            }
+                        }
+                    }
+                }
+
                 const distSegment = (px, py, a, b) => {
                     const dx = b[0] - a[0];
                     const dy = b[1] - a[1];
@@ -11422,22 +11506,36 @@ def accueil():
                 };
 
                 let codes = '';
-                for (const p of trace) {
-                    const px = p[1] * kx;
-                    const py = p[0] * ky;
+                for (let k = 0; k < trace.length; k++) {
+                    const px = trace[k][1] * kx;
+                    const py = trace[k][0] * ky;
                     let meilleur = 'u';
-                    let ecart = 30;
-                    for (const v of voies) {
-                        for (let i = 0; i < v.pts.length - 1; i++) {
-                            const a = v.pts[i];
-                            const b = v.pts[i + 1];
-                            if (px < Math.min(a[0], b[0]) - 30 || px > Math.max(a[0], b[0]) + 30 ||
-                                py < Math.min(a[1], b[1]) - 30 || py > Math.max(a[1], b[1]) + 30) continue;
-                            const d = distSegment(px, py, a, b);
-                            if (d < ecart) { ecart = d; meilleur = v.code; }
+                    let ecart = TOLERANCE;
+                    const liste = cases.get(cle(Math.floor(px / CASE), Math.floor(py / CASE)));
+                    if (liste) {
+                        for (const s of liste) {
+                            const d = distSegment(px, py, s.a, s.b);
+                            if (d < ecart) { ecart = d; meilleur = s.code; }
                         }
                     }
                     codes += meilleur;
+                    // Laisse respirer l'écran pendant un long calcul.
+                    if (k % 300 === 299) await new Promise(resolve => setTimeout(resolve, 0));
+                }
+                return codes;
+            }
+
+            // Attribue un type de chemin à chaque point du tracé, zone par zone pour les longs parcours.
+            // `progres(numero, total)` est appelé au début de chaque zone (facultatif).
+            async function chercherTypesChemin(trace, progres) {
+                const troncons = decouperTrace(trace);
+                if (troncons.length > 12) throw new Error('trop grand');
+
+                let codes = '';
+                for (let t = 0; t < troncons.length; t++) {
+                    if (progres) progres(t + 1, troncons.length);
+                    if (t > 0) await new Promise(resolve => setTimeout(resolve, 1000));
+                    codes += await typesDuTroncon(troncons[t]);
                 }
                 return codes;
             }
@@ -11779,6 +11877,7 @@ def accueil():
 
             // ---------- Analyse automatique du type de chemin ----------
             const etatAnalyse = {};
+            const avancementAnalyse = {};
             const dejaEssayees = new Set();
             let analyseEnCours = false;
             const MAX_ANALYSES_AUTO = 30;
@@ -11796,7 +11895,7 @@ def accueil():
                     const t = document.createElement('div');
                     t.className = 'profil-legende';
                     t.textContent = etat === 'cours'
-                        ? "Analyse du terrain en cours (route, chemin, sentier)..."
+                        ? "Analyse du terrain en cours (route, chemin, sentier)..." + (avancementAnalyse[sortie.id] || '')
                         : "Analyse du terrain en attente...";
                     zone.appendChild(t);
                     return;
@@ -11841,7 +11940,11 @@ def accueil():
                     dejaEssayees.add(sortie.id);
                     majEtatAnalyse(sortie, 'cours');
                     try {
-                        const codes = await chercherTypesChemin(sortie.trace);
+                        avancementAnalyse[sortie.id] = '';
+                        const codes = await chercherTypesChemin(sortie.trace, (numero, total) => {
+                            avancementAnalyse[sortie.id] = total > 1 ? ' zone ' + numero + '/' + total : '';
+                            majEtatAnalyse(sortie, 'cours');
+                        });
                         const res = await fetch(`/api/sorties/${sortie.id}/surfaces`, {
                             method: 'POST',
                             headers: getHeaders(),
@@ -22718,7 +22821,7 @@ def renommer_sortie(
 class SurfacesRequest(BaseModel):
     # Une lettre par point du tracé : r route, v piste cyclable,
     # c chemin/piste, s sentier, u inconnu.
-    codes: str = Field(min_length=2, max_length=1000)
+    codes: str = Field(min_length=2, max_length=2000)
 
 
 @app.post("/api/sorties/{sortie_id}/surfaces")
