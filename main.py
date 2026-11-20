@@ -16997,6 +16997,24 @@ def accueil():
                     return;
                 }
 
+                if (valeur === 'texte') {
+                    let texte = '';
+
+                    try {
+                        const cacheTexte = await caches.open('maillons-partage');
+                        const reponseTexte = await cacheTexte.match('/partage-texte');
+                        if (reponseTexte) {
+                            texte = decodeURIComponent(await reponseTexte.text());
+                            await cacheTexte.delete('/partage-texte');
+                        }
+                    } catch (e) {
+                        texte = '';
+                    }
+
+                    afficherLignes(message, ["Maillons a reçu du texte ou un lien, pas un fichier" + (texte ? " : « " + texte + " »" : "") + ". " + aide]);
+                    return;
+                }
+
                 let cache = null;
                 let requetes = [];
 
@@ -18385,6 +18403,9 @@ MANIFESTE_APPLI = {
         "method": "POST",
         "enctype": "multipart/form-data",
         "params": {
+            "title": "titre",
+            "text": "texte",
+            "url": "adresse",
             "files": [
                 {
                     "name": "gpx",
@@ -18397,6 +18418,7 @@ MANIFESTE_APPLI = {
                         ".fit",
                         ".gz",
                         "application/gzip",
+                        "*/*",
                     ],
                 }
             ]
@@ -18431,6 +18453,16 @@ self.addEventListener('fetch', function (event) {
                 await cache.put('/partage-fichier/' + i, new Response(fichiers[i], {
                     headers: { 'X-Nom': encodeURIComponent(fichiers[i].name || 'sortie.gpx') }
                 }));
+            }
+            if (fichiers.length === 0) {
+                var texte = ['titre', 'texte', 'adresse'].map(function (nom) {
+                    var v = formulaire.get(nom);
+                    return typeof v === 'string' ? v.trim() : '';
+                }).filter(function (v) { return v; }).join(' | ');
+                if (texte) {
+                    await cache.put('/partage-texte', new Response(encodeURIComponent(texte.slice(0, 500))));
+                    return retour('texte');
+                }
             }
             return retour(fichiers.length);
         } catch (e) {
