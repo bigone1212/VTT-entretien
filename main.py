@@ -7804,7 +7804,9 @@ def accueil():
                     const res = await fetch('/api/velos', { headers: getHeaders() });
                     if (res.ok) {
                         noterInscrit();
-                        memoriserSession('');
+                        // Le code d'accès est gardé sur ce téléphone (comme la connexion par e-mail) :
+                        // l'application installée ne le redemande plus à chaque ouverture.
+                        memoriserSession(code);
                         document.getElementById('authScreen').style.display = 'none';
                         await chargerVelos();
                         chargerEtat();
@@ -7827,7 +7829,7 @@ def accueil():
                 }
             });
 
-            // Vérifie si un code est déjà en mémoire (ou une session gardée sur ce téléphone après une connexion par e-mail).
+            // Vérifie si un code est déjà en mémoire (ou une session ou un code d'accès gardés sur ce téléphone).
             if (!sessionStorage.getItem('vtt_code')) {
                 const gardee = sessionMemorisee();
                 if (gardee) sessionStorage.setItem('vtt_code', gardee);
