@@ -159,13 +159,13 @@ def test_liaison_et_synchro_du_kilometrage():
             conn.close()
             return ligne[0], ligne[1]
 
-        # Sans liaison possible (aucun vélo Maillons annoncé « Bosch ») : rien ne bouge
+        # Sans liaison possible (aucun vélo Maillons annoncé « Bosch » ni électrique) : rien ne bouge
         conn = main.db.connect()
         cur = conn.cursor()
         cur.execute("UPDATE velos SET bosch_bike_id = NULL, bosch_odometre_m = NULL")
-        cur.execute("SELECT modele, moteur FROM velos WHERE id = 1")
+        cur.execute("SELECT modele, moteur, type FROM velos WHERE id = 1")
         origine = cur.fetchone()
-        cur.execute("UPDATE velos SET modele = 'Modele neutre', moteur = NULL WHERE id = 1")
+        cur.execute("UPDATE velos SET modele = 'Modele neutre', moteur = NULL, type = 'vtt' WHERE id = 1")
         conn.commit()
         conn.close()
         avant = km()[0]
@@ -173,7 +173,7 @@ def test_liaison_et_synchro_du_kilometrage():
         assert km()[0] == avant
         conn = main.db.connect()
         cur = conn.cursor()
-        cur.execute("UPDATE velos SET modele = ?, moteur = ? WHERE id = 1", (origine[0], origine[1]))
+        cur.execute("UPDATE velos SET modele = ?, moteur = ?, type = ? WHERE id = 1", (origine[0], origine[1], origine[2]))
         conn.commit()
         conn.close()
 
@@ -268,3 +268,41 @@ def test_identifiant_bosch_selon_la_version():
     with TestClient(main.app, base_url="https://maillons-test-2026.onrender.com", follow_redirects=False) as c:
         url = c.post("/api/bosch/connecter", headers=ENTETE).json()["url"]
         assert dict(urllib.parse.parse_qsl(urllib.parse.urlparse(url).query))["client_id"] == ID_TEST
+
+
+def test_lien_direct_avec_le_seul_velo_electrique():
+    with TestClient(main.app, base_url="https://x.onrender.com", follow_redirects=False) as c:
+        BIKE = "0ede75c1-3f16-46a0-9c18-f16afd601b50"
+        conn = main.db.connect()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM bosch_jetons")
+        cur.execute(
+            "INSERT INTO bosch_jetons (personne_id, access_token, refresh_token, expire_le, mis_a_jour_le) VALUES (1, 'A', 'R', 9999999999, 'x')"
+        )
+        cur.execute("SELECT modele, moteur, type FROM velos WHERE id = 1")
+        origine = cur.fetchone()
+        # Le modèle et le moteur ne parlent pas de Bosch, mais c'est le seul vélo électrique
+        cur.execute("UPDATE velos SET bosch_bike_id = NULL, bosch_odometre_m = NULL, modele = 'Stereo ONE44', moteur = NULL, type = 'electrique' WHERE id = 1")
+        conn.commit()
+        conn.close()
+        main.bosch_lire_velos = lambda acces: (None, [{"id": BIKE, "driveUnit": {"odometer": 3096890}}])
+        r = c.post("/api/bosch/synchro", headers=ENTETE).json()
+        assert r["modifies"] == [{"velo_id": 1, "km_total": 3097}]
+
+        # Deux vélos électriques et aucun annoncé « Bosch » : pas de choix à la place de la personne
+        conn = main.db.connect()
+        cur = conn.cursor()
+        cur.execute("UPDATE velos SET bosch_bike_id = NULL, bosch_odometre_m = NULL WHERE id = 1")
+        cur.execute(
+            "INSERT INTO velos (nom, type, personne_id, actif) VALUES ('Autre électrique', 'gravel_electrique', 1, 1)"
+        )
+        conn.commit()
+        conn.close()
+        assert c.post("/api/bosch/synchro", headers=ENTETE).json() == {"liees": 0, "modifies": []}
+
+        conn = main.db.connect()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM velos WHERE nom = 'Autre électrique'")
+        cur.execute("UPDATE velos SET modele = ?, moteur = ?, type = ? WHERE id = 1", origine)
+        conn.commit()
+        conn.close()
