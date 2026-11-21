@@ -787,6 +787,9 @@ def init_db():
     ajouter_colonne(cursor, "velos", "suspension_infos", "TEXT")
     # Photos supplémentaires du vélo (liste JSON, 5 au maximum : avec la photo principale, 6 en tout).
     ajouter_colonne(cursor, "velos", "photos_galerie", "TEXT")
+    # Lien avec le vélo Bosch (eBike Flow) : identifiant Bosch, et dernier odomètre Bosch (en mètres) déjà repris.
+    ajouter_colonne(cursor, "velos", "bosch_bike_id", "TEXT")
+    ajouter_colonne(cursor, "velos", "bosch_odometre_m", "BIGINT")
 
     # Le CUBE reçoit TOUJOURS l'identifiant 1 : les pièces et les sorties
     # existantes sont rattachées au vélo n° 1 (velo_id par défaut).
@@ -5272,6 +5275,7 @@ def accueil():
                 <p class="form-help" id="boschEtat">Relie ton compte Bosch pour lire les informations de ton vélo (lecture seule).</p>
                 <button type="button" id="boschConnecter" class="btn-primary" style="width:100%; margin-top:6px;">Connecter mon vélo Bosch</button>
                 <button type="button" id="boschLire" class="btn-primary" style="width:100%; margin-top:6px; display:none;">Lire mes vélos Bosch</button>
+                <div id="boschLiens"></div>
                 <button type="button" id="boschCopier" class="btn-primary" style="width:100%; margin-top:6px; display:none;">Copier le détail reçu</button>
                 <button type="button" id="boschDeconnecter" class="btn-primary" style="width:100%; margin-top:6px; display:none;">Déconnecter Bosch</button>
                 <p class="form-help" id="boschMessage" aria-live="polite"></p>
@@ -7934,19 +7938,99 @@ def accueil():
                 document.getElementById('boschMessage').textContent = texte || '';
             }
 
+            let boschLiaisons = {};
+
+            function nomVeloMaillons(id) {
+                const v = (typeof velosDisponibles !== 'undefined' ? velosDisponibles : []).find(x => Number(x.id) === Number(id));
+                return v ? v.nom : 'un de tes vélos';
+            }
+
             async function rafraichirBosch() {
                 try {
                     const r = await fetch('/api/bosch/etat', { headers: getHeaders() });
                     if (!r.ok) return;
                     const d = await r.json();
-                    document.getElementById('boschEtat').textContent = d.connecte
+                    boschLiaisons = d.liaisons || {};
+                    const liens = Object.keys(boschLiaisons);
+                    let texte = d.connecte
                         ? 'Ton compte Bosch est connecté (lecture seule).'
                         : 'Relie ton compte Bosch pour lire les informations de ton vélo (lecture seule).';
+                    if (d.connecte && liens.length) {
+                        texte += ' Kilométrage repris automatiquement pour : ' + liens.map(k => nomVeloMaillons(boschLiaisons[k])).join(', ') + '.';
+                    }
+                    document.getElementById('boschEtat').textContent = texte;
                     document.getElementById('boschConnecter').style.display = d.connecte ? 'none' : '';
                     document.getElementById('boschLire').style.display = d.connecte ? '' : 'none';
                     document.getElementById('boschDeconnecter').style.display = d.connecte ? '' : 'none';
-                    if (!d.connecte) document.getElementById('boschCopier').style.display = 'none';
+                    if (!d.connecte) {
+                        document.getElementById('boschCopier').style.display = 'none';
+                        document.getElementById('boschLiens').replaceChildren();
+                    }
+                    if (d.connecte && liens.length) synchroBoschAuto();
                 } catch (e) { /* hors ligne : on garde l'affichage actuel */ }
+            }
+
+            // À l'ouverture de l'appli : reprend l'odomètre Bosch (au plus une fois toutes les 30 minutes).
+            async function synchroBoschAuto(force) {
+                try {
+                    const derniere = Number(sessionStorage.getItem('maillons_bosch_synchro') || '0');
+                    if (!force && Date.now() - derniere < 30 * 60 * 1000) return;
+                    sessionStorage.setItem('maillons_bosch_synchro', String(Date.now()));
+                    const r = await fetch('/api/bosch/synchro', { method: 'POST', headers: getHeaders() });
+                    if (!r.ok) return;
+                    const d = await r.json();
+                    if (d.modifies && d.modifies.length) {
+                        await chargerVelos();
+                        await chargerEtat();
+                    }
+                } catch (e) { /* tant pis : on réessaiera à la prochaine ouverture */ }
+            }
+
+            // Après « Lire mes vélos Bosch » : un menu pour relier chaque vélo Bosch à un vélo de Maillons.
+            function afficherLiensBosch(detail) {
+                const zone = document.getElementById('boschLiens');
+                zone.replaceChildren();
+                (detail.brut && detail.brut.bikes ? detail.brut.bikes : []).forEach(b => {
+                    const boite = document.createElement('div');
+                    boite.style.marginTop = '8px';
+                    const du = b.driveUnit || {};
+                    const km = typeof du.odometer === 'number' ? Math.round(du.odometer / 1000) : null;
+                    const titre = document.createElement('p');
+                    titre.className = 'form-help';
+                    titre.textContent = (du.productName || 'Vélo Bosch') + (km !== null ? ' · ' + km + ' km' : '');
+                    boite.appendChild(titre);
+                    const menu = document.createElement('select');
+                    (typeof velosDisponibles !== 'undefined' ? velosDisponibles : []).forEach(v => {
+                        const o = document.createElement('option');
+                        o.value = String(v.id);
+                        o.textContent = v.nom;
+                        menu.appendChild(o);
+                    });
+                    const deja = boschLiaisons[b.id];
+                    if (deja) menu.value = String(deja);
+                    boite.appendChild(menu);
+                    const bouton = document.createElement('button');
+                    bouton.type = 'button';
+                    bouton.className = 'btn-primary';
+                    bouton.style.cssText = 'width:100%; margin-top:6px;';
+                    bouton.textContent = deja ? 'Changer le vélo relié' : 'Relier ce vélo Bosch à ce vélo';
+                    bouton.addEventListener('click', async () => {
+                        try {
+                            const r = await fetch('/api/bosch/lier', {
+                                method: 'POST',
+                                headers: getHeaders(),
+                                body: JSON.stringify({ bosch_id: b.id, velo_id: Number(menu.value) })
+                            });
+                            if (!r.ok) { boschMessage('Liaison impossible.'); return; }
+                            boschMessage('Vélo relié. Je reprends le kilométrage Bosch...');
+                            await synchroBoschAuto(true);
+                            await rafraichirBosch();
+                            boschMessage('Vélo relié : le kilométrage vient maintenant de Bosch.');
+                        } catch (e) { boschMessage('Pas de connexion internet.'); }
+                    });
+                    boite.appendChild(bouton);
+                    zone.appendChild(boite);
+                });
             }
 
             document.getElementById('boschConnecter').addEventListener('click', async () => {
@@ -7975,6 +8059,7 @@ def accueil():
                     }
                     boschMessage(texte);
                     document.getElementById('boschCopier').style.display = '';
+                    afficherLiensBosch(d);
                 } catch (e) { boschMessage('Pas de connexion internet.'); }
             });
 
@@ -18769,7 +18854,12 @@ def bosch_etat(x_code_acces: Optional[str] = Header(default=None)):
     try:
         cursor.execute("SELECT mis_a_jour_le FROM bosch_jetons WHERE personne_id = ?", (personne_id,))
         ligne = cursor.fetchone()
-        return {"connecte": bool(ligne), "depuis": (ligne[0] if ligne else None)}
+        cursor.execute(
+            "SELECT id, bosch_bike_id FROM velos WHERE personne_id = ? AND bosch_bike_id IS NOT NULL AND actif = 1",
+            (personne_id,)
+        )
+        liaisons = {row[1]: row[0] for row in cursor.fetchall()}
+        return {"connecte": bool(ligne), "depuis": (ligne[0] if ligne else None), "liaisons": liaisons}
     finally:
         conn.close()
 
@@ -18809,13 +18899,8 @@ def bosch_chercher_valeurs(objet, chemin="", trouves=None):
     return trouves
 
 
-@app.get("/api/bosch/velos")
-def bosch_velos(x_code_acces: Optional[str] = Header(default=None)):
-    """Lit la liste des vélos du compte Bosch (lecture seule) et cherche l'odomètre."""
-    personne_id = verifier_auth(x_code_acces)
-    acces = bosch_jeton_valide(personne_id)
-    if not acces:
-        raise HTTPException(status_code=409, detail="Vélo Bosch pas encore connecté.")
+def bosch_lire_velos(acces):
+    """Demande à Bosch la liste des vélos du compte. Renvoie (réponse brute, liste des vélos)."""
     demande = urllib.request.Request(BOSCH_API_BIKES, headers={
         "Authorization": "Bearer " + acces,
         "Accept": "application/json",
@@ -18834,6 +18919,17 @@ def bosch_velos(x_code_acces: Optional[str] = Header(default=None)):
         raise HTTPException(status_code=502, detail="Bosch ne répond pas : " + str(e)[:120])
     velos = donnees.get("bikes") if isinstance(donnees, dict) else None
     velos = velos if isinstance(velos, list) else []
+    return donnees, velos
+
+
+@app.get("/api/bosch/velos")
+def bosch_velos(x_code_acces: Optional[str] = Header(default=None)):
+    """Lit la liste des vélos du compte Bosch (lecture seule) et cherche l'odomètre."""
+    personne_id = verifier_auth(x_code_acces)
+    acces = bosch_jeton_valide(personne_id)
+    if not acces:
+        raise HTTPException(status_code=409, detail="Vélo Bosch pas encore connecté.")
+    donnees, velos = bosch_lire_velos(acces)
     return {
         "nb": len(velos),
         "velos": [{"id": v.get("id"), "cree_le": v.get("createdAt"), "modele": v.get("oemModelId")}
@@ -18841,6 +18937,105 @@ def bosch_velos(x_code_acces: Optional[str] = Header(default=None)):
         "odometres": bosch_chercher_valeurs(velos),
         "brut": donnees,
     }
+
+
+class BoschLierRequest(BaseModel):
+    bosch_id: str = Field(min_length=10, max_length=60)
+    velo_id: int
+
+
+@app.post("/api/bosch/lier")
+def bosch_lier(data: BoschLierRequest, x_code_acces: Optional[str] = Header(default=None)):
+    """Relie un vélo Bosch à un vélo de Maillons de la personne connectée."""
+    personne_id = controle_acces(x_code_acces, data.velo_id)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "UPDATE velos SET bosch_bike_id = NULL, bosch_odometre_m = NULL WHERE personne_id = ? AND bosch_bike_id = ?",
+            (personne_id, data.bosch_id)
+        )
+        cursor.execute(
+            "UPDATE velos SET bosch_bike_id = ?, bosch_odometre_m = NULL WHERE id = ? AND personne_id = ?",
+            (data.bosch_id, data.velo_id, personne_id)
+        )
+        conn.commit()
+        return {"ok": True}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+@app.delete("/api/bosch/lier/{velo_id}")
+def bosch_delier(velo_id: int, x_code_acces: Optional[str] = Header(default=None)):
+    personne_id = controle_acces(x_code_acces, velo_id)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "UPDATE velos SET bosch_bike_id = NULL, bosch_odometre_m = NULL WHERE id = ? AND personne_id = ?",
+            (velo_id, personne_id)
+        )
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
+@app.post("/api/bosch/synchro")
+def bosch_synchroniser(x_code_acces: Optional[str] = Header(default=None)):
+    """Reprend l'odomètre Bosch dans le kilométrage des vélos reliés.
+
+    Règle : le compteur de Maillons n'est remplacé que lorsque Bosch annonce un odomètre
+    plus grand que celui déjà repris. Entre deux, les kilomètres des sorties importées
+    restent comptés, et ils ne sont pas perdus si l'appli eBike Flow n'a pas encore envoyé
+    la dernière sortie à Bosch."""
+    personne_id = verifier_auth(x_code_acces)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "SELECT id, bosch_bike_id, bosch_odometre_m FROM velos WHERE personne_id = ? AND bosch_bike_id IS NOT NULL AND actif = 1",
+            (personne_id,)
+        )
+        liees = cursor.fetchall()
+    finally:
+        conn.close()
+    if not liees:
+        return {"liees": 0, "modifies": []}
+    acces = bosch_jeton_valide(personne_id)
+    if not acces:
+        raise HTTPException(status_code=409, detail="Vélo Bosch pas encore connecté.")
+    _, velos_bosch = bosch_lire_velos(acces)
+    par_id = {v.get("id"): v for v in velos_bosch if isinstance(v, dict)}
+    modifies = []
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        for ligne in liees:
+            velo = par_id.get(ligne[1])
+            odo = ((velo or {}).get("driveUnit") or {}).get("odometer")
+            if not isinstance(odo, (int, float)) or isinstance(odo, bool) or odo <= 0:
+                continue
+            odo = int(odo)
+            deja = ligne[2]
+            if deja is not None and odo <= int(deja):
+                continue
+            km = int(round(odo / 1000.0))
+            cursor.execute(
+                "UPDATE velos SET km_total = ?, km_frac = 0, km_maj_le = ?, bosch_odometre_m = ? WHERE id = ?",
+                (km, maintenant_utc(), odo, ligne[0])
+            )
+            modifies.append({"velo_id": ligne[0], "km_total": km})
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    return {"liees": len(liees), "modifies": modifies}
 
 
 @app.get("/sw.js")

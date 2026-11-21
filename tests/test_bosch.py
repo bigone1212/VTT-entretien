@@ -134,3 +134,60 @@ def test_refus_de_bosch():
     with TestClient(main.app, base_url="https://x.onrender.com", follow_redirects=False) as c:
         r = c.get("/api/bosch/callback?error=access_denied")
         assert r.status_code == 303 and "bosch=refus" in r.headers["location"]
+
+
+def test_liaison_et_synchro_du_kilometrage():
+    with TestClient(main.app, base_url="https://x.onrender.com", follow_redirects=False) as c:
+        BIKE = "0ede75c1-3f16-46a0-9c18-f16afd601b50"
+        conn = main.db.connect()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM bosch_jetons")
+        cur.execute(
+            "INSERT INTO bosch_jetons (personne_id, access_token, refresh_token, expire_le, mis_a_jour_le) VALUES (1, 'A', 'R', 9999999999, 'x')"
+        )
+        conn.commit()
+        conn.close()
+
+        odometre = {"valeur": 3096890}
+        main.bosch_lire_velos = lambda acces: (None, [{"id": BIKE, "driveUnit": {"odometer": odometre["valeur"]}}])
+
+        def km():
+            conn = main.db.connect()
+            cur = conn.cursor()
+            cur.execute("SELECT km_total, bosch_odometre_m FROM velos WHERE id = 1")
+            ligne = cur.fetchone()
+            conn.close()
+            return ligne[0], ligne[1]
+
+        # Sans liaison : rien ne bouge
+        avant = km()[0]
+        assert c.post("/api/bosch/synchro", headers=ENTETE).json() == {"liees": 0, "modifies": []}
+        assert km()[0] == avant
+
+        # Un vélo qui n'existe pas ou n'est pas à soi est refusé
+        assert c.post("/api/bosch/lier", headers=ENTETE, json={"bosch_id": BIKE, "velo_id": 9999}).status_code in (403, 404)
+
+        # Liaison puis première synchro : le compteur prend la valeur de Bosch (en km)
+        assert c.post("/api/bosch/lier", headers=ENTETE, json={"bosch_id": BIKE, "velo_id": 1}).status_code == 200
+        assert c.get("/api/bosch/etat", headers=ENTETE).json()["liaisons"] == {BIKE: 1}
+        r = c.post("/api/bosch/synchro", headers=ENTETE).json()
+        assert r["modifies"] == [{"velo_id": 1, "km_total": 3097}]
+        assert km() == (3097, 3096890)
+
+        # Même odomètre : les km des sorties importées entre-temps ne sont pas écrasés
+        conn = main.db.connect()
+        cur = conn.cursor()
+        cur.execute("UPDATE velos SET km_total = 3110 WHERE id = 1")
+        conn.commit()
+        conn.close()
+        assert c.post("/api/bosch/synchro", headers=ENTETE).json()["modifies"] == []
+        assert km()[0] == 3110
+
+        # Bosch annonce plus : le compteur est recalé sur Bosch
+        odometre["valeur"] = 3200400
+        assert c.post("/api/bosch/synchro", headers=ENTETE).json()["modifies"] == [{"velo_id": 1, "km_total": 3200}]
+        assert km() == (3200, 3200400)
+
+        # Déliaison
+        assert c.delete("/api/bosch/lier/1", headers=ENTETE).status_code == 200
+        assert c.get("/api/bosch/etat", headers=ENTETE).json()["liaisons"] == {}
