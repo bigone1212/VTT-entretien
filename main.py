@@ -7968,6 +7968,10 @@ def accueil():
                         document.getElementById('boschCopier').style.display = 'none';
                         document.getElementById('boschLiens').replaceChildren();
                     }
+                    if (sessionStorage.getItem('maillons_bosch_auto') === '1') {
+                        sessionStorage.removeItem('maillons_bosch_auto');
+                        if (!d.connecte) { boschDemarrerConnexion(); return; }
+                    }
                     if (d.connecte) synchroBoschAuto();
                 } catch (e) { /* hors ligne : on garde l'affichage actuel */ }
             }
@@ -8044,7 +8048,7 @@ def accueil():
                 });
             }
 
-            document.getElementById('boschConnecter').addEventListener('click', async () => {
+            async function boschDemarrerConnexion() {
                 boschMessage('Je prépare la connexion...');
                 try {
                     const r = await fetch('/api/bosch/connecter', { method: 'POST', headers: getHeaders() });
@@ -8052,7 +8056,9 @@ def accueil():
                     if (!r.ok || !d.url) { boschMessage(d.detail || 'Impossible de préparer la connexion.'); return; }
                     location.href = d.url;
                 } catch (e) { boschMessage('Pas de connexion internet.'); }
-            });
+            }
+
+            document.getElementById('boschConnecter').addEventListener('click', boschDemarrerConnexion);
 
             document.getElementById('boschLire').addEventListener('click', async () => {
                 boschMessage('Je lis tes vélos chez Bosch...');
@@ -8097,6 +8103,16 @@ def accueil():
             // Retour de la page de connexion Bosch : /?bosch=ok (ou refus, expire, erreur).
             (function () {
                 const retourBosch = new URLSearchParams(location.search).get('bosch');
+                // Arrivée depuis le site de Bosch (après « Activer le service ») : la connexion se lancera toute seule.
+                try {
+                    const venueDeBosch = /(^|[.])bosch(-ebike)?[.]com$/.test(
+                        document.referrer ? new URL(document.referrer).hostname : ''
+                    );
+                    if (!retourBosch && venueDeBosch && !sessionStorage.getItem('maillons_bosch_arrivee_vue')) {
+                        sessionStorage.setItem('maillons_bosch_arrivee_vue', '1');
+                        sessionStorage.setItem('maillons_bosch_auto', '1');
+                    }
+                } catch (e) { /* tant pis : la personne touchera le bouton */ }
                 if (!retourBosch) return;
                 const textes = {
                     ok: 'Bosch est connecté. Touche « Lire mes vélos Bosch ».',
