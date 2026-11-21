@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Header, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Header, BackgroundTasks, Request
 from fastapi.responses import HTMLResponse, Response, RedirectResponse
 from pydantic import BaseModel, Field
 import base64
@@ -860,6 +860,26 @@ def init_db():
         )
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS sessions_personne ON sessions (personne_id)")
+
+    # Connexion Bosch (eBike Flow) : état temporaire de la connexion en cours, puis jetons de la personne.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS bosch_etats (
+            etat TEXT PRIMARY KEY,
+            personne_id INTEGER NOT NULL,
+            verifier TEXT NOT NULL,
+            redirect_uri TEXT NOT NULL,
+            cree_le BIGINT NOT NULL
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS bosch_jetons (
+            personne_id INTEGER PRIMARY KEY,
+            access_token TEXT,
+            refresh_token TEXT,
+            expire_le BIGINT,
+            mis_a_jour_le TEXT
+        )
+    """)
 
     # Invitations : code à usage unique donné par Math pour accéder au formulaire d'inscription.
     cursor.execute(f"""
@@ -5247,6 +5267,15 @@ def accueil():
                 <button type="submit" class="btn-primary" style="width:100%; margin-top:8px;">Changer mon mot de passe</button>
             </form>
             <p class="form-help" id="messageCompte" aria-live="polite"></p>
+            <div class="bosch-bloc" id="boschBloc" style="margin-top:14px;">
+                <strong>Vélo Bosch (eBike Flow)</strong>
+                <p class="form-help" id="boschEtat">Relie ton compte Bosch pour lire les informations de ton vélo (lecture seule).</p>
+                <button type="button" id="boschConnecter" class="btn-primary" style="width:100%; margin-top:6px;">Connecter mon vélo Bosch</button>
+                <button type="button" id="boschLire" class="btn-primary" style="width:100%; margin-top:6px; display:none;">Lire mes vélos Bosch</button>
+                <button type="button" id="boschCopier" class="btn-primary" style="width:100%; margin-top:6px; display:none;">Copier le détail reçu</button>
+                <button type="button" id="boschDeconnecter" class="btn-primary" style="width:100%; margin-top:6px; display:none;">Déconnecter Bosch</button>
+                <p class="form-help" id="boschMessage" aria-live="polite"></p>
+            </div>
             <button type="button" id="boutonDeconnexion" class="btn-primary" style="width:100%; margin-top:8px;">Se déconnecter</button>
             <p class="form-help compte-version" id="compteVersion"></p>
         </section>
@@ -7898,6 +7927,91 @@ def accueil():
                 location.reload();
             });
 
+            // ----- Mon compte : connexion au vélo Bosch (eBike Flow) -----
+            let boschDernierDetail = null;
+
+            function boschMessage(texte) {
+                document.getElementById('boschMessage').textContent = texte || '';
+            }
+
+            async function rafraichirBosch() {
+                try {
+                    const r = await fetch('/api/bosch/etat', { headers: getHeaders() });
+                    if (!r.ok) return;
+                    const d = await r.json();
+                    document.getElementById('boschEtat').textContent = d.connecte
+                        ? 'Ton compte Bosch est connecté (lecture seule).'
+                        : 'Relie ton compte Bosch pour lire les informations de ton vélo (lecture seule).';
+                    document.getElementById('boschConnecter').style.display = d.connecte ? 'none' : '';
+                    document.getElementById('boschLire').style.display = d.connecte ? '' : 'none';
+                    document.getElementById('boschDeconnecter').style.display = d.connecte ? '' : 'none';
+                    if (!d.connecte) document.getElementById('boschCopier').style.display = 'none';
+                } catch (e) { /* hors ligne : on garde l'affichage actuel */ }
+            }
+
+            document.getElementById('boschConnecter').addEventListener('click', async () => {
+                boschMessage('Je prépare la connexion...');
+                try {
+                    const r = await fetch('/api/bosch/connecter', { method: 'POST', headers: getHeaders() });
+                    const d = await r.json();
+                    if (!r.ok || !d.url) { boschMessage(d.detail || 'Impossible de préparer la connexion.'); return; }
+                    location.href = d.url;
+                } catch (e) { boschMessage('Pas de connexion internet.'); }
+            });
+
+            document.getElementById('boschLire').addEventListener('click', async () => {
+                boschMessage('Je lis tes vélos chez Bosch...');
+                document.getElementById('boschCopier').style.display = 'none';
+                try {
+                    const r = await fetch('/api/bosch/velos', { headers: getHeaders() });
+                    const d = await r.json();
+                    if (!r.ok) { boschMessage(d.detail || 'Lecture impossible.'); return; }
+                    boschDernierDetail = d;
+                    let texte = d.nb + ' vélo(s) trouvé(s) chez Bosch.';
+                    if (d.odometres && d.odometres.length) {
+                        texte += ' ' + d.odometres.map(o => o.chemin + ' = ' + o.valeur).join(' ; ');
+                    } else if (d.nb > 0) {
+                        texte += " Je n'ai pas trouvé l'odomètre : touche « Copier le détail reçu » et envoie-le moi.";
+                    }
+                    boschMessage(texte);
+                    document.getElementById('boschCopier').style.display = '';
+                } catch (e) { boschMessage('Pas de connexion internet.'); }
+            });
+
+            document.getElementById('boschCopier').addEventListener('click', async () => {
+                if (!boschDernierDetail) return;
+                const texte = JSON.stringify(boschDernierDetail.brut, null, 1);
+                try {
+                    await navigator.clipboard.writeText(texte);
+                    boschMessage('Détail copié : colle-le dans la discussion avec Claude.');
+                } catch (e) {
+                    boschMessage('Copie impossible sur ce téléphone.');
+                }
+            });
+
+            document.getElementById('boschDeconnecter').addEventListener('click', async () => {
+                try {
+                    await fetch('/api/bosch/connexion', { method: 'DELETE', headers: getHeaders() });
+                } catch (e) { /* tant pis */ }
+                boschDernierDetail = null;
+                boschMessage('Bosch est déconnecté.');
+                rafraichirBosch();
+            });
+
+            // Retour de la page de connexion Bosch : /?bosch=ok (ou refus, expire, erreur).
+            (function () {
+                const retourBosch = new URLSearchParams(location.search).get('bosch');
+                if (!retourBosch) return;
+                const textes = {
+                    ok: 'Bosch est connecté. Touche « Lire mes vélos Bosch ».',
+                    refus: "La connexion Bosch n'a pas abouti.",
+                    expire: 'La connexion Bosch a expiré : recommence.',
+                    erreur: 'Bosch a refusé la connexion : dis-le à Claude.'
+                };
+                boschMessage(textes[retourBosch] || '');
+                history.replaceState(null, '', location.pathname + '#compte');
+            })();
+
             // ----- Mon compte : photo, prénom, nom, e-mail, version -----
             // Lit un poids écrit à la française ou à l'anglaise : vide = null, illisible = NaN.
             function lireNombreKg(texte) {
@@ -7955,6 +8069,7 @@ def accueil():
                 if (document.activeElement !== poids) poids.value = typeof m.poids_kg === 'number' ? String(m.poids_kg).replace('.', ',') : '';
                 if (document.activeElement !== poidsSac) poidsSac.value = typeof m.poids_sac_kg === 'number' ? String(m.poids_sac_kg).replace('.', ',') : '';
                 afficherPhotoCompte(m.photo || '');
+                if (moi) rafraichirBosch();
                 profilMoi = moi || null;
                 rafraichirConseilsSuspension();
             }
@@ -18496,6 +18611,236 @@ def icone_appli(nom: str):
         media_type="image/png",
         headers={"Cache-Control": "public, max-age=86400"}
     )
+
+
+# ----- Connexion Bosch (API officielle « Data Act » de Bosch eBike Systems) -----
+BOSCH_CLIENT_ID = os.environ.get("BOSCH_CLIENT_ID", "euda-f1f76803-c858-40fa-8a4a-21259d5bc612").strip()
+BOSCH_SCOPE = os.environ.get("BOSCH_SCOPE", "openid offline_access").strip()
+BOSCH_AUTH_URL = "https://p9.authz.bosch.com/auth/realms/obc/protocol/openid-connect/auth"
+BOSCH_TOKEN_URL = "https://p9.authz.bosch.com/auth/realms/obc/protocol/openid-connect/token"
+BOSCH_API_BIKES = "https://api.bosch-ebike.com/bike-profile/smart-system/v1/bikes"
+
+
+def bosch_adresse_retour(request: Request):
+    """Adresse où Bosch renvoie la personne : celle de Maillons lui-même."""
+    hote = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").strip()
+    local = hote.startswith("localhost") or hote.startswith("127.0.0.1")
+    return ("http://" if local else "https://") + hote + "/api/bosch/callback"
+
+
+def bosch_demander_jeton(champs):
+    """Appelle l'adresse des jetons de Bosch et renvoie la réponse (dictionnaire)."""
+    donnees = urllib.parse.urlencode(champs).encode("utf-8")
+    demande = urllib.request.Request(BOSCH_TOKEN_URL, data=donnees, method="POST", headers={
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "application/json",
+    })
+    try:
+        with urllib.request.urlopen(demande, timeout=20) as reponse:
+            return json.loads(reponse.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        corps = ""
+        try:
+            corps = e.read().decode("utf-8")[:300]
+        except Exception:
+            pass
+        raise HTTPException(status_code=502, detail="Bosch a refusé la demande (" + str(e.code) + ") " + corps)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail="Bosch ne répond pas : " + str(e)[:120])
+
+
+def bosch_enregistrer_jetons(cursor, personne_id, jetons, ancien_refresh=None):
+    acces = jetons.get("access_token")
+    if not acces:
+        raise HTTPException(status_code=502, detail="Bosch n'a pas donné d'autorisation.")
+    refresh = jetons.get("refresh_token") or ancien_refresh
+    duree = int(jetons.get("expires_in") or 300)
+    cursor.execute("""
+        INSERT INTO bosch_jetons (personne_id, access_token, refresh_token, expire_le, mis_a_jour_le)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT (personne_id) DO UPDATE SET
+            access_token = excluded.access_token,
+            refresh_token = excluded.refresh_token,
+            expire_le = excluded.expire_le,
+            mis_a_jour_le = excluded.mis_a_jour_le
+    """, (personne_id, acces, refresh, int(time.time()) + duree, maintenant_utc()))
+
+
+def bosch_jeton_valide(personne_id):
+    """Renvoie une autorisation Bosch valable (la renouvelle si besoin), ou None."""
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "SELECT access_token, refresh_token, expire_le FROM bosch_jetons WHERE personne_id = ?",
+            (personne_id,)
+        )
+        ligne = cursor.fetchone()
+        if not ligne:
+            return None
+        acces, refresh, expire = ligne[0], ligne[1], int(ligne[2] or 0)
+        if acces and expire > int(time.time()) + 30:
+            return acces
+        if not refresh:
+            return None
+        jetons = bosch_demander_jeton({
+            "grant_type": "refresh_token",
+            "refresh_token": refresh,
+            "client_id": BOSCH_CLIENT_ID,
+        })
+        bosch_enregistrer_jetons(cursor, personne_id, jetons, refresh)
+        conn.commit()
+        return jetons.get("access_token")
+    finally:
+        conn.close()
+
+
+@app.post("/api/bosch/connecter")
+def bosch_connecter(request: Request, x_code_acces: Optional[str] = Header(default=None)):
+    """Prépare la connexion : renvoie l'adresse de la page de connexion Bosch."""
+    personne_id = verifier_auth(x_code_acces)
+    retour = bosch_adresse_retour(request)
+    verifier = secrets.token_urlsafe(64)
+    defi = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest()).decode("ascii").rstrip("=")
+    etat = secrets.token_urlsafe(32)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM bosch_etats WHERE cree_le < ?", (int(time.time()) - 900,))
+        cursor.execute(
+            "INSERT INTO bosch_etats (etat, personne_id, verifier, redirect_uri, cree_le) VALUES (?, ?, ?, ?, ?)",
+            (etat, personne_id, verifier, retour, int(time.time()))
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    parametres = {
+        "response_type": "code",
+        "client_id": BOSCH_CLIENT_ID,
+        "redirect_uri": retour,
+        "state": etat,
+        "code_challenge": defi,
+        "code_challenge_method": "S256",
+    }
+    if BOSCH_SCOPE:
+        parametres["scope"] = BOSCH_SCOPE
+    return {"url": BOSCH_AUTH_URL + "?" + urllib.parse.urlencode(parametres)}
+
+
+@app.get("/api/bosch/callback")
+def bosch_retour(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
+    """Adresse où Bosch renvoie la personne après sa connexion."""
+    if error or not code or not state:
+        return RedirectResponse("/?bosch=refus#compte", status_code=303)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "SELECT personne_id, verifier, redirect_uri, cree_le FROM bosch_etats WHERE etat = ?", (state,)
+        )
+        ligne = cursor.fetchone()
+        cursor.execute("DELETE FROM bosch_etats WHERE etat = ?", (state,))
+        conn.commit()
+        if not ligne or int(ligne[3]) < int(time.time()) - 900:
+            return RedirectResponse("/?bosch=expire#compte", status_code=303)
+        try:
+            jetons = bosch_demander_jeton({
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": ligne[2],
+                "client_id": BOSCH_CLIENT_ID,
+                "code_verifier": ligne[1],
+            })
+            bosch_enregistrer_jetons(cursor, ligne[0], jetons)
+            conn.commit()
+        except HTTPException as e:
+            print("Bosch : échange du code refusé :", e.detail)
+            return RedirectResponse("/?bosch=erreur#compte", status_code=303)
+    finally:
+        conn.close()
+    return RedirectResponse("/?bosch=ok#compte", status_code=303)
+
+
+@app.get("/api/bosch/etat")
+def bosch_etat(x_code_acces: Optional[str] = Header(default=None)):
+    personne_id = verifier_auth(x_code_acces)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT mis_a_jour_le FROM bosch_jetons WHERE personne_id = ?", (personne_id,))
+        ligne = cursor.fetchone()
+        return {"connecte": bool(ligne), "depuis": (ligne[0] if ligne else None)}
+    finally:
+        conn.close()
+
+
+@app.delete("/api/bosch/connexion")
+def bosch_deconnecter(x_code_acces: Optional[str] = Header(default=None)):
+    personne_id = verifier_auth(x_code_acces)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM bosch_jetons WHERE personne_id = ?", (personne_id,))
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
+def bosch_chercher_valeurs(objet, chemin="", trouves=None):
+    """Cherche dans la réponse de Bosch les champs qui parlent de distance ou d'odomètre."""
+    if trouves is None:
+        trouves = []
+    if len(trouves) >= 30:
+        return trouves
+    if isinstance(objet, dict):
+        for cle, valeur in objet.items():
+            sous = chemin + "." + str(cle) if chemin else str(cle)
+            nom = str(cle).lower()
+            if isinstance(valeur, (int, float)) and not isinstance(valeur, bool) and (
+                "odo" in nom or "distance" in nom or "mileage" in nom or nom.endswith("km")
+            ):
+                trouves.append({"chemin": sous, "valeur": valeur})
+            else:
+                bosch_chercher_valeurs(valeur, sous, trouves)
+    elif isinstance(objet, list):
+        for i, valeur in enumerate(objet[:20]):
+            bosch_chercher_valeurs(valeur, chemin + "[" + str(i) + "]", trouves)
+    return trouves
+
+
+@app.get("/api/bosch/velos")
+def bosch_velos(x_code_acces: Optional[str] = Header(default=None)):
+    """Lit la liste des vélos du compte Bosch (lecture seule) et cherche l'odomètre."""
+    personne_id = verifier_auth(x_code_acces)
+    acces = bosch_jeton_valide(personne_id)
+    if not acces:
+        raise HTTPException(status_code=409, detail="Vélo Bosch pas encore connecté.")
+    demande = urllib.request.Request(BOSCH_API_BIKES, headers={
+        "Authorization": "Bearer " + acces,
+        "Accept": "application/json",
+    })
+    try:
+        with urllib.request.urlopen(demande, timeout=20) as reponse:
+            donnees = json.loads(reponse.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        detail = ""
+        try:
+            detail = e.read().decode("utf-8")[:200]
+        except Exception:
+            pass
+        raise HTTPException(status_code=502, detail="Bosch a répondu " + str(e.code) + " " + detail)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail="Bosch ne répond pas : " + str(e)[:120])
+    velos = donnees.get("bikes") if isinstance(donnees, dict) else None
+    velos = velos if isinstance(velos, list) else []
+    return {
+        "nb": len(velos),
+        "velos": [{"id": v.get("id"), "cree_le": v.get("createdAt"), "modele": v.get("oemModelId")}
+                  for v in velos if isinstance(v, dict)],
+        "odometres": bosch_chercher_valeurs(velos),
+        "brut": donnees,
+    }
 
 
 @app.get("/sw.js")
