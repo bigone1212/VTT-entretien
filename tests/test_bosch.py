@@ -306,3 +306,54 @@ def test_lien_direct_avec_le_seul_velo_electrique():
         cur.execute("UPDATE velos SET modele = ?, moteur = ?, type = ? WHERE id = 1", origine)
         conn.commit()
         conn.close()
+
+
+def test_lecture_des_sorties():
+    import io
+    import urllib.error
+
+    class Rep:
+        def __init__(self, texte):
+            self.texte = texte
+
+        def read(self):
+            return self.texte.encode("utf-8")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    vrai_urlopen = main.urllib.request.urlopen
+    vrai_jeton = main.bosch_jeton_valide
+    vus = []
+
+    def faux_ok(demande, timeout=0):
+        vus.append((demande.full_url, demande.get_header("Authorization")))
+        return Rep('{"pagination":{"total":57,"offset":20,"limit":20},"activitySummaries":'
+                   '[{"id":"a","startTime":"2026-07-21T05:02:36Z","distance":37192,"title":"Test"}]}')
+
+    with TestClient(main.app, base_url="https://maillons-test-2026.onrender.com", follow_redirects=False) as c:
+        assert c.get("/api/bosch/sorties").status_code == 401
+        main.bosch_jeton_valide = lambda personne_id: None
+        try:
+            assert c.get("/api/bosch/sorties", headers=ENTETE).status_code == 409
+            main.bosch_jeton_valide = lambda personne_id: "ACCES"
+            main.urllib.request.urlopen = faux_ok
+            r = c.get("/api/bosch/sorties?limite=500&decalage=20", headers=ENTETE)
+            assert r.status_code == 200
+            d = r.json()
+            assert d["total"] == 57 and len(d["sorties"]) == 1 and d["limite"] == 100
+            assert vus[0][0] == ("https://api.bosch-ebike.com/activity/smart-system/v1/activities?limit=100&offset=20")
+            assert vus[0][1] == "Bearer ACCES"
+
+            def faux_403(demande, timeout=0):
+                raise urllib.error.HTTPError(demande.full_url, 403, "Forbidden", {}, io.BytesIO(b"no"))
+
+            main.urllib.request.urlopen = faux_403
+            r = c.get("/api/bosch/sorties", headers=ENTETE)
+            assert r.status_code == 403 and "n'autorise pas" in r.json()["detail"]
+        finally:
+            main.urllib.request.urlopen = vrai_urlopen
+            main.bosch_jeton_valide = vrai_jeton

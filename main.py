@@ -5307,6 +5307,13 @@ def accueil():
                 <p class="form-help">Tout ce que Bosch partage avec Maillons (lecture seule).</p>
                 <div id="boschContenu"></div>
                 <div id="boschLiens"></div>
+                <div class="bosch-section" id="boschSortiesBloc">
+                    <h4>Sorties enregistrées par eBike Flow</h4>
+                    <button type="button" id="boschSortiesVoir" class="btn-primary" style="width:100%;">Voir mes sorties Bosch</button>
+                    <div id="boschSorties"></div>
+                    <button type="button" id="boschSortiesPlus" class="btn-primary" style="width:100%; margin-top:8px; display:none;">Voir les sorties suivantes</button>
+                    <p class="form-help" id="boschSortiesMessage" aria-live="polite"></p>
+                </div>
                 <button type="button" id="boschActualiser" class="btn-primary" style="width:100%; margin-top:10px;">Actualiser depuis Bosch</button>
                 <button type="button" id="boschCopier" class="btn-primary" style="width:100%; margin-top:6px;">Copier le détail brut</button>
                 <p class="form-help" id="boschMessageFenetre" aria-live="polite"></p>
@@ -8231,6 +8238,86 @@ def accueil():
                 });
             }
 
+            let boschSortiesDecalage = 0;
+
+            function boschDuree(secondes) {
+                const m = Math.round(secondes / 60);
+                const h = Math.floor(m / 60);
+                return h > 0 ? h + ' h ' + String(m % 60).padStart(2, '0') + ' min' : m + ' min';
+            }
+
+            function boschDateHeure(texte, fuseau) {
+                const d = new Date(texte);
+                if (isNaN(d.getTime())) return String(texte);
+                try {
+                    return d.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: fuseau || undefined });
+                } catch (e) {
+                    return d.toLocaleString('fr-FR');
+                }
+            }
+
+            function ajouterSortiesBosch(liste) {
+                const zone = document.getElementById('boschSorties');
+                liste.forEach(a => {
+                    const fiche = document.createElement('details');
+                    fiche.style.cssText = 'margin-top:8px; padding:8px 10px; border:1px solid var(--field-line); border-radius:12px;';
+                    const resume = document.createElement('summary');
+                    resume.style.cssText = 'cursor:pointer; font-weight:700; font-size:0.9rem;';
+                    const km = typeof a.distance === 'number' ? boschNombre(a.distance / 1000, 1) + ' km' : '';
+                    resume.textContent = boschDateHeure(a.startTime, a.timeZone) + (km ? ' · ' + km : '') + (a.title ? ' · ' + a.title : '');
+                    fiche.appendChild(resume);
+                    const corps = document.createElement('div');
+                    corps.style.marginTop = '6px';
+                    if (typeof a.durationWithoutStops === 'number') boschLigne(corps, 'Durée en mouvement', boschDuree(a.durationWithoutStops));
+                    if (a.speed) {
+                        boschLigne(corps, 'Vitesse moyenne', typeof a.speed.average === 'number' ? boschNombre(a.speed.average) + ' km/h' : '');
+                        boschLigne(corps, 'Vitesse max', typeof a.speed.maximum === 'number' ? boschNombre(a.speed.maximum) + ' km/h' : '');
+                    }
+                    if (a.riderPower) {
+                        boschLigne(corps, 'Ta puissance moyenne', typeof a.riderPower.average === 'number' ? boschNombre(a.riderPower.average, 0) + ' W' : '');
+                        boschLigne(corps, 'Ta puissance max', typeof a.riderPower.maximum === 'number' ? boschNombre(a.riderPower.maximum, 0) + ' W' : '');
+                    }
+                    if (a.cadence) {
+                        boschLigne(corps, 'Cadence moyenne', typeof a.cadence.average === 'number' ? boschNombre(a.cadence.average, 0) + ' tr/min' : '');
+                        boschLigne(corps, 'Cadence max', typeof a.cadence.maximum === 'number' ? boschNombre(a.cadence.maximum, 0) + ' tr/min' : '');
+                    }
+                    if (a.elevation) {
+                        boschLigne(corps, 'Dénivelé positif', typeof a.elevation.gain === 'number' ? boschNombre(a.elevation.gain, 0) + ' m' : '');
+                        boschLigne(corps, 'Dénivelé négatif', typeof a.elevation.loss === 'number' ? boschNombre(a.elevation.loss, 0) + ' m' : '');
+                    }
+                    if (typeof a.caloriesBurned === 'number') boschLigne(corps, 'Calories', boschNombre(a.caloriesBurned, 0) + ' kcal');
+                    if (a.heartRate) {
+                        boschLigne(corps, 'Cœur moyen', typeof a.heartRate.average === 'number' ? boschNombre(a.heartRate.average, 0) + ' bpm' : '');
+                        boschLigne(corps, 'Cœur max', typeof a.heartRate.maximum === 'number' ? boschNombre(a.heartRate.maximum, 0) + ' bpm' : '');
+                    }
+                    if (typeof a.startOdometer === 'number') boschLigne(corps, 'Compteur au départ', boschNombre(a.startOdometer / 1000, 1) + ' km');
+                    fiche.appendChild(corps);
+                    zone.appendChild(fiche);
+                });
+            }
+
+            async function boschLireSorties(suite) {
+                const msg = document.getElementById('boschSortiesMessage');
+                const plus = document.getElementById('boschSortiesPlus');
+                if (!suite) {
+                    boschSortiesDecalage = 0;
+                    document.getElementById('boschSorties').replaceChildren();
+                }
+                msg.textContent = 'Je lis tes sorties chez Bosch...';
+                try {
+                    const r = await fetch('/api/bosch/sorties?limite=20&decalage=' + boschSortiesDecalage, { headers: getHeaders() });
+                    const d = await r.json();
+                    if (!r.ok) { msg.textContent = d.detail || 'Lecture impossible.'; plus.style.display = 'none'; return; }
+                    ajouterSortiesBosch(d.sorties);
+                    boschSortiesDecalage += d.sorties.length;
+                    const total = typeof d.total === 'number' ? d.total : boschSortiesDecalage;
+                    msg.textContent = total === 0
+                        ? "Bosch ne renvoie aucune sortie (elles viennent de l'appli eBike Flow)."
+                        : boschSortiesDecalage + ' sortie(s) affichée(s) sur ' + total + '.';
+                    plus.style.display = boschSortiesDecalage < total && d.sorties.length > 0 ? '' : 'none';
+                } catch (e) { msg.textContent = 'Pas de connexion internet.'; }
+            }
+
             function ouvrirFenetreBosch() {
                 const f = document.getElementById('fenetreBosch');
                 if (f && !f.open) { try { f.showModal(); } catch (e) { f.setAttribute('open', ''); } }
@@ -8265,6 +8352,8 @@ def accueil():
             }
 
             document.getElementById('boschDonnees').addEventListener('click', () => boschLireVelos({ ouvrir: true }));
+            document.getElementById('boschSortiesVoir').addEventListener('click', () => boschLireSorties(false));
+            document.getElementById('boschSortiesPlus').addEventListener('click', () => boschLireSorties(true));
             document.getElementById('boschActualiser').addEventListener('click', () => boschLireVelos({ ouvrir: true }));
             document.getElementById('boutonFermerFenetreBosch').addEventListener('click', () => document.getElementById('fenetreBosch').close());
 
@@ -18931,6 +19020,7 @@ BOSCH_SCOPE = os.environ.get("BOSCH_SCOPE", "openid offline_access").strip()
 BOSCH_AUTH_URL = "https://p9.authz.bosch.com/auth/realms/obc/protocol/openid-connect/auth"
 BOSCH_TOKEN_URL = "https://p9.authz.bosch.com/auth/realms/obc/protocol/openid-connect/token"
 BOSCH_API_BIKES = "https://api.bosch-ebike.com/bike-profile/smart-system/v1/bikes"
+BOSCH_API_ACTIVITES = "https://api.bosch-ebike.com/activity/smart-system/v1/activities"
 
 
 def bosch_adresse_retour(request: Request):
@@ -19166,6 +19256,49 @@ def bosch_velos(x_code_acces: Optional[str] = Header(default=None)):
                   for v in velos if isinstance(v, dict)],
         "odometres": bosch_chercher_valeurs(velos),
         "brut": donnees,
+    }
+
+
+@app.get("/api/bosch/sorties")
+def bosch_sorties(limite: int = 20, decalage: int = 0, x_code_acces: Optional[str] = Header(default=None)):
+    """Lit la liste des sorties enregistrées par eBike Flow (lecture seule, rien n'est importé)."""
+    personne_id = verifier_auth(x_code_acces)
+    acces = bosch_jeton_valide(personne_id)
+    if not acces:
+        raise HTTPException(status_code=409, detail="Vélo Bosch pas encore connecté.")
+    limite = max(1, min(int(limite), 100))
+    decalage = max(0, int(decalage))
+    adresse = BOSCH_API_ACTIVITES + "?" + urllib.parse.urlencode({"limit": limite, "offset": decalage})
+    demande = urllib.request.Request(adresse, headers={
+        "Authorization": "Bearer " + acces,
+        "Accept": "application/json",
+    })
+    try:
+        with urllib.request.urlopen(demande, timeout=20) as reponse:
+            donnees = json.loads(reponse.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        detail = ""
+        try:
+            detail = e.read().decode("utf-8")[:200]
+        except Exception:
+            pass
+        if e.code in (401, 403):
+            raise HTTPException(
+                status_code=403,
+                detail="Bosch n'autorise pas Maillons à lire les sorties (" + str(e.code) + "). " + detail,
+            )
+        raise HTTPException(status_code=502, detail="Bosch a répondu " + str(e.code) + " " + detail)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail="Bosch ne répond pas : " + str(e)[:120])
+    if not isinstance(donnees, dict):
+        donnees = {}
+    sorties = donnees.get("activitySummaries")
+    pagination = donnees.get("pagination")
+    return {
+        "sorties": sorties if isinstance(sorties, list) else [],
+        "total": pagination.get("total") if isinstance(pagination, dict) else None,
+        "decalage": decalage,
+        "limite": limite,
     }
 
 
