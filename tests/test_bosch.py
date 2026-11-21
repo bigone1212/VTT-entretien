@@ -234,3 +234,37 @@ def test_lien_direct_quand_un_seul_choix_possible():
         main.bosch_lire_velos = lambda acces: (None, [{"id": BIKE, "driveUnit": {"odometer": 1}},
                                                       {"id": "autre-velo-bosch-0000", "driveUnit": {"odometer": 2}}])
         assert c.post("/api/bosch/synchro", headers=ENTETE).json() == {"liees": 0, "modifies": []}
+
+
+def test_identifiant_bosch_selon_la_version():
+    ID_TEST = "euda-f1f76803-c858-40fa-8a4a-21259d5bc612"
+    ID_REEL = "euda-b1266e78-9bff-40a0-b16e-c7bfe85ac71e"
+    with TestClient(main.app, base_url="https://vtt-entretien.onrender.com", follow_redirects=False) as c:
+        conn = main.db.connect()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM bosch_jetons")
+        conn.commit()
+        conn.close()
+        url = c.post("/api/bosch/connecter", headers=ENTETE).json()["url"]
+        p = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(url).query))
+        assert p["client_id"] == ID_REEL
+        assert p["redirect_uri"] == "https://vtt-entretien.onrender.com/api/bosch/callback"
+
+        demandes = []
+        main.bosch_demander_jeton = lambda champs: (demandes.append(champs) or
+                                                    {"access_token": "A", "refresh_token": "R", "expires_in": 3600})
+        assert "bosch=ok" in c.get("/api/bosch/callback", params={"code": "C", "state": p["state"]}).headers["location"]
+        assert demandes[0]["client_id"] == ID_REEL
+
+        # Le renouvellement reprend l'identifiant qui a donné l'autorisation
+        conn = main.db.connect()
+        cur = conn.cursor()
+        cur.execute("UPDATE bosch_jetons SET expire_le = 1")
+        conn.commit()
+        conn.close()
+        main.bosch_jeton_valide(1)
+        assert demandes[1]["grant_type"] == "refresh_token" and demandes[1]["client_id"] == ID_REEL
+
+    with TestClient(main.app, base_url="https://maillons-test-2026.onrender.com", follow_redirects=False) as c:
+        url = c.post("/api/bosch/connecter", headers=ENTETE).json()["url"]
+        assert dict(urllib.parse.parse_qsl(urllib.parse.urlparse(url).query))["client_id"] == ID_TEST

@@ -874,6 +874,7 @@ def init_db():
             cree_le BIGINT NOT NULL
         )
     """)
+    ajouter_colonne(cursor, "bosch_etats", "client_id", "TEXT")
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS bosch_jetons (
             personne_id INTEGER PRIMARY KEY,
@@ -883,6 +884,7 @@ def init_db():
             mis_a_jour_le TEXT
         )
     """)
+    ajouter_colonne(cursor, "bosch_jetons", "client_id", "TEXT")
 
     # Invitations : code à usage unique donné par Math pour accéder au formulaire d'inscription.
     cursor.execute(f"""
@@ -18708,7 +18710,18 @@ def icone_appli(nom: str):
 
 
 # ----- Connexion Bosch (API officielle « Data Act » de Bosch eBike Systems) -----
+# Un identifiant client Bosch par version de Maillons (chacune a sa propre adresse de retour déclarée chez Bosch).
+BOSCH_CLIENTS = {
+    "maillons-test-2026.onrender.com": "euda-f1f76803-c858-40fa-8a4a-21259d5bc612",
+    "vtt-entretien.onrender.com": "euda-b1266e78-9bff-40a0-b16e-c7bfe85ac71e",
+}
 BOSCH_CLIENT_ID = os.environ.get("BOSCH_CLIENT_ID", "euda-f1f76803-c858-40fa-8a4a-21259d5bc612").strip()
+
+
+def bosch_client_pour_hote(hote):
+    """Identifiant client Bosch de la version de Maillons qui reçoit la demande."""
+    hote = (hote or "").split(":")[0].strip().lower()
+    return BOSCH_CLIENTS.get(hote) or BOSCH_CLIENT_ID
 BOSCH_SCOPE = os.environ.get("BOSCH_SCOPE", "openid offline_access").strip()
 BOSCH_AUTH_URL = "https://p9.authz.bosch.com/auth/realms/obc/protocol/openid-connect/auth"
 BOSCH_TOKEN_URL = "https://p9.authz.bosch.com/auth/realms/obc/protocol/openid-connect/token"
@@ -18743,21 +18756,22 @@ def bosch_demander_jeton(champs):
         raise HTTPException(status_code=502, detail="Bosch ne répond pas : " + str(e)[:120])
 
 
-def bosch_enregistrer_jetons(cursor, personne_id, jetons, ancien_refresh=None):
+def bosch_enregistrer_jetons(cursor, personne_id, jetons, ancien_refresh=None, client_id=None):
     acces = jetons.get("access_token")
     if not acces:
         raise HTTPException(status_code=502, detail="Bosch n'a pas donné d'autorisation.")
     refresh = jetons.get("refresh_token") or ancien_refresh
     duree = int(jetons.get("expires_in") or 300)
     cursor.execute("""
-        INSERT INTO bosch_jetons (personne_id, access_token, refresh_token, expire_le, mis_a_jour_le)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO bosch_jetons (personne_id, access_token, refresh_token, expire_le, mis_a_jour_le, client_id)
+        VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT (personne_id) DO UPDATE SET
             access_token = excluded.access_token,
             refresh_token = excluded.refresh_token,
             expire_le = excluded.expire_le,
-            mis_a_jour_le = excluded.mis_a_jour_le
-    """, (personne_id, acces, refresh, int(time.time()) + duree, maintenant_utc()))
+            mis_a_jour_le = excluded.mis_a_jour_le,
+            client_id = COALESCE(excluded.client_id, bosch_jetons.client_id)
+    """, (personne_id, acces, refresh, int(time.time()) + duree, maintenant_utc(), client_id))
 
 
 def bosch_jeton_valide(personne_id):
@@ -18766,13 +18780,14 @@ def bosch_jeton_valide(personne_id):
     cursor = conn.cursor()
     try:
         cursor.execute(
-            "SELECT access_token, refresh_token, expire_le FROM bosch_jetons WHERE personne_id = ?",
+            "SELECT access_token, refresh_token, expire_le, client_id FROM bosch_jetons WHERE personne_id = ?",
             (personne_id,)
         )
         ligne = cursor.fetchone()
         if not ligne:
             return None
         acces, refresh, expire = ligne[0], ligne[1], int(ligne[2] or 0)
+        client_id = ligne[3] or BOSCH_CLIENT_ID
         if acces and expire > int(time.time()) + 30:
             return acces
         if not refresh:
@@ -18780,9 +18795,9 @@ def bosch_jeton_valide(personne_id):
         jetons = bosch_demander_jeton({
             "grant_type": "refresh_token",
             "refresh_token": refresh,
-            "client_id": BOSCH_CLIENT_ID,
+            "client_id": client_id,
         })
-        bosch_enregistrer_jetons(cursor, personne_id, jetons, refresh)
+        bosch_enregistrer_jetons(cursor, personne_id, jetons, refresh, client_id)
         conn.commit()
         return jetons.get("access_token")
     finally:
@@ -18794,6 +18809,7 @@ def bosch_connecter(request: Request, x_code_acces: Optional[str] = Header(defau
     """Prépare la connexion : renvoie l'adresse de la page de connexion Bosch."""
     personne_id = verifier_auth(x_code_acces)
     retour = bosch_adresse_retour(request)
+    client_id = bosch_client_pour_hote(urllib.parse.urlparse(retour).netloc)
     verifier = secrets.token_urlsafe(64)
     defi = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest()).decode("ascii").rstrip("=")
     etat = secrets.token_urlsafe(32)
@@ -18802,15 +18818,15 @@ def bosch_connecter(request: Request, x_code_acces: Optional[str] = Header(defau
     try:
         cursor.execute("DELETE FROM bosch_etats WHERE cree_le < ?", (int(time.time()) - 900,))
         cursor.execute(
-            "INSERT INTO bosch_etats (etat, personne_id, verifier, redirect_uri, cree_le) VALUES (?, ?, ?, ?, ?)",
-            (etat, personne_id, verifier, retour, int(time.time()))
+            "INSERT INTO bosch_etats (etat, personne_id, verifier, redirect_uri, cree_le, client_id) VALUES (?, ?, ?, ?, ?, ?)",
+            (etat, personne_id, verifier, retour, int(time.time()), client_id)
         )
         conn.commit()
     finally:
         conn.close()
     parametres = {
         "response_type": "code",
-        "client_id": BOSCH_CLIENT_ID,
+        "client_id": client_id,
         "redirect_uri": retour,
         "state": etat,
         "code_challenge": defi,
@@ -18830,7 +18846,7 @@ def bosch_retour(code: Optional[str] = None, state: Optional[str] = None, error:
     cursor = conn.cursor()
     try:
         cursor.execute(
-            "SELECT personne_id, verifier, redirect_uri, cree_le FROM bosch_etats WHERE etat = ?", (state,)
+            "SELECT personne_id, verifier, redirect_uri, cree_le, client_id FROM bosch_etats WHERE etat = ?", (state,)
         )
         ligne = cursor.fetchone()
         cursor.execute("DELETE FROM bosch_etats WHERE etat = ?", (state,))
@@ -18842,10 +18858,10 @@ def bosch_retour(code: Optional[str] = None, state: Optional[str] = None, error:
                 "grant_type": "authorization_code",
                 "code": code,
                 "redirect_uri": ligne[2],
-                "client_id": BOSCH_CLIENT_ID,
+                "client_id": ligne[4] or BOSCH_CLIENT_ID,
                 "code_verifier": ligne[1],
             })
-            bosch_enregistrer_jetons(cursor, ligne[0], jetons)
+            bosch_enregistrer_jetons(cursor, ligne[0], jetons, None, ligne[4] or BOSCH_CLIENT_ID)
             conn.commit()
         except HTTPException as e:
             print("Bosch : échange du code refusé :", e.detail)
