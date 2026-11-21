@@ -5312,6 +5312,7 @@ def accueil():
                     <button type="button" id="boschSortiesVoir" class="btn-primary" style="width:100%;">Voir mes sorties Bosch</button>
                     <div id="boschSorties"></div>
                     <button type="button" id="boschSortiesPlus" class="btn-primary" style="width:100%; margin-top:8px; display:none;">Voir les sorties suivantes</button>
+                    <button type="button" id="boschSortiesTout" class="btn-primary" style="width:100%; margin-top:8px;">Ajouter toutes mes sorties Bosch à Maillons</button>
                     <p class="form-help" id="boschSortiesMessage" aria-live="polite"></p>
                 </div>
                 <button type="button" id="boschActualiser" class="btn-primary" style="width:100%; margin-top:10px;">Actualiser depuis Bosch</button>
@@ -8352,6 +8353,136 @@ def accueil():
                 } catch (e) { bouton.textContent = 'Voir le tracé'; }
             }
 
+            let boschImportArret = false;
+
+            function boschXml(texte) {
+                return String(texte).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            }
+
+            // Bosch ne donne pas l'heure de chaque point : on les répartit régulièrement sur la durée en mouvement.
+            function boschConstruireGpx(titre, debutTexte, dureeS, points) {
+                const debut = Date.parse(debutTexte);
+                const pas = points.length > 1 ? (dureeS * 1000) / (points.length - 1) : 0;
+                const lignes = [
+                    '<?xml version="1.0" encoding="UTF-8"?>',
+                    '<gpx version="1.1" creator="Maillons" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>' + boschXml(titre) + '</name><trkseg>'
+                ];
+                points.forEach((q, i) => {
+                    const heure = new Date(debut + Math.round(i * pas / 1000) * 1000).toISOString();
+                    const alt = typeof q.alt === 'number' && q.alt !== 0 ? '<ele>' + q.alt.toFixed(1) + '</ele>' : '';
+                    lignes.push('<trkpt lat="' + q.lat.toFixed(6) + '" lon="' + q.lon.toFixed(6) + '">' + alt + '<time>' + heure + '</time></trkpt>');
+                });
+                lignes.push('</trkseg></trk></gpx>');
+                return lignes.join(String.fromCharCode(10));
+            }
+
+            // Ce que Bosch sait en plus (sauts, puissance, cadence...) est gardé dans les notes de la sortie.
+            function boschNotesSortie(a) {
+                const morceaux = [];
+                const t = a.tricks || {};
+                const noms = { jumps: 'saut(s)', wheelies: 'wheelie(s)', manuals: 'manual(s)', stoppies: 'stoppie(s)' };
+                Object.keys(noms).forEach(k => {
+                    const x = t[k];
+                    if (!x || typeof x.amount !== 'number' || x.amount <= 0) return;
+                    const d = [];
+                    if (typeof x.maxHeight === 'number' && x.maxHeight > 0) d.push('hauteur max ' + boschNombre(x.maxHeight / 1000, 2) + ' m');
+                    if (typeof x.maxDistance === 'number' && x.maxDistance > 0) d.push('longueur max ' + boschNombre(x.maxDistance, 1) + ' m');
+                    if (typeof x.maxDuration === 'number' && x.maxDuration > 0) d.push('durée max ' + boschNombre(x.maxDuration / 1000, 2) + ' s');
+                    morceaux.push(boschNombre(x.amount, 0) + ' ' + noms[k] + (d.length ? ' (' + d.join(', ') + ')' : ''));
+                });
+                if (a.riderPower && typeof a.riderPower.average === 'number') morceaux.push('puissance moyenne ' + boschNombre(a.riderPower.average, 0) + ' W (max ' + boschNombre(a.riderPower.maximum || 0, 0) + ' W)');
+                if (a.cadence && typeof a.cadence.average === 'number') morceaux.push('cadence moyenne ' + boschNombre(a.cadence.average, 0) + ' tr/min');
+                if (typeof a.caloriesBurned === 'number') morceaux.push(boschNombre(a.caloriesBurned, 0) + ' kcal');
+                return morceaux.length ? ('Bosch : ' + morceaux.join(' · ')).slice(0, 500) : null;
+            }
+
+            function boschVeloPourSortie(a) {
+                if (a.bikeId && boschLiaisons[a.bikeId]) return Number(boschLiaisons[a.bikeId]);
+                const ids = Object.keys(boschLiaisons).map(k => boschLiaisons[k]);
+                return ids.length === 1 ? Number(ids[0]) : null;
+            }
+
+            // Renvoie { etat: 'ok' | 'deja' | 'ignoree' | 'erreur', texte }.
+            async function boschImporterUneSortie(a) {
+                try {
+                    const veloId = boschVeloPourSortie(a);
+                    if (!veloId) return { etat: 'erreur', texte: "Relie d'abord ton vélo Bosch à un vélo de Maillons (menu en haut de cette fenêtre)." };
+                    const r = await fetch('/api/bosch/sorties/' + encodeURIComponent(a.id) + '/details', { headers: getHeaders() });
+                    const d = await r.json();
+                    if (!r.ok) return { etat: 'erreur', texte: d.detail || 'Tracé illisible.' };
+                    if (!d.points || d.points.length < 2) return { etat: 'ignoree', texte: "Pas de position GPS chez Bosch pour cette sortie." };
+                    const titre = a.title || ('Sortie Bosch du ' + boschDate(a.startTime));
+                    const gpx = boschConstruireGpx(titre, a.startTime, a.durationWithoutStops || 0, d.points);
+                    const envoi = await fetchOriginal('/api/sorties/import?velo_id=' + encodeURIComponent(veloId), {
+                        method: 'POST',
+                        headers: getHeaders(),
+                        body: JSON.stringify({ gpx: gpx, nom: titre.slice(0, 120), notes: boschNotesSortie(a), terrain: 'mixte' })
+                    });
+                    let rep = null;
+                    try { rep = await envoi.json(); } catch (e) { rep = null; }
+                    if (envoi.status === 409) return { etat: 'deja', texte: 'Cette sortie est déjà dans Maillons.' };
+                    if (envoi.status === 400) return { etat: 'ignoree', texte: (rep && rep.detail) || 'Sortie ignorée.' };
+                    if (!envoi.ok) return { etat: 'erreur', texte: (rep && rep.detail) || 'Ajout impossible.' };
+                    return { etat: 'ok', texte: 'Sortie ajoutée à Maillons.' };
+                } catch (e) {
+                    return { etat: 'erreur', texte: 'Pas de connexion internet.' };
+                }
+            }
+
+            async function boschRafraichirSorties() {
+                try {
+                    if (typeof chargerSorties === 'function') await chargerSorties(false);
+                    if (typeof chargerVelos === 'function') await chargerVelos();
+                    if (typeof chargerEtat === 'function') await chargerEtat();
+                } catch (e) { /* l'affichage se mettra à jour à la prochaine ouverture */ }
+            }
+
+            async function boschImporterTout() {
+                const msg = document.getElementById('boschSortiesMessage');
+                const bouton = document.getElementById('boschSortiesTout');
+                bouton.disabled = true;
+                boschImportArret = false;
+                try {
+                    msg.textContent = 'Je compte tes sorties chez Bosch...';
+                    const toutes = [];
+                    let decalage = 0;
+                    let total = null;
+                    while (total === null || decalage < total) {
+                        const r = await fetch('/api/bosch/sorties?limite=100&decalage=' + decalage, { headers: getHeaders() });
+                        const d = await r.json();
+                        if (!r.ok) { msg.textContent = d.detail || 'Lecture impossible.'; return; }
+                        total = typeof d.total === 'number' ? d.total : d.sorties.length;
+                        if (!d.sorties.length) break;
+                        d.sorties.forEach(x => toutes.push(x));
+                        decalage += d.sorties.length;
+                    }
+                    if (!toutes.length) { msg.textContent = "Bosch ne renvoie aucune sortie."; return; }
+                    if (!window.confirm('Ajouter ' + toutes.length + ' sortie(s) Bosch à Maillons ? Celles qui y sont déjà seront ignorées. Cela peut prendre quelques minutes : garde cette fenêtre ouverte.')) { msg.textContent = ''; return; }
+                    const bilan = { ok: 0, deja: 0, ignoree: 0, erreur: 0 };
+                    let derniereErreur = '';
+                    // Les plus anciennes d'abord : le kilométrage et les lieux se mettent dans l'ordre.
+                    const ordre = toutes.slice().sort((x, y) => String(x.startTime).localeCompare(String(y.startTime)));
+                    for (let i = 0; i < ordre.length; i++) {
+                        if (boschImportArret) { msg.textContent = 'Arrêté après ' + i + ' sortie(s).'; break; }
+                        msg.textContent = 'Sortie ' + (i + 1) + ' sur ' + ordre.length + '...';
+                        const res = await boschImporterUneSortie(ordre[i]);
+                        bilan[res.etat] += 1;
+                        if (res.etat === 'erreur') {
+                            derniereErreur = res.texte;
+                            if (bilan.erreur >= 3) break;
+                        }
+                    }
+                    let texte = bilan.ok + ' ajoutée(s), ' + bilan.deja + ' déjà présente(s), ' + bilan.ignoree + ' ignorée(s)';
+                    if (bilan.erreur) texte += ', ' + bilan.erreur + ' en erreur (' + derniereErreur + ')';
+                    msg.textContent = texte + '.';
+                    if (bilan.ok) await boschRafraichirSorties();
+                } catch (e) {
+                    msg.textContent = 'Pas de connexion internet.';
+                } finally {
+                    bouton.disabled = false;
+                }
+            }
+
             function ajouterSortiesBosch(liste) {
                 const zone = document.getElementById('boschSorties');
                 liste.forEach(a => {
@@ -8396,6 +8527,23 @@ def accueil():
                     const zoneTrace = document.createElement('div');
                     boutonTrace.addEventListener('click', () => boschVoirTrace(a.id, boutonTrace, zoneTrace));
                     corps.appendChild(boutonTrace);
+                    const boutonAjout = document.createElement('button');
+                    boutonAjout.type = 'button';
+                    boutonAjout.className = 'btn-primary';
+                    boutonAjout.style.cssText = 'width:100%; margin-top:6px;';
+                    boutonAjout.textContent = 'Ajouter à mes sorties';
+                    const messageAjout = document.createElement('p');
+                    messageAjout.className = 'form-help';
+                    boutonAjout.addEventListener('click', async () => {
+                        boutonAjout.disabled = true;
+                        messageAjout.textContent = "J'ajoute la sortie...";
+                        const res = await boschImporterUneSortie(a);
+                        messageAjout.textContent = res.texte;
+                        boutonAjout.disabled = res.etat === 'ok' || res.etat === 'deja';
+                        if (res.etat === 'ok') await boschRafraichirSorties();
+                    });
+                    corps.appendChild(boutonAjout);
+                    corps.appendChild(messageAjout);
                     corps.appendChild(zoneTrace);
                     fiche.appendChild(corps);
                     zone.appendChild(fiche);
@@ -8459,6 +8607,8 @@ def accueil():
 
             document.getElementById('boschDonnees').addEventListener('click', () => boschLireVelos({ ouvrir: true }));
             document.getElementById('boschSortiesVoir').addEventListener('click', () => boschLireSorties(false));
+            document.getElementById('boschSortiesTout').addEventListener('click', boschImporterTout);
+            document.getElementById('fenetreBosch').addEventListener('close', () => { boschImportArret = true; });
             document.getElementById('boschSortiesPlus').addEventListener('click', () => boschLireSorties(true));
             document.getElementById('boschActualiser').addEventListener('click', () => boschLireVelos({ ouvrir: true }));
             document.getElementById('boutonFermerFenetreBosch').addEventListener('click', () => document.getElementById('fenetreBosch').close());
