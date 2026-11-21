@@ -8302,7 +8302,7 @@ def accueil():
                 svg.appendChild(c);
             }
 
-            function dessinerTraceBosch(zone, points) {
+            function dessinerTraceBosch(zone, points, champs) {
                 zone.replaceChildren();
                 const L = 340, H = 240, M = 14;
                 const lats = points.map(p => p.lat), lons = points.map(p => p.lon);
@@ -8319,7 +8319,7 @@ def accueil():
                 boschPoint(svg, coords[0][0], coords[0][1], '#2e9e5b');
                 boschPoint(svg, coords[coords.length - 1][0], coords[coords.length - 1][1], '#d6453d');
                 zone.appendChild(svg);
-                const alts = points.filter(p => typeof p.alt === 'number');
+                const alts = points.filter(p => typeof p.alt === 'number' && p.alt !== 0);
                 if (alts.length > 1) {
                     const minA = Math.min.apply(null, alts.map(p => p.alt)), maxA = Math.max.apply(null, alts.map(p => p.alt));
                     const plage = Math.max(maxA - minA, 1);
@@ -8331,6 +8331,12 @@ def accueil():
                     legende.textContent = 'Altitude : de ' + boschNombre(minA, 0) + ' m à ' + boschNombre(maxA, 0) + ' m · ' + points.length + ' points · départ en vert, arrivée en rouge.';
                     zone.appendChild(legende);
                 }
+                if (champs && champs.length) {
+                    const info = document.createElement('p');
+                    info.className = 'form-help';
+                    info.textContent = 'Informations envoyées par Bosch pour chaque point : ' + champs.join(', ') + '.';
+                    zone.appendChild(info);
+                }
             }
 
             async function boschVoirTrace(id, bouton, zone) {
@@ -8341,7 +8347,7 @@ def accueil():
                     const d = await r.json();
                     if (!r.ok) { bouton.textContent = 'Voir le tracé'; const p = document.createElement('p'); p.className = 'form-help'; p.textContent = d.detail || 'Lecture impossible.'; zone.appendChild(p); return; }
                     if (!d.points.length) { bouton.textContent = 'Voir le tracé'; const p = document.createElement('p'); p.className = 'form-help'; p.textContent = "Bosch n'a pas de position GPS pour cette sortie."; zone.appendChild(p); return; }
-                    dessinerTraceBosch(zone, d.points);
+                    dessinerTraceBosch(zone, d.points, d.champs);
                     bouton.textContent = 'Masquer le tracé';
                 } catch (e) { bouton.textContent = 'Voir le tracé'; }
             }
@@ -19443,7 +19449,8 @@ def bosch_sortie_details(activite_id: str, x_code_acces: Optional[str] = Header(
             })
     # Au plus 3000 points : assez pour un beau tracé, sans alourdir le téléphone.
     pas = max(1, -(-len(points) // 3000))
-    return {"total_points": len(brut), "points": points[::pas]}
+    champs = sorted({str(k) for q in brut[:2000] if isinstance(q, dict) for k in q.keys()})
+    return {"total_points": len(brut), "points": points[::pas], "champs": champs}
 
 
 class BoschLierRequest(BaseModel):

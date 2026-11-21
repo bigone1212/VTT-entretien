@@ -399,6 +399,7 @@ def test_trace_d_une_sortie():
             d = r.json()
             assert d["total_points"] == 5001
             assert 0 < len(d["points"]) <= 3000
+            assert d["champs"] == ["altitude", "distance", "latitude", "longitude", "speed"]
             assert all(p["lat"] != 0 for p in d["points"])
             assert vus[0] == "https://api.bosch-ebike.com/activity/smart-system/v1/activities/" + ident + "/details"
 
