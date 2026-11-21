@@ -8266,9 +8266,9 @@ def accueil():
                     if (!t || typeof t.amount !== 'number' || t.amount <= 0) return;
                     rien = false;
                     const details = [];
-                    if (typeof t.maxHeight === 'number' && t.maxHeight > 0) details.push('hauteur max ' + boschNombre(t.maxHeight, 2) + ' m');
+                    if (typeof t.maxHeight === 'number' && t.maxHeight > 0) details.push('hauteur max ' + boschNombre(t.maxHeight / 1000, 2) + ' m');
                     if (typeof t.maxDistance === 'number' && t.maxDistance > 0) details.push('longueur max ' + boschNombre(t.maxDistance, 1) + ' m');
-                    if (typeof t.maxDuration === 'number' && t.maxDuration > 0) details.push('durée max ' + boschNombre(t.maxDuration, 1) + ' s');
+                    if (typeof t.maxDuration === 'number' && t.maxDuration > 0) details.push('durée max ' + boschNombre(t.maxDuration / 1000, 2) + ' s');
                     if (typeof t.maxAngle === 'number' && t.maxAngle > 0) details.push('angle max ' + boschNombre(t.maxAngle, 0));
                     boschLigne(parent, noms[k], boschNombre(t.amount, 0) + (details.length ? ' (' + details.join(', ') + ')' : ''));
                 });
