@@ -8256,6 +8256,96 @@ def accueil():
                 }
             }
 
+            // Sauts, wheelies, manuals, stoppies : on n'affiche que ce qui a été détecté.
+            function boschLignesTricks(parent, tricks) {
+                if (!tricks || typeof tricks !== 'object') return;
+                const noms = { jumps: 'Sauts', wheelies: 'Wheelies', manuals: 'Manuals', stoppies: 'Stoppies' };
+                let rien = true;
+                Object.keys(noms).forEach(k => {
+                    const t = tricks[k];
+                    if (!t || typeof t.amount !== 'number' || t.amount <= 0) return;
+                    rien = false;
+                    const details = [];
+                    if (typeof t.maxHeight === 'number' && t.maxHeight > 0) details.push('hauteur max ' + boschNombre(t.maxHeight, 2));
+                    if (typeof t.maxDistance === 'number' && t.maxDistance > 0) details.push('longueur max ' + boschNombre(t.maxDistance, 1));
+                    if (typeof t.maxDuration === 'number' && t.maxDuration > 0) details.push('durée max ' + boschNombre(t.maxDuration, 1));
+                    if (typeof t.maxAngle === 'number' && t.maxAngle > 0) details.push('angle max ' + boschNombre(t.maxAngle, 0));
+                    boschLigne(parent, noms[k], boschNombre(t.amount, 0) + (details.length ? ' (' + details.join(', ') + ')' : ''));
+                });
+                if (rien) boschLigne(parent, 'Sauts et figures', 'aucun détecté');
+            }
+
+            function boschSvg(largeur, hauteur) {
+                const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                svg.setAttribute('viewBox', '0 0 ' + largeur + ' ' + hauteur);
+                svg.style.cssText = 'width:100%; height:auto; display:block; margin-top:8px; border-radius:10px; background:var(--field);';
+                return svg;
+            }
+
+            function boschLigneSvg(svg, coords, couleur, epaisseur) {
+                const ligne = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+                ligne.setAttribute('points', coords.map(c => c[0].toFixed(1) + ',' + c[1].toFixed(1)).join(' '));
+                ligne.setAttribute('fill', 'none');
+                ligne.setAttribute('stroke-linejoin', 'round');
+                ligne.setAttribute('stroke-linecap', 'round');
+                ligne.setAttribute('stroke-width', String(epaisseur));
+                ligne.style.stroke = couleur;
+                svg.appendChild(ligne);
+            }
+
+            function boschPoint(svg, x, y, couleur) {
+                const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                c.setAttribute('cx', x.toFixed(1));
+                c.setAttribute('cy', y.toFixed(1));
+                c.setAttribute('r', '5');
+                c.style.fill = couleur;
+                svg.appendChild(c);
+            }
+
+            function dessinerTraceBosch(zone, points) {
+                zone.replaceChildren();
+                const L = 340, H = 240, M = 14;
+                const lats = points.map(p => p.lat), lons = points.map(p => p.lon);
+                const minLat = Math.min.apply(null, lats), maxLat = Math.max.apply(null, lats);
+                const minLon = Math.min.apply(null, lons), maxLon = Math.max.apply(null, lons);
+                const k = Math.cos(((minLat + maxLat) / 2) * Math.PI / 180);
+                const largeurGeo = Math.max((maxLon - minLon) * k, 0.00001);
+                const hauteurGeo = Math.max(maxLat - minLat, 0.00001);
+                const echelle = Math.min((L - 2 * M) / largeurGeo, (H - 2 * M) / hauteurGeo);
+                const dx = (L - largeurGeo * echelle) / 2, dy = (H - hauteurGeo * echelle) / 2;
+                const coords = points.map(p => [dx + (p.lon - minLon) * k * echelle, H - dy - (p.lat - minLat) * echelle]);
+                const svg = boschSvg(L, H);
+                boschLigneSvg(svg, coords, 'var(--accent)', 3);
+                boschPoint(svg, coords[0][0], coords[0][1], '#2e9e5b');
+                boschPoint(svg, coords[coords.length - 1][0], coords[coords.length - 1][1], '#d6453d');
+                zone.appendChild(svg);
+                const alts = points.filter(p => typeof p.alt === 'number');
+                if (alts.length > 1) {
+                    const minA = Math.min.apply(null, alts.map(p => p.alt)), maxA = Math.max.apply(null, alts.map(p => p.alt));
+                    const plage = Math.max(maxA - minA, 1);
+                    const profil = boschSvg(L, 90);
+                    boschLigneSvg(profil, alts.map((p, i) => [M + i * (L - 2 * M) / (alts.length - 1), 80 - (p.alt - minA) / plage * 66]), 'var(--accent)', 2);
+                    zone.appendChild(profil);
+                    const legende = document.createElement('p');
+                    legende.className = 'form-help';
+                    legende.textContent = 'Altitude : de ' + boschNombre(minA, 0) + ' m à ' + boschNombre(maxA, 0) + ' m · ' + points.length + ' points · départ en vert, arrivée en rouge.';
+                    zone.appendChild(legende);
+                }
+            }
+
+            async function boschVoirTrace(id, bouton, zone) {
+                if (zone.childNodes.length) { zone.replaceChildren(); bouton.textContent = 'Voir le tracé'; return; }
+                bouton.textContent = 'Je lis le tracé...';
+                try {
+                    const r = await fetch('/api/bosch/sorties/' + encodeURIComponent(id) + '/details', { headers: getHeaders() });
+                    const d = await r.json();
+                    if (!r.ok) { bouton.textContent = 'Voir le tracé'; const p = document.createElement('p'); p.className = 'form-help'; p.textContent = d.detail || 'Lecture impossible.'; zone.appendChild(p); return; }
+                    if (!d.points.length) { bouton.textContent = 'Voir le tracé'; const p = document.createElement('p'); p.className = 'form-help'; p.textContent = "Bosch n'a pas de position GPS pour cette sortie."; zone.appendChild(p); return; }
+                    dessinerTraceBosch(zone, d.points);
+                    bouton.textContent = 'Masquer le tracé';
+                } catch (e) { bouton.textContent = 'Voir le tracé'; }
+            }
+
             function ajouterSortiesBosch(liste) {
                 const zone = document.getElementById('boschSorties');
                 liste.forEach(a => {
@@ -8291,6 +8381,16 @@ def accueil():
                         boschLigne(corps, 'Cœur max', typeof a.heartRate.maximum === 'number' ? boschNombre(a.heartRate.maximum, 0) + ' bpm' : '');
                     }
                     if (typeof a.startOdometer === 'number') boschLigne(corps, 'Compteur au départ', boschNombre(a.startOdometer / 1000, 1) + ' km');
+                    boschLignesTricks(corps, a.tricks);
+                    const boutonTrace = document.createElement('button');
+                    boutonTrace.type = 'button';
+                    boutonTrace.className = 'btn-primary';
+                    boutonTrace.style.cssText = 'width:100%; margin-top:8px;';
+                    boutonTrace.textContent = 'Voir le tracé';
+                    const zoneTrace = document.createElement('div');
+                    boutonTrace.addEventListener('click', () => boschVoirTrace(a.id, boutonTrace, zoneTrace));
+                    corps.appendChild(boutonTrace);
+                    corps.appendChild(zoneTrace);
                     fiche.appendChild(corps);
                     zone.appendChild(fiche);
                 });
@@ -19300,6 +19400,50 @@ def bosch_sorties(limite: int = 20, decalage: int = 0, x_code_acces: Optional[st
         "decalage": decalage,
         "limite": limite,
     }
+
+
+@app.get("/api/bosch/sorties/{activite_id}/details")
+def bosch_sortie_details(activite_id: str, x_code_acces: Optional[str] = Header(default=None)):
+    """Lit les points d'une sortie (position, altitude, vitesse...) : de quoi dessiner le tracé."""
+    personne_id = verifier_auth(x_code_acces)
+    if not re.fullmatch(r"[0-9a-fA-F-]{32,40}", activite_id):
+        raise HTTPException(status_code=400, detail="Identifiant de sortie invalide.")
+    acces = bosch_jeton_valide(personne_id)
+    if not acces:
+        raise HTTPException(status_code=409, detail="Vélo Bosch pas encore connecté.")
+    demande = urllib.request.Request(BOSCH_API_ACTIVITES + "/" + activite_id + "/details", headers={
+        "Authorization": "Bearer " + acces,
+        "Accept": "application/json",
+    })
+    try:
+        with urllib.request.urlopen(demande, timeout=30) as reponse:
+            donnees = json.loads(reponse.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        detail = ""
+        try:
+            detail = e.read().decode("utf-8")[:200]
+        except Exception:
+            pass
+        if e.code in (401, 403):
+            raise HTTPException(status_code=403, detail="Bosch n'autorise pas Maillons à lire le tracé (" + str(e.code) + "). " + detail)
+        raise HTTPException(status_code=502, detail="Bosch a répondu " + str(e.code) + " " + detail)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail="Bosch ne répond pas : " + str(e)[:120])
+    brut = donnees.get("activityDetails") if isinstance(donnees, dict) else None
+    brut = brut if isinstance(brut, list) else []
+    points = []
+    for q in brut:
+        if not isinstance(q, dict):
+            continue
+        lat, lon = q.get("latitude"), q.get("longitude")
+        if isinstance(lat, (int, float)) and isinstance(lon, (int, float)) and not (lat == 0 and lon == 0):
+            points.append({
+                "lat": lat, "lon": lon, "alt": q.get("altitude"), "vit": q.get("speed"),
+                "dist": q.get("distance"), "puiss": q.get("riderPower"),
+            })
+    # Au plus 3000 points : assez pour un beau tracé, sans alourdir le téléphone.
+    pas = max(1, -(-len(points) // 3000))
+    return {"total_points": len(brut), "points": points[::pas]}
 
 
 class BoschLierRequest(BaseModel):
