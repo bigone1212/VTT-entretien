@@ -7972,6 +7972,17 @@ def accueil():
                         sessionStorage.removeItem('maillons_bosch_auto');
                         if (!d.connecte) { boschDemarrerConnexion(); return; }
                     }
+                    if (sessionStorage.getItem('maillons_bosch_lire_auto') === '1' && d.connecte) {
+                        sessionStorage.removeItem('maillons_bosch_lire_auto');
+                        await synchroBoschAuto(true);
+                        try {
+                            const e = await fetch('/api/bosch/etat', { headers: getHeaders() });
+                            if (e.ok) boschLiaisons = (await e.json()).liaisons || {};
+                        } catch (err) { /* on lit quand même */ }
+                        await boschLireVelos();
+                        rafraichirBosch();
+                        return;
+                    }
                     if (d.connecte) synchroBoschAuto();
                 } catch (e) { /* hors ligne : on garde l'affichage actuel */ }
             }
@@ -8060,7 +8071,7 @@ def accueil():
 
             document.getElementById('boschConnecter').addEventListener('click', boschDemarrerConnexion);
 
-            document.getElementById('boschLire').addEventListener('click', async () => {
+            async function boschLireVelos() {
                 boschMessage('Je lis tes vélos chez Bosch...');
                 document.getElementById('boschCopier').style.display = 'none';
                 try {
@@ -8068,17 +8079,26 @@ def accueil():
                     const d = await r.json();
                     if (!r.ok) { boschMessage(d.detail || 'Lecture impossible.'); return; }
                     boschDernierDetail = d;
+                    const liste = d.brut && d.brut.bikes ? d.brut.bikes : [];
+                    const nonLies = liste.filter(b => !boschLiaisons[b.id]).length;
                     let texte = d.nb + ' vélo(s) trouvé(s) chez Bosch.';
-                    if (d.odometres && d.odometres.length) {
-                        texte += ' ' + d.odometres.map(o => o.chemin + ' = ' + o.valeur).join(' ; ');
-                    } else if (d.nb > 0) {
+                    if (d.nb === 0) {
+                        texte += " Vérifie que le service est bien activé chez Bosch pour l'application Maillons.";
+                    } else if (nonLies > 0) {
+                        texte += ' Choisis le vélo de Maillons qui correspond à chacun.';
+                    } else {
+                        texte += ' Tout est relié : le kilométrage se met à jour tout seul.';
+                    }
+                    if (d.nb > 0 && !(d.odometres && d.odometres.length)) {
                         texte += " Je n'ai pas trouvé l'odomètre : touche « Copier le détail reçu » et envoie-le moi.";
                     }
                     boschMessage(texte);
                     document.getElementById('boschCopier').style.display = '';
                     afficherLiensBosch(d);
                 } catch (e) { boschMessage('Pas de connexion internet.'); }
-            });
+            }
+
+            document.getElementById('boschLire').addEventListener('click', boschLireVelos);
 
             document.getElementById('boschCopier').addEventListener('click', async () => {
                 if (!boschDernierDetail) return;
@@ -8115,12 +8135,13 @@ def accueil():
                 } catch (e) { /* tant pis : la personne touchera le bouton */ }
                 if (!retourBosch) return;
                 const textes = {
-                    ok: 'Bosch est connecté. Touche « Lire mes vélos Bosch ».',
+                    ok: 'Bosch est connecté. Je lis tes vélos...',
                     refus: "La connexion Bosch n'a pas abouti.",
                     expire: 'La connexion Bosch a expiré : recommence.',
                     erreur: 'Bosch a refusé la connexion : dis-le à Claude.'
                 };
                 boschMessage(textes[retourBosch] || '');
+                if (retourBosch === 'ok') sessionStorage.setItem('maillons_bosch_lire_auto', '1');
                 history.replaceState(null, '', location.pathname + '#compte');
             })();
 
