@@ -7966,7 +7966,7 @@ def accueil():
                         document.getElementById('boschCopier').style.display = 'none';
                         document.getElementById('boschLiens').replaceChildren();
                     }
-                    if (d.connecte && liens.length) synchroBoschAuto();
+                    if (d.connecte) synchroBoschAuto();
                 } catch (e) { /* hors ligne : on garde l'affichage actuel */ }
             }
 
@@ -7982,6 +7982,15 @@ def accueil():
                     if (d.modifies && d.modifies.length) {
                         await chargerVelos();
                         await chargerEtat();
+                        const e = await fetch('/api/bosch/etat', { headers: getHeaders() });
+                        if (e.ok) {
+                            boschLiaisons = (await e.json()).liaisons || {};
+                            const cles = Object.keys(boschLiaisons);
+                            if (cles.length) {
+                                document.getElementById('boschEtat').textContent = 'Ton compte Bosch est connecté (lecture seule). Kilométrage repris automatiquement pour : '
+                                    + cles.map(k => nomVeloMaillons(boschLiaisons[k])).join(', ') + '.';
+                            }
+                        }
                     }
                 } catch (e) { /* tant pis : on réessaiera à la prochaine ouverture */ }
             }
@@ -19003,12 +19012,38 @@ def bosch_synchroniser(x_code_acces: Optional[str] = Header(default=None)):
         liees = cursor.fetchall()
     finally:
         conn.close()
-    if not liees:
-        return {"liees": 0, "modifies": []}
     acces = bosch_jeton_valide(personne_id)
     if not acces:
+        if not liees:
+            return {"liees": 0, "modifies": []}
         raise HTTPException(status_code=409, detail="Vélo Bosch pas encore connecté.")
     _, velos_bosch = bosch_lire_velos(acces)
+    if not liees:
+        # Lien direct : un seul vélo chez Bosch et un seul vélo Maillons annoncé « Bosch » (modèle ou moteur).
+        ids_bosch = [v.get("id") for v in velos_bosch if isinstance(v, dict) and v.get("id")]
+        if len(ids_bosch) == 1:
+            conn = db.connect()
+            cursor = conn.cursor()
+            try:
+                cursor.execute(
+                    "SELECT id, modele, moteur FROM velos WHERE personne_id = ? AND actif = 1",
+                    (personne_id,)
+                )
+                candidats = [
+                    r[0] for r in cursor.fetchall()
+                    if "bosch" in (str(r[1] or "") + " " + str(r[2] or "")).lower()
+                ]
+                if len(candidats) == 1:
+                    cursor.execute(
+                        "UPDATE velos SET bosch_bike_id = ?, bosch_odometre_m = NULL WHERE id = ? AND personne_id = ?",
+                        (ids_bosch[0], candidats[0], personne_id)
+                    )
+                    conn.commit()
+                    liees = [(candidats[0], ids_bosch[0], None)]
+            finally:
+                conn.close()
+        if not liees:
+            return {"liees": 0, "modifies": []}
     par_id = {v.get("id"): v for v in velos_bosch if isinstance(v, dict)}
     modifies = []
     conn = db.connect()

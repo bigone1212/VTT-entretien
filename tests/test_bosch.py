@@ -159,10 +159,23 @@ def test_liaison_et_synchro_du_kilometrage():
             conn.close()
             return ligne[0], ligne[1]
 
-        # Sans liaison : rien ne bouge
+        # Sans liaison possible (aucun vélo Maillons annoncé « Bosch ») : rien ne bouge
+        conn = main.db.connect()
+        cur = conn.cursor()
+        cur.execute("UPDATE velos SET bosch_bike_id = NULL, bosch_odometre_m = NULL")
+        cur.execute("SELECT modele, moteur FROM velos WHERE id = 1")
+        origine = cur.fetchone()
+        cur.execute("UPDATE velos SET modele = 'Modele neutre', moteur = NULL WHERE id = 1")
+        conn.commit()
+        conn.close()
         avant = km()[0]
         assert c.post("/api/bosch/synchro", headers=ENTETE).json() == {"liees": 0, "modifies": []}
         assert km()[0] == avant
+        conn = main.db.connect()
+        cur = conn.cursor()
+        cur.execute("UPDATE velos SET modele = ?, moteur = ? WHERE id = 1", (origine[0], origine[1]))
+        conn.commit()
+        conn.close()
 
         # Un vélo qui n'existe pas ou n'est pas à soi est refusé
         assert c.post("/api/bosch/lier", headers=ENTETE, json={"bosch_id": BIKE, "velo_id": 9999}).status_code in (403, 404)
@@ -191,3 +204,33 @@ def test_liaison_et_synchro_du_kilometrage():
         # Déliaison
         assert c.delete("/api/bosch/lier/1", headers=ENTETE).status_code == 200
         assert c.get("/api/bosch/etat", headers=ENTETE).json()["liaisons"] == {}
+
+
+def test_lien_direct_quand_un_seul_choix_possible():
+    with TestClient(main.app, base_url="https://x.onrender.com", follow_redirects=False) as c:
+        BIKE = "0ede75c1-3f16-46a0-9c18-f16afd601b50"
+        conn = main.db.connect()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM bosch_jetons")
+        cur.execute(
+            "INSERT INTO bosch_jetons (personne_id, access_token, refresh_token, expire_le, mis_a_jour_le) VALUES (1, 'A', 'R', 9999999999, 'x')"
+        )
+        cur.execute("UPDATE velos SET bosch_bike_id = NULL, bosch_odometre_m = NULL")
+        conn.commit()
+        conn.close()
+        main.bosch_lire_velos = lambda acces: (None, [{"id": BIKE, "driveUnit": {"odometer": 3096890}}])
+
+        # Le Cube est le seul vélo dont le modèle parle de Bosch : lien direct, sans menu
+        r = c.post("/api/bosch/synchro", headers=ENTETE).json()
+        assert r["liees"] == 1 and r["modifies"] == [{"velo_id": 1, "km_total": 3097}]
+        assert c.get("/api/bosch/etat", headers=ENTETE).json()["liaisons"] == {BIKE: 1}
+
+        # Deux vélos Bosch chez Bosch : pas de choix à la place de la personne
+        conn = main.db.connect()
+        cur = conn.cursor()
+        cur.execute("UPDATE velos SET bosch_bike_id = NULL, bosch_odometre_m = NULL")
+        conn.commit()
+        conn.close()
+        main.bosch_lire_velos = lambda acces: (None, [{"id": BIKE, "driveUnit": {"odometer": 1}},
+                                                      {"id": "autre-velo-bosch-0000", "driveUnit": {"odometer": 2}}])
+        assert c.post("/api/bosch/synchro", headers=ENTETE).json() == {"liees": 0, "modifies": []}
