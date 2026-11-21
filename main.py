@@ -1906,6 +1906,18 @@ def accueil():
 
             dialog.fenetre-velo form details#ficheIA button { margin: 6px 0 10px; }
 
+            .bosch-bouton { display: flex; align-items: center; justify-content: center; gap: 8px; }
+            .bosch-lien { display: block; margin: 10px auto 0; background: none; border: 0; padding: 6px; color: var(--text-muted); font-size: 0.85rem; text-decoration: underline; cursor: pointer; }
+            .bosch-aide { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--field-line); border-radius: 12px; background: var(--field); font-size: 0.88rem; line-height: 1.4; }
+            .bosch-aide ol { margin: 6px 0 0; padding-left: 20px; }
+            .bosch-aide a { color: var(--accent); }
+            .bosch-section { margin: 14px 0 0; padding-top: 10px; border-top: 1px solid var(--field-line); }
+            .bosch-section h4 { margin: 0 0 6px; font-size: 0.8rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }
+            .bosch-ligne { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; font-size: 0.9rem; }
+            .bosch-ligne span:first-child { color: var(--text-muted); }
+            .bosch-ligne span:last-child { text-align: right; font-weight: 600; color: var(--strong); word-break: break-word; }
+            .bosch-gros { font-size: 1.6rem; font-weight: 800; color: var(--strong); margin: 4px 0 0; }
+
             .fenetre-velo-entete {
                 display: flex;
                 align-items: center;
@@ -5273,15 +5285,32 @@ def accueil():
             </form>
             <p class="form-help" id="messageCompte" aria-live="polite"></p>
             <div class="bosch-bloc" id="boschBloc" style="margin-top:14px;">
-                <strong>Vélo Bosch (eBike Flow)</strong>
                 <p class="form-help" id="boschEtat">Relie ton compte Bosch pour lire les informations de ton vélo (lecture seule).</p>
-                <button type="button" id="boschConnecter" class="btn-primary" style="width:100%; margin-top:6px;">Connecter mon vélo Bosch</button>
-                <button type="button" id="boschLire" class="btn-primary" style="width:100%; margin-top:6px; display:none;">Lire mes vélos Bosch</button>
-                <div id="boschLiens"></div>
-                <button type="button" id="boschCopier" class="btn-primary" style="width:100%; margin-top:6px; display:none;">Copier le détail reçu</button>
-                <button type="button" id="boschDeconnecter" class="btn-primary" style="width:100%; margin-top:6px; display:none;">Déconnecter Bosch</button>
+                <button type="button" id="boschConnecter" class="btn-primary bosch-bouton" style="width:100%; margin-top:6px;"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg><span>Connexion à Bosch</span></button>
+                <button type="button" id="boschDonnees" class="btn-primary bosch-bouton" style="width:100%; margin-top:6px; display:none;"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16h.01"/></svg><span>Voir les données de mon vélo Bosch</span></button>
+                <div id="boschAide" class="bosch-aide" style="display:none;">
+                    <strong>Bosch ne partage encore aucun vélo avec Maillons.</strong>
+                    <ol>
+                        <li>Ouvre <a href="https://flow.bosch-ebike.com" target="_blank" rel="noopener">flow.bosch-ebike.com</a> et va dans l'onglet « Data Act », puis « Gestion de l'accès ».</li>
+                        <li>Sous ton vélo, mets l'interrupteur « Maillons » sur activé.</li>
+                        <li>Reviens ici et touche « Voir les données de mon vélo Bosch ».</li>
+                    </ol>
+                </div>
+                <button type="button" id="boschDeconnecter" class="bosch-lien" style="display:none;">Déconnecter Bosch</button>
                 <p class="form-help" id="boschMessage" aria-live="polite"></p>
             </div>
+            <dialog id="fenetreBosch" class="fenetre-velo" aria-labelledby="titreFenetreBosch">
+                <div class="fenetre-velo-entete">
+                    <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16h.01"/></svg><span id="titreFenetreBosch">Données de mon vélo Bosch</span></strong>
+                    <button type="button" class="fenetre-velo-fermer" id="boutonFermerFenetreBosch" aria-label="Fermer">✕</button>
+                </div>
+                <p class="form-help">Tout ce que Bosch partage avec Maillons (lecture seule).</p>
+                <div id="boschContenu"></div>
+                <div id="boschLiens"></div>
+                <button type="button" id="boschActualiser" class="btn-primary" style="width:100%; margin-top:10px;">Actualiser depuis Bosch</button>
+                <button type="button" id="boschCopier" class="btn-primary" style="width:100%; margin-top:6px;">Copier le détail brut</button>
+                <p class="form-help" id="boschMessageFenetre" aria-live="polite"></p>
+            </dialog>
             <button type="button" id="boutonDeconnexion" class="btn-primary" style="width:100%; margin-top:8px;">Se déconnecter</button>
             <p class="form-help compte-version" id="compteVersion"></p>
         </section>
@@ -7938,6 +7967,8 @@ def accueil():
 
             function boschMessage(texte) {
                 document.getElementById('boschMessage').textContent = texte || '';
+                const dedans = document.getElementById('boschMessageFenetre');
+                if (dedans) dedans.textContent = texte || '';
             }
 
             let boschLiaisons = {};
@@ -7962,11 +7993,12 @@ def accueil():
                     }
                     document.getElementById('boschEtat').textContent = texte;
                     document.getElementById('boschConnecter').style.display = d.connecte ? 'none' : '';
-                    document.getElementById('boschLire').style.display = d.connecte ? '' : 'none';
+                    document.getElementById('boschDonnees').style.display = d.connecte ? '' : 'none';
                     document.getElementById('boschDeconnecter').style.display = d.connecte ? '' : 'none';
                     if (!d.connecte) {
-                        document.getElementById('boschCopier').style.display = 'none';
+                        document.getElementById('boschAide').style.display = 'none';
                         document.getElementById('boschLiens').replaceChildren();
+                        document.getElementById('boschContenu').replaceChildren();
                     }
                     if (sessionStorage.getItem('maillons_bosch_auto') === '1') {
                         sessionStorage.removeItem('maillons_bosch_auto');
@@ -7979,7 +8011,7 @@ def accueil():
                             const e = await fetch('/api/bosch/etat', { headers: getHeaders() });
                             if (e.ok) boschLiaisons = (await e.json()).liaisons || {};
                         } catch (err) { /* on lit quand même */ }
-                        await boschLireVelos();
+                        await boschLireVelos({ auto: true });
                         rafraichirBosch();
                         return;
                     }
@@ -8071,9 +8103,143 @@ def accueil():
 
             document.getElementById('boschConnecter').addEventListener('click', boschDemarrerConnexion);
 
-            async function boschLireVelos() {
+            function boschNombre(v, decimales) {
+                return typeof v === 'number' ? v.toLocaleString('fr-FR', { maximumFractionDigits: decimales === undefined ? 1 : decimales }) : String(v);
+            }
+
+            function boschDate(texte) {
+                const d = new Date(texte);
+                return isNaN(d.getTime()) ? String(texte) : d.toLocaleDateString('fr-FR');
+            }
+
+            function boschSection(parent, titre) {
+                const boite = document.createElement('div');
+                boite.className = 'bosch-section';
+                const h = document.createElement('h4');
+                h.textContent = titre;
+                boite.appendChild(h);
+                parent.appendChild(boite);
+                return boite;
+            }
+
+            function boschLigne(parent, nom, valeur) {
+                if (valeur === undefined || valeur === null || valeur === '') return;
+                const l = document.createElement('div');
+                l.className = 'bosch-ligne';
+                const a = document.createElement('span');
+                a.textContent = nom;
+                const b = document.createElement('span');
+                b.textContent = String(valeur);
+                l.appendChild(a);
+                l.appendChild(b);
+                parent.appendChild(l);
+            }
+
+            // Affiche les champs que Maillons ne connaît pas encore, tels que Bosch les envoie.
+            function boschAplatir(valeur, chemin, sortie) {
+                if (valeur && typeof valeur === 'object') {
+                    const cles = Array.isArray(valeur) ? valeur.map((x, i) => i) : Object.keys(valeur);
+                    cles.forEach(k => boschAplatir(valeur[k], chemin ? chemin + ' › ' + k : String(k), sortie));
+                } else if (valeur !== null && valeur !== undefined && valeur !== '') {
+                    sortie.push([chemin, valeur]);
+                }
+            }
+
+            function boschComposant(parent, titre, c) {
+                if (!c || typeof c !== 'object') return;
+                const s = boschSection(parent, titre);
+                boschLigne(s, 'Nom', c.productName);
+                boschLigne(s, 'Numéro de série', c.serialNumber);
+                boschLigne(s, 'Référence', c.partNumber);
+            }
+
+            function afficherFenetreBosch(detail) {
+                const zone = document.getElementById('boschContenu');
+                zone.replaceChildren();
+                const liste = detail && detail.brut && detail.brut.bikes ? detail.brut.bikes : [];
+                if (!liste.length) {
+                    const p = document.createElement('p');
+                    p.className = 'form-help';
+                    p.textContent = "Bosch ne partage aucun vélo pour l'instant. Chez Bosch (flow.bosch-ebike.com, onglet Data Act, Gestion de l'accès), mets l'interrupteur « Maillons » sur activé sous ton vélo.";
+                    zone.appendChild(p);
+                    return;
+                }
+                const connus = ['id', 'createdAt', 'driveUnit', 'remoteControl', 'batteries', 'oemModelId', 'language', 'serviceDue'];
+                liste.forEach(b => {
+                    const du = b.driveUnit || {};
+                    const boite = document.createElement('div');
+                    const titre = document.createElement('p');
+                    titre.className = 'bosch-gros';
+                    titre.textContent = typeof du.odometer === 'number' ? boschNombre(du.odometer / 1000, 0) + ' km' : 'Vélo Bosch';
+                    boite.appendChild(titre);
+                    const lie = boschLiaisons[b.id];
+                    const sv = boschSection(boite, 'Vélo');
+                    boschLigne(sv, 'Relié à', lie ? nomVeloMaillons(lie) : 'pas encore relié');
+                    boschLigne(sv, 'Créé chez Bosch le', b.createdAt ? boschDate(b.createdAt) : '');
+                    boschLigne(sv, 'Modèle (code Bosch)', b.oemModelId);
+                    boschLigne(sv, 'Langue', b.language);
+                    boschLigne(sv, 'Identifiant Bosch', b.id);
+
+                    if (b.driveUnit) {
+                        const sm = boschSection(boite, 'Moteur');
+                        boschLigne(sm, 'Nom', du.productName);
+                        boschLigne(sm, 'Numéro de série', du.serialNumber);
+                        boschLigne(sm, 'Référence', du.partNumber);
+                        if (typeof du.odometer === 'number') boschLigne(sm, 'Kilométrage total', boschNombre(du.odometer / 1000, 1) + ' km');
+                        if (typeof du.maximumAssistanceSpeed === 'number') boschLigne(sm, "Vitesse max d'assistance", boschNombre(du.maximumAssistanceSpeed) + ' km/h');
+                        if (typeof du.rearWheelCircumferenceUser === 'number') boschLigne(sm, 'Circonférence roue arrière', boschNombre(du.rearWheelCircumferenceUser, 0) + ' mm');
+                        const am = du.walkAssistConfiguration;
+                        if (am) boschLigne(sm, 'Aide à la marche', (am.isEnabled ? 'activée' : 'désactivée') + (typeof am.maximumSpeed === 'number' ? ' (max ' + boschNombre(am.maximumSpeed) + ' km/h)' : ''));
+                        const pt = du.powerOnTime;
+                        if (pt) {
+                            if (typeof pt.total === 'number') boschLigne(sm, 'Temps allumé (total)', boschNombre(pt.total, 0) + ' h');
+                            if (typeof pt.withMotorSupport === 'number') boschLigne(sm, 'Dont avec assistance moteur', boschNombre(pt.withMotorSupport, 0) + ' h');
+                        }
+                        if (Array.isArray(du.activeAssistModes) && du.activeAssistModes.length) {
+                            const sa = boschSection(boite, "Modes d'assistance");
+                            du.activeAssistModes.forEach(m => {
+                                boschLigne(sa, m.name === '0' ? 'Sans assistance' : String(m.name), typeof m.reachableRange === 'number' ? 'portée ' + boschNombre(m.reachableRange, 0) + ' km' : '');
+                            });
+                        }
+                    }
+                    boschComposant(boite, 'Télécommande', b.remoteControl);
+                    (Array.isArray(b.batteries) ? b.batteries : []).forEach((bat, i) => {
+                        const sb = boschSection(boite, b.batteries.length > 1 ? 'Batterie ' + (i + 1) : 'Batterie');
+                        boschLigne(sb, 'Nom', bat.productName);
+                        boschLigne(sb, 'Numéro de série', bat.serialNumber);
+                        boschLigne(sb, 'Référence', bat.partNumber);
+                        if (typeof bat.deliveredWhOverLifetime === 'number') boschLigne(sb, 'Énergie délivrée depuis le début', boschNombre(bat.deliveredWhOverLifetime, 0) + ' Wh (' + boschNombre(bat.deliveredWhOverLifetime / 1000, 1) + ' kWh)');
+                        const cc = bat.chargeCycles;
+                        if (cc) {
+                            if (typeof cc.total === 'number') boschLigne(sb, 'Cycles de charge (total)', boschNombre(cc.total));
+                            if (typeof cc.onBike === 'number') boschLigne(sb, 'Chargés sur le vélo', boschNombre(cc.onBike));
+                            if (typeof cc.offBike === 'number') boschLigne(sb, 'Chargés hors du vélo', boschNombre(cc.offBike));
+                        }
+                    });
+                    const se = boschSection(boite, 'Entretien prévu par Bosch');
+                    const du2 = [];
+                    boschAplatir(b.serviceDue, '', du2);
+                    if (du2.length) du2.forEach(x => boschLigne(se, x[0], x[1]));
+                    else boschLigne(se, 'Information', 'Bosch ne communique rien pour ce vélo');
+                    const autres = [];
+                    Object.keys(b).filter(k => connus.indexOf(k) < 0).forEach(k => boschAplatir(b[k], k, autres));
+                    if (autres.length) {
+                        const so = boschSection(boite, 'Autres informations');
+                        autres.forEach(x => boschLigne(so, x[0], x[1]));
+                    }
+                    zone.appendChild(boite);
+                });
+            }
+
+            function ouvrirFenetreBosch() {
+                const f = document.getElementById('fenetreBosch');
+                if (f && !f.open) { try { f.showModal(); } catch (e) { f.setAttribute('open', ''); } }
+            }
+
+            async function boschLireVelos(options) {
+                const ouvrir = !!(options && options.ouvrir);
+                const auto = !!(options && options.auto);
                 boschMessage('Je lis tes vélos chez Bosch...');
-                document.getElementById('boschCopier').style.display = 'none';
                 try {
                     const r = await fetch('/api/bosch/velos', { headers: getHeaders() });
                     const d = await r.json();
@@ -8081,24 +8247,26 @@ def accueil():
                     boschDernierDetail = d;
                     const liste = d.brut && d.brut.bikes ? d.brut.bikes : [];
                     const nonLies = liste.filter(b => !boschLiaisons[b.id]).length;
-                    let texte = d.nb + ' vélo(s) trouvé(s) chez Bosch.';
+                    document.getElementById('boschAide').style.display = d.nb === 0 ? '' : 'none';
+                    let texte;
                     if (d.nb === 0) {
-                        texte += " Vérifie que le service est bien activé chez Bosch pour l'application Maillons.";
+                        texte = "Bosch ne partage aucun vélo avec Maillons pour l'instant : suis les 3 étapes ci-dessus.";
                     } else if (nonLies > 0) {
-                        texte += ' Choisis le vélo de Maillons qui correspond à chacun.';
+                        texte = d.nb + ' vélo(s) trouvé(s) chez Bosch. Choisis le vélo de Maillons qui correspond à chacun.';
                     } else {
-                        texte += ' Tout est relié : le kilométrage se met à jour tout seul.';
-                    }
-                    if (d.nb > 0 && !(d.odometres && d.odometres.length)) {
-                        texte += " Je n'ai pas trouvé l'odomètre : touche « Copier le détail reçu » et envoie-le moi.";
+                        texte = d.nb + ' vélo(s) trouvé(s) chez Bosch. Tout est relié : le kilométrage se met à jour tout seul.';
                     }
                     boschMessage(texte);
-                    document.getElementById('boschCopier').style.display = '';
+                    afficherFenetreBosch(d);
                     afficherLiensBosch(d);
+                    if (d.nb > 0 && (ouvrir || (auto && nonLies > 0))) ouvrirFenetreBosch();
+                    if (d.nb === 0 && ouvrir) boschMessage(texte);
                 } catch (e) { boschMessage('Pas de connexion internet.'); }
             }
 
-            document.getElementById('boschLire').addEventListener('click', boschLireVelos);
+            document.getElementById('boschDonnees').addEventListener('click', () => boschLireVelos({ ouvrir: true }));
+            document.getElementById('boschActualiser').addEventListener('click', () => boschLireVelos({ ouvrir: true }));
+            document.getElementById('boutonFermerFenetreBosch').addEventListener('click', () => document.getElementById('fenetreBosch').close());
 
             document.getElementById('boschCopier').addEventListener('click', async () => {
                 if (!boschDernierDetail) return;
