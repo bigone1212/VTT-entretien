@@ -19035,20 +19035,24 @@ def bosch_synchroniser(x_code_acces: Optional[str] = Header(default=None)):
         raise HTTPException(status_code=409, detail="Vélo Bosch pas encore connecté.")
     _, velos_bosch = bosch_lire_velos(acces)
     if not liees:
-        # Lien direct : un seul vélo chez Bosch et un seul vélo Maillons annoncé « Bosch » (modèle ou moteur).
+        # Lien direct : un seul vélo chez Bosch et un seul vélo Maillons qui lui correspond (annoncé « Bosch », sinon seul vélo électrique).
         ids_bosch = [v.get("id") for v in velos_bosch if isinstance(v, dict) and v.get("id")]
         if len(ids_bosch) == 1:
             conn = db.connect()
             cursor = conn.cursor()
             try:
                 cursor.execute(
-                    "SELECT id, modele, moteur FROM velos WHERE personne_id = ? AND actif = 1",
+                    "SELECT id, modele, moteur, type FROM velos WHERE personne_id = ? AND actif = 1",
                     (personne_id,)
                 )
+                tous = cursor.fetchall()
+                # 1) un seul vélo annoncé « Bosch » ; sinon 2) un seul vélo électrique.
                 candidats = [
-                    r[0] for r in cursor.fetchall()
+                    r[0] for r in tous
                     if "bosch" in (str(r[1] or "") + " " + str(r[2] or "")).lower()
                 ]
+                if len(candidats) != 1:
+                    candidats = [r[0] for r in tous if "electri" in str(r[3] or "").lower()]
                 if len(candidats) == 1:
                     cursor.execute(
                         "UPDATE velos SET bosch_bike_id = ?, bosch_odometre_m = NULL WHERE id = ? AND personne_id = ?",
