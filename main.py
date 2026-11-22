@@ -4335,6 +4335,23 @@ def accueil():
 
             .fiche-carte svg { width: 100%; height: 100%; }
 
+            .fiche-fond.fiche-mode { left: auto; right: 8px; }
+            .fiche-echelle {
+                position: absolute;
+                left: 8px;
+                bottom: 8px;
+                z-index: 2;
+                align-items: center;
+                gap: 6px;
+                padding: 4px 10px;
+                font-size: 0.72rem;
+                font-weight: 700;
+                color: #ffffff;
+                background: rgba(0,0,0,0.55);
+                border-radius: 999px;
+            }
+            .fiche-echelle i { display: inline-block; width: 70px; height: 8px; border-radius: 4px; }
+
             .fiche-fond {
                 position: absolute;
                 top: 8px;
@@ -13907,6 +13924,50 @@ def accueil():
                 return max > 0 ? max : null;
             }
 
+            // Vitesse de chaque tronçon (km/h), lissée sur environ 10 secondes pour éviter les à-coups du GPS.
+            function vitessesTroncons(trace) {
+                if (!Array.isArray(trace) || trace.length < 3) return null;
+                if (trace.some(p => !Array.isArray(p) || typeof p[2] !== 'number')) return null;
+                const n = trace.length;
+                const sortie = [];
+                for (let i = 0; i < n - 1; i++) {
+                    let a = i;
+                    let b = i + 1;
+                    while (trace[b][2] - trace[a][2] < 10 && (a > 0 || b < n - 1)) {
+                        if (a > 0) a--;
+                        if (trace[b][2] - trace[a][2] < 10 && b < n - 1) b++;
+                    }
+                    const dt = trace[b][2] - trace[a][2];
+                    const v = dt > 0 ? (distanceLatLon(trace[a], trace[b]) / dt) * 3.6 : 0;
+                    sortie.push(v <= 100 ? v : 0);
+                }
+                return sortie;
+            }
+
+            // Échelle de couleurs de la vitesse : violet clair (lent) vers violet foncé (rapide).
+            // Bornes prises sur la sortie elle-même (les arrêts et les pointes isolées ne tirent pas l'échelle).
+            function echelleVitesses(vitesses) {
+                const tri = vitesses.filter(v => v > 0).sort((x, y) => x - y);
+                if (tri.length < 2) return null;
+                const bas = tri[Math.floor(tri.length * 0.05)];
+                const haut = tri[Math.min(tri.length - 1, Math.floor(tri.length * 0.98))];
+                return haut > bas ? { bas: bas, haut: haut } : null;
+            }
+
+            const ARRETS_VITESSE = [
+                { rvb: [245, 208, 254] },
+                { rvb: [217, 70, 239] },
+                { rvb: [134, 25, 143] }
+            ];
+            const DEGRADE_VITESSE_CSS = 'linear-gradient(90deg, #f5d0fe, #d946ef, #86198f)';
+
+            function couleurVitesse(v, echelle) {
+                const t = Math.min(1, Math.max(0, (v - echelle.bas) / (echelle.haut - echelle.bas))) * (ARRETS_VITESSE.length - 1);
+                const k = Math.min(ARRETS_VITESSE.length - 2, Math.floor(t));
+                const part = t - k;
+                return rvbVersHex(ARRETS_VITESSE[k].rvb.map((x, j) => x + (ARRETS_VITESSE[k + 1].rvb[j] - x) * part));
+            }
+
             function cumulTrace(trace) {
                 const cum = [0];
                 for (let i = 1; i < trace.length; i++) {
@@ -14300,11 +14361,17 @@ def accueil():
                         carte.on('load', () => {
                             if (jeton !== ficheJeton) return;
                             const features = [];
+                            const vitessesFiche = pts.length === trace.length ? vitessesTroncons(trace) : null;
+                            const echelleFiche = vitessesFiche ? echelleVitesses(vitessesFiche) : null;
                             for (let i = 0; i < pts.length - 1; i++) {
                                 const pente = profil && profil.pentes.length === pts.length - 1 ? profil.pentes[i] : null;
+                                const couleurPenteTroncon = pente === null ? '#35e0c8' : couleurPente(pente);
                                 features.push({
                                     type: 'Feature',
-                                    properties: { c: pente === null ? '#35e0c8' : couleurPente(pente) },
+                                    properties: {
+                                        c: couleurPenteTroncon,
+                                        cv: echelleFiche ? couleurVitesse(vitessesFiche[i], echelleFiche) : couleurPenteTroncon
+                                    },
                                     geometry: { type: 'LineString', coordinates: [pts[i], pts[i + 1]] }
                                 });
                             }
@@ -14337,6 +14404,39 @@ def accueil():
                             fond.textContent = satellite ? 'Plan' : 'Satellite';
                         });
                         blocCarte.appendChild(fond);
+
+                        // Bouton « Vitesse / Pente » : change seulement la couleur du tracé.
+                        const vitessesBouton = pts.length === trace.length ? vitessesTroncons(trace) : null;
+                        const echelleBouton = vitessesBouton ? echelleVitesses(vitessesBouton) : null;
+                        if (echelleBouton) {
+                            const mode = document.createElement('button');
+                            mode.type = 'button';
+                            mode.className = 'fiche-fond fiche-mode';
+                            mode.textContent = 'Vitesse';
+                            const echelle = document.createElement('div');
+                            echelle.className = 'fiche-echelle';
+                            echelle.style.display = 'none';
+                            const bas = document.createElement('span');
+                            bas.textContent = fmtFr(echelleBouton.bas, 0);
+                            const barre = document.createElement('i');
+                            barre.style.background = DEGRADE_VITESSE_CSS;
+                            const haut = document.createElement('span');
+                            haut.textContent = fmtFr(echelleBouton.haut, 0) + ' km/h';
+                            echelle.appendChild(bas);
+                            echelle.appendChild(barre);
+                            echelle.appendChild(haut);
+                            let parVitesse = false;
+                            mode.addEventListener('click', () => {
+                                parVitesse = !parVitesse;
+                                if (carte.getLayer('trace-ligne')) {
+                                    carte.setPaintProperty('trace-ligne', 'line-color', ['get', parVitesse ? 'cv' : 'c']);
+                                }
+                                mode.textContent = parVitesse ? 'Pente' : 'Vitesse';
+                                echelle.style.display = parVitesse ? 'flex' : 'none';
+                            });
+                            blocCarte.appendChild(mode);
+                            blocCarte.appendChild(echelle);
+                        }
                     }).catch(() => {
                         if (jeton === ficheJeton) secours();
                     });
