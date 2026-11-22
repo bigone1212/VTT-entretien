@@ -8303,25 +8303,18 @@ def accueil():
                 svg.appendChild(c);
             }
 
-            // Même calcul que la fiche de sortie : vitesse la plus haute sur au moins 10 secondes.
+            // Vitesse la plus haute entre deux points de 3 secondes (comme la vue 3D), sur le parcours tel qu'il sera importé.
             function boschVitesseMaxReconstituee(points) {
-                const heures = boschHeuresPoints(points);
-                const gardes = [];
-                points.forEach((q, i) => {
-                    const dernier = gardes.length ? gardes[gardes.length - 1] : null;
-                    if (dernier && dernier.lat === q.lat && dernier.lon === q.lon) return;
-                    gardes.push({ lat: q.lat, lon: q.lon, t: heures[i] });
-                });
-                if (gardes.length < 3 || typeof distanceLatLon !== 'function') return null;
+                const trace = boschReechantillonner(points, boschHeuresPoints(points));
+                if (trace.length < 3 || typeof distanceLatLon !== 'function') return null;
                 const cum = [0];
-                for (let i = 1; i < gardes.length; i++) cum.push(cum[i - 1] + distanceLatLon([gardes[i - 1].lat, gardes[i - 1].lon], [gardes[i].lat, gardes[i].lon]));
-                let max = 0, km = 0, j = 1;
-                for (let i = 0; i < gardes.length - 1; i++) {
-                    if (j <= i) j = i + 1;
-                    while (j < gardes.length && gardes[j].t - gardes[i].t < 10) j++;
-                    if (j >= gardes.length) break;
-                    const v = ((cum[j] - cum[i]) / (gardes[j].t - gardes[i].t)) * 3.6;
-                    if (v <= 100 && v > max) { max = v; km = (cum[i] + cum[j]) / 2000; }
+                for (let i = 1; i < trace.length; i++) cum.push(cum[i - 1] + distanceLatLon([trace[i - 1].lat, trace[i - 1].lon], [trace[i].lat, trace[i].lon]));
+                let max = 0, km = 0;
+                for (let i = 1; i < trace.length; i++) {
+                    const dt = trace[i].t - trace[i - 1].t;
+                    if (dt < 1) continue;
+                    const v = ((cum[i] - cum[i - 1]) / dt) * 3.6;
+                    if (v <= 100 && v > max) { max = v; km = (cum[i] + cum[i - 1]) / 2000; }
                 }
                 return max > 0 ? { v: max, km: km, total: cum[cum.length - 1] / 1000 } : null;
             }
@@ -8408,10 +8401,9 @@ def accueil():
                 return String(texte).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
             }
 
-            // Bosch ne donne pas l'heure de chaque point : on la déduit de la distance parcourue et de la vitesse
-            // de chaque point. On ne force PAS le total sur la durée « en mouvement » : les arrêts sont dans les points.
+            // Bosch ne donne pas l'heure de chaque point, mais enregistre à rythme régulier (≈ 0,67 s par ligne).
+            // On mesure ce rythme quand le vélo roule, puis chaque ligne reçoit son heure : numéro de ligne x rythme.
             function boschHeuresPoints(points) {
-                // 1) Rythme réel des points : temps moyen par ligne quand le vélo roule (≈ 0,67 s chez Bosch).
                 let somme = 0;
                 let nb = 0;
                 for (let i = 1; i < points.length; i++) {
@@ -8423,50 +8415,71 @@ def accueil():
                     if (ms > 3) { somme += d / ms; nb += 1; }
                 }
                 const rythme = nb >= 20 ? Math.min(Math.max(somme / nb, 0.3), 2) : 1;
-                // 2) Le temps avance de distance / vitesse quand le vélo roule, et d'un rythme normal à l'arrêt.
-                //    (La distance Bosch avance par paliers : un palier à 0 m ne veut pas dire « une seconde de plus ».)
-                const cumul = [0];
-                for (let i = 1; i < points.length; i++) {
-                    const d = (typeof points[i].dist === 'number' && typeof points[i - 1].dist === 'number') ? Math.max(0, points[i].dist - points[i - 1].dist) : null;
-                    const v1 = typeof points[i].vit === 'number' ? points[i].vit : null;
-                    const v0 = typeof points[i - 1].vit === 'number' ? points[i - 1].vit : v1;
-                    let dt = rythme;
-                    if (d !== null && v1 !== null) {
-                        const ms = ((v0 === null ? v1 : v0) + v1) / 2 / 3.6;
-                        if (ms > 0.3) dt = Math.min(d / ms, 30);
-                    }
-                    cumul.push(cumul[i - 1] + dt);
+                return points.map((_, i) => i * rythme);
+            }
+
+            // La position n'est mise à jour que toutes les 2 secondes environ, et les heures sont arrondies à la seconde :
+            // entre deux points, la vitesse serait très bruitée. On redessine donc le parcours toutes les 3 secondes exactes.
+            function boschReechantillonner(points, heures) {
+                const PAS = 3;
+                const fixes = [];
+                points.forEach((q, i) => {
+                    const dernier = fixes.length ? fixes[fixes.length - 1] : null;
+                    if (dernier && dernier.lat === q.lat && dernier.lon === q.lon) return;
+                    fixes.push({ t: heures[i], lat: q.lat, lon: q.lon, vit: typeof q.vit === 'number' ? q.vit : null });
+                });
+                // Sauts de position du GPS (au démarrage surtout) : impossibles avec la vitesse mesurée par Bosch au même moment.
+                const impossible = (a, b) => {
+                    if (typeof distanceLatLon !== 'function' || b.vit === null || b.t <= a.t) return false;
+                    const v = (distanceLatLon([a.lat, a.lon], [b.lat, b.lon]) / (b.t - a.t)) * 3.6;
+                    return v > b.vit * 1.8 + 8;
+                };
+                while (fixes.length > 2 && impossible(fixes[0], fixes[1])) fixes.shift();
+                for (let i = fixes.length - 2; i >= 1; i--) {
+                    if (impossible(fixes[i - 1], fixes[i]) && impossible(fixes[i], fixes[i + 1])) fixes.splice(i, 1);
                 }
-                return cumul;
+                if (fixes.length < 2) return [];
+                // L'altitude manque souvent au départ (0 m) : tous les points doivent en avoir une pour dessiner le profil.
+                const valable = q => typeof q.alt === 'number' && q.alt !== 0;
+                const premiere = points.find(valable);
+                let courante = premiere ? premiere.alt : null;
+                const alts = points.map(q => { if (valable(q)) courante = q.alt; return courante; });
+                const rythme = heures.length > 1 ? heures[heures.length - 1] / (heures.length - 1) : 1;
+                const t0 = fixes[0].t;
+                const fin = fixes[fixes.length - 1].t;
+                const sortie = [];
+                let j = 0;
+                for (let k = 0; k * PAS <= fin - t0; k++) {
+                    const t = t0 + k * PAS;
+                    while (j < fixes.length - 2 && fixes[j + 1].t <= t) j++;
+                    const f1 = fixes[j];
+                    const f2 = fixes[j + 1];
+                    const u = f2.t > f1.t ? Math.min(Math.max((t - f1.t) / (f2.t - f1.t), 0), 1) : 0;
+                    const ligne = Math.min(alts.length - 1, Math.max(0, Math.round(t / rythme)));
+                    sortie.push({ t: t - t0, lat: f1.lat + (f2.lat - f1.lat) * u, lon: f1.lon + (f2.lon - f1.lon) * u, alt: alts[ligne] });
+                }
+                const derniere = fixes[fixes.length - 1];
+                if (sortie.length && fin - t0 - sortie[sortie.length - 1].t > 1) {
+                    sortie.push({ t: fin - t0, lat: derniere.lat, lon: derniere.lon, alt: alts[alts.length - 1] });
+                }
+                return sortie;
             }
 
             function boschConstruireGpx(titre, debutTexte, points) {
                 const debut = Date.parse(debutTexte);
-                const heures = boschHeuresPoints(points);
-                // L'altitude manque souvent au départ (0 m) : tous les points doivent en avoir une pour dessiner le profil.
-                const valable = q => typeof q.alt === 'number' && q.alt !== 0;
-                const premiere = points.find(valable);
-                let derniereAlt = premiere ? premiere.alt : null;
+                const trace = boschReechantillonner(points, boschHeuresPoints(points));
+                if (trace.length < 2) return null;
                 const lignes = [
                     '<?xml version="1.0" encoding="UTF-8"?>',
                     '<gpx version="1.1" creator="Maillons" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>' + boschXml(titre) + '</name><trkseg>'
                 ];
-                let derniere = null;
-                let gardes = 0;
-                points.forEach((q, i) => {
-                    if (valable(q)) derniereAlt = q.alt;
-                    // Bosch répète parfois la même position sur plusieurs points : on ne garde que les vraies positions.
-                    const identique = derniere && derniere.lat === q.lat && derniere.lon === q.lon;
-                    if (identique && i < points.length - 1) return;
-                    if (identique) return;
-                    derniere = q;
-                    gardes += 1;
-                    const heure = new Date(debut + Math.round(heures[i]) * 1000).toISOString();
-                    const alt = derniereAlt !== null ? '<ele>' + derniereAlt.toFixed(1) + '</ele>' : '';
+                trace.forEach(q => {
+                    const heure = new Date(debut + Math.round(q.t) * 1000).toISOString();
+                    const alt = typeof q.alt === 'number' ? '<ele>' + q.alt.toFixed(1) + '</ele>' : '';
                     lignes.push('<trkpt lat="' + q.lat.toFixed(6) + '" lon="' + q.lon.toFixed(6) + '">' + alt + '<time>' + heure + '</time></trkpt>');
                 });
                 lignes.push('</trkseg></trk></gpx>');
-                return gardes < 2 ? null : lignes.join(String.fromCharCode(10));
+                return lignes.join(String.fromCharCode(10));
             }
 
             // Ce que Bosch sait en plus (sauts, puissance, cadence...) est gardé dans les notes de la sortie.
