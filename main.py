@@ -14550,7 +14550,7 @@ def accueil():
                 ];
             }
 
-            function preparerParcours(trace, distanceKm) {
+            function preparerParcours(trace, distanceKm, vitesseCapteur) {
                 // La trace est enregistrée en [latitude, longitude] ; la carte veut [longitude, latitude].
                 const valides = trace.filter(p => Array.isArray(p) && p.length >= 2);
                 const pts = valides.map(p => [p[1], p[0]]);
@@ -14584,6 +14584,8 @@ def accueil():
                 });
                 const vitessesValides = v3d.vitesses.filter(x => x !== null && isFinite(x) && x <= 150);
                 v3d.vitesseMax = vitessesValides.reduce((max, x) => Math.max(max, x), 0) || null;
+                // Sortie Bosch : la vitesse max affichée est celle mesurée par le vélo (le panneau reste au point le plus rapide du GPS).
+                if (v3d.vitesseMax !== null && typeof vitesseCapteur === 'number' && vitesseCapteur > 0 && vitesseCapteur <= 150) v3d.vitesseMax = vitesseCapteur;
                 const tempsTotal = v3d.tps.length > 1 && v3d.tps[0] !== null && v3d.tps[v3d.tps.length - 1] !== null
                     ? v3d.tps[v3d.tps.length - 1] - v3d.tps[0] : 0;
                 v3d.vitesseMoyenne = tempsTotal > 0 ? (v3d.total / tempsTotal) * 3.6 : null;
@@ -16729,7 +16731,7 @@ def accueil():
                 }
 
                 fermerV3d();
-                preparerParcours(sortie.trace, sortie.distance_km);
+                preparerParcours(sortie.trace, sortie.distance_km, sortie.vitesse_max_capteur);
                 v3d.f = 0;
                 v3d.vitesse = 1;
                 v3d.sens = 1;
