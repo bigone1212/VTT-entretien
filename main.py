@@ -8303,7 +8303,30 @@ def accueil():
                 svg.appendChild(c);
             }
 
-            function dessinerTraceBosch(zone, points, champs) {
+            // Même calcul que la fiche de sortie : vitesse la plus haute sur au moins 10 secondes.
+            function boschVitesseMaxReconstituee(points) {
+                const heures = boschHeuresPoints(points);
+                const gardes = [];
+                points.forEach((q, i) => {
+                    const dernier = gardes.length ? gardes[gardes.length - 1] : null;
+                    if (dernier && dernier.lat === q.lat && dernier.lon === q.lon) return;
+                    gardes.push({ lat: q.lat, lon: q.lon, t: heures[i] });
+                });
+                if (gardes.length < 3 || typeof distanceLatLon !== 'function') return null;
+                const cum = [0];
+                for (let i = 1; i < gardes.length; i++) cum.push(cum[i - 1] + distanceLatLon([gardes[i - 1].lat, gardes[i - 1].lon], [gardes[i].lat, gardes[i].lon]));
+                let max = 0, km = 0, j = 1;
+                for (let i = 0; i < gardes.length - 1; i++) {
+                    if (j <= i) j = i + 1;
+                    while (j < gardes.length && gardes[j].t - gardes[i].t < 10) j++;
+                    if (j >= gardes.length) break;
+                    const v = ((cum[j] - cum[i]) / (gardes[j].t - gardes[i].t)) * 3.6;
+                    if (v <= 100 && v > max) { max = v; km = (cum[i] + cum[j]) / 2000; }
+                }
+                return max > 0 ? { v: max, km: km, total: cum[cum.length - 1] / 1000 } : null;
+            }
+
+            function dessinerTraceBosch(zone, points, champs, activite) {
                 zone.replaceChildren();
                 const L = 340, H = 240, M = 14;
                 const lats = points.map(p => p.lat), lons = points.map(p => p.lon);
@@ -8332,6 +8355,31 @@ def accueil():
                     legende.textContent = 'Altitude : de ' + boschNombre(minA, 0) + ' m à ' + boschNombre(maxA, 0) + ' m · ' + points.length + ' points · départ en vert, arrivée en rouge.';
                     zone.appendChild(legende);
                 }
+                const vmax = boschVitesseMaxReconstituee(points);
+                if (vmax) {
+                    const diag = document.createElement('p');
+                    diag.className = 'form-help';
+                    diag.textContent = 'Vitesse max reconstituée : ' + boschNombre(vmax.v, 1) + ' km/h, au km ' + boschNombre(vmax.km, 1) + ' sur ' + boschNombre(vmax.total, 1) + ' km'
+                        + (activite && activite.speed && typeof activite.speed.maximum === 'number' ? ' (Bosch annonce ' + boschNombre(activite.speed.maximum, 1) + ' km/h).' : '.');
+                    zone.appendChild(diag);
+                }
+                const copie = document.createElement('button');
+                copie.type = 'button';
+                copie.className = 'btn-primary';
+                copie.style.cssText = 'width:100%; margin-top:6px;';
+                copie.textContent = 'Copier les points bruts de Bosch';
+                copie.addEventListener('click', async () => {
+                    const heures = boschHeuresPoints(points);
+                    const lignes = ['i;lat;lon;alt;vit;dist;t'];
+                    points.forEach((q, i) => lignes.push([i, q.lat, q.lon, q.alt, q.vit, q.dist, heures[i].toFixed(1)].join(';')));
+                    try {
+                        await navigator.clipboard.writeText(lignes.join(String.fromCharCode(10)));
+                        copie.textContent = 'Copié : colle-le dans la discussion';
+                    } catch (e) {
+                        copie.textContent = 'Copie impossible sur ce téléphone';
+                    }
+                });
+                zone.appendChild(copie);
                 if (champs && champs.length) {
                     const info = document.createElement('p');
                     info.className = 'form-help';
@@ -8340,7 +8388,7 @@ def accueil():
                 }
             }
 
-            async function boschVoirTrace(id, bouton, zone) {
+            async function boschVoirTrace(id, bouton, zone, activite) {
                 if (zone.childNodes.length) { zone.replaceChildren(); bouton.textContent = 'Voir le tracé'; return; }
                 bouton.textContent = 'Je lis le tracé...';
                 try {
@@ -8348,7 +8396,7 @@ def accueil():
                     const d = await r.json();
                     if (!r.ok) { bouton.textContent = 'Voir le tracé'; const p = document.createElement('p'); p.className = 'form-help'; p.textContent = d.detail || 'Lecture impossible.'; zone.appendChild(p); return; }
                     if (!d.points.length) { bouton.textContent = 'Voir le tracé'; const p = document.createElement('p'); p.className = 'form-help'; p.textContent = "Bosch n'a pas de position GPS pour cette sortie."; zone.appendChild(p); return; }
-                    dessinerTraceBosch(zone, d.points, d.champs);
+                    dessinerTraceBosch(zone, d.points, d.champs, activite);
                     bouton.textContent = 'Masquer le tracé';
                 } catch (e) { bouton.textContent = 'Voir le tracé'; }
             }
@@ -8558,7 +8606,7 @@ def accueil():
                     boutonTrace.style.cssText = 'width:100%; margin-top:8px;';
                     boutonTrace.textContent = 'Voir le tracé';
                     const zoneTrace = document.createElement('div');
-                    boutonTrace.addEventListener('click', () => boschVoirTrace(a.id, boutonTrace, zoneTrace));
+                    boutonTrace.addEventListener('click', () => boschVoirTrace(a.id, boutonTrace, zoneTrace, a));
                     corps.appendChild(boutonTrace);
                     const boutonAjout = document.createElement('button');
                     boutonAjout.type = 'button';
