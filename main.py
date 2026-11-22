@@ -8374,6 +8374,34 @@ def accueil():
                     }
                 });
                 zone.appendChild(copie);
+                const telecharge = document.createElement('button');
+                telecharge.type = 'button';
+                telecharge.className = 'btn-primary';
+                telecharge.style.cssText = 'width:100%; margin-top:6px;';
+                telecharge.textContent = 'Télécharger tous les points bruts (fichier)';
+                telecharge.addEventListener('click', () => {
+                    const heures = boschHeuresPoints(points);
+                    const saut = String.fromCharCode(10);
+                    const a = activite || {};
+                    const entete = [
+                        '# sortie Bosch ' + (a.id || '') + ' du ' + (a.startTime || '') + ' (fuseau ' + (a.timeZone || '') + ')',
+                        '# titre: ' + (a.title || '') + ' ; distance Bosch (m): ' + (a.distance === undefined ? '' : a.distance) + ' ; duree en mouvement (s): ' + (a.durationWithoutStops === undefined ? '' : a.durationWithoutStops),
+                        '# vitesse moyenne Bosch: ' + (a.speed ? a.speed.average : '') + ' ; vitesse max Bosch: ' + (a.speed ? a.speed.maximum : '') + ' ; denivele +/-: ' + (a.elevation ? a.elevation.gain + '/' + a.elevation.loss : ''),
+                        '# fin: ' + (a.endTime || '') + ' ; points recus: ' + points.length,
+                        'i;lat;lon;alt;vit;dist;puiss;t'
+                    ];
+                    points.forEach((q, i) => entete.push([i, q.lat, q.lon, q.alt, q.vit, q.dist, q.puiss === undefined || q.puiss === null ? '' : q.puiss, heures[i].toFixed(1)].join(';')));
+                    const blob = new Blob([entete.join(saut)], { type: 'text/plain;charset=utf-8' });
+                    const lien = document.createElement('a');
+                    lien.href = URL.createObjectURL(blob);
+                    lien.download = 'bosch_' + String((a.startTime || 'sortie')).slice(0, 10) + '_' + String(a.id || '').slice(0, 8) + '.txt';
+                    document.body.appendChild(lien);
+                    lien.click();
+                    document.body.removeChild(lien);
+                    setTimeout(() => URL.revokeObjectURL(lien.href), 5000);
+                    telecharge.textContent = 'Fichier téléchargé : envoie-le dans la discussion';
+                });
+                zone.appendChild(telecharge);
                 if (champs && champs.length) {
                     const info = document.createElement('p');
                     info.className = 'form-help';
