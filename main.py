@@ -8360,24 +8360,26 @@ def accueil():
             }
 
             // Bosch ne donne pas l'heure de chaque point : on la déduit de la distance parcourue et de la vitesse
-            // de chaque point, puis on ajuste le total sur la durée en mouvement donnée par Bosch.
-            function boschConstruireGpx(titre, debutTexte, dureeS, points) {
-                const debut = Date.parse(debutTexte);
-                const n = points.length;
-                const pauses = [0];
-                for (let i = 1; i < n; i++) {
+            // de chaque point. On ne force PAS le total sur la durée « en mouvement » : les arrêts sont dans les points.
+            function boschHeuresPoints(points) {
+                const cumul = [0];
+                for (let i = 1; i < points.length; i++) {
                     const d = (typeof points[i].dist === 'number' && typeof points[i - 1].dist === 'number') ? Math.max(0, points[i].dist - points[i - 1].dist) : null;
                     const v1 = typeof points[i].vit === 'number' ? points[i].vit : null;
                     const v0 = typeof points[i - 1].vit === 'number' ? points[i - 1].vit : v1;
                     let dt = 1;
                     if (d !== null && v1 !== null) {
                         const ms = ((v0 === null ? v1 : v0) + v1) / 2 / 3.6;
-                        dt = ms > 0.3 ? d / ms : (d > 0 ? d / 0.3 : 1);
+                        if (ms > 0.3) dt = d > 0 ? d / ms : 1;
                     }
-                    pauses.push(Math.min(Math.max(dt, 0.2), 30));
+                    cumul.push(cumul[i - 1] + Math.min(Math.max(dt, 0.5), 30));
                 }
-                const somme = pauses.reduce((x, y) => x + y, 0);
-                const facteur = somme > 0 && dureeS > 0 ? dureeS / somme : 1;
+                return cumul;
+            }
+
+            function boschConstruireGpx(titre, debutTexte, points) {
+                const debut = Date.parse(debutTexte);
+                const heures = boschHeuresPoints(points);
                 // L'altitude manque souvent au départ (0 m) : tous les points doivent en avoir une pour dessiner le profil.
                 const valable = q => typeof q.alt === 'number' && q.alt !== 0;
                 const premiere = points.find(valable);
@@ -8386,16 +8388,22 @@ def accueil():
                     '<?xml version="1.0" encoding="UTF-8"?>',
                     '<gpx version="1.1" creator="Maillons" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>' + boschXml(titre) + '</name><trkseg>'
                 ];
-                let cumul = 0;
+                let derniere = null;
+                let gardes = 0;
                 points.forEach((q, i) => {
-                    cumul += pauses[i] * facteur;
                     if (valable(q)) derniereAlt = q.alt;
-                    const heure = new Date(debut + Math.round(cumul) * 1000).toISOString();
+                    // Bosch répète parfois la même position sur plusieurs points : on ne garde que les vraies positions.
+                    const identique = derniere && derniere.lat === q.lat && derniere.lon === q.lon;
+                    if (identique && i < points.length - 1) return;
+                    if (identique) return;
+                    derniere = q;
+                    gardes += 1;
+                    const heure = new Date(debut + Math.round(heures[i]) * 1000).toISOString();
                     const alt = derniereAlt !== null ? '<ele>' + derniereAlt.toFixed(1) + '</ele>' : '';
                     lignes.push('<trkpt lat="' + q.lat.toFixed(6) + '" lon="' + q.lon.toFixed(6) + '">' + alt + '<time>' + heure + '</time></trkpt>');
                 });
                 lignes.push('</trkseg></trk></gpx>');
-                return lignes.join(String.fromCharCode(10));
+                return gardes < 2 ? null : lignes.join(String.fromCharCode(10));
             }
 
             // Ce que Bosch sait en plus (sauts, puissance, cadence...) est gardé dans les notes de la sortie.
@@ -8434,7 +8442,8 @@ def accueil():
                     if (!r.ok) return { etat: 'erreur', texte: d.detail || 'Tracé illisible.' };
                     if (!d.points || d.points.length < 2) return { etat: 'ignoree', texte: "Pas de position GPS chez Bosch pour cette sortie." };
                     const titre = a.title || ('Sortie Bosch du ' + boschDate(a.startTime));
-                    const gpx = boschConstruireGpx(titre, a.startTime, a.durationWithoutStops || 0, d.points);
+                    const gpx = boschConstruireGpx(titre, a.startTime, d.points);
+                    if (!gpx) return { etat: 'ignoree', texte: "Pas assez de positions GPS différentes chez Bosch pour cette sortie." };
                     const envoi = await fetchOriginal('/api/sorties/import?velo_id=' + encodeURIComponent(veloId), {
                         method: 'POST',
                         headers: getHeaders(),
@@ -8445,7 +8454,9 @@ def accueil():
                     if (envoi.status === 409) return { etat: 'deja', texte: 'Cette sortie est déjà dans Maillons.' };
                     if (envoi.status === 400) return { etat: 'ignoree', texte: (rep && rep.detail) || 'Sortie ignorée.' };
                     if (!envoi.ok) return { etat: 'erreur', texte: (rep && rep.detail) || 'Ajout impossible.' };
-                    return { etat: 'ok', texte: 'Sortie ajoutée à Maillons.' };
+                    const reconstitue = boschHeuresPoints(d.points);
+                    const totalS = reconstitue[reconstitue.length - 1];
+                    return { etat: 'ok', texte: 'Sortie ajoutée à Maillons. (Durée reconstituée : ' + boschDuree(totalS) + ' ; Bosch : ' + boschDuree(a.durationWithoutStops || 0) + ' en mouvement.)' };
                 } catch (e) {
                     return { etat: 'erreur', texte: 'Pas de connexion internet.' };
                 }
