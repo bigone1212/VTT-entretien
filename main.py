@@ -8359,17 +8359,39 @@ def accueil():
                 return String(texte).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
             }
 
-            // Bosch ne donne pas l'heure de chaque point : on les répartit régulièrement sur la durée en mouvement.
+            // Bosch ne donne pas l'heure de chaque point : on la déduit de la distance parcourue et de la vitesse
+            // de chaque point, puis on ajuste le total sur la durée en mouvement donnée par Bosch.
             function boschConstruireGpx(titre, debutTexte, dureeS, points) {
                 const debut = Date.parse(debutTexte);
-                const pas = points.length > 1 ? (dureeS * 1000) / (points.length - 1) : 0;
+                const n = points.length;
+                const pauses = [0];
+                for (let i = 1; i < n; i++) {
+                    const d = (typeof points[i].dist === 'number' && typeof points[i - 1].dist === 'number') ? Math.max(0, points[i].dist - points[i - 1].dist) : null;
+                    const v1 = typeof points[i].vit === 'number' ? points[i].vit : null;
+                    const v0 = typeof points[i - 1].vit === 'number' ? points[i - 1].vit : v1;
+                    let dt = 1;
+                    if (d !== null && v1 !== null) {
+                        const ms = ((v0 === null ? v1 : v0) + v1) / 2 / 3.6;
+                        dt = ms > 0.3 ? d / ms : (d > 0 ? d / 0.3 : 1);
+                    }
+                    pauses.push(Math.min(Math.max(dt, 0.2), 30));
+                }
+                const somme = pauses.reduce((x, y) => x + y, 0);
+                const facteur = somme > 0 && dureeS > 0 ? dureeS / somme : 1;
+                // L'altitude manque souvent au départ (0 m) : tous les points doivent en avoir une pour dessiner le profil.
+                const valable = q => typeof q.alt === 'number' && q.alt !== 0;
+                const premiere = points.find(valable);
+                let derniereAlt = premiere ? premiere.alt : null;
                 const lignes = [
                     '<?xml version="1.0" encoding="UTF-8"?>',
                     '<gpx version="1.1" creator="Maillons" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>' + boschXml(titre) + '</name><trkseg>'
                 ];
+                let cumul = 0;
                 points.forEach((q, i) => {
-                    const heure = new Date(debut + Math.round(i * pas / 1000) * 1000).toISOString();
-                    const alt = typeof q.alt === 'number' && q.alt !== 0 ? '<ele>' + q.alt.toFixed(1) + '</ele>' : '';
+                    cumul += pauses[i] * facteur;
+                    if (valable(q)) derniereAlt = q.alt;
+                    const heure = new Date(debut + Math.round(cumul) * 1000).toISOString();
+                    const alt = derniereAlt !== null ? '<ele>' + derniereAlt.toFixed(1) + '</ele>' : '';
                     lignes.push('<trkpt lat="' + q.lat.toFixed(6) + '" lon="' + q.lon.toFixed(6) + '">' + alt + '<time>' + heure + '</time></trkpt>');
                 });
                 lignes.push('</trkseg></trk></gpx>');
