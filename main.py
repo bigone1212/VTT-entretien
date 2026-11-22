@@ -8367,11 +8367,12 @@ def accueil():
                 copie.type = 'button';
                 copie.className = 'btn-primary';
                 copie.style.cssText = 'width:100%; margin-top:6px;';
-                copie.textContent = 'Copier les points bruts de Bosch';
+                copie.textContent = 'Copier la fin des points bruts de Bosch';
                 copie.addEventListener('click', async () => {
                     const heures = boschHeuresPoints(points);
                     const lignes = ['i;lat;lon;alt;vit;dist;t'];
-                    points.forEach((q, i) => lignes.push([i, q.lat, q.lon, q.alt, q.vit, q.dist, heures[i].toFixed(1)].join(';')));
+                    const depart = Math.max(0, points.length - 200);
+                    points.forEach((q, i) => { if (i >= depart) lignes.push([i, q.lat, q.lon, q.alt, q.vit, q.dist, heures[i].toFixed(1)].join(';')); });
                     try {
                         await navigator.clipboard.writeText(lignes.join(String.fromCharCode(10)));
                         copie.textContent = 'Copié : colle-le dans la discussion';
@@ -8410,17 +8411,31 @@ def accueil():
             // Bosch ne donne pas l'heure de chaque point : on la déduit de la distance parcourue et de la vitesse
             // de chaque point. On ne force PAS le total sur la durée « en mouvement » : les arrêts sont dans les points.
             function boschHeuresPoints(points) {
+                // 1) Rythme réel des points : temps moyen par ligne quand le vélo roule (≈ 0,67 s chez Bosch).
+                let somme = 0;
+                let nb = 0;
+                for (let i = 1; i < points.length; i++) {
+                    const d = (typeof points[i].dist === 'number' && typeof points[i - 1].dist === 'number') ? Math.max(0, points[i].dist - points[i - 1].dist) : null;
+                    const v1 = typeof points[i].vit === 'number' ? points[i].vit : null;
+                    const v0 = typeof points[i - 1].vit === 'number' ? points[i - 1].vit : v1;
+                    if (d === null || v1 === null) continue;
+                    const ms = ((v0 === null ? v1 : v0) + v1) / 2 / 3.6;
+                    if (ms > 3) { somme += d / ms; nb += 1; }
+                }
+                const rythme = nb >= 20 ? Math.min(Math.max(somme / nb, 0.3), 2) : 1;
+                // 2) Le temps avance de distance / vitesse quand le vélo roule, et d'un rythme normal à l'arrêt.
+                //    (La distance Bosch avance par paliers : un palier à 0 m ne veut pas dire « une seconde de plus ».)
                 const cumul = [0];
                 for (let i = 1; i < points.length; i++) {
                     const d = (typeof points[i].dist === 'number' && typeof points[i - 1].dist === 'number') ? Math.max(0, points[i].dist - points[i - 1].dist) : null;
                     const v1 = typeof points[i].vit === 'number' ? points[i].vit : null;
                     const v0 = typeof points[i - 1].vit === 'number' ? points[i - 1].vit : v1;
-                    let dt = 1;
+                    let dt = rythme;
                     if (d !== null && v1 !== null) {
                         const ms = ((v0 === null ? v1 : v0) + v1) / 2 / 3.6;
-                        if (ms > 0.3) dt = d > 0 ? d / ms : 1;
+                        if (ms > 0.3) dt = Math.min(d / ms, 30);
                     }
-                    cumul.push(cumul[i - 1] + Math.min(Math.max(dt, 0.5), 30));
+                    cumul.push(cumul[i - 1] + dt);
                 }
                 return cumul;
             }
