@@ -995,6 +995,8 @@ def init_db():
     ajouter_colonne(cursor, "sorties", "surfaces", "TEXT")
     # 1 = sortie reçue automatiquement, vélo à confirmer par Math.
     ajouter_colonne(cursor, "sorties", "a_verifier", "INTEGER DEFAULT 0")
+    # Vitesse maximale mesurée par le vélo (capteur de roue Bosch), en km/h. Vide pour les autres sorties.
+    ajouter_colonne(cursor, "sorties", "vitesse_max_capteur", "DOUBLE PRECISION")
 
     # Les liens de partage secrets ont été abandonnés : on nettoie leur table.
     cursor.execute("DROP TABLE IF EXISTS partages")
@@ -1310,6 +1312,7 @@ class ImportGpxRequest(BaseModel):
     notes: Optional[str] = None
     nom: Optional[str] = None
     photos: Optional[List[PhotoIn]] = None
+    vitesse_max_kmh: Optional[float] = Field(default=None, ge=0, le=150)
 
 
 class HistoriqueRequest(BaseModel):
@@ -8568,7 +8571,7 @@ def accueil():
                     const envoi = await fetchOriginal('/api/sorties/import?velo_id=' + encodeURIComponent(veloId), {
                         method: 'POST',
                         headers: getHeaders(),
-                        body: JSON.stringify({ gpx: gpx, nom: titre.slice(0, 120), notes: boschNotesSortie(a), terrain: 'mixte' })
+                        body: JSON.stringify({ gpx: gpx, nom: titre.slice(0, 120), notes: boschNotesSortie(a), terrain: 'mixte', vitesse_max_kmh: (a.speed && typeof a.speed.maximum === 'number' && a.speed.maximum > 0) ? a.speed.maximum : null })
                     });
                     let rep = null;
                     try { rep = await envoi.json(); } catch (e) { rep = null; }
@@ -14205,7 +14208,8 @@ def accueil():
                     grille.className = 'fiche-grille';
                     blocStats.appendChild(grille);
                     const altitudes = trace.map(p => (Array.isArray(p) ? p[3] : null)).filter(a => typeof a === 'number');
-                    const vmax = vitesseMaxSortie(trace);
+                    // Sortie Bosch : on affiche la vitesse max mesurée par le vélo ; sinon, celle calculée avec le GPS.
+                    const vmax = (typeof s.vitesse_max_capteur === 'number' && s.vitesse_max_capteur > 0) ? s.vitesse_max_capteur : vitesseMaxSortie(trace);
                     tuile(grille, 'Distance', fmtDistance(s.distance_km, 1).complet);
                     tuile(grille, 'Durée', formaterDuree(s.duree_s));
                     tuile(grille, 'Vitesse moyenne', fmtVitesse(s.vitesse_moy, 1).complet);
@@ -24248,15 +24252,16 @@ def importer_sortie(
             INSERT INTO sorties (
                 velo_id, nom, debut, sport, distance_km, denivele_pos, denivele_neg,
                 duree_s, vitesse_moy, alt_max, pente_moy_montee,
-                terrain, notes, km_compte, trace, photos, a_verifier
+                terrain, notes, km_compte, trace, photos, a_verifier, vitesse_max_capteur
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             velo_id, nom, s["debut"], s["sport"], s["distance_km"],
             s["denivele_pos"], s["denivele_neg"], s["duree_s"],
             s["vitesse_moy"], s["alt_max"], s["pente_moy_montee"],
             terrain, notes, compte, s["trace"], photos_json,
-            1 if automatique else 0
+            1 if automatique else 0,
+            data.vitesse_max_kmh if data.vitesse_max_kmh and data.vitesse_max_kmh > 0 else None
         ))
 
         cursor.execute("SELECT id FROM sorties WHERE velo_id = ? AND debut = ?", (velo_id, s["debut"]))

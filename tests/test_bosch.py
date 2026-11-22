@@ -412,3 +412,29 @@ def test_trace_d_une_sortie():
         finally:
             main.urllib.request.urlopen = vrai_urlopen
             main.bosch_jeton_valide = vrai_jeton
+
+
+def _gpx_court(debut_minute):
+    points = []
+    for i in range(120):
+        secondes = i * 5
+        points.append(
+            '<trkpt lat="%.6f" lon="%.6f"><ele>%d</ele><time>2026-11-19T15:%02d:%02dZ</time></trkpt>'
+            % (44.35 + i * 0.00013, 2.57 + i * 0.0001, 600 + i // 4, debut_minute + secondes // 60, secondes % 60)
+        )
+    return '<?xml version="1.0"?><gpx version="1.1" creator="t" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>t</name><trkseg>' + "".join(points) + "</trkseg></trk></gpx>"
+
+
+def test_vitesse_max_du_capteur_gardee_avec_la_sortie():
+    with client() as c:
+        r1 = c.post("/api/sorties/import?velo_id=1", headers=ENTETE, json={"gpx": _gpx_court(0), "vitesse_max_kmh": 46.1})
+        assert r1.status_code == 200, r1.text
+        r2 = c.post("/api/sorties/import?velo_id=1", headers=ENTETE, json={"gpx": _gpx_court(20)})
+        assert r2.status_code == 200, r2.text
+        r3 = c.post("/api/sorties/import?velo_id=1", headers=ENTETE, json={"gpx": _gpx_court(40), "vitesse_max_kmh": 500})
+        assert r3.status_code == 422
+        liste = c.get("/api/sorties?velo_id=1", headers=ENTETE).json()
+        par_debut = {s["debut"]: s for s in liste}
+        assert len(liste) == 2
+        valeurs = sorted((s["vitesse_max_capteur"] is None, s["vitesse_max_capteur"] or 0) for s in liste)
+        assert valeurs == [(False, 46.1), (True, 0)]
