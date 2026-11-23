@@ -414,13 +414,13 @@ def test_trace_d_une_sortie():
             main.bosch_jeton_valide = vrai_jeton
 
 
-def _gpx_court(debut_minute):
+def _gpx_court(debut_minute, heure=15):
     points = []
     for i in range(120):
         secondes = i * 5
         points.append(
-            '<trkpt lat="%.6f" lon="%.6f"><ele>%d</ele><time>2026-11-19T15:%02d:%02dZ</time></trkpt>'
-            % (44.35 + i * 0.00013, 2.57 + i * 0.0001, 600 + i // 4, debut_minute + secondes // 60, secondes % 60)
+            '<trkpt lat="%.6f" lon="%.6f"><ele>%d</ele><time>2026-11-19T%02d:%02d:%02dZ</time></trkpt>'
+            % (44.35 + i * 0.00013, 2.57 + i * 0.0001, 600 + i // 4, heure, debut_minute + secondes // 60, secondes % 60)
         )
     return '<?xml version="1.0"?><gpx version="1.1" creator="t" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>t</name><trkseg>' + "".join(points) + "</trkseg></trk></gpx>"
 
@@ -460,3 +460,21 @@ def test_puissance_gardee_dans_la_trace():
         s2 = [x for x in liste if x["debut"].startswith("2026-11-19")][0]
         trace2 = s2["trace"] if isinstance(s2["trace"], list) else __import__("json").loads(s2["trace"])
         assert all(len(p) == 4 for p in trace2)
+
+
+def test_chiffres_bosch_gardes_et_nettoyes():
+    with client() as c:
+        bosch = {
+            "puissance_moy": 108, "puissance_max": 250, "cadence_moy": 61, "calories": 90,
+            "sauts": {"jumps": {"nombre": 1, "hauteur_m": 0.13, "longueur_m": 2.3, "duree_s": 0.26}, "inconnu": {"nombre": 5}},
+            "intrus": "<script>", "puissance_inconnue": 5,
+        }
+        assert c.post("/api/sorties/import?velo_id=1", headers=ENTETE, json={"gpx": _gpx_court(0, 17), "bosch": bosch}).status_code == 200
+        assert c.post("/api/sorties/import?velo_id=1", headers=ENTETE, json={"gpx": _gpx_court(20, 17), "bosch": {"puissance_moy": -5, "calories": "beaucoup"}}).status_code == 200
+        liste = c.get("/api/sorties?velo_id=1", headers=ENTETE).json()
+        garde = [s for s in liste if s["donnees_bosch"]]
+        assert len(garde) == 1
+        d = garde[0]["donnees_bosch"]
+        assert d["puissance_moy"] == 108 and d["puissance_max"] == 250 and d["calories"] == 90
+        assert d["sauts"] == {"jumps": {"nombre": 1.0, "hauteur_m": 0.13, "longueur_m": 2.3, "duree_s": 0.26}}
+        assert "intrus" not in d and "puissance_inconnue" not in d

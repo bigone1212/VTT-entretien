@@ -997,6 +997,8 @@ def init_db():
     ajouter_colonne(cursor, "sorties", "a_verifier", "INTEGER DEFAULT 0")
     # Vitesse maximale mesurée par le vélo (capteur de roue Bosch), en km/h. Vide pour les autres sorties.
     ajouter_colonne(cursor, "sorties", "vitesse_max_capteur", "DOUBLE PRECISION")
+    # Autres chiffres donnés par Bosch (puissance, cadence, calories, sauts...), en texte JSON. Vide pour les autres sorties.
+    ajouter_colonne(cursor, "sorties", "donnees_bosch", "TEXT")
 
     # Les liens de partage secrets ont été abandonnés : on nettoie leur table.
     cursor.execute("DROP TABLE IF EXISTS partages")
@@ -1313,6 +1315,52 @@ class ImportGpxRequest(BaseModel):
     nom: Optional[str] = None
     photos: Optional[List[PhotoIn]] = None
     vitesse_max_kmh: Optional[float] = Field(default=None, ge=0, le=150)
+    bosch: Optional[dict] = None
+
+
+BOSCH_CHIFFRES_LIMITES = {
+    "puissance_moy": 3000, "puissance_max": 3000, "cadence_moy": 300, "calories": 50000,
+}
+BOSCH_FIGURES_NOMS = ("jumps", "wheelies", "manuals", "stoppies")
+BOSCH_FIGURES_CHAMPS = {"nombre": 100000, "hauteur_m": 100, "longueur_m": 10000, "duree_s": 3600}
+
+
+def nettoyer_donnees_bosch(brut):
+    """Ne garde que des nombres raisonnables ; renvoie du texte JSON ou None."""
+    if not isinstance(brut, dict):
+        return None
+
+    def nombre(valeur, maximum):
+        if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
+            return None
+        if not (0 < valeur <= maximum):
+            return None
+        return round(float(valeur), 2)
+
+    propre = {}
+    for cle, maximum in BOSCH_CHIFFRES_LIMITES.items():
+        v = nombre(brut.get(cle), maximum)
+        if v is not None:
+            propre[cle] = v
+
+    figures = {}
+    sauts = brut.get("sauts")
+    if isinstance(sauts, dict):
+        for nom in BOSCH_FIGURES_NOMS:
+            f = sauts.get(nom)
+            if not isinstance(f, dict):
+                continue
+            garde = {}
+            for champ, maximum in BOSCH_FIGURES_CHAMPS.items():
+                v = nombre(f.get(champ), maximum)
+                if v is not None:
+                    garde[champ] = v
+            if garde.get("nombre"):
+                figures[nom] = garde
+    if figures:
+        propre["sauts"] = figures
+
+    return json.dumps(propre) if propre else None
 
 
 class HistoriqueRequest(BaseModel):
@@ -8544,24 +8592,26 @@ def accueil():
                 return lignes.join(String.fromCharCode(10));
             }
 
-            // Ce que Bosch sait en plus (sauts, puissance, cadence...) est gardé dans les notes de la sortie.
-            function boschNotesSortie(a) {
-                const morceaux = [];
+            // Ce que Bosch sait en plus (sauts, puissance, cadence...) est gardé avec la sortie et affiché dans ses chiffres.
+            function boschChiffresSortie(a) {
+                const chiffres = {};
+                if (a.riderPower && typeof a.riderPower.average === 'number') chiffres.puissance_moy = a.riderPower.average;
+                if (a.riderPower && typeof a.riderPower.maximum === 'number') chiffres.puissance_max = a.riderPower.maximum;
+                if (a.cadence && typeof a.cadence.average === 'number') chiffres.cadence_moy = a.cadence.average;
+                if (typeof a.caloriesBurned === 'number') chiffres.calories = a.caloriesBurned;
                 const t = a.tricks || {};
-                const noms = { jumps: 'saut(s)', wheelies: 'wheelie(s)', manuals: 'manual(s)', stoppies: 'stoppie(s)' };
-                Object.keys(noms).forEach(k => {
+                const sauts = {};
+                ['jumps', 'wheelies', 'manuals', 'stoppies'].forEach(k => {
                     const x = t[k];
                     if (!x || typeof x.amount !== 'number' || x.amount <= 0) return;
-                    const d = [];
-                    if (typeof x.maxHeight === 'number' && x.maxHeight > 0) d.push('hauteur max ' + boschNombre(x.maxHeight / 1000, 2) + ' m');
-                    if (typeof x.maxDistance === 'number' && x.maxDistance > 0) d.push('longueur max ' + boschNombre(x.maxDistance, 1) + ' m');
-                    if (typeof x.maxDuration === 'number' && x.maxDuration > 0) d.push('durée max ' + boschNombre(x.maxDuration / 1000, 2) + ' s');
-                    morceaux.push(boschNombre(x.amount, 0) + ' ' + noms[k] + (d.length ? ' (' + d.join(', ') + ')' : ''));
+                    const f = { nombre: x.amount };
+                    if (typeof x.maxHeight === 'number') f.hauteur_m = x.maxHeight / 1000;
+                    if (typeof x.maxDistance === 'number') f.longueur_m = x.maxDistance;
+                    if (typeof x.maxDuration === 'number') f.duree_s = x.maxDuration / 1000;
+                    sauts[k] = f;
                 });
-                if (a.riderPower && typeof a.riderPower.average === 'number') morceaux.push('puissance moyenne ' + boschNombre(a.riderPower.average, 0) + ' W (max ' + boschNombre(a.riderPower.maximum || 0, 0) + ' W)');
-                if (a.cadence && typeof a.cadence.average === 'number') morceaux.push('cadence moyenne ' + boschNombre(a.cadence.average, 0) + ' tr/min');
-                if (typeof a.caloriesBurned === 'number') morceaux.push(boschNombre(a.caloriesBurned, 0) + ' kcal');
-                return morceaux.length ? ('Bosch : ' + morceaux.join(' · ')).slice(0, 500) : null;
+                if (Object.keys(sauts).length) chiffres.sauts = sauts;
+                return chiffres;
             }
 
             function boschVeloPourSortie(a) {
@@ -8585,7 +8635,7 @@ def accueil():
                     const envoi = await fetchOriginal('/api/sorties/import?velo_id=' + encodeURIComponent(veloId), {
                         method: 'POST',
                         headers: getHeaders(),
-                        body: JSON.stringify({ gpx: gpx, nom: titre.slice(0, 120), notes: boschNotesSortie(a), terrain: 'mixte', vitesse_max_kmh: (a.speed && typeof a.speed.maximum === 'number' && a.speed.maximum > 0) ? a.speed.maximum : null })
+                        body: JSON.stringify({ gpx: gpx, nom: titre.slice(0, 120), bosch: boschChiffresSortie(a), terrain: 'mixte', vitesse_max_kmh: (a.speed && typeof a.speed.maximum === 'number' && a.speed.maximum > 0) ? a.speed.maximum : null })
                     });
                     let rep = null;
                     try { rep = await envoi.json(); } catch (e) { rep = null; }
@@ -14267,6 +14317,23 @@ def accueil():
                     tuile(grille, 'Durée', formaterDuree(s.duree_s));
                     tuile(grille, 'Vitesse moyenne', fmtVitesse(s.vitesse_moy, 1).complet);
                     tuile(grille, 'Vitesse maximum', vmax === null ? '—' : fmtVitesse(vmax, 1).complet);
+                    // Chiffres donnés par Bosch (sorties importées depuis Bosch seulement).
+                    const bosch = s.donnees_bosch && typeof s.donnees_bosch === 'object' ? s.donnees_bosch : null;
+                    if (bosch) {
+                        if (typeof bosch.puissance_moy === 'number') tuile(grille, 'Puissance moyenne', fmtFr(bosch.puissance_moy, 0) + ' W');
+                        if (typeof bosch.puissance_max === 'number') tuile(grille, 'Puissance max', fmtFr(bosch.puissance_max, 0) + ' W');
+                        if (typeof bosch.cadence_moy === 'number') tuile(grille, 'Cadence moyenne', fmtFr(bosch.cadence_moy, 0) + ' tr/min');
+                        if (typeof bosch.calories === 'number') tuile(grille, 'Calories', fmtFr(bosch.calories, 0) + ' kcal');
+                        const nomsFigures = { jumps: ['Sauts', 'Saut'], wheelies: ['Wheelies', 'Wheelie'], manuals: ['Manuals', 'Manual'], stoppies: ['Stoppies', 'Stoppie'] };
+                        Object.keys(nomsFigures).forEach(k => {
+                            const f = bosch.sauts && bosch.sauts[k];
+                            if (!f || typeof f.nombre !== 'number') return;
+                            tuile(grille, nomsFigures[k][0], fmtFr(f.nombre, 0));
+                            if (typeof f.hauteur_m === 'number') tuile(grille, nomsFigures[k][1] + ' : hauteur max', fmtFr(f.hauteur_m, 2) + ' m');
+                            if (typeof f.longueur_m === 'number') tuile(grille, nomsFigures[k][1] + ' : longueur max', fmtFr(f.longueur_m, 1) + ' m');
+                            if (typeof f.duree_s === 'number') tuile(grille, nomsFigures[k][1] + ' : durée max', fmtFr(f.duree_s, 2) + ' s');
+                        });
+                    }
                     tuile(grille, 'Dénivelé positif', fmtAltitude(s.denivele_pos).complet);
                     tuile(grille, 'Dénivelé négatif', fmtAltitude(s.denivele_neg).complet);
                     if (altitudes.length) {
@@ -24323,16 +24390,17 @@ def importer_sortie(
             INSERT INTO sorties (
                 velo_id, nom, debut, sport, distance_km, denivele_pos, denivele_neg,
                 duree_s, vitesse_moy, alt_max, pente_moy_montee,
-                terrain, notes, km_compte, trace, photos, a_verifier, vitesse_max_capteur
+                terrain, notes, km_compte, trace, photos, a_verifier, vitesse_max_capteur, donnees_bosch
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             velo_id, nom, s["debut"], s["sport"], s["distance_km"],
             s["denivele_pos"], s["denivele_neg"], s["duree_s"],
             s["vitesse_moy"], s["alt_max"], s["pente_moy_montee"],
             terrain, notes, compte, s["trace"], photos_json,
             1 if automatique else 0,
-            data.vitesse_max_kmh if data.vitesse_max_kmh and data.vitesse_max_kmh > 0 else None
+            data.vitesse_max_kmh if data.vitesse_max_kmh and data.vitesse_max_kmh > 0 else None,
+            nettoyer_donnees_bosch(data.bosch)
         ))
 
         cursor.execute("SELECT id FROM sorties WHERE velo_id = ? AND debut = ?", (velo_id, s["debut"]))
@@ -24760,6 +24828,11 @@ def lister_sorties(
                 sortie["trace"] = json.loads(sortie["trace"] or "[]")
             except ValueError:
                 sortie["trace"] = []
+
+            try:
+                sortie["donnees_bosch"] = json.loads(sortie.get("donnees_bosch") or "null")
+            except ValueError:
+                sortie["donnees_bosch"] = None
 
             try:
                 brutes = json.loads(sortie["photos"] or "[]")
