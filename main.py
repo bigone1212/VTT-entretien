@@ -3528,7 +3528,7 @@ def accueil():
             .v3d-cinema-marque { display: flex; align-items: center; gap: 9px; color: #65e6d4; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.19em; }
             .v3d-cinema-logo { width: 22px; height: 22px; flex-shrink: 0; border-radius: 6px; }
             .v3d-cinema-nom { margin-top: 7px; font-size: clamp(1.05rem, 2.2vw, 1.65rem); font-weight: 750; line-height: 1.15; text-shadow: 0 2px 8px rgba(0,0,0,0.5); }
-            .v3d-cinema-date { margin-top: 5px; color: rgba(255,255,255,0.72); font-size: 0.78rem; letter-spacing: 0.06em; }
+            .v3d-cinema-date { margin-left: auto; padding-left: 14px; color: rgba(255,255,255,0.72); font-size: 0.78rem; font-weight: 500; letter-spacing: 0.06em; white-space: nowrap; }
             .v3d-cinema-stats { display: flex; flex-wrap: wrap; gap: 12px 20px; margin-top: 13px; }
             .v3d-cinema-stat { min-width: 62px; }
             .v3d-cinema-stat strong { display: block; font-size: 1.12rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -4188,14 +4188,14 @@ def accueil():
                 padding: 6px 12px;
                 display: grid;
                 grid-template-columns: auto minmax(0, 1fr) minmax(0, 34%);
-                grid-template-areas: "marque stats profil" "nom stats profil" "date stats profil";
+                grid-template-areas: "marque stats profil" "nom stats profil";
                 column-gap: 18px;
                 align-items: center;
             }
             :root.paysage .v3d-cinema-marque { grid-area: marque; font-size: 0.6rem; }
             :root.paysage .v3d-cinema-logo { width: 16px; height: 16px; }
             :root.paysage .v3d-cinema-nom { grid-area: nom; margin-top: 2px; font-size: 0.95rem; max-width: 24vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-            :root.paysage .v3d-cinema-date { grid-area: date; margin-top: 1px; font-size: 0.66rem; }
+            :root.paysage .v3d-cinema-date { font-size: 0.66rem; }
             :root.paysage .v3d-cinema-stats { grid-area: stats; margin-top: 0; gap: 4px 12px; justify-content: space-between; }
             :root.paysage .v3d-cinema-stat { min-width: 0; }
             :root.paysage .v3d-cinema-stat strong { font-size: 0.82rem; }
@@ -4839,9 +4839,8 @@ def accueil():
                 </div>
             </div>
             <div class="v3d-cinema-hud" id="v3dCinemaHud" aria-hidden="true">
-                <div class="v3d-cinema-marque"><svg class="v3d-cinema-logo" role="img" aria-label="Maillons"><use href="#logo-maillon"/></svg><span>MAILLONS</span></div>
+                <div class="v3d-cinema-marque"><svg class="v3d-cinema-logo" role="img" aria-label="Maillons"><use href="#logo-maillon"/></svg><span>MAILLONS</span><div class="v3d-cinema-date" id="v3dCinemaDate"></div></div>
                 <div class="v3d-cinema-nom" id="v3dCinemaNom"></div>
-                <div class="v3d-cinema-date" id="v3dCinemaDate"></div>
                 <div class="v3d-cinema-stats">
                     <div class="v3d-cinema-stat"><strong id="v3dCinemaDistance">0,0 km</strong><span>Distance</span></div>
                     <div class="v3d-cinema-stat" id="v3dCinemaDeniveleBloc"><strong id="v3dCinemaDenivele">D+ 0 m</strong><span>D+ cumulé</span></div>
