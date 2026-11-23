@@ -14717,6 +14717,11 @@ def accueil():
                 }
                 v3d.tps = valides.map(p => (typeof p[2] === 'number' && isFinite(p[2]) ? p[2] : null));
                 v3d.pentes = profil ? profil.pentes : [];
+                // Vitesse et puissance de chaque tronçon, pour colorer le tracé (vides si la sortie n'a pas ces données).
+                v3d.vitessesTroncons = vitessesTroncons(valides);
+                v3d.echelleVitesse = v3d.vitessesTroncons ? echelleVitesses(v3d.vitessesTroncons) : null;
+                v3d.puissancesTroncons = puissancesTroncons(valides);
+                v3d.echellePuissance = v3d.puissancesTroncons ? echelleVitesses(v3d.puissancesTroncons) : null;
                 v3d.pts = pts;
                 v3d.cum = [0];
                 for (let i = 1; i < pts.length; i++) {
@@ -15989,8 +15994,9 @@ def accueil():
                 etiqueter('v3dFond', v3d.fond === 'sat' ? 'satellite' : 'carteplan', v3d.fond === 'sat' ? 'Fond : satellite' : 'Fond : plan');
                 const couleur = document.getElementById('v3dCouleur');
                 const aTerrain = v3d.surfaces && v3d.surfaces.length === v3d.pts.length;
-                couleur.style.display = (v3d.pentes.length && aTerrain) ? '' : 'none';
-                etiqueter('v3dCouleur', 'palette', v3d.mode === 'pente' ? 'Couleurs : pente' : 'Couleurs : terrain');
+                couleur.style.display = modesCouleurV3d().length > 1 ? '' : 'none';
+                const NOMS_COULEURS_V3D = { pente: 'pente', terrain: 'terrain', vitesse: 'vitesse', puissance: 'puissance' };
+                etiqueter('v3dCouleur', 'palette', 'Couleurs : ' + (NOMS_COULEURS_V3D[v3d.mode] || 'pente'));
                 const autres = document.getElementById('v3dAutres');
                 const rep = document.getElementById('v3dReperes');
                 etiqueter('v3dReperes', 'montagne', 'Repères');
@@ -16769,8 +16775,24 @@ def accueil():
                 if (v3d.mode === 'terrain' && v3d.surfaces && v3d.surfaces.length === v3d.pts.length) {
                     return (TYPES_CHEMIN[v3d.surfaces[i]] || TYPES_CHEMIN.u).couleur;
                 }
+                if (v3d.mode === 'vitesse' && v3d.echelleVitesse && v3d.vitessesTroncons && v3d.vitessesTroncons.length > i) {
+                    return couleurVitesse(v3d.vitessesTroncons[i], v3d.echelleVitesse);
+                }
+                if (v3d.mode === 'puissance' && v3d.echellePuissance && v3d.puissancesTroncons && v3d.puissancesTroncons.length > i) {
+                    return couleurPuissance(v3d.puissancesTroncons[i], v3d.echellePuissance);
+                }
                 if (v3d.pentes.length > i) return couleurPente(v3d.pentes[i]);
                 return '#ffffff';
+            }
+
+            // Façons de colorer le tracé disponibles pour cette sortie (le bouton « Couleurs » les fait défiler).
+            function modesCouleurV3d() {
+                const modes = [];
+                if (v3d.pentes.length) modes.push('pente');
+                if (v3d.surfaces && v3d.surfaces.length === v3d.pts.length) modes.push('terrain');
+                if (v3d.echelleVitesse) modes.push('vitesse');
+                if (v3d.echellePuissance) modes.push('puissance');
+                return modes;
             }
 
             function donneesTrace() {
@@ -16793,6 +16815,14 @@ def accueil():
                     lignes = Object.keys(TYPES_CHEMIN)
                         .filter(k => v3d.surfaces.includes(k))
                         .map(k => ({ couleur: TYPES_CHEMIN[k].couleur, texte: TYPES_CHEMIN[k].nom }));
+                } else if ((v3d.mode === 'vitesse' && v3d.echelleVitesse) || (v3d.mode === 'puissance' && v3d.echellePuissance)) {
+                    // Vitesse ou puissance : quatre repères du plus faible au plus fort, aux couleurs de la palette de l'appli.
+                    const e = v3d.mode === 'vitesse' ? v3d.echelleVitesse : v3d.echellePuissance;
+                    const unite = v3d.mode === 'vitesse' ? ' km/h' : ' W';
+                    lignes = [0, 1, 2, 3].map(k => {
+                        const v = e.bas + (e.haut - e.bas) * k / 3;
+                        return { couleur: couleurEchelle(v, e, arretsDesign()), texte: Math.round(v) + (k === 3 ? unite : '') };
+                    });
                 } else if (v3d.pentes.length) {
                     // Légende des pentes du survol : juste « < x % » (et « > x % » pour la dernière classe), sans ligne descente.
                     lignes = COULEURS_PENTE.map((c, i) => ({
@@ -17118,7 +17148,8 @@ def accueil():
                     majBoutonsV3d();
                 });
                 bouton('v3dCouleur', () => {
-                    v3d.mode = v3d.mode === 'pente' ? 'terrain' : 'pente';
+                    const modesDispo = modesCouleurV3d();
+                    if (modesDispo.length) v3d.mode = modesDispo[(modesDispo.indexOf(v3d.mode) + 1) % modesDispo.length];
                     const src = v3d.carte && v3d.carte.getSource('v3d-trace');
                     if (src) src.setData(donneesTrace());
                     majLegendeV3d();
