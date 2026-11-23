@@ -995,6 +995,10 @@ def init_db():
     ajouter_colonne(cursor, "sorties", "surfaces", "TEXT")
     # 1 = sortie reçue automatiquement, vélo à confirmer par Math.
     ajouter_colonne(cursor, "sorties", "a_verifier", "INTEGER DEFAULT 0")
+    # Vitesse maximale mesurée par le vélo (capteur de roue Bosch), en km/h. Vide pour les autres sorties.
+    ajouter_colonne(cursor, "sorties", "vitesse_max_capteur", "DOUBLE PRECISION")
+    # Autres chiffres donnés par Bosch (puissance, cadence, calories, sauts...), en texte JSON. Vide pour les autres sorties.
+    ajouter_colonne(cursor, "sorties", "donnees_bosch", "TEXT")
 
     # Les liens de partage secrets ont été abandonnés : on nettoie leur table.
     cursor.execute("DROP TABLE IF EXISTS partages")
@@ -1310,6 +1314,53 @@ class ImportGpxRequest(BaseModel):
     notes: Optional[str] = None
     nom: Optional[str] = None
     photos: Optional[List[PhotoIn]] = None
+    vitesse_max_kmh: Optional[float] = Field(default=None, ge=0, le=150)
+    bosch: Optional[dict] = None
+
+
+BOSCH_CHIFFRES_LIMITES = {
+    "puissance_moy": 3000, "puissance_max": 3000, "cadence_moy": 300, "calories": 50000,
+}
+BOSCH_FIGURES_NOMS = ("jumps", "wheelies", "manuals", "stoppies")
+BOSCH_FIGURES_CHAMPS = {"nombre": 100000, "hauteur_m": 100, "longueur_m": 10000, "duree_s": 3600}
+
+
+def nettoyer_donnees_bosch(brut):
+    """Ne garde que des nombres raisonnables ; renvoie du texte JSON ou None."""
+    if not isinstance(brut, dict):
+        return None
+
+    def nombre(valeur, maximum):
+        if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
+            return None
+        if not (0 < valeur <= maximum):
+            return None
+        return round(float(valeur), 2)
+
+    propre = {}
+    for cle, maximum in BOSCH_CHIFFRES_LIMITES.items():
+        v = nombre(brut.get(cle), maximum)
+        if v is not None:
+            propre[cle] = v
+
+    figures = {}
+    sauts = brut.get("sauts")
+    if isinstance(sauts, dict):
+        for nom in BOSCH_FIGURES_NOMS:
+            f = sauts.get(nom)
+            if not isinstance(f, dict):
+                continue
+            garde = {}
+            for champ, maximum in BOSCH_FIGURES_CHAMPS.items():
+                v = nombre(f.get(champ), maximum)
+                if v is not None:
+                    garde[champ] = v
+            if garde.get("nombre"):
+                figures[nom] = garde
+    if figures:
+        propre["sauts"] = figures
+
+    return json.dumps(propre) if propre else None
 
 
 class HistoriqueRequest(BaseModel):
@@ -1905,6 +1956,18 @@ def accueil():
             }
 
             dialog.fenetre-velo form details#ficheIA button { margin: 6px 0 10px; }
+
+            .bosch-bouton { display: flex; align-items: center; justify-content: center; gap: 8px; }
+            .bosch-lien { display: block; margin: 10px auto 0; background: none; border: 0; padding: 6px; color: var(--text-muted); font-size: 0.85rem; text-decoration: underline; cursor: pointer; }
+            .bosch-aide { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--field-line); border-radius: 12px; background: var(--field); font-size: 0.88rem; line-height: 1.4; }
+            .bosch-aide ol { margin: 6px 0 0; padding-left: 20px; }
+            .bosch-aide a { color: var(--accent); }
+            .bosch-section { margin: 14px 0 0; padding-top: 10px; border-top: 1px solid var(--field-line); }
+            .bosch-section h4 { margin: 0 0 6px; font-size: 0.8rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }
+            .bosch-ligne { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; font-size: 0.9rem; }
+            .bosch-ligne span:first-child { color: var(--text-muted); }
+            .bosch-ligne span:last-child { text-align: right; font-weight: 600; color: var(--strong); word-break: break-word; }
+            .bosch-gros { font-size: 1.6rem; font-weight: 800; color: var(--strong); margin: 4px 0 0; }
 
             .fenetre-velo-entete {
                 display: flex;
@@ -4323,6 +4386,23 @@ def accueil():
 
             .fiche-carte svg { width: 100%; height: 100%; }
 
+            .fiche-fond.fiche-mode { left: auto; right: 8px; }
+            .fiche-echelle {
+                position: absolute;
+                left: 8px;
+                bottom: 8px;
+                z-index: 2;
+                align-items: center;
+                gap: 6px;
+                padding: 4px 10px;
+                font-size: 0.72rem;
+                font-weight: 700;
+                color: #ffffff;
+                background: rgba(0,0,0,0.55);
+                border-radius: 999px;
+            }
+            .fiche-echelle i { display: inline-block; width: 70px; height: 8px; border-radius: 4px; }
+
             .fiche-fond {
                 position: absolute;
                 top: 8px;
@@ -4769,6 +4849,9 @@ def accueil():
                     <div class="v3d-cinema-stat" id="v3dCinemaVitesseBloc"><strong id="v3dCinemaVitesse">—</strong><span>Vitesse</span></div>
                     <div class="v3d-cinema-stat"><strong id="v3dCinemaVitesseMax">—</strong><span>Vitesse max</span></div>
                     <div class="v3d-cinema-stat"><strong id="v3dCinemaVitesseMoyenne">—</strong><span>Vitesse moyenne</span></div>
+                    <div class="v3d-cinema-stat" id="v3dCinemaPuissanceBloc" style="display:none"><strong id="v3dCinemaPuissance">—</strong><span>Puissance</span></div>
+                    <div class="v3d-cinema-stat" id="v3dCinemaPuissanceMaxBloc" style="display:none"><strong id="v3dCinemaPuissanceMax">—</strong><span>Puissance max</span></div>
+                    <div class="v3d-cinema-stat" id="v3dCinemaPuissanceMoyenneBloc" style="display:none"><strong id="v3dCinemaPuissanceMoyenne">—</strong><span>Puissance moyenne</span></div>
                 </div>
                 <div class="v3d-cinema-profil">
                     <div class="v3d-cinema-profil-titre">PROFIL DU PARCOURS</div>
@@ -5273,15 +5356,40 @@ def accueil():
             </form>
             <p class="form-help" id="messageCompte" aria-live="polite"></p>
             <div class="bosch-bloc" id="boschBloc" style="margin-top:14px;">
-                <strong>Vélo Bosch (eBike Flow)</strong>
                 <p class="form-help" id="boschEtat">Relie ton compte Bosch pour lire les informations de ton vélo (lecture seule).</p>
-                <button type="button" id="boschConnecter" class="btn-primary" style="width:100%; margin-top:6px;">Connecter mon vélo Bosch</button>
-                <button type="button" id="boschLire" class="btn-primary" style="width:100%; margin-top:6px; display:none;">Lire mes vélos Bosch</button>
-                <div id="boschLiens"></div>
-                <button type="button" id="boschCopier" class="btn-primary" style="width:100%; margin-top:6px; display:none;">Copier le détail reçu</button>
-                <button type="button" id="boschDeconnecter" class="btn-primary" style="width:100%; margin-top:6px; display:none;">Déconnecter Bosch</button>
+                <button type="button" id="boschConnecter" class="btn-primary bosch-bouton" style="width:100%; margin-top:6px;"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg><span>Connexion à Bosch</span></button>
+                <button type="button" id="boschDonnees" class="btn-primary bosch-bouton" style="width:100%; margin-top:6px; display:none;"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16h.01"/></svg><span>Voir les données de mon vélo Bosch</span></button>
+                <div id="boschAide" class="bosch-aide" style="display:none;">
+                    <strong>Bosch ne partage encore aucun vélo avec Maillons.</strong>
+                    <ol>
+                        <li>Ouvre <a href="https://flow.bosch-ebike.com" target="_blank" rel="noopener">flow.bosch-ebike.com</a> et va dans l'onglet « Data Act », puis « Gestion de l'accès ».</li>
+                        <li>Sous ton vélo, mets l'interrupteur « Maillons » sur activé.</li>
+                        <li>Reviens ici et touche « Voir les données de mon vélo Bosch ».</li>
+                    </ol>
+                </div>
+                <button type="button" id="boschDeconnecter" class="bosch-lien" style="display:none;">Déconnecter Bosch</button>
                 <p class="form-help" id="boschMessage" aria-live="polite"></p>
             </div>
+            <dialog id="fenetreBosch" class="fenetre-velo" aria-labelledby="titreFenetreBosch">
+                <div class="fenetre-velo-entete">
+                    <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16h.01"/></svg><span id="titreFenetreBosch">Données de mon vélo Bosch</span></strong>
+                    <button type="button" class="fenetre-velo-fermer" id="boutonFermerFenetreBosch" aria-label="Fermer">✕</button>
+                </div>
+                <p class="form-help">Tout ce que Bosch partage avec Maillons (lecture seule).</p>
+                <div id="boschContenu"></div>
+                <div id="boschLiens"></div>
+                <div class="bosch-section" id="boschSortiesBloc">
+                    <h4>Sorties enregistrées par eBike Flow</h4>
+                    <button type="button" id="boschSortiesVoir" class="btn-primary" style="width:100%;">Voir mes sorties Bosch</button>
+                    <div id="boschSorties"></div>
+                    <button type="button" id="boschSortiesPlus" class="btn-primary" style="width:100%; margin-top:8px; display:none;">Voir les sorties suivantes</button>
+                    <button type="button" id="boschSortiesTout" class="btn-primary" style="width:100%; margin-top:8px;">Ajouter toutes mes sorties Bosch à Maillons</button>
+                    <p class="form-help" id="boschSortiesMessage" aria-live="polite"></p>
+                </div>
+                <button type="button" id="boschActualiser" class="btn-primary" style="width:100%; margin-top:10px;">Actualiser depuis Bosch</button>
+                <button type="button" id="boschCopier" class="btn-primary" style="width:100%; margin-top:6px;">Copier le détail brut</button>
+                <p class="form-help" id="boschMessageFenetre" aria-live="polite"></p>
+            </dialog>
             <button type="button" id="boutonDeconnexion" class="btn-primary" style="width:100%; margin-top:8px;">Se déconnecter</button>
             <p class="form-help compte-version" id="compteVersion"></p>
         </section>
@@ -7938,6 +8046,8 @@ def accueil():
 
             function boschMessage(texte) {
                 document.getElementById('boschMessage').textContent = texte || '';
+                const dedans = document.getElementById('boschMessageFenetre');
+                if (dedans) dedans.textContent = texte || '';
             }
 
             let boschLiaisons = {};
@@ -7962,13 +8072,32 @@ def accueil():
                     }
                     document.getElementById('boschEtat').textContent = texte;
                     document.getElementById('boschConnecter').style.display = d.connecte ? 'none' : '';
-                    document.getElementById('boschLire').style.display = d.connecte ? '' : 'none';
+                    document.getElementById('boschDonnees').style.display = d.connecte ? '' : 'none';
                     document.getElementById('boschDeconnecter').style.display = d.connecte ? '' : 'none';
                     if (!d.connecte) {
-                        document.getElementById('boschCopier').style.display = 'none';
+                        document.getElementById('boschAide').style.display = 'none';
                         document.getElementById('boschLiens').replaceChildren();
+                        document.getElementById('boschContenu').replaceChildren();
                     }
-                    if (d.connecte) synchroBoschAuto();
+                    if (sessionStorage.getItem('maillons_bosch_auto') === '1') {
+                        sessionStorage.removeItem('maillons_bosch_auto');
+                        if (!d.connecte) { boschDemarrerConnexion(); return; }
+                    }
+                    if (sessionStorage.getItem('maillons_bosch_lire_auto') === '1' && d.connecte) {
+                        sessionStorage.removeItem('maillons_bosch_lire_auto');
+                        await synchroBoschAuto(true);
+                        try {
+                            const e = await fetch('/api/bosch/etat', { headers: getHeaders() });
+                            if (e.ok) boschLiaisons = (await e.json()).liaisons || {};
+                        } catch (err) { /* on lit quand même */ }
+                        await boschLireVelos({ auto: true });
+                        rafraichirBosch();
+                        return;
+                    }
+                    if (d.connecte) {
+                        await synchroBoschAuto();
+                        boschSortiesAuto();
+                    }
                 } catch (e) { /* hors ligne : on garde l'affichage actuel */ }
             }
 
@@ -7995,6 +8124,56 @@ def accueil():
                         }
                     }
                 } catch (e) { /* tant pis : on réessaiera à la prochaine ouverture */ }
+            }
+
+            // À l'ouverture de l'appli : ajoute à Sorties les nouvelles sorties Bosch (au plus une fois toutes les 30 minutes).
+            // On regarde les 20 plus récentes. Celles déjà traitées sur cet appareil sont sautées ; une sortie déjà dans Maillons est refusée par le serveur.
+            let boschSortiesAutoEnCours = false;
+
+            function boschSortiesTraitees() {
+                try { return JSON.parse(localStorage.getItem('maillons_bosch_sorties_traitees') || '[]'); } catch (e) { return []; }
+            }
+
+            function boschMarquerTraitee(id) {
+                try {
+                    const liste = boschSortiesTraitees();
+                    if (!liste.includes(id)) liste.push(id);
+                    localStorage.setItem('maillons_bosch_sorties_traitees', JSON.stringify(liste.slice(-500)));
+                } catch (e) { /* tant pis : le serveur refusera les doublons */ }
+            }
+
+            async function boschSortiesAuto(force) {
+                if (boschSortiesAutoEnCours) return;
+                try {
+                    if (!Object.keys(boschLiaisons || {}).length) return;
+                    const derniere = Number(sessionStorage.getItem('maillons_bosch_sorties_auto') || '0');
+                    if (!force && Date.now() - derniere < 30 * 60 * 1000) return;
+                    boschSortiesAutoEnCours = true;
+                    sessionStorage.setItem('maillons_bosch_sorties_auto', String(Date.now()));
+                    const r = await fetch('/api/bosch/sorties?limite=20&decalage=0', { headers: getHeaders() });
+                    if (!r.ok) return;
+                    const d = await r.json();
+                    const deja = boschSortiesTraitees();
+                    const nouvelles = (d.sorties || []).filter(x => x && x.id && !deja.includes(x.id))
+                        .sort((x, y) => String(x.startTime).localeCompare(String(y.startTime)));
+                    let ajoutees = 0;
+                    let erreurs = 0;
+                    for (const a of nouvelles) {
+                        const res = await boschImporterUneSortie(a);
+                        if (res.etat === 'ok') ajoutees += 1;
+                        if (res.etat === 'erreur') {
+                            erreurs += 1;
+                            if (erreurs >= 2) break;
+                        }
+                    }
+                    if (ajoutees) {
+                        await boschRafraichirSorties();
+                        const etat = document.getElementById('boschEtat');
+                        if (etat) etat.textContent += ' ' + ajoutees + ' nouvelle(s) sortie(s) Bosch ajoutée(s) à Sorties.';
+                    }
+                } catch (e) { /* tant pis : on réessaiera à la prochaine ouverture */ } finally {
+                    boschSortiesAutoEnCours = false;
+                }
             }
 
             // Après « Lire mes vélos Bosch » : un menu pour relier chaque vélo Bosch à un vélo de Maillons.
@@ -8044,7 +8223,7 @@ def accueil():
                 });
             }
 
-            document.getElementById('boschConnecter').addEventListener('click', async () => {
+            async function boschDemarrerConnexion() {
                 boschMessage('Je prépare la connexion...');
                 try {
                     const r = await fetch('/api/bosch/connecter', { method: 'POST', headers: getHeaders() });
@@ -8052,27 +8231,665 @@ def accueil():
                     if (!r.ok || !d.url) { boschMessage(d.detail || 'Impossible de préparer la connexion.'); return; }
                     location.href = d.url;
                 } catch (e) { boschMessage('Pas de connexion internet.'); }
-            });
+            }
 
-            document.getElementById('boschLire').addEventListener('click', async () => {
+            document.getElementById('boschConnecter').addEventListener('click', boschDemarrerConnexion);
+
+            function boschNombre(v, decimales) {
+                return typeof v === 'number' ? v.toLocaleString('fr-FR', { maximumFractionDigits: decimales === undefined ? 1 : decimales }) : String(v);
+            }
+
+            function boschDate(texte) {
+                const d = new Date(texte);
+                return isNaN(d.getTime()) ? String(texte) : d.toLocaleDateString('fr-FR');
+            }
+
+            function boschSection(parent, titre) {
+                const boite = document.createElement('div');
+                boite.className = 'bosch-section';
+                const h = document.createElement('h4');
+                h.textContent = titre;
+                boite.appendChild(h);
+                parent.appendChild(boite);
+                return boite;
+            }
+
+            function boschLigne(parent, nom, valeur) {
+                if (valeur === undefined || valeur === null || valeur === '') return;
+                const l = document.createElement('div');
+                l.className = 'bosch-ligne';
+                const a = document.createElement('span');
+                a.textContent = nom;
+                const b = document.createElement('span');
+                b.textContent = String(valeur);
+                l.appendChild(a);
+                l.appendChild(b);
+                parent.appendChild(l);
+            }
+
+            // Affiche les champs que Maillons ne connaît pas encore, tels que Bosch les envoie.
+            function boschAplatir(valeur, chemin, sortie) {
+                if (valeur && typeof valeur === 'object') {
+                    const cles = Array.isArray(valeur) ? valeur.map((x, i) => i) : Object.keys(valeur);
+                    cles.forEach(k => boschAplatir(valeur[k], chemin ? chemin + ' › ' + k : String(k), sortie));
+                } else if (valeur !== null && valeur !== undefined && valeur !== '') {
+                    sortie.push([chemin, valeur]);
+                }
+            }
+
+            function boschComposant(parent, titre, c) {
+                if (!c || typeof c !== 'object') return;
+                const s = boschSection(parent, titre);
+                boschLigne(s, 'Nom', c.productName);
+                boschLigne(s, 'Numéro de série', c.serialNumber);
+                boschLigne(s, 'Référence', c.partNumber);
+            }
+
+            function afficherFenetreBosch(detail) {
+                const zone = document.getElementById('boschContenu');
+                zone.replaceChildren();
+                const liste = detail && detail.brut && detail.brut.bikes ? detail.brut.bikes : [];
+                if (!liste.length) {
+                    const p = document.createElement('p');
+                    p.className = 'form-help';
+                    p.textContent = "Bosch ne partage aucun vélo pour l'instant. Chez Bosch (flow.bosch-ebike.com, onglet Data Act, Gestion de l'accès), mets l'interrupteur « Maillons » sur activé sous ton vélo.";
+                    zone.appendChild(p);
+                    return;
+                }
+                const connus = ['id', 'createdAt', 'driveUnit', 'remoteControl', 'batteries', 'oemModelId', 'language', 'serviceDue'];
+                liste.forEach(b => {
+                    const du = b.driveUnit || {};
+                    const boite = document.createElement('div');
+                    const titre = document.createElement('p');
+                    titre.className = 'bosch-gros';
+                    titre.textContent = typeof du.odometer === 'number' ? boschNombre(du.odometer / 1000, 0) + ' km' : 'Vélo Bosch';
+                    boite.appendChild(titre);
+                    const lie = boschLiaisons[b.id];
+                    const sv = boschSection(boite, 'Vélo');
+                    boschLigne(sv, 'Relié à', lie ? nomVeloMaillons(lie) : 'pas encore relié');
+                    boschLigne(sv, 'Créé chez Bosch le', b.createdAt ? boschDate(b.createdAt) : '');
+                    boschLigne(sv, 'Modèle (code Bosch)', b.oemModelId);
+                    boschLigne(sv, 'Langue', b.language);
+                    boschLigne(sv, 'Identifiant Bosch', b.id);
+
+                    if (b.driveUnit) {
+                        const sm = boschSection(boite, 'Moteur');
+                        boschLigne(sm, 'Nom', du.productName);
+                        boschLigne(sm, 'Numéro de série', du.serialNumber);
+                        boschLigne(sm, 'Référence', du.partNumber);
+                        if (typeof du.odometer === 'number') boschLigne(sm, 'Kilométrage total', boschNombre(du.odometer / 1000, 1) + ' km');
+                        if (typeof du.maximumAssistanceSpeed === 'number') boschLigne(sm, "Vitesse max d'assistance", boschNombre(du.maximumAssistanceSpeed) + ' km/h');
+                        if (typeof du.rearWheelCircumferenceUser === 'number') boschLigne(sm, 'Circonférence roue arrière', boschNombre(du.rearWheelCircumferenceUser, 0) + ' mm');
+                        const am = du.walkAssistConfiguration;
+                        if (am) boschLigne(sm, 'Aide à la marche', (am.isEnabled ? 'activée' : 'désactivée') + (typeof am.maximumSpeed === 'number' ? ' (max ' + boschNombre(am.maximumSpeed) + ' km/h)' : ''));
+                        const pt = du.powerOnTime;
+                        if (pt) {
+                            if (typeof pt.total === 'number') boschLigne(sm, 'Temps allumé (total)', boschNombre(pt.total, 0) + ' h');
+                            if (typeof pt.withMotorSupport === 'number') boschLigne(sm, 'Dont avec assistance moteur', boschNombre(pt.withMotorSupport, 0) + ' h');
+                        }
+                        if (Array.isArray(du.activeAssistModes) && du.activeAssistModes.length) {
+                            const sa = boschSection(boite, "Modes d'assistance");
+                            du.activeAssistModes.forEach(m => {
+                                boschLigne(sa, m.name === '0' ? 'Sans assistance' : String(m.name), typeof m.reachableRange === 'number' ? 'portée ' + boschNombre(m.reachableRange, 0) + ' km' : '');
+                            });
+                        }
+                    }
+                    boschComposant(boite, 'Télécommande', b.remoteControl);
+                    (Array.isArray(b.batteries) ? b.batteries : []).forEach((bat, i) => {
+                        const sb = boschSection(boite, b.batteries.length > 1 ? 'Batterie ' + (i + 1) : 'Batterie');
+                        boschLigne(sb, 'Nom', bat.productName);
+                        boschLigne(sb, 'Numéro de série', bat.serialNumber);
+                        boschLigne(sb, 'Référence', bat.partNumber);
+                        if (typeof bat.deliveredWhOverLifetime === 'number') boschLigne(sb, 'Énergie délivrée depuis le début', boschNombre(bat.deliveredWhOverLifetime, 0) + ' Wh (' + boschNombre(bat.deliveredWhOverLifetime / 1000, 1) + ' kWh)');
+                        const cc = bat.chargeCycles;
+                        if (cc) {
+                            if (typeof cc.total === 'number') boschLigne(sb, 'Cycles de charge (total)', boschNombre(cc.total));
+                            if (typeof cc.onBike === 'number') boschLigne(sb, 'Chargés sur le vélo', boschNombre(cc.onBike));
+                            if (typeof cc.offBike === 'number') boschLigne(sb, 'Chargés hors du vélo', boschNombre(cc.offBike));
+                        }
+                    });
+                    const se = boschSection(boite, 'Entretien prévu par Bosch');
+                    const du2 = [];
+                    boschAplatir(b.serviceDue, '', du2);
+                    if (du2.length) du2.forEach(x => boschLigne(se, x[0], x[1]));
+                    else boschLigne(se, 'Information', 'Bosch ne communique rien pour ce vélo');
+                    const autres = [];
+                    Object.keys(b).filter(k => connus.indexOf(k) < 0).forEach(k => boschAplatir(b[k], k, autres));
+                    if (autres.length) {
+                        const so = boschSection(boite, 'Autres informations');
+                        autres.forEach(x => boschLigne(so, x[0], x[1]));
+                    }
+                    zone.appendChild(boite);
+                });
+            }
+
+            let boschSortiesDecalage = 0;
+
+            function boschDuree(secondes) {
+                const m = Math.round(secondes / 60);
+                const h = Math.floor(m / 60);
+                return h > 0 ? h + ' h ' + String(m % 60).padStart(2, '0') + ' min' : m + ' min';
+            }
+
+            function boschDateHeure(texte, fuseau) {
+                const d = new Date(texte);
+                if (isNaN(d.getTime())) return String(texte);
+                try {
+                    return d.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: fuseau || undefined });
+                } catch (e) {
+                    return d.toLocaleString('fr-FR');
+                }
+            }
+
+            // Sauts, wheelies, manuals, stoppies : on n'affiche que ce qui a été détecté.
+            function boschLignesTricks(parent, tricks) {
+                if (!tricks || typeof tricks !== 'object') return;
+                const noms = { jumps: 'Sauts', wheelies: 'Wheelies', manuals: 'Manuals', stoppies: 'Stoppies' };
+                let rien = true;
+                Object.keys(noms).forEach(k => {
+                    const t = tricks[k];
+                    if (!t || typeof t.amount !== 'number' || t.amount <= 0) return;
+                    rien = false;
+                    const details = [];
+                    if (typeof t.maxHeight === 'number' && t.maxHeight > 0) details.push('hauteur max ' + boschNombre(t.maxHeight / 1000, 2) + ' m');
+                    if (typeof t.maxDistance === 'number' && t.maxDistance > 0) details.push('longueur max ' + boschNombre(t.maxDistance, 1) + ' m');
+                    if (typeof t.maxDuration === 'number' && t.maxDuration > 0) details.push('durée max ' + boschNombre(t.maxDuration / 1000, 2) + ' s');
+                    if (typeof t.maxAngle === 'number' && t.maxAngle > 0) details.push('angle max ' + boschNombre(t.maxAngle, 0));
+                    boschLigne(parent, noms[k], boschNombre(t.amount, 0) + (details.length ? ' (' + details.join(', ') + ')' : ''));
+                });
+                if (rien) boschLigne(parent, 'Sauts et figures', 'aucun détecté');
+            }
+
+            function boschSvg(largeur, hauteur) {
+                const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                svg.setAttribute('viewBox', '0 0 ' + largeur + ' ' + hauteur);
+                svg.style.cssText = 'width:100%; height:auto; display:block; margin-top:8px; border-radius:10px; background:var(--field);';
+                return svg;
+            }
+
+            function boschLigneSvg(svg, coords, couleur, epaisseur) {
+                const ligne = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+                ligne.setAttribute('points', coords.map(c => c[0].toFixed(1) + ',' + c[1].toFixed(1)).join(' '));
+                ligne.setAttribute('fill', 'none');
+                ligne.setAttribute('stroke-linejoin', 'round');
+                ligne.setAttribute('stroke-linecap', 'round');
+                ligne.setAttribute('stroke-width', String(epaisseur));
+                ligne.style.stroke = couleur;
+                svg.appendChild(ligne);
+            }
+
+            function boschPoint(svg, x, y, couleur) {
+                const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                c.setAttribute('cx', x.toFixed(1));
+                c.setAttribute('cy', y.toFixed(1));
+                c.setAttribute('r', '5');
+                c.style.fill = couleur;
+                svg.appendChild(c);
+            }
+
+            // Vitesse la plus haute entre deux points de 3 secondes (comme la vue 3D), sur le parcours tel qu'il sera importé.
+            function boschVitesseMaxReconstituee(points) {
+                const trace = boschReechantillonner(points, boschHeuresPoints(points));
+                if (trace.length < 3 || typeof distanceLatLon !== 'function') return null;
+                const cum = [0];
+                for (let i = 1; i < trace.length; i++) cum.push(cum[i - 1] + distanceLatLon([trace[i - 1].lat, trace[i - 1].lon], [trace[i].lat, trace[i].lon]));
+                let max = 0, km = 0;
+                for (let i = 1; i < trace.length; i++) {
+                    const dt = trace[i].t - trace[i - 1].t;
+                    if (dt < 1) continue;
+                    const v = ((cum[i] - cum[i - 1]) / dt) * 3.6;
+                    if (v <= 100 && v > max) { max = v; km = (cum[i] + cum[i - 1]) / 2000; }
+                }
+                return max > 0 ? { v: max, km: km, total: cum[cum.length - 1] / 1000 } : null;
+            }
+
+            function dessinerTraceBosch(zone, points, champs, activite) {
+                zone.replaceChildren();
+                const L = 340, H = 240, M = 14;
+                const lats = points.map(p => p.lat), lons = points.map(p => p.lon);
+                const minLat = Math.min.apply(null, lats), maxLat = Math.max.apply(null, lats);
+                const minLon = Math.min.apply(null, lons), maxLon = Math.max.apply(null, lons);
+                const k = Math.cos(((minLat + maxLat) / 2) * Math.PI / 180);
+                const largeurGeo = Math.max((maxLon - minLon) * k, 0.00001);
+                const hauteurGeo = Math.max(maxLat - minLat, 0.00001);
+                const echelle = Math.min((L - 2 * M) / largeurGeo, (H - 2 * M) / hauteurGeo);
+                const dx = (L - largeurGeo * echelle) / 2, dy = (H - hauteurGeo * echelle) / 2;
+                const coords = points.map(p => [dx + (p.lon - minLon) * k * echelle, H - dy - (p.lat - minLat) * echelle]);
+                const svg = boschSvg(L, H);
+                boschLigneSvg(svg, coords, 'var(--accent)', 3);
+                boschPoint(svg, coords[0][0], coords[0][1], '#2e9e5b');
+                boschPoint(svg, coords[coords.length - 1][0], coords[coords.length - 1][1], '#d6453d');
+                zone.appendChild(svg);
+                const alts = points.filter(p => typeof p.alt === 'number' && p.alt !== 0);
+                if (alts.length > 1) {
+                    const minA = Math.min.apply(null, alts.map(p => p.alt)), maxA = Math.max.apply(null, alts.map(p => p.alt));
+                    const plage = Math.max(maxA - minA, 1);
+                    const profil = boschSvg(L, 90);
+                    boschLigneSvg(profil, alts.map((p, i) => [M + i * (L - 2 * M) / (alts.length - 1), 80 - (p.alt - minA) / plage * 66]), 'var(--accent)', 2);
+                    zone.appendChild(profil);
+                    const legende = document.createElement('p');
+                    legende.className = 'form-help';
+                    legende.textContent = 'Altitude : de ' + boschNombre(minA, 0) + ' m à ' + boschNombre(maxA, 0) + ' m · ' + points.length + ' points · départ en vert, arrivée en rouge.';
+                    zone.appendChild(legende);
+                }
+                const vmax = boschVitesseMaxReconstituee(points);
+                if (vmax) {
+                    const diag = document.createElement('p');
+                    diag.className = 'form-help';
+                    diag.textContent = 'Vitesse max reconstituée : ' + boschNombre(vmax.v, 1) + ' km/h, au km ' + boschNombre(vmax.km, 1) + ' sur ' + boschNombre(vmax.total, 1) + ' km'
+                        + (activite && activite.speed && typeof activite.speed.maximum === 'number' ? ' (Bosch annonce ' + boschNombre(activite.speed.maximum, 1) + ' km/h).' : '.');
+                    zone.appendChild(diag);
+                }
+                const copie = document.createElement('button');
+                copie.type = 'button';
+                copie.className = 'btn-primary';
+                copie.style.cssText = 'width:100%; margin-top:6px;';
+                copie.textContent = 'Copier la fin des points bruts de Bosch';
+                copie.addEventListener('click', async () => {
+                    const heures = boschHeuresPoints(points);
+                    const lignes = ['i;lat;lon;alt;vit;dist;t'];
+                    const depart = Math.max(0, points.length - 200);
+                    points.forEach((q, i) => { if (i >= depart) lignes.push([i, q.lat, q.lon, q.alt, q.vit, q.dist, heures[i].toFixed(1)].join(';')); });
+                    try {
+                        await navigator.clipboard.writeText(lignes.join(String.fromCharCode(10)));
+                        copie.textContent = 'Copié : colle-le dans la discussion';
+                    } catch (e) {
+                        copie.textContent = 'Copie impossible sur ce téléphone';
+                    }
+                });
+                zone.appendChild(copie);
+                const telecharge = document.createElement('button');
+                telecharge.type = 'button';
+                telecharge.className = 'btn-primary';
+                telecharge.style.cssText = 'width:100%; margin-top:6px;';
+                telecharge.textContent = 'Télécharger tous les points bruts (fichier)';
+                telecharge.addEventListener('click', () => {
+                    const heures = boschHeuresPoints(points);
+                    const saut = String.fromCharCode(10);
+                    const a = activite || {};
+                    const entete = [
+                        '# sortie Bosch ' + (a.id || '') + ' du ' + (a.startTime || '') + ' (fuseau ' + (a.timeZone || '') + ')',
+                        '# titre: ' + (a.title || '') + ' ; distance Bosch (m): ' + (a.distance === undefined ? '' : a.distance) + ' ; duree en mouvement (s): ' + (a.durationWithoutStops === undefined ? '' : a.durationWithoutStops),
+                        '# vitesse moyenne Bosch: ' + (a.speed ? a.speed.average : '') + ' ; vitesse max Bosch: ' + (a.speed ? a.speed.maximum : '') + ' ; denivele +/-: ' + (a.elevation ? a.elevation.gain + '/' + a.elevation.loss : ''),
+                        '# fin: ' + (a.endTime || '') + ' ; points recus: ' + points.length,
+                        'i;lat;lon;alt;vit;dist;puiss;t'
+                    ];
+                    points.forEach((q, i) => entete.push([i, q.lat, q.lon, q.alt, q.vit, q.dist, q.puiss === undefined || q.puiss === null ? '' : q.puiss, heures[i].toFixed(1)].join(';')));
+                    const blob = new Blob([entete.join(saut)], { type: 'text/plain;charset=utf-8' });
+                    const lien = document.createElement('a');
+                    lien.href = URL.createObjectURL(blob);
+                    lien.download = 'bosch_' + String((a.startTime || 'sortie')).slice(0, 10) + '_' + String(a.id || '').slice(0, 8) + '.txt';
+                    document.body.appendChild(lien);
+                    lien.click();
+                    document.body.removeChild(lien);
+                    setTimeout(() => URL.revokeObjectURL(lien.href), 5000);
+                    telecharge.textContent = 'Fichier téléchargé : envoie-le dans la discussion';
+                });
+                zone.appendChild(telecharge);
+                if (champs && champs.length) {
+                    const info = document.createElement('p');
+                    info.className = 'form-help';
+                    info.textContent = 'Informations envoyées par Bosch pour chaque point : ' + champs.join(', ') + '.';
+                    zone.appendChild(info);
+                }
+            }
+
+            async function boschVoirTrace(id, bouton, zone, activite) {
+                if (zone.childNodes.length) { zone.replaceChildren(); bouton.textContent = 'Voir le tracé'; return; }
+                bouton.textContent = 'Je lis le tracé...';
+                try {
+                    const r = await fetch('/api/bosch/sorties/' + encodeURIComponent(id) + '/details', { headers: getHeaders() });
+                    const d = await r.json();
+                    if (!r.ok) { bouton.textContent = 'Voir le tracé'; const p = document.createElement('p'); p.className = 'form-help'; p.textContent = d.detail || 'Lecture impossible.'; zone.appendChild(p); return; }
+                    if (!d.points.length) { bouton.textContent = 'Voir le tracé'; const p = document.createElement('p'); p.className = 'form-help'; p.textContent = "Bosch n'a pas de position GPS pour cette sortie."; zone.appendChild(p); return; }
+                    dessinerTraceBosch(zone, d.points, d.champs, activite);
+                    bouton.textContent = 'Masquer le tracé';
+                } catch (e) { bouton.textContent = 'Voir le tracé'; }
+            }
+
+            let boschImportArret = false;
+
+            function boschXml(texte) {
+                return String(texte).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            }
+
+            // Bosch ne donne pas l'heure de chaque point, mais enregistre à rythme régulier (≈ 0,67 s par ligne).
+            // On mesure ce rythme quand le vélo roule, puis chaque ligne reçoit son heure : numéro de ligne x rythme.
+            function boschHeuresPoints(points) {
+                let somme = 0;
+                let nb = 0;
+                for (let i = 1; i < points.length; i++) {
+                    const d = (typeof points[i].dist === 'number' && typeof points[i - 1].dist === 'number') ? Math.max(0, points[i].dist - points[i - 1].dist) : null;
+                    const v1 = typeof points[i].vit === 'number' ? points[i].vit : null;
+                    const v0 = typeof points[i - 1].vit === 'number' ? points[i - 1].vit : v1;
+                    if (d === null || v1 === null) continue;
+                    const ms = ((v0 === null ? v1 : v0) + v1) / 2 / 3.6;
+                    if (ms > 3) { somme += d / ms; nb += 1; }
+                }
+                const rythme = nb >= 20 ? Math.min(Math.max(somme / nb, 0.3), 2) : 1;
+                return points.map((_, i) => i * rythme);
+            }
+
+            // La position n'est mise à jour que toutes les 2 secondes environ, et les heures sont arrondies à la seconde :
+            // entre deux points, la vitesse serait très bruitée. On redessine donc le parcours toutes les 3 secondes exactes.
+            function boschReechantillonner(points, heures) {
+                const PAS = 3;
+                const fixes = [];
+                points.forEach((q, i) => {
+                    const dernier = fixes.length ? fixes[fixes.length - 1] : null;
+                    if (dernier && dernier.lat === q.lat && dernier.lon === q.lon) return;
+                    fixes.push({ t: heures[i], lat: q.lat, lon: q.lon, vit: typeof q.vit === 'number' ? q.vit : null });
+                });
+                // Sauts de position du GPS (au démarrage surtout) : impossibles avec la vitesse mesurée par Bosch au même moment.
+                const impossible = (a, b) => {
+                    if (typeof distanceLatLon !== 'function' || b.vit === null || b.t <= a.t) return false;
+                    const v = (distanceLatLon([a.lat, a.lon], [b.lat, b.lon]) / (b.t - a.t)) * 3.6;
+                    return v > b.vit * 1.8 + 8;
+                };
+                while (fixes.length > 2 && impossible(fixes[0], fixes[1])) fixes.shift();
+                for (let i = fixes.length - 2; i >= 1; i--) {
+                    if (impossible(fixes[i - 1], fixes[i]) && impossible(fixes[i], fixes[i + 1])) fixes.splice(i, 1);
+                }
+                if (fixes.length < 2) return [];
+                // L'altitude manque souvent au départ (0 m) : tous les points doivent en avoir une pour dessiner le profil.
+                const valable = q => typeof q.alt === 'number' && q.alt !== 0;
+                const premiere = points.find(valable);
+                let courante = premiere ? premiere.alt : null;
+                const alts = points.map(q => { if (valable(q)) courante = q.alt; return courante; });
+                const rythme = heures.length > 1 ? heures[heures.length - 1] / (heures.length - 1) : 1;
+                // Puissance du cycliste : moyenne des mesures de Bosch autour de chaque point (environ 3 secondes).
+                const aDesWatts = points.some(q => typeof q.puiss === 'number');
+                const watts = t => {
+                    if (!aDesWatts) return undefined;
+                    const de = Math.max(0, Math.round((t - 1.5) / rythme));
+                    const a = Math.min(points.length - 1, Math.round((t + 1.5) / rythme));
+                    let somme = 0;
+                    let nombre = 0;
+                    for (let l = de; l <= a; l++) {
+                        if (typeof points[l].puiss === 'number') { somme += points[l].puiss; nombre++; }
+                    }
+                    return nombre ? Math.round(somme / nombre) : undefined;
+                };
+                const t0 = fixes[0].t;
+                const fin = fixes[fixes.length - 1].t;
+                const sortie = [];
+                let j = 0;
+                for (let k = 0; k * PAS <= fin - t0; k++) {
+                    const t = t0 + k * PAS;
+                    while (j < fixes.length - 2 && fixes[j + 1].t <= t) j++;
+                    const f1 = fixes[j];
+                    const f2 = fixes[j + 1];
+                    const u = f2.t > f1.t ? Math.min(Math.max((t - f1.t) / (f2.t - f1.t), 0), 1) : 0;
+                    const ligne = Math.min(alts.length - 1, Math.max(0, Math.round(t / rythme)));
+                    sortie.push({ t: t - t0, lat: f1.lat + (f2.lat - f1.lat) * u, lon: f1.lon + (f2.lon - f1.lon) * u, alt: alts[ligne], puiss: watts(t) });
+                }
+                const derniere = fixes[fixes.length - 1];
+                if (sortie.length && fin - t0 - sortie[sortie.length - 1].t > 1) {
+                    sortie.push({ t: fin - t0, lat: derniere.lat, lon: derniere.lon, alt: alts[alts.length - 1], puiss: watts(fin) });
+                }
+                return sortie;
+            }
+
+            function boschConstruireGpx(titre, debutTexte, points) {
+                const debut = Date.parse(debutTexte);
+                const trace = boschReechantillonner(points, boschHeuresPoints(points));
+                if (trace.length < 2) return null;
+                const lignes = [
+                    '<?xml version="1.0" encoding="UTF-8"?>',
+                    '<gpx version="1.1" creator="Maillons" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>' + boschXml(titre) + '</name><trkseg>'
+                ];
+                trace.forEach(q => {
+                    const heure = new Date(debut + Math.round(q.t) * 1000).toISOString();
+                    const alt = typeof q.alt === 'number' ? '<ele>' + q.alt.toFixed(1) + '</ele>' : '';
+                    const puissance = typeof q.puiss === 'number' ? '<extensions><power>' + Math.round(q.puiss) + '</power></extensions>' : '';
+                    lignes.push('<trkpt lat="' + q.lat.toFixed(6) + '" lon="' + q.lon.toFixed(6) + '">' + alt + '<time>' + heure + '</time>' + puissance + '</trkpt>');
+                });
+                lignes.push('</trkseg></trk></gpx>');
+                return lignes.join(String.fromCharCode(10));
+            }
+
+            // Ce que Bosch sait en plus (sauts, puissance, cadence...) est gardé avec la sortie et affiché dans ses chiffres.
+            function boschChiffresSortie(a) {
+                const chiffres = {};
+                if (a.riderPower && typeof a.riderPower.average === 'number') chiffres.puissance_moy = a.riderPower.average;
+                if (a.riderPower && typeof a.riderPower.maximum === 'number') chiffres.puissance_max = a.riderPower.maximum;
+                if (a.cadence && typeof a.cadence.average === 'number') chiffres.cadence_moy = a.cadence.average;
+                if (typeof a.caloriesBurned === 'number') chiffres.calories = a.caloriesBurned;
+                const t = a.tricks || {};
+                const sauts = {};
+                ['jumps', 'wheelies', 'manuals', 'stoppies'].forEach(k => {
+                    const x = t[k];
+                    if (!x || typeof x.amount !== 'number' || x.amount <= 0) return;
+                    const f = { nombre: x.amount };
+                    if (typeof x.maxHeight === 'number') f.hauteur_m = x.maxHeight / 1000;
+                    if (typeof x.maxDistance === 'number') f.longueur_m = x.maxDistance;
+                    if (typeof x.maxDuration === 'number') f.duree_s = x.maxDuration / 1000;
+                    sauts[k] = f;
+                });
+                if (Object.keys(sauts).length) chiffres.sauts = sauts;
+                return chiffres;
+            }
+
+            function boschVeloPourSortie(a) {
+                if (a.bikeId && boschLiaisons[a.bikeId]) return Number(boschLiaisons[a.bikeId]);
+                const ids = Object.keys(boschLiaisons).map(k => boschLiaisons[k]);
+                return ids.length === 1 ? Number(ids[0]) : null;
+            }
+
+            // Renvoie { etat: 'ok' | 'deja' | 'ignoree' | 'erreur', texte }.
+            async function boschImporterUneSortie(a) {
+                try {
+                    const veloId = boschVeloPourSortie(a);
+                    if (!veloId) return { etat: 'erreur', texte: "Relie d'abord ton vélo Bosch à un vélo de Maillons (menu en haut de cette fenêtre)." };
+                    const r = await fetch('/api/bosch/sorties/' + encodeURIComponent(a.id) + '/details', { headers: getHeaders() });
+                    const d = await r.json();
+                    if (!r.ok) return { etat: 'erreur', texte: d.detail || 'Tracé illisible.' };
+                    if (!d.points || d.points.length < 2) { boschMarquerTraitee(a.id); return { etat: 'ignoree', texte: "Pas de position GPS chez Bosch pour cette sortie." }; }
+                    const titre = a.title || ('Sortie Bosch du ' + boschDate(a.startTime));
+                    const gpx = boschConstruireGpx(titre, a.startTime, d.points);
+                    if (!gpx) { boschMarquerTraitee(a.id); return { etat: 'ignoree', texte: "Pas assez de positions GPS différentes chez Bosch pour cette sortie." }; }
+                    const envoi = await fetchOriginal('/api/sorties/import?velo_id=' + encodeURIComponent(veloId), {
+                        method: 'POST',
+                        headers: getHeaders(),
+                        body: JSON.stringify({ gpx: gpx, nom: titre.slice(0, 120), bosch: boschChiffresSortie(a), terrain: 'mixte', vitesse_max_kmh: (a.speed && typeof a.speed.maximum === 'number' && a.speed.maximum > 0) ? a.speed.maximum : null })
+                    });
+                    let rep = null;
+                    try { rep = await envoi.json(); } catch (e) { rep = null; }
+                    if (envoi.status === 409) { boschMarquerTraitee(a.id); return { etat: 'deja', texte: 'Cette sortie est déjà dans Maillons.' }; }
+                    if (envoi.status === 400) { boschMarquerTraitee(a.id); return { etat: 'ignoree', texte: (rep && rep.detail) || 'Sortie ignorée.' }; }
+                    if (!envoi.ok) return { etat: 'erreur', texte: (rep && rep.detail) || 'Ajout impossible.' };
+                    boschMarquerTraitee(a.id);
+                    const reconstitue = boschHeuresPoints(d.points);
+                    const totalS = reconstitue[reconstitue.length - 1];
+                    return { etat: 'ok', texte: 'Sortie ajoutée à Maillons. (Durée reconstituée : ' + boschDuree(totalS) + ' ; Bosch : ' + boschDuree(a.durationWithoutStops || 0) + ' en mouvement.)' };
+                } catch (e) {
+                    return { etat: 'erreur', texte: 'Pas de connexion internet.' };
+                }
+            }
+
+            async function boschRafraichirSorties() {
+                try {
+                    if (typeof chargerSorties === 'function') await chargerSorties(false);
+                    if (typeof chargerVelos === 'function') await chargerVelos();
+                    if (typeof chargerEtat === 'function') await chargerEtat();
+                } catch (e) { /* l'affichage se mettra à jour à la prochaine ouverture */ }
+            }
+
+            async function boschImporterTout() {
+                const msg = document.getElementById('boschSortiesMessage');
+                const bouton = document.getElementById('boschSortiesTout');
+                bouton.disabled = true;
+                boschImportArret = false;
+                try {
+                    msg.textContent = 'Je compte tes sorties chez Bosch...';
+                    const toutes = [];
+                    let decalage = 0;
+                    let total = null;
+                    while (total === null || decalage < total) {
+                        const r = await fetch('/api/bosch/sorties?limite=100&decalage=' + decalage, { headers: getHeaders() });
+                        const d = await r.json();
+                        if (!r.ok) { msg.textContent = d.detail || 'Lecture impossible.'; return; }
+                        total = typeof d.total === 'number' ? d.total : d.sorties.length;
+                        if (!d.sorties.length) break;
+                        d.sorties.forEach(x => toutes.push(x));
+                        decalage += d.sorties.length;
+                    }
+                    if (!toutes.length) { msg.textContent = "Bosch ne renvoie aucune sortie."; return; }
+                    if (!window.confirm('Ajouter ' + toutes.length + ' sortie(s) Bosch à Maillons ? Celles qui y sont déjà seront ignorées. Cela peut prendre quelques minutes : garde cette fenêtre ouverte.')) { msg.textContent = ''; return; }
+                    const bilan = { ok: 0, deja: 0, ignoree: 0, erreur: 0 };
+                    let derniereErreur = '';
+                    // Les plus anciennes d'abord : le kilométrage et les lieux se mettent dans l'ordre.
+                    const ordre = toutes.slice().sort((x, y) => String(x.startTime).localeCompare(String(y.startTime)));
+                    for (let i = 0; i < ordre.length; i++) {
+                        if (boschImportArret) { msg.textContent = 'Arrêté après ' + i + ' sortie(s).'; break; }
+                        msg.textContent = 'Sortie ' + (i + 1) + ' sur ' + ordre.length + '...';
+                        const res = await boschImporterUneSortie(ordre[i]);
+                        bilan[res.etat] += 1;
+                        if (res.etat === 'erreur') {
+                            derniereErreur = res.texte;
+                            if (bilan.erreur >= 3) break;
+                        }
+                    }
+                    let texte = bilan.ok + ' ajoutée(s), ' + bilan.deja + ' déjà présente(s), ' + bilan.ignoree + ' ignorée(s)';
+                    if (bilan.erreur) texte += ', ' + bilan.erreur + ' en erreur (' + derniereErreur + ')';
+                    msg.textContent = texte + '.';
+                    if (bilan.ok) await boschRafraichirSorties();
+                } catch (e) {
+                    msg.textContent = 'Pas de connexion internet.';
+                } finally {
+                    bouton.disabled = false;
+                }
+            }
+
+            function ajouterSortiesBosch(liste) {
+                const zone = document.getElementById('boschSorties');
+                liste.forEach(a => {
+                    const fiche = document.createElement('details');
+                    fiche.style.cssText = 'margin-top:8px; padding:8px 10px; border:1px solid var(--field-line); border-radius:12px;';
+                    const resume = document.createElement('summary');
+                    resume.style.cssText = 'cursor:pointer; font-weight:700; font-size:0.9rem;';
+                    const km = typeof a.distance === 'number' ? boschNombre(a.distance / 1000, 1) + ' km' : '';
+                    resume.textContent = boschDateHeure(a.startTime, a.timeZone) + (km ? ' · ' + km : '') + (a.title ? ' · ' + a.title : '');
+                    fiche.appendChild(resume);
+                    const corps = document.createElement('div');
+                    corps.style.marginTop = '6px';
+                    if (typeof a.durationWithoutStops === 'number') boschLigne(corps, 'Durée en mouvement', boschDuree(a.durationWithoutStops));
+                    if (a.speed) {
+                        boschLigne(corps, 'Vitesse moyenne', typeof a.speed.average === 'number' ? boschNombre(a.speed.average) + ' km/h' : '');
+                        boschLigne(corps, 'Vitesse max', typeof a.speed.maximum === 'number' ? boschNombre(a.speed.maximum) + ' km/h' : '');
+                    }
+                    if (a.riderPower) {
+                        boschLigne(corps, 'Ta puissance moyenne', typeof a.riderPower.average === 'number' ? boschNombre(a.riderPower.average, 0) + ' W' : '');
+                        boschLigne(corps, 'Ta puissance max', typeof a.riderPower.maximum === 'number' ? boschNombre(a.riderPower.maximum, 0) + ' W' : '');
+                    }
+                    if (a.cadence) {
+                        boschLigne(corps, 'Cadence moyenne', typeof a.cadence.average === 'number' ? boschNombre(a.cadence.average, 0) + ' tr/min' : '');
+                        boschLigne(corps, 'Cadence max', typeof a.cadence.maximum === 'number' ? boschNombre(a.cadence.maximum, 0) + ' tr/min' : '');
+                    }
+                    if (a.elevation) {
+                        boschLigne(corps, 'Dénivelé positif', typeof a.elevation.gain === 'number' ? boschNombre(a.elevation.gain, 0) + ' m' : '');
+                        boschLigne(corps, 'Dénivelé négatif', typeof a.elevation.loss === 'number' ? boschNombre(a.elevation.loss, 0) + ' m' : '');
+                    }
+                    if (typeof a.caloriesBurned === 'number') boschLigne(corps, 'Calories', boschNombre(a.caloriesBurned, 0) + ' kcal');
+                    if (a.heartRate) {
+                        boschLigne(corps, 'Cœur moyen', typeof a.heartRate.average === 'number' ? boschNombre(a.heartRate.average, 0) + ' bpm' : '');
+                        boschLigne(corps, 'Cœur max', typeof a.heartRate.maximum === 'number' ? boschNombre(a.heartRate.maximum, 0) + ' bpm' : '');
+                    }
+                    if (typeof a.startOdometer === 'number') boschLigne(corps, 'Compteur au départ', boschNombre(a.startOdometer / 1000, 1) + ' km');
+                    boschLignesTricks(corps, a.tricks);
+                    const boutonTrace = document.createElement('button');
+                    boutonTrace.type = 'button';
+                    boutonTrace.className = 'btn-primary';
+                    boutonTrace.style.cssText = 'width:100%; margin-top:8px;';
+                    boutonTrace.textContent = 'Voir le tracé';
+                    const zoneTrace = document.createElement('div');
+                    boutonTrace.addEventListener('click', () => boschVoirTrace(a.id, boutonTrace, zoneTrace, a));
+                    corps.appendChild(boutonTrace);
+                    const boutonAjout = document.createElement('button');
+                    boutonAjout.type = 'button';
+                    boutonAjout.className = 'btn-primary';
+                    boutonAjout.style.cssText = 'width:100%; margin-top:6px;';
+                    boutonAjout.textContent = 'Ajouter à mes sorties';
+                    const messageAjout = document.createElement('p');
+                    messageAjout.className = 'form-help';
+                    boutonAjout.addEventListener('click', async () => {
+                        boutonAjout.disabled = true;
+                        messageAjout.textContent = "J'ajoute la sortie...";
+                        const res = await boschImporterUneSortie(a);
+                        messageAjout.textContent = res.texte;
+                        boutonAjout.disabled = res.etat === 'ok' || res.etat === 'deja';
+                        if (res.etat === 'ok') await boschRafraichirSorties();
+                    });
+                    corps.appendChild(boutonAjout);
+                    corps.appendChild(messageAjout);
+                    corps.appendChild(zoneTrace);
+                    fiche.appendChild(corps);
+                    zone.appendChild(fiche);
+                });
+            }
+
+            async function boschLireSorties(suite) {
+                const msg = document.getElementById('boschSortiesMessage');
+                const plus = document.getElementById('boschSortiesPlus');
+                if (!suite) {
+                    boschSortiesDecalage = 0;
+                    document.getElementById('boschSorties').replaceChildren();
+                }
+                msg.textContent = 'Je lis tes sorties chez Bosch...';
+                try {
+                    const r = await fetch('/api/bosch/sorties?limite=20&decalage=' + boschSortiesDecalage, { headers: getHeaders() });
+                    const d = await r.json();
+                    if (!r.ok) { msg.textContent = d.detail || 'Lecture impossible.'; plus.style.display = 'none'; return; }
+                    ajouterSortiesBosch(d.sorties);
+                    boschSortiesDecalage += d.sorties.length;
+                    const total = typeof d.total === 'number' ? d.total : boschSortiesDecalage;
+                    msg.textContent = total === 0
+                        ? "Bosch ne renvoie aucune sortie (elles viennent de l'appli eBike Flow)."
+                        : boschSortiesDecalage + ' sortie(s) affichée(s) sur ' + total + '.';
+                    plus.style.display = boschSortiesDecalage < total && d.sorties.length > 0 ? '' : 'none';
+                } catch (e) { msg.textContent = 'Pas de connexion internet.'; }
+            }
+
+            function ouvrirFenetreBosch() {
+                const f = document.getElementById('fenetreBosch');
+                if (f && !f.open) { try { f.showModal(); } catch (e) { f.setAttribute('open', ''); } }
+            }
+
+            async function boschLireVelos(options) {
+                const ouvrir = !!(options && options.ouvrir);
+                const auto = !!(options && options.auto);
                 boschMessage('Je lis tes vélos chez Bosch...');
-                document.getElementById('boschCopier').style.display = 'none';
                 try {
                     const r = await fetch('/api/bosch/velos', { headers: getHeaders() });
                     const d = await r.json();
                     if (!r.ok) { boschMessage(d.detail || 'Lecture impossible.'); return; }
                     boschDernierDetail = d;
-                    let texte = d.nb + ' vélo(s) trouvé(s) chez Bosch.';
-                    if (d.odometres && d.odometres.length) {
-                        texte += ' ' + d.odometres.map(o => o.chemin + ' = ' + o.valeur).join(' ; ');
-                    } else if (d.nb > 0) {
-                        texte += " Je n'ai pas trouvé l'odomètre : touche « Copier le détail reçu » et envoie-le moi.";
+                    const liste = d.brut && d.brut.bikes ? d.brut.bikes : [];
+                    const nonLies = liste.filter(b => !boschLiaisons[b.id]).length;
+                    document.getElementById('boschAide').style.display = d.nb === 0 ? '' : 'none';
+                    let texte;
+                    if (d.nb === 0) {
+                        texte = "Bosch ne partage aucun vélo avec Maillons pour l'instant : suis les 3 étapes ci-dessus.";
+                    } else if (nonLies > 0) {
+                        texte = d.nb + ' vélo(s) trouvé(s) chez Bosch. Choisis le vélo de Maillons qui correspond à chacun.';
+                    } else {
+                        texte = d.nb + ' vélo(s) trouvé(s) chez Bosch. Tout est relié : le kilométrage se met à jour tout seul.';
                     }
                     boschMessage(texte);
-                    document.getElementById('boschCopier').style.display = '';
+                    afficherFenetreBosch(d);
                     afficherLiensBosch(d);
+                    if (d.nb > 0 && (ouvrir || (auto && nonLies > 0))) ouvrirFenetreBosch();
+                    if (d.nb === 0 && ouvrir) boschMessage(texte);
                 } catch (e) { boschMessage('Pas de connexion internet.'); }
-            });
+            }
+
+            document.getElementById('boschDonnees').addEventListener('click', () => boschLireVelos({ ouvrir: true }));
+            document.getElementById('boschSortiesVoir').addEventListener('click', () => boschLireSorties(false));
+            document.getElementById('boschSortiesTout').addEventListener('click', boschImporterTout);
+            document.getElementById('fenetreBosch').addEventListener('close', () => { boschImportArret = true; });
+            document.getElementById('boschSortiesPlus').addEventListener('click', () => boschLireSorties(true));
+            document.getElementById('boschActualiser').addEventListener('click', () => boschLireVelos({ ouvrir: true }));
+            document.getElementById('boutonFermerFenetreBosch').addEventListener('click', () => document.getElementById('fenetreBosch').close());
 
             document.getElementById('boschCopier').addEventListener('click', async () => {
                 if (!boschDernierDetail) return;
@@ -8097,14 +8914,25 @@ def accueil():
             // Retour de la page de connexion Bosch : /?bosch=ok (ou refus, expire, erreur).
             (function () {
                 const retourBosch = new URLSearchParams(location.search).get('bosch');
+                // Arrivée depuis le site de Bosch (après « Activer le service ») : la connexion se lancera toute seule.
+                try {
+                    const venueDeBosch = /(^|[.])bosch(-ebike)?[.]com$/.test(
+                        document.referrer ? new URL(document.referrer).hostname : ''
+                    );
+                    if (!retourBosch && venueDeBosch && !sessionStorage.getItem('maillons_bosch_arrivee_vue')) {
+                        sessionStorage.setItem('maillons_bosch_arrivee_vue', '1');
+                        sessionStorage.setItem('maillons_bosch_auto', '1');
+                    }
+                } catch (e) { /* tant pis : la personne touchera le bouton */ }
                 if (!retourBosch) return;
                 const textes = {
-                    ok: 'Bosch est connecté. Touche « Lire mes vélos Bosch ».',
+                    ok: 'Bosch est connecté. Je lis tes vélos...',
                     refus: "La connexion Bosch n'a pas abouti.",
                     expire: 'La connexion Bosch a expiré : recommence.',
                     erreur: 'Bosch a refusé la connexion : dis-le à Claude.'
                 };
                 boschMessage(textes[retourBosch] || '');
+                if (retourBosch === 'ok') sessionStorage.setItem('maillons_bosch_lire_auto', '1');
                 history.replaceState(null, '', location.pathname + '#compte');
             })();
 
@@ -13220,6 +14048,97 @@ def accueil():
                 return max > 0 ? max : null;
             }
 
+            // Vitesse de chaque tronçon (km/h), lissée sur environ 10 secondes pour éviter les à-coups du GPS.
+            function vitessesTroncons(trace) {
+                if (!Array.isArray(trace) || trace.length < 3) return null;
+                if (trace.some(p => !Array.isArray(p) || typeof p[2] !== 'number')) return null;
+                const n = trace.length;
+                const sortie = [];
+                for (let i = 0; i < n - 1; i++) {
+                    let a = i;
+                    let b = i + 1;
+                    while (trace[b][2] - trace[a][2] < 10 && (a > 0 || b < n - 1)) {
+                        if (a > 0) a--;
+                        if (trace[b][2] - trace[a][2] < 10 && b < n - 1) b++;
+                    }
+                    const dt = trace[b][2] - trace[a][2];
+                    const v = dt > 0 ? (distanceLatLon(trace[a], trace[b]) / dt) * 3.6 : 0;
+                    sortie.push(v <= 100 ? v : 0);
+                }
+                return sortie;
+            }
+
+            // Puissance du cycliste de chaque tronçon (watts), moyennée sur environ 10 secondes. Vide si la sortie n'a pas de puissance.
+            function puissancesTroncons(trace) {
+                if (!Array.isArray(trace) || trace.length < 3) return null;
+                if (trace.some(p => !Array.isArray(p) || typeof p[2] !== 'number')) return null;
+                const avecWatts = trace.filter(p => typeof p[4] === 'number').length;
+                if (avecWatts < trace.length * 0.5) return null;
+                const n = trace.length;
+                const sortie = [];
+                for (let i = 0; i < n - 1; i++) {
+                    let a = i;
+                    let b = i + 1;
+                    while (trace[b][2] - trace[a][2] < 10 && (a > 0 || b < n - 1)) {
+                        if (a > 0) a--;
+                        if (trace[b][2] - trace[a][2] < 10 && b < n - 1) b++;
+                    }
+                    let somme = 0;
+                    let nombre = 0;
+                    for (let k = a + 1; k <= b; k++) {
+                        if (typeof trace[k][4] === 'number') { somme += trace[k][4]; nombre++; }
+                    }
+                    sortie.push(nombre ? somme / nombre : 0);
+                }
+                return sortie;
+            }
+
+            // Échelle de couleurs de la vitesse : violet clair (lent) vers violet foncé (rapide).
+            // Bornes prises sur la sortie elle-même (les arrêts et les pointes isolées ne tirent pas l'échelle).
+            function echelleVitesses(vitesses) {
+                const tri = vitesses.filter(v => v > 0).sort((x, y) => x - y);
+                if (tri.length < 2) return null;
+                const bas = tri[Math.floor(tri.length * 0.05)];
+                const haut = tri[Math.min(tri.length - 1, Math.floor(tri.length * 0.98))];
+                return haut > bas ? { bas: bas, haut: haut } : null;
+            }
+
+            // Couleurs de la vitesse et de la puissance : celles de la palette choisie dans Réglages (clair, couleur de l'appli, foncé).
+            function hexVersRvb(hex, secours) {
+                const t = String(hex || '').trim();
+                if (/^#[0-9a-fA-F]{6}$/.test(t)) return [parseInt(t.slice(1, 3), 16), parseInt(t.slice(3, 5), 16), parseInt(t.slice(5, 7), 16)];
+                return secours;
+            }
+
+            function arretsDesign() {
+                const styles = getComputedStyle(document.documentElement);
+                const c1 = hexVersRvb(styles.getPropertyValue('--ac1'), [53, 224, 200]);
+                const c2 = hexVersRvb(styles.getPropertyValue('--ac2'), [10, 143, 156]);
+                const clair = c1.map(x => x + (255 - x) * 0.72);
+                const fonce = c2.map(x => x * 0.5);
+                return [{ rvb: clair }, { rvb: c1 }, { rvb: fonce }];
+            }
+
+            function degradeDesignCss() {
+                const a = arretsDesign();
+                return 'linear-gradient(90deg, ' + a.map(x => rvbVersHex(x.rvb)).join(', ') + ')';
+            }
+
+            function couleurEchelle(v, echelle, arrets) {
+                const t = Math.min(1, Math.max(0, (v - echelle.bas) / (echelle.haut - echelle.bas))) * (arrets.length - 1);
+                const k = Math.min(arrets.length - 2, Math.floor(t));
+                const part = t - k;
+                return rvbVersHex(arrets[k].rvb.map((x, j) => x + (arrets[k + 1].rvb[j] - x) * part));
+            }
+
+            function couleurVitesse(v, echelle) {
+                return couleurEchelle(v, echelle, arretsDesign());
+            }
+
+            function couleurPuissance(v, echelle) {
+                return couleurEchelle(v, echelle, arretsDesign());
+            }
+
             function cumulTrace(trace) {
                 const cum = [0];
                 for (let i = 1; i < trace.length; i++) {
@@ -13457,11 +14376,29 @@ def accueil():
                     grille.className = 'fiche-grille';
                     blocStats.appendChild(grille);
                     const altitudes = trace.map(p => (Array.isArray(p) ? p[3] : null)).filter(a => typeof a === 'number');
-                    const vmax = vitesseMaxSortie(trace);
+                    // Sortie Bosch : on affiche la vitesse max mesurée par le vélo ; sinon, celle calculée avec le GPS.
+                    const vmax = (typeof s.vitesse_max_capteur === 'number' && s.vitesse_max_capteur > 0) ? s.vitesse_max_capteur : vitesseMaxSortie(trace);
                     tuile(grille, 'Distance', fmtDistance(s.distance_km, 1).complet);
                     tuile(grille, 'Durée', formaterDuree(s.duree_s));
                     tuile(grille, 'Vitesse moyenne', fmtVitesse(s.vitesse_moy, 1).complet);
                     tuile(grille, 'Vitesse maximum', vmax === null ? '—' : fmtVitesse(vmax, 1).complet);
+                    // Chiffres donnés par Bosch (sorties importées depuis Bosch seulement).
+                    const bosch = s.donnees_bosch && typeof s.donnees_bosch === 'object' ? s.donnees_bosch : null;
+                    if (bosch) {
+                        if (typeof bosch.puissance_moy === 'number') tuile(grille, 'Puissance moyenne', fmtFr(bosch.puissance_moy, 0) + ' W');
+                        if (typeof bosch.puissance_max === 'number') tuile(grille, 'Puissance max', fmtFr(bosch.puissance_max, 0) + ' W');
+                        if (typeof bosch.cadence_moy === 'number') tuile(grille, 'Cadence moyenne', fmtFr(bosch.cadence_moy, 0) + ' tr/min');
+                        if (typeof bosch.calories === 'number') tuile(grille, 'Calories', fmtFr(bosch.calories, 0) + ' kcal');
+                        const nomsFigures = { jumps: ['Sauts', 'Saut'], wheelies: ['Wheelies', 'Wheelie'], manuals: ['Manuals', 'Manual'], stoppies: ['Stoppies', 'Stoppie'] };
+                        Object.keys(nomsFigures).forEach(k => {
+                            const f = bosch.sauts && bosch.sauts[k];
+                            if (!f || typeof f.nombre !== 'number') return;
+                            tuile(grille, nomsFigures[k][0], fmtFr(f.nombre, 0));
+                            if (typeof f.hauteur_m === 'number') tuile(grille, nomsFigures[k][1] + ' : hauteur max', fmtFr(f.hauteur_m, 2) + ' m');
+                            if (typeof f.longueur_m === 'number') tuile(grille, nomsFigures[k][1] + ' : longueur max', fmtFr(f.longueur_m, 1) + ' m');
+                            if (typeof f.duree_s === 'number') tuile(grille, nomsFigures[k][1] + ' : durée max', fmtFr(f.duree_s, 2) + ' s');
+                        });
+                    }
                     tuile(grille, 'Dénivelé positif', fmtAltitude(s.denivele_pos).complet);
                     tuile(grille, 'Dénivelé négatif', fmtAltitude(s.denivele_neg).complet);
                     if (altitudes.length) {
@@ -13613,11 +14550,20 @@ def accueil():
                         carte.on('load', () => {
                             if (jeton !== ficheJeton) return;
                             const features = [];
+                            const vitessesFiche = pts.length === trace.length ? vitessesTroncons(trace) : null;
+                            const echelleFiche = vitessesFiche ? echelleVitesses(vitessesFiche) : null;
+                            const puissancesFiche = pts.length === trace.length ? puissancesTroncons(trace) : null;
+                            const echellePuissanceFiche = puissancesFiche ? echelleVitesses(puissancesFiche) : null;
                             for (let i = 0; i < pts.length - 1; i++) {
                                 const pente = profil && profil.pentes.length === pts.length - 1 ? profil.pentes[i] : null;
+                                const couleurPenteTroncon = pente === null ? '#35e0c8' : couleurPente(pente);
                                 features.push({
                                     type: 'Feature',
-                                    properties: { c: pente === null ? '#35e0c8' : couleurPente(pente) },
+                                    properties: {
+                                        c: couleurPenteTroncon,
+                                        cv: echelleFiche ? couleurVitesse(vitessesFiche[i], echelleFiche) : couleurPenteTroncon,
+                                        cp: echellePuissanceFiche ? couleurPuissance(puissancesFiche[i], echellePuissanceFiche) : couleurPenteTroncon
+                                    },
                                     geometry: { type: 'LineString', coordinates: [pts[i], pts[i + 1]] }
                                 });
                             }
@@ -13650,6 +14596,52 @@ def accueil():
                             fond.textContent = satellite ? 'Plan' : 'Satellite';
                         });
                         blocCarte.appendChild(fond);
+
+                        // Bouton de couleur du tracé : Pente, Vitesse et (si la sortie la contient) Puissance. Ne change que la couleur.
+                        const vitessesBouton = pts.length === trace.length ? vitessesTroncons(trace) : null;
+                        const echelleBouton = vitessesBouton ? echelleVitesses(vitessesBouton) : null;
+                        const puissancesBouton = pts.length === trace.length ? puissancesTroncons(trace) : null;
+                        const echellePuissance = puissancesBouton ? echelleVitesses(puissancesBouton) : null;
+                        const modes = [{ nom: 'Pente', propriete: 'c', echelle: null }];
+                        if (echelleBouton) modes.push({ nom: 'Vitesse', propriete: 'cv', echelle: echelleBouton, unite: ' km/h', degrade: degradeDesignCss() });
+                        if (echellePuissance) modes.push({ nom: 'Puissance', propriete: 'cp', echelle: echellePuissance, unite: ' W', degrade: degradeDesignCss() });
+                        if (modes.length > 1) {
+                            const mode = document.createElement('button');
+                            mode.type = 'button';
+                            mode.className = 'fiche-fond fiche-mode';
+                            const echelle = document.createElement('div');
+                            echelle.className = 'fiche-echelle';
+                            echelle.style.display = 'none';
+                            const bas = document.createElement('span');
+                            const barre = document.createElement('i');
+                            const haut = document.createElement('span');
+                            echelle.appendChild(bas);
+                            echelle.appendChild(barre);
+                            echelle.appendChild(haut);
+                            let courant = 0;
+                            const appliquer = () => {
+                                const m = modes[courant];
+                                if (carte.getLayer('trace-ligne')) {
+                                    carte.setPaintProperty('trace-ligne', 'line-color', ['get', m.propriete]);
+                                }
+                                mode.textContent = modes[(courant + 1) % modes.length].nom;
+                                if (m.echelle) {
+                                    bas.textContent = fmtFr(m.echelle.bas, 0);
+                                    haut.textContent = fmtFr(m.echelle.haut, 0) + m.unite;
+                                    barre.style.background = m.degrade;
+                                    echelle.style.display = 'flex';
+                                } else {
+                                    echelle.style.display = 'none';
+                                }
+                            };
+                            mode.addEventListener('click', () => {
+                                courant = (courant + 1) % modes.length;
+                                appliquer();
+                            });
+                            appliquer();
+                            blocCarte.appendChild(mode);
+                            blocCarte.appendChild(echelle);
+                        }
                     }).catch(() => {
                         if (jeton === ficheJeton) secours();
                     });
@@ -13759,7 +14751,7 @@ def accueil():
                 ];
             }
 
-            function preparerParcours(trace, distanceKm) {
+            function preparerParcours(trace, distanceKm, vitesseCapteur, donneesBosch) {
                 // La trace est enregistrée en [latitude, longitude] ; la carte veut [longitude, latitude].
                 const valides = trace.filter(p => Array.isArray(p) && p.length >= 2);
                 const pts = valides.map(p => [p[1], p[0]]);
@@ -13779,6 +14771,11 @@ def accueil():
                 }
                 v3d.tps = valides.map(p => (typeof p[2] === 'number' && isFinite(p[2]) ? p[2] : null));
                 v3d.pentes = profil ? profil.pentes : [];
+                // Vitesse et puissance de chaque tronçon, pour colorer le tracé (vides si la sortie n'a pas ces données).
+                v3d.vitessesTroncons = vitessesTroncons(valides);
+                v3d.echelleVitesse = v3d.vitessesTroncons ? echelleVitesses(v3d.vitessesTroncons) : null;
+                v3d.puissancesTroncons = puissancesTroncons(valides);
+                v3d.echellePuissance = v3d.puissancesTroncons ? echelleVitesses(v3d.puissancesTroncons) : null;
                 v3d.pts = pts;
                 v3d.cum = [0];
                 for (let i = 1; i < pts.length; i++) {
@@ -13793,6 +14790,21 @@ def accueil():
                 });
                 const vitessesValides = v3d.vitesses.filter(x => x !== null && isFinite(x) && x <= 150);
                 v3d.vitesseMax = vitessesValides.reduce((max, x) => Math.max(max, x), 0) || null;
+                // Sortie Bosch : la vitesse max affichée est celle mesurée par le vélo (le panneau reste au point le plus rapide du GPS).
+                if (v3d.vitesseMax !== null && typeof vitesseCapteur === 'number' && vitesseCapteur > 0 && vitesseCapteur <= 150) v3d.vitesseMax = vitesseCapteur;
+                // Puissance du cycliste par point (watts) ; max et moyenne : celles de Bosch si on les a, sinon calculées.
+                v3d.puissances = valides.map(p => (typeof p[4] === 'number' && isFinite(p[4]) ? p[4] : null));
+                const puissancesValides = v3d.puissances.filter(x => x !== null);
+                if (puissancesValides.length >= 2) {
+                    const bosch = donneesBosch && typeof donneesBosch === 'object' ? donneesBosch : {};
+                    v3d.puissanceMax = typeof bosch.puissance_max === 'number' && bosch.puissance_max > 0 ? bosch.puissance_max : Math.max(...puissancesValides);
+                    v3d.puissanceMoyenne = typeof bosch.puissance_moy === 'number' && bosch.puissance_moy > 0
+                        ? bosch.puissance_moy : puissancesValides.reduce((a, x) => a + x, 0) / puissancesValides.length;
+                } else {
+                    v3d.puissances = null;
+                    v3d.puissanceMax = null;
+                    v3d.puissanceMoyenne = null;
+                }
                 const tempsTotal = v3d.tps.length > 1 && v3d.tps[0] !== null && v3d.tps[v3d.tps.length - 1] !== null
                     ? v3d.tps[v3d.tps.length - 1] - v3d.tps[0] : 0;
                 v3d.vitesseMoyenne = tempsTotal > 0 ? (v3d.total / tempsTotal) * 3.6 : null;
@@ -14794,7 +15806,7 @@ def accueil():
                     p.visible = visible;
                     // Pente : en lecture, une grosse alerte tombe d'abord du centre de l'écran ; le panneau apparaît à l'impact.
                     // Sans alerte (curseur déplacé à la main, autre alerte en cours...), le panneau s'affiche tout de suite comme avant.
-                    const avecAlerte = visible && !p.vmax && v3d.jouer && v3d.sens > 0 && !v3d.alerte && demarrerAlertePenteV3d(p);
+                    const avecAlerte = visible && !p.vmax && !p.pmax && v3d.jouer && v3d.sens > 0 && !v3d.alerte && demarrerAlertePenteV3d(p);
                     if (!visible && v3d.alerte && v3d.alerte.p === p) arreterAlertePenteV3d(p);
                     if (!avecAlerte) carte.setFeatureState({ source: 'v3d-reperes', id: p.id }, { v: visible });
                     if (p.vmax) {
@@ -14911,6 +15923,18 @@ def accueil():
                             { type: 'Feature', id: k, properties: {}, geometry: { type: 'Point', coordinates: coordMax } })) });
                     }
                 }
+                // Panneau Pmax : posé au tronçon où la puissance (moyennée sur 3 s environ) est la plus forte, sans animation.
+                if (v3d.puissances && v3d.puissanceMax !== null) {
+                    let indexPmax = -1;
+                    v3d.puissances.forEach((w, i) => { if (w !== null && (indexPmax < 0 || w > v3d.puissances[indexPmax])) indexPmax = i; });
+                    if (indexPmax >= 0) {
+                        poserPanneau('Pmax ' + Math.round(v3d.puissanceMax) + ' W', 16, pointA(v3d.cum[indexPmax]), {
+                            pmax: true,
+                            debut: v3d.cum[indexPmax],
+                            fin: v3d.cum[indexPmax] + (v3d.total / Math.max(1, v3d.dureeBase) * v3d.vitesse) * 1.5
+                        });
+                    }
+                }
                 // Drapeau à damier au point d'arrivée : même affichage que les noms de lieux (apparition avant l'arrivée).
                 try {
                     const idDrapeau = 'v3d-drapeau-' + v3d.generationPanneaux;
@@ -15024,8 +16048,9 @@ def accueil():
                 etiqueter('v3dFond', v3d.fond === 'sat' ? 'satellite' : 'carteplan', v3d.fond === 'sat' ? 'Fond : satellite' : 'Fond : plan');
                 const couleur = document.getElementById('v3dCouleur');
                 const aTerrain = v3d.surfaces && v3d.surfaces.length === v3d.pts.length;
-                couleur.style.display = (v3d.pentes.length && aTerrain) ? '' : 'none';
-                etiqueter('v3dCouleur', 'palette', v3d.mode === 'pente' ? 'Couleurs : pente' : 'Couleurs : terrain');
+                couleur.style.display = modesCouleurV3d().length > 1 ? '' : 'none';
+                const NOMS_COULEURS_V3D = { pente: 'pente', terrain: 'terrain', vitesse: 'vitesse', puissance: 'puissance' };
+                etiqueter('v3dCouleur', 'palette', 'Couleurs : ' + (NOMS_COULEURS_V3D[v3d.mode] || 'pente'));
                 const autres = document.getElementById('v3dAutres');
                 const rep = document.getElementById('v3dReperes');
                 etiqueter('v3dReperes', 'montagne', 'Repères');
@@ -15089,6 +16114,17 @@ def accueil():
                 document.getElementById('v3dCinemaVitesse').textContent = vitesse === null ? '—' : vitesse.toFixed(1).replace('.', ',') + ' km/h';
                 document.getElementById('v3dCinemaVitesseMax').textContent = v3d.vitesseMax === null ? '—' : Math.round(v3d.vitesseMax) + ' km/h';
                 document.getElementById('v3dCinemaVitesseMoyenne').textContent = v3d.vitesseMoyenne === null ? '—' : v3d.vitesseMoyenne.toFixed(1).replace('.', ',') + ' km/h';
+                // Puissance (seulement si la sortie en contient : Bosch ou fichier avec puissance).
+                const aPuissance = !!v3d.puissances && v3d.puissances.some(x => x !== null);
+                ['v3dCinemaPuissanceBloc', 'v3dCinemaPuissanceMaxBloc', 'v3dCinemaPuissanceMoyenneBloc'].forEach(id => {
+                    document.getElementById(id).style.display = aPuissance ? '' : 'none';
+                });
+                if (aPuissance) {
+                    const puissance = interp(v3d.puissances);
+                    document.getElementById('v3dCinemaPuissance').textContent = puissance === null ? '—' : Math.round(puissance) + ' W';
+                    document.getElementById('v3dCinemaPuissanceMax').textContent = v3d.puissanceMax === null ? '—' : Math.round(v3d.puissanceMax) + ' W';
+                    document.getElementById('v3dCinemaPuissanceMoyenne').textContent = v3d.puissanceMoyenne === null ? '—' : Math.round(v3d.puissanceMoyenne) + ' W';
+                }
                 const ligneProfil = document.getElementById('v3dCinemaProfilLigne');
                 const ligneParcourue = document.getElementById('v3dCinemaProfilParcouru');
                 const zoneParcourue = document.getElementById('v3dCinemaProfilZoneParcourue');
@@ -15793,8 +16829,24 @@ def accueil():
                 if (v3d.mode === 'terrain' && v3d.surfaces && v3d.surfaces.length === v3d.pts.length) {
                     return (TYPES_CHEMIN[v3d.surfaces[i]] || TYPES_CHEMIN.u).couleur;
                 }
+                if (v3d.mode === 'vitesse' && v3d.echelleVitesse && v3d.vitessesTroncons && v3d.vitessesTroncons.length > i) {
+                    return couleurVitesse(v3d.vitessesTroncons[i], v3d.echelleVitesse);
+                }
+                if (v3d.mode === 'puissance' && v3d.echellePuissance && v3d.puissancesTroncons && v3d.puissancesTroncons.length > i) {
+                    return couleurPuissance(v3d.puissancesTroncons[i], v3d.echellePuissance);
+                }
                 if (v3d.pentes.length > i) return couleurPente(v3d.pentes[i]);
                 return '#ffffff';
+            }
+
+            // Façons de colorer le tracé disponibles pour cette sortie (le bouton « Couleurs » les fait défiler).
+            function modesCouleurV3d() {
+                const modes = [];
+                if (v3d.pentes.length) modes.push('pente');
+                if (v3d.surfaces && v3d.surfaces.length === v3d.pts.length) modes.push('terrain');
+                if (v3d.echelleVitesse) modes.push('vitesse');
+                if (v3d.echellePuissance) modes.push('puissance');
+                return modes;
             }
 
             function donneesTrace() {
@@ -15817,6 +16869,14 @@ def accueil():
                     lignes = Object.keys(TYPES_CHEMIN)
                         .filter(k => v3d.surfaces.includes(k))
                         .map(k => ({ couleur: TYPES_CHEMIN[k].couleur, texte: TYPES_CHEMIN[k].nom }));
+                } else if ((v3d.mode === 'vitesse' && v3d.echelleVitesse) || (v3d.mode === 'puissance' && v3d.echellePuissance)) {
+                    // Vitesse ou puissance : quatre repères du plus faible au plus fort, aux couleurs de la palette de l'appli.
+                    const e = v3d.mode === 'vitesse' ? v3d.echelleVitesse : v3d.echellePuissance;
+                    const unite = v3d.mode === 'vitesse' ? ' km/h' : ' W';
+                    lignes = [0, 1, 2, 3].map(k => {
+                        const v = e.bas + (e.haut - e.bas) * k / 3;
+                        return { couleur: couleurEchelle(v, e, arretsDesign()), texte: Math.round(v) + (k === 3 ? unite : '') };
+                    });
                 } else if (v3d.pentes.length) {
                     // Légende des pentes du survol : juste « < x % » (et « > x % » pour la dernière classe), sans ligne descente.
                     lignes = COULEURS_PENTE.map((c, i) => ({
@@ -15938,7 +16998,7 @@ def accueil():
                 }
 
                 fermerV3d();
-                preparerParcours(sortie.trace, sortie.distance_km);
+                preparerParcours(sortie.trace, sortie.distance_km, sortie.vitesse_max_capteur, sortie.donnees_bosch);
                 v3d.f = 0;
                 v3d.vitesse = 1;
                 v3d.sens = 1;
@@ -16142,7 +17202,8 @@ def accueil():
                     majBoutonsV3d();
                 });
                 bouton('v3dCouleur', () => {
-                    v3d.mode = v3d.mode === 'pente' ? 'terrain' : 'pente';
+                    const modesDispo = modesCouleurV3d();
+                    if (modesDispo.length) v3d.mode = modesDispo[(modesDispo.indexOf(v3d.mode) + 1) % modesDispo.length];
                     const src = v3d.carte && v3d.carte.getSource('v3d-trace');
                     if (src) src.setData(donneesTrace());
                     majLegendeV3d();
@@ -18726,6 +19787,7 @@ BOSCH_SCOPE = os.environ.get("BOSCH_SCOPE", "openid offline_access").strip()
 BOSCH_AUTH_URL = "https://p9.authz.bosch.com/auth/realms/obc/protocol/openid-connect/auth"
 BOSCH_TOKEN_URL = "https://p9.authz.bosch.com/auth/realms/obc/protocol/openid-connect/token"
 BOSCH_API_BIKES = "https://api.bosch-ebike.com/bike-profile/smart-system/v1/bikes"
+BOSCH_API_ACTIVITES = "https://api.bosch-ebike.com/activity/smart-system/v1/activities"
 
 
 def bosch_adresse_retour(request: Request):
@@ -18962,6 +20024,94 @@ def bosch_velos(x_code_acces: Optional[str] = Header(default=None)):
         "odometres": bosch_chercher_valeurs(velos),
         "brut": donnees,
     }
+
+
+@app.get("/api/bosch/sorties")
+def bosch_sorties(limite: int = 20, decalage: int = 0, x_code_acces: Optional[str] = Header(default=None)):
+    """Lit la liste des sorties enregistrées par eBike Flow (lecture seule, rien n'est importé)."""
+    personne_id = verifier_auth(x_code_acces)
+    acces = bosch_jeton_valide(personne_id)
+    if not acces:
+        raise HTTPException(status_code=409, detail="Vélo Bosch pas encore connecté.")
+    limite = max(1, min(int(limite), 100))
+    decalage = max(0, int(decalage))
+    adresse = BOSCH_API_ACTIVITES + "?" + urllib.parse.urlencode({"limit": limite, "offset": decalage})
+    demande = urllib.request.Request(adresse, headers={
+        "Authorization": "Bearer " + acces,
+        "Accept": "application/json",
+    })
+    try:
+        with urllib.request.urlopen(demande, timeout=20) as reponse:
+            donnees = json.loads(reponse.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        detail = ""
+        try:
+            detail = e.read().decode("utf-8")[:200]
+        except Exception:
+            pass
+        if e.code in (401, 403):
+            raise HTTPException(
+                status_code=403,
+                detail="Bosch n'autorise pas Maillons à lire les sorties (" + str(e.code) + "). " + detail,
+            )
+        raise HTTPException(status_code=502, detail="Bosch a répondu " + str(e.code) + " " + detail)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail="Bosch ne répond pas : " + str(e)[:120])
+    if not isinstance(donnees, dict):
+        donnees = {}
+    sorties = donnees.get("activitySummaries")
+    pagination = donnees.get("pagination")
+    return {
+        "sorties": sorties if isinstance(sorties, list) else [],
+        "total": pagination.get("total") if isinstance(pagination, dict) else None,
+        "decalage": decalage,
+        "limite": limite,
+    }
+
+
+@app.get("/api/bosch/sorties/{activite_id}/details")
+def bosch_sortie_details(activite_id: str, x_code_acces: Optional[str] = Header(default=None)):
+    """Lit les points d'une sortie (position, altitude, vitesse...) : de quoi dessiner le tracé."""
+    personne_id = verifier_auth(x_code_acces)
+    if not re.fullmatch(r"[0-9a-fA-F-]{32,40}", activite_id):
+        raise HTTPException(status_code=400, detail="Identifiant de sortie invalide.")
+    acces = bosch_jeton_valide(personne_id)
+    if not acces:
+        raise HTTPException(status_code=409, detail="Vélo Bosch pas encore connecté.")
+    demande = urllib.request.Request(BOSCH_API_ACTIVITES + "/" + activite_id + "/details", headers={
+        "Authorization": "Bearer " + acces,
+        "Accept": "application/json",
+    })
+    try:
+        with urllib.request.urlopen(demande, timeout=30) as reponse:
+            donnees = json.loads(reponse.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        detail = ""
+        try:
+            detail = e.read().decode("utf-8")[:200]
+        except Exception:
+            pass
+        if e.code in (401, 403):
+            raise HTTPException(status_code=403, detail="Bosch n'autorise pas Maillons à lire le tracé (" + str(e.code) + "). " + detail)
+        raise HTTPException(status_code=502, detail="Bosch a répondu " + str(e.code) + " " + detail)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail="Bosch ne répond pas : " + str(e)[:120])
+    brut = donnees.get("activityDetails") if isinstance(donnees, dict) else None
+    brut = brut if isinstance(brut, list) else []
+    points = []
+    for q in brut:
+        if not isinstance(q, dict):
+            continue
+        lat, lon = q.get("latitude"), q.get("longitude")
+        if isinstance(lat, (int, float)) and isinstance(lon, (int, float)) and not (lat == 0 and lon == 0):
+            points.append({
+                "lat": lat, "lon": lon, "alt": q.get("altitude"), "vit": q.get("speed"),
+                "dist": q.get("distance"), "puiss": q.get("riderPower"),
+            })
+    # Au plus 3000 points : assez pour un beau tracé, sans alourdir le téléphone.
+    pas = max(1, -(-len(points) // 3000))
+    champs = sorted({str(k) for q in brut[:2000] if isinstance(q, dict) for k in q.keys()})
+    return {"total_points": len(brut), "points": points[::pas], "champs": champs}
 
 
 class BoschLierRequest(BaseModel):
@@ -23372,15 +24522,17 @@ def importer_sortie(
             INSERT INTO sorties (
                 velo_id, nom, debut, sport, distance_km, denivele_pos, denivele_neg,
                 duree_s, vitesse_moy, alt_max, pente_moy_montee,
-                terrain, notes, km_compte, trace, photos, a_verifier
+                terrain, notes, km_compte, trace, photos, a_verifier, vitesse_max_capteur, donnees_bosch
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             velo_id, nom, s["debut"], s["sport"], s["distance_km"],
             s["denivele_pos"], s["denivele_neg"], s["duree_s"],
             s["vitesse_moy"], s["alt_max"], s["pente_moy_montee"],
             terrain, notes, compte, s["trace"], photos_json,
-            1 if automatique else 0
+            1 if automatique else 0,
+            data.vitesse_max_kmh if data.vitesse_max_kmh and data.vitesse_max_kmh > 0 else None,
+            nettoyer_donnees_bosch(data.bosch)
         ))
 
         cursor.execute("SELECT id FROM sorties WHERE velo_id = ? AND debut = ?", (velo_id, s["debut"]))
@@ -23808,6 +24960,11 @@ def lister_sorties(
                 sortie["trace"] = json.loads(sortie["trace"] or "[]")
             except ValueError:
                 sortie["trace"] = []
+
+            try:
+                sortie["donnees_bosch"] = json.loads(sortie.get("donnees_bosch") or "null")
+            except ValueError:
+                sortie["donnees_bosch"] = None
 
             try:
                 brutes = json.loads(sortie["photos"] or "[]")

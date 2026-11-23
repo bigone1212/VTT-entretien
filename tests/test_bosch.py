@@ -306,3 +306,175 @@ def test_lien_direct_avec_le_seul_velo_electrique():
         cur.execute("UPDATE velos SET modele = ?, moteur = ?, type = ? WHERE id = 1", origine)
         conn.commit()
         conn.close()
+
+
+def test_lecture_des_sorties():
+    import io
+    import urllib.error
+
+    class Rep:
+        def __init__(self, texte):
+            self.texte = texte
+
+        def read(self):
+            return self.texte.encode("utf-8")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    vrai_urlopen = main.urllib.request.urlopen
+    vrai_jeton = main.bosch_jeton_valide
+    vus = []
+
+    def faux_ok(demande, timeout=0):
+        vus.append((demande.full_url, demande.get_header("Authorization")))
+        return Rep('{"pagination":{"total":57,"offset":20,"limit":20},"activitySummaries":'
+                   '[{"id":"a","startTime":"2026-07-21T05:02:36Z","distance":37192,"title":"Test"}]}')
+
+    with TestClient(main.app, base_url="https://maillons-test-2026.onrender.com", follow_redirects=False) as c:
+        assert c.get("/api/bosch/sorties").status_code == 401
+        main.bosch_jeton_valide = lambda personne_id: None
+        try:
+            assert c.get("/api/bosch/sorties", headers=ENTETE).status_code == 409
+            main.bosch_jeton_valide = lambda personne_id: "ACCES"
+            main.urllib.request.urlopen = faux_ok
+            r = c.get("/api/bosch/sorties?limite=500&decalage=20", headers=ENTETE)
+            assert r.status_code == 200
+            d = r.json()
+            assert d["total"] == 57 and len(d["sorties"]) == 1 and d["limite"] == 100
+            assert vus[0][0] == ("https://api.bosch-ebike.com/activity/smart-system/v1/activities?limit=100&offset=20")
+            assert vus[0][1] == "Bearer ACCES"
+
+            def faux_403(demande, timeout=0):
+                raise urllib.error.HTTPError(demande.full_url, 403, "Forbidden", {}, io.BytesIO(b"no"))
+
+            main.urllib.request.urlopen = faux_403
+            r = c.get("/api/bosch/sorties", headers=ENTETE)
+            assert r.status_code == 403 and "n'autorise pas" in r.json()["detail"]
+        finally:
+            main.urllib.request.urlopen = vrai_urlopen
+            main.bosch_jeton_valide = vrai_jeton
+
+
+def test_trace_d_une_sortie():
+    import io
+    import urllib.error
+
+    class Rep:
+        def __init__(self, texte):
+            self.texte = texte
+
+        def read(self):
+            return self.texte.encode("utf-8")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    vrai_urlopen = main.urllib.request.urlopen
+    vrai_jeton = main.bosch_jeton_valide
+    vus = []
+    ident = "0dbbd57b-3a0e-4ca2-a8f3-7a35d2cfc554"
+
+    def faux_ok(demande, timeout=0):
+        vus.append(demande.full_url)
+        pts = ",".join('{"distance":%d,"altitude":264.3,"speed":19.9,"latitude":48.49%03d,"longitude":9.13%03d}' % (i, i, i)
+                       for i in range(5000))
+        sans_gps = '{"distance":1,"latitude":0,"longitude":0}'
+        return Rep('{"activityDetails":[' + sans_gps + "," + pts + "]}")
+
+    with TestClient(main.app, base_url="https://maillons-test-2026.onrender.com", follow_redirects=False) as c:
+        assert c.get("/api/bosch/sorties/" + ident + "/details").status_code == 401
+        main.bosch_jeton_valide = lambda personne_id: "ACCES"
+        main.urllib.request.urlopen = faux_ok
+        try:
+            assert c.get("/api/bosch/sorties/pas-valide!/details", headers=ENTETE).status_code == 400
+            r = c.get("/api/bosch/sorties/" + ident + "/details", headers=ENTETE)
+            assert r.status_code == 200
+            d = r.json()
+            assert d["total_points"] == 5001
+            assert 0 < len(d["points"]) <= 3000
+            assert d["champs"] == ["altitude", "distance", "latitude", "longitude", "speed"]
+            assert all(p["lat"] != 0 for p in d["points"])
+            assert vus[0] == "https://api.bosch-ebike.com/activity/smart-system/v1/activities/" + ident + "/details"
+
+            def faux_403(demande, timeout=0):
+                raise urllib.error.HTTPError(demande.full_url, 403, "Forbidden", {}, io.BytesIO(b"no"))
+
+            main.urllib.request.urlopen = faux_403
+            r = c.get("/api/bosch/sorties/" + ident + "/details", headers=ENTETE)
+            assert r.status_code == 403
+        finally:
+            main.urllib.request.urlopen = vrai_urlopen
+            main.bosch_jeton_valide = vrai_jeton
+
+
+def _gpx_court(debut_minute, heure=15):
+    points = []
+    for i in range(120):
+        secondes = i * 5
+        points.append(
+            '<trkpt lat="%.6f" lon="%.6f"><ele>%d</ele><time>2026-11-19T%02d:%02d:%02dZ</time></trkpt>'
+            % (44.35 + i * 0.00013, 2.57 + i * 0.0001, 600 + i // 4, heure, debut_minute + secondes // 60, secondes % 60)
+        )
+    return '<?xml version="1.0"?><gpx version="1.1" creator="t" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>t</name><trkseg>' + "".join(points) + "</trkseg></trk></gpx>"
+
+
+def test_vitesse_max_du_capteur_gardee_avec_la_sortie():
+    with client() as c:
+        r1 = c.post("/api/sorties/import?velo_id=1", headers=ENTETE, json={"gpx": _gpx_court(0), "vitesse_max_kmh": 46.1})
+        assert r1.status_code == 200, r1.text
+        r2 = c.post("/api/sorties/import?velo_id=1", headers=ENTETE, json={"gpx": _gpx_court(20)})
+        assert r2.status_code == 200, r2.text
+        r3 = c.post("/api/sorties/import?velo_id=1", headers=ENTETE, json={"gpx": _gpx_court(40), "vitesse_max_kmh": 500})
+        assert r3.status_code == 422
+        liste = c.get("/api/sorties?velo_id=1", headers=ENTETE).json()
+        par_debut = {s["debut"]: s for s in liste}
+        assert len(liste) == 2
+        valeurs = sorted((s["vitesse_max_capteur"] is None, s["vitesse_max_capteur"] or 0) for s in liste)
+        assert valeurs == [(False, 46.1), (True, 0)]
+
+
+def test_puissance_gardee_dans_la_trace():
+    points = []
+    for i in range(120):
+        secondes = i * 5
+        points.append(
+            '<trkpt lat="%.6f" lon="%.6f"><ele>%d</ele><time>2026-11-20T15:%02d:%02dZ</time><extensions><power>%d</power></extensions></trkpt>'
+            % (44.35 + i * 0.00013, 2.57 + i * 0.0001, 600 + i // 4, secondes // 60, secondes % 60, 100 + i)
+        )
+    gpx = '<?xml version="1.0"?><gpx version="1.1" creator="t" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>p</name><trkseg>' + "".join(points) + "</trkseg></trk></gpx>"
+    with client() as c:
+        assert c.post("/api/sorties/import?velo_id=1", headers=ENTETE, json={"gpx": gpx}).status_code == 200
+        liste = c.get("/api/sorties?velo_id=1", headers=ENTETE).json()
+        s = [x for x in liste if x["debut"].startswith("2026-11-20")][0]
+        trace = s["trace"] if isinstance(s["trace"], list) else __import__("json").loads(s["trace"])
+        assert all(len(p) == 5 and isinstance(p[4], int) for p in trace)
+        assert trace[-1][4] > trace[0][4]
+        # une sortie sans puissance garde 4 valeurs par point
+        s2 = [x for x in liste if x["debut"].startswith("2026-11-19")][0]
+        trace2 = s2["trace"] if isinstance(s2["trace"], list) else __import__("json").loads(s2["trace"])
+        assert all(len(p) == 4 for p in trace2)
+
+
+def test_chiffres_bosch_gardes_et_nettoyes():
+    with client() as c:
+        bosch = {
+            "puissance_moy": 108, "puissance_max": 250, "cadence_moy": 61, "calories": 90,
+            "sauts": {"jumps": {"nombre": 1, "hauteur_m": 0.13, "longueur_m": 2.3, "duree_s": 0.26}, "inconnu": {"nombre": 5}},
+            "intrus": "<script>", "puissance_inconnue": 5,
+        }
+        assert c.post("/api/sorties/import?velo_id=1", headers=ENTETE, json={"gpx": _gpx_court(0, 17), "bosch": bosch}).status_code == 200
+        assert c.post("/api/sorties/import?velo_id=1", headers=ENTETE, json={"gpx": _gpx_court(20, 17), "bosch": {"puissance_moy": -5, "calories": "beaucoup"}}).status_code == 200
+        liste = c.get("/api/sorties?velo_id=1", headers=ENTETE).json()
+        garde = [s for s in liste if s["donnees_bosch"]]
+        assert len(garde) == 1
+        d = garde[0]["donnees_bosch"]
+        assert d["puissance_moy"] == 108 and d["puissance_max"] == 250 and d["calories"] == 90
+        assert d["sauts"] == {"jumps": {"nombre": 1.0, "hauteur_m": 0.13, "longueur_m": 2.3, "duree_s": 0.26}}
+        assert "intrus" not in d and "puissance_inconnue" not in d
