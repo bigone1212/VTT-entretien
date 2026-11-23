@@ -4849,6 +4849,9 @@ def accueil():
                     <div class="v3d-cinema-stat" id="v3dCinemaVitesseBloc"><strong id="v3dCinemaVitesse">—</strong><span>Vitesse</span></div>
                     <div class="v3d-cinema-stat"><strong id="v3dCinemaVitesseMax">—</strong><span>Vitesse max</span></div>
                     <div class="v3d-cinema-stat"><strong id="v3dCinemaVitesseMoyenne">—</strong><span>Vitesse moyenne</span></div>
+                    <div class="v3d-cinema-stat" id="v3dCinemaPuissanceBloc" style="display:none"><strong id="v3dCinemaPuissance">—</strong><span>Puissance</span></div>
+                    <div class="v3d-cinema-stat" id="v3dCinemaPuissanceMaxBloc" style="display:none"><strong id="v3dCinemaPuissanceMax">—</strong><span>Puissance max</span></div>
+                    <div class="v3d-cinema-stat" id="v3dCinemaPuissanceMoyenneBloc" style="display:none"><strong id="v3dCinemaPuissanceMoyenne">—</strong><span>Puissance moyenne</span></div>
                 </div>
                 <div class="v3d-cinema-profil">
                     <div class="v3d-cinema-profil-titre">PROFIL DU PARCOURS</div>
@@ -14046,18 +14049,26 @@ def accueil():
                 return haut > bas ? { bas: bas, haut: haut } : null;
             }
 
-            const ARRETS_VITESSE = [
-                { rvb: [245, 208, 254] },
-                { rvb: [217, 70, 239] },
-                { rvb: [134, 25, 143] }
-            ];
-            const DEGRADE_VITESSE_CSS = 'linear-gradient(90deg, #f5d0fe, #d946ef, #86198f)';
-            const ARRETS_PUISSANCE = [
-                { rvb: [204, 251, 241] },
-                { rvb: [20, 184, 166] },
-                { rvb: [19, 78, 74] }
-            ];
-            const DEGRADE_PUISSANCE_CSS = 'linear-gradient(90deg, #ccfbf1, #14b8a6, #134e4a)';
+            // Couleurs de la vitesse et de la puissance : celles de la palette choisie dans Réglages (clair, couleur de l'appli, foncé).
+            function hexVersRvb(hex, secours) {
+                const t = String(hex || '').trim();
+                if (/^#[0-9a-fA-F]{6}$/.test(t)) return [parseInt(t.slice(1, 3), 16), parseInt(t.slice(3, 5), 16), parseInt(t.slice(5, 7), 16)];
+                return secours;
+            }
+
+            function arretsDesign() {
+                const styles = getComputedStyle(document.documentElement);
+                const c1 = hexVersRvb(styles.getPropertyValue('--ac1'), [53, 224, 200]);
+                const c2 = hexVersRvb(styles.getPropertyValue('--ac2'), [10, 143, 156]);
+                const clair = c1.map(x => x + (255 - x) * 0.72);
+                const fonce = c2.map(x => x * 0.5);
+                return [{ rvb: clair }, { rvb: c1 }, { rvb: fonce }];
+            }
+
+            function degradeDesignCss() {
+                const a = arretsDesign();
+                return 'linear-gradient(90deg, ' + a.map(x => rvbVersHex(x.rvb)).join(', ') + ')';
+            }
 
             function couleurEchelle(v, echelle, arrets) {
                 const t = Math.min(1, Math.max(0, (v - echelle.bas) / (echelle.haut - echelle.bas))) * (arrets.length - 1);
@@ -14067,11 +14078,11 @@ def accueil():
             }
 
             function couleurVitesse(v, echelle) {
-                return couleurEchelle(v, echelle, ARRETS_VITESSE);
+                return couleurEchelle(v, echelle, arretsDesign());
             }
 
             function couleurPuissance(v, echelle) {
-                return couleurEchelle(v, echelle, ARRETS_PUISSANCE);
+                return couleurEchelle(v, echelle, arretsDesign());
             }
 
             function cumulTrace(trace) {
@@ -14538,8 +14549,8 @@ def accueil():
                         const puissancesBouton = pts.length === trace.length ? puissancesTroncons(trace) : null;
                         const echellePuissance = puissancesBouton ? echelleVitesses(puissancesBouton) : null;
                         const modes = [{ nom: 'Pente', propriete: 'c', echelle: null }];
-                        if (echelleBouton) modes.push({ nom: 'Vitesse', propriete: 'cv', echelle: echelleBouton, unite: ' km/h', degrade: DEGRADE_VITESSE_CSS });
-                        if (echellePuissance) modes.push({ nom: 'Puissance', propriete: 'cp', echelle: echellePuissance, unite: ' W', degrade: DEGRADE_PUISSANCE_CSS });
+                        if (echelleBouton) modes.push({ nom: 'Vitesse', propriete: 'cv', echelle: echelleBouton, unite: ' km/h', degrade: degradeDesignCss() });
+                        if (echellePuissance) modes.push({ nom: 'Puissance', propriete: 'cp', echelle: echellePuissance, unite: ' W', degrade: degradeDesignCss() });
                         if (modes.length > 1) {
                             const mode = document.createElement('button');
                             mode.type = 'button';
@@ -14686,7 +14697,7 @@ def accueil():
                 ];
             }
 
-            function preparerParcours(trace, distanceKm, vitesseCapteur) {
+            function preparerParcours(trace, distanceKm, vitesseCapteur, donneesBosch) {
                 // La trace est enregistrée en [latitude, longitude] ; la carte veut [longitude, latitude].
                 const valides = trace.filter(p => Array.isArray(p) && p.length >= 2);
                 const pts = valides.map(p => [p[1], p[0]]);
@@ -14722,6 +14733,19 @@ def accueil():
                 v3d.vitesseMax = vitessesValides.reduce((max, x) => Math.max(max, x), 0) || null;
                 // Sortie Bosch : la vitesse max affichée est celle mesurée par le vélo (le panneau reste au point le plus rapide du GPS).
                 if (v3d.vitesseMax !== null && typeof vitesseCapteur === 'number' && vitesseCapteur > 0 && vitesseCapteur <= 150) v3d.vitesseMax = vitesseCapteur;
+                // Puissance du cycliste par point (watts) ; max et moyenne : celles de Bosch si on les a, sinon calculées.
+                v3d.puissances = valides.map(p => (typeof p[4] === 'number' && isFinite(p[4]) ? p[4] : null));
+                const puissancesValides = v3d.puissances.filter(x => x !== null);
+                if (puissancesValides.length >= 2) {
+                    const bosch = donneesBosch && typeof donneesBosch === 'object' ? donneesBosch : {};
+                    v3d.puissanceMax = typeof bosch.puissance_max === 'number' && bosch.puissance_max > 0 ? bosch.puissance_max : Math.max(...puissancesValides);
+                    v3d.puissanceMoyenne = typeof bosch.puissance_moy === 'number' && bosch.puissance_moy > 0
+                        ? bosch.puissance_moy : puissancesValides.reduce((a, x) => a + x, 0) / puissancesValides.length;
+                } else {
+                    v3d.puissances = null;
+                    v3d.puissanceMax = null;
+                    v3d.puissanceMoyenne = null;
+                }
                 const tempsTotal = v3d.tps.length > 1 && v3d.tps[0] !== null && v3d.tps[v3d.tps.length - 1] !== null
                     ? v3d.tps[v3d.tps.length - 1] - v3d.tps[0] : 0;
                 v3d.vitesseMoyenne = tempsTotal > 0 ? (v3d.total / tempsTotal) * 3.6 : null;
@@ -15723,7 +15747,7 @@ def accueil():
                     p.visible = visible;
                     // Pente : en lecture, une grosse alerte tombe d'abord du centre de l'écran ; le panneau apparaît à l'impact.
                     // Sans alerte (curseur déplacé à la main, autre alerte en cours...), le panneau s'affiche tout de suite comme avant.
-                    const avecAlerte = visible && !p.vmax && v3d.jouer && v3d.sens > 0 && !v3d.alerte && demarrerAlertePenteV3d(p);
+                    const avecAlerte = visible && !p.vmax && !p.pmax && v3d.jouer && v3d.sens > 0 && !v3d.alerte && demarrerAlertePenteV3d(p);
                     if (!visible && v3d.alerte && v3d.alerte.p === p) arreterAlertePenteV3d(p);
                     if (!avecAlerte) carte.setFeatureState({ source: 'v3d-reperes', id: p.id }, { v: visible });
                     if (p.vmax) {
@@ -15838,6 +15862,18 @@ def accueil():
                         // Deux anneaux orange (couche cercle) pulsent autour du point pendant l'affichage du panneau.
                         if (panneauMax) carte.getSource('v3d-halo').setData({ type: 'FeatureCollection', features: [0, 1].map(k => (
                             { type: 'Feature', id: k, properties: {}, geometry: { type: 'Point', coordinates: coordMax } })) });
+                    }
+                }
+                // Panneau Pmax : posé au tronçon où la puissance (moyennée sur 3 s environ) est la plus forte, sans animation.
+                if (v3d.puissances && v3d.puissanceMax !== null) {
+                    let indexPmax = -1;
+                    v3d.puissances.forEach((w, i) => { if (w !== null && (indexPmax < 0 || w > v3d.puissances[indexPmax])) indexPmax = i; });
+                    if (indexPmax >= 0) {
+                        poserPanneau('Pmax ' + Math.round(v3d.puissanceMax) + ' W', 16, pointA(v3d.cum[indexPmax]), {
+                            pmax: true,
+                            debut: v3d.cum[indexPmax],
+                            fin: v3d.cum[indexPmax] + (v3d.total / Math.max(1, v3d.dureeBase) * v3d.vitesse) * 1.5
+                        });
                     }
                 }
                 // Drapeau à damier au point d'arrivée : même affichage que les noms de lieux (apparition avant l'arrivée).
@@ -16018,6 +16054,17 @@ def accueil():
                 document.getElementById('v3dCinemaVitesse').textContent = vitesse === null ? '—' : vitesse.toFixed(1).replace('.', ',') + ' km/h';
                 document.getElementById('v3dCinemaVitesseMax').textContent = v3d.vitesseMax === null ? '—' : Math.round(v3d.vitesseMax) + ' km/h';
                 document.getElementById('v3dCinemaVitesseMoyenne').textContent = v3d.vitesseMoyenne === null ? '—' : v3d.vitesseMoyenne.toFixed(1).replace('.', ',') + ' km/h';
+                // Puissance (seulement si la sortie en contient : Bosch ou fichier avec puissance).
+                const aPuissance = !!v3d.puissances && v3d.puissances.some(x => x !== null);
+                ['v3dCinemaPuissanceBloc', 'v3dCinemaPuissanceMaxBloc', 'v3dCinemaPuissanceMoyenneBloc'].forEach(id => {
+                    document.getElementById(id).style.display = aPuissance ? '' : 'none';
+                });
+                if (aPuissance) {
+                    const puissance = interp(v3d.puissances);
+                    document.getElementById('v3dCinemaPuissance').textContent = puissance === null ? '—' : Math.round(puissance) + ' W';
+                    document.getElementById('v3dCinemaPuissanceMax').textContent = v3d.puissanceMax === null ? '—' : Math.round(v3d.puissanceMax) + ' W';
+                    document.getElementById('v3dCinemaPuissanceMoyenne').textContent = v3d.puissanceMoyenne === null ? '—' : Math.round(v3d.puissanceMoyenne) + ' W';
+                }
                 const ligneProfil = document.getElementById('v3dCinemaProfilLigne');
                 const ligneParcourue = document.getElementById('v3dCinemaProfilParcouru');
                 const zoneParcourue = document.getElementById('v3dCinemaProfilZoneParcourue');
@@ -16867,7 +16914,7 @@ def accueil():
                 }
 
                 fermerV3d();
-                preparerParcours(sortie.trace, sortie.distance_km, sortie.vitesse_max_capteur);
+                preparerParcours(sortie.trace, sortie.distance_km, sortie.vitesse_max_capteur, sortie.donnees_bosch);
                 v3d.f = 0;
                 v3d.vitesse = 1;
                 v3d.sens = 1;
