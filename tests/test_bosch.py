@@ -438,3 +438,25 @@ def test_vitesse_max_du_capteur_gardee_avec_la_sortie():
         assert len(liste) == 2
         valeurs = sorted((s["vitesse_max_capteur"] is None, s["vitesse_max_capteur"] or 0) for s in liste)
         assert valeurs == [(False, 46.1), (True, 0)]
+
+
+def test_puissance_gardee_dans_la_trace():
+    points = []
+    for i in range(120):
+        secondes = i * 5
+        points.append(
+            '<trkpt lat="%.6f" lon="%.6f"><ele>%d</ele><time>2026-11-20T15:%02d:%02dZ</time><extensions><power>%d</power></extensions></trkpt>'
+            % (44.35 + i * 0.00013, 2.57 + i * 0.0001, 600 + i // 4, secondes // 60, secondes % 60, 100 + i)
+        )
+    gpx = '<?xml version="1.0"?><gpx version="1.1" creator="t" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>p</name><trkseg>' + "".join(points) + "</trkseg></trk></gpx>"
+    with client() as c:
+        assert c.post("/api/sorties/import?velo_id=1", headers=ENTETE, json={"gpx": gpx}).status_code == 200
+        liste = c.get("/api/sorties?velo_id=1", headers=ENTETE).json()
+        s = [x for x in liste if x["debut"].startswith("2026-11-20")][0]
+        trace = s["trace"] if isinstance(s["trace"], list) else __import__("json").loads(s["trace"])
+        assert all(len(p) == 5 and isinstance(p[4], int) for p in trace)
+        assert trace[-1][4] > trace[0][4]
+        # une sortie sans puissance garde 4 valeurs par point
+        s2 = [x for x in liste if x["debut"].startswith("2026-11-19")][0]
+        trace2 = s2["trace"] if isinstance(s2["trace"], list) else __import__("json").loads(s2["trace"])
+        assert all(len(p) == 4 for p in trace2)

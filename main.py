@@ -8493,6 +8493,19 @@ def accueil():
                 let courante = premiere ? premiere.alt : null;
                 const alts = points.map(q => { if (valable(q)) courante = q.alt; return courante; });
                 const rythme = heures.length > 1 ? heures[heures.length - 1] / (heures.length - 1) : 1;
+                // Puissance du cycliste : moyenne des mesures de Bosch autour de chaque point (environ 3 secondes).
+                const aDesWatts = points.some(q => typeof q.puiss === 'number');
+                const watts = t => {
+                    if (!aDesWatts) return undefined;
+                    const de = Math.max(0, Math.round((t - 1.5) / rythme));
+                    const a = Math.min(points.length - 1, Math.round((t + 1.5) / rythme));
+                    let somme = 0;
+                    let nombre = 0;
+                    for (let l = de; l <= a; l++) {
+                        if (typeof points[l].puiss === 'number') { somme += points[l].puiss; nombre++; }
+                    }
+                    return nombre ? Math.round(somme / nombre) : undefined;
+                };
                 const t0 = fixes[0].t;
                 const fin = fixes[fixes.length - 1].t;
                 const sortie = [];
@@ -8504,11 +8517,11 @@ def accueil():
                     const f2 = fixes[j + 1];
                     const u = f2.t > f1.t ? Math.min(Math.max((t - f1.t) / (f2.t - f1.t), 0), 1) : 0;
                     const ligne = Math.min(alts.length - 1, Math.max(0, Math.round(t / rythme)));
-                    sortie.push({ t: t - t0, lat: f1.lat + (f2.lat - f1.lat) * u, lon: f1.lon + (f2.lon - f1.lon) * u, alt: alts[ligne] });
+                    sortie.push({ t: t - t0, lat: f1.lat + (f2.lat - f1.lat) * u, lon: f1.lon + (f2.lon - f1.lon) * u, alt: alts[ligne], puiss: watts(t) });
                 }
                 const derniere = fixes[fixes.length - 1];
                 if (sortie.length && fin - t0 - sortie[sortie.length - 1].t > 1) {
-                    sortie.push({ t: fin - t0, lat: derniere.lat, lon: derniere.lon, alt: alts[alts.length - 1] });
+                    sortie.push({ t: fin - t0, lat: derniere.lat, lon: derniere.lon, alt: alts[alts.length - 1], puiss: watts(fin) });
                 }
                 return sortie;
             }
@@ -8524,7 +8537,8 @@ def accueil():
                 trace.forEach(q => {
                     const heure = new Date(debut + Math.round(q.t) * 1000).toISOString();
                     const alt = typeof q.alt === 'number' ? '<ele>' + q.alt.toFixed(1) + '</ele>' : '';
-                    lignes.push('<trkpt lat="' + q.lat.toFixed(6) + '" lon="' + q.lon.toFixed(6) + '">' + alt + '<time>' + heure + '</time></trkpt>');
+                    const puissance = typeof q.puiss === 'number' ? '<extensions><power>' + Math.round(q.puiss) + '</power></extensions>' : '';
+                    lignes.push('<trkpt lat="' + q.lat.toFixed(6) + '" lon="' + q.lon.toFixed(6) + '">' + alt + '<time>' + heure + '</time>' + puissance + '</trkpt>');
                 });
                 lignes.push('</trkseg></trk></gpx>');
                 return lignes.join(String.fromCharCode(10));
@@ -13947,6 +13961,31 @@ def accueil():
                 return sortie;
             }
 
+            // Puissance du cycliste de chaque tronçon (watts), moyennée sur environ 10 secondes. Vide si la sortie n'a pas de puissance.
+            function puissancesTroncons(trace) {
+                if (!Array.isArray(trace) || trace.length < 3) return null;
+                if (trace.some(p => !Array.isArray(p) || typeof p[2] !== 'number')) return null;
+                const avecWatts = trace.filter(p => typeof p[4] === 'number').length;
+                if (avecWatts < trace.length * 0.5) return null;
+                const n = trace.length;
+                const sortie = [];
+                for (let i = 0; i < n - 1; i++) {
+                    let a = i;
+                    let b = i + 1;
+                    while (trace[b][2] - trace[a][2] < 10 && (a > 0 || b < n - 1)) {
+                        if (a > 0) a--;
+                        if (trace[b][2] - trace[a][2] < 10 && b < n - 1) b++;
+                    }
+                    let somme = 0;
+                    let nombre = 0;
+                    for (let k = a + 1; k <= b; k++) {
+                        if (typeof trace[k][4] === 'number') { somme += trace[k][4]; nombre++; }
+                    }
+                    sortie.push(nombre ? somme / nombre : 0);
+                }
+                return sortie;
+            }
+
             // Échelle de couleurs de la vitesse : violet clair (lent) vers violet foncé (rapide).
             // Bornes prises sur la sortie elle-même (les arrêts et les pointes isolées ne tirent pas l'échelle).
             function echelleVitesses(vitesses) {
@@ -13963,12 +14002,26 @@ def accueil():
                 { rvb: [134, 25, 143] }
             ];
             const DEGRADE_VITESSE_CSS = 'linear-gradient(90deg, #f5d0fe, #d946ef, #86198f)';
+            const ARRETS_PUISSANCE = [
+                { rvb: [204, 251, 241] },
+                { rvb: [20, 184, 166] },
+                { rvb: [19, 78, 74] }
+            ];
+            const DEGRADE_PUISSANCE_CSS = 'linear-gradient(90deg, #ccfbf1, #14b8a6, #134e4a)';
+
+            function couleurEchelle(v, echelle, arrets) {
+                const t = Math.min(1, Math.max(0, (v - echelle.bas) / (echelle.haut - echelle.bas))) * (arrets.length - 1);
+                const k = Math.min(arrets.length - 2, Math.floor(t));
+                const part = t - k;
+                return rvbVersHex(arrets[k].rvb.map((x, j) => x + (arrets[k + 1].rvb[j] - x) * part));
+            }
 
             function couleurVitesse(v, echelle) {
-                const t = Math.min(1, Math.max(0, (v - echelle.bas) / (echelle.haut - echelle.bas))) * (ARRETS_VITESSE.length - 1);
-                const k = Math.min(ARRETS_VITESSE.length - 2, Math.floor(t));
-                const part = t - k;
-                return rvbVersHex(ARRETS_VITESSE[k].rvb.map((x, j) => x + (ARRETS_VITESSE[k + 1].rvb[j] - x) * part));
+                return couleurEchelle(v, echelle, ARRETS_VITESSE);
+            }
+
+            function couleurPuissance(v, echelle) {
+                return couleurEchelle(v, echelle, ARRETS_PUISSANCE);
             }
 
             function cumulTrace(trace) {
@@ -14367,6 +14420,8 @@ def accueil():
                             const features = [];
                             const vitessesFiche = pts.length === trace.length ? vitessesTroncons(trace) : null;
                             const echelleFiche = vitessesFiche ? echelleVitesses(vitessesFiche) : null;
+                            const puissancesFiche = pts.length === trace.length ? puissancesTroncons(trace) : null;
+                            const echellePuissanceFiche = puissancesFiche ? echelleVitesses(puissancesFiche) : null;
                             for (let i = 0; i < pts.length - 1; i++) {
                                 const pente = profil && profil.pentes.length === pts.length - 1 ? profil.pentes[i] : null;
                                 const couleurPenteTroncon = pente === null ? '#35e0c8' : couleurPente(pente);
@@ -14374,7 +14429,8 @@ def accueil():
                                     type: 'Feature',
                                     properties: {
                                         c: couleurPenteTroncon,
-                                        cv: echelleFiche ? couleurVitesse(vitessesFiche[i], echelleFiche) : couleurPenteTroncon
+                                        cv: echelleFiche ? couleurVitesse(vitessesFiche[i], echelleFiche) : couleurPenteTroncon,
+                                        cp: echellePuissanceFiche ? couleurPuissance(puissancesFiche[i], echellePuissanceFiche) : couleurPenteTroncon
                                     },
                                     geometry: { type: 'LineString', coordinates: [pts[i], pts[i + 1]] }
                                 });
@@ -14409,35 +14465,48 @@ def accueil():
                         });
                         blocCarte.appendChild(fond);
 
-                        // Bouton « Vitesse / Pente » : change seulement la couleur du tracé.
+                        // Bouton de couleur du tracé : Pente, Vitesse et (si la sortie la contient) Puissance. Ne change que la couleur.
                         const vitessesBouton = pts.length === trace.length ? vitessesTroncons(trace) : null;
                         const echelleBouton = vitessesBouton ? echelleVitesses(vitessesBouton) : null;
-                        if (echelleBouton) {
+                        const puissancesBouton = pts.length === trace.length ? puissancesTroncons(trace) : null;
+                        const echellePuissance = puissancesBouton ? echelleVitesses(puissancesBouton) : null;
+                        const modes = [{ nom: 'Pente', propriete: 'c', echelle: null }];
+                        if (echelleBouton) modes.push({ nom: 'Vitesse', propriete: 'cv', echelle: echelleBouton, unite: ' km/h', degrade: DEGRADE_VITESSE_CSS });
+                        if (echellePuissance) modes.push({ nom: 'Puissance', propriete: 'cp', echelle: echellePuissance, unite: ' W', degrade: DEGRADE_PUISSANCE_CSS });
+                        if (modes.length > 1) {
                             const mode = document.createElement('button');
                             mode.type = 'button';
                             mode.className = 'fiche-fond fiche-mode';
-                            mode.textContent = 'Vitesse';
                             const echelle = document.createElement('div');
                             echelle.className = 'fiche-echelle';
                             echelle.style.display = 'none';
                             const bas = document.createElement('span');
-                            bas.textContent = fmtFr(echelleBouton.bas, 0);
                             const barre = document.createElement('i');
-                            barre.style.background = DEGRADE_VITESSE_CSS;
                             const haut = document.createElement('span');
-                            haut.textContent = fmtFr(echelleBouton.haut, 0) + ' km/h';
                             echelle.appendChild(bas);
                             echelle.appendChild(barre);
                             echelle.appendChild(haut);
-                            let parVitesse = false;
-                            mode.addEventListener('click', () => {
-                                parVitesse = !parVitesse;
+                            let courant = 0;
+                            const appliquer = () => {
+                                const m = modes[courant];
                                 if (carte.getLayer('trace-ligne')) {
-                                    carte.setPaintProperty('trace-ligne', 'line-color', ['get', parVitesse ? 'cv' : 'c']);
+                                    carte.setPaintProperty('trace-ligne', 'line-color', ['get', m.propriete]);
                                 }
-                                mode.textContent = parVitesse ? 'Pente' : 'Vitesse';
-                                echelle.style.display = parVitesse ? 'flex' : 'none';
+                                mode.textContent = modes[(courant + 1) % modes.length].nom;
+                                if (m.echelle) {
+                                    bas.textContent = fmtFr(m.echelle.bas, 0);
+                                    haut.textContent = fmtFr(m.echelle.haut, 0) + m.unite;
+                                    barre.style.background = m.degrade;
+                                    echelle.style.display = 'flex';
+                                } else {
+                                    echelle.style.display = 'none';
+                                }
+                            };
+                            mode.addEventListener('click', () => {
+                                courant = (courant + 1) % modes.length;
+                                appliquer();
                             });
+                            appliquer();
                             blocCarte.appendChild(mode);
                             blocCarte.appendChild(echelle);
                         }

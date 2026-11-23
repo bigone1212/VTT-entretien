@@ -43,7 +43,7 @@ def _distance_m(a, b):
 
 
 def _lire_points(racine):
-    """Retourne les points bruts : (latitude, longitude, altitude ou None, heure)."""
+    """Retourne les points bruts : (latitude, longitude, altitude ou None, heure, puissance en watts ou None)."""
     points = []
 
     for element in racine.iter():
@@ -58,9 +58,20 @@ def _lire_points(racine):
 
         altitude = None
         heure = None
+        puissance = None
 
         for enfant in element:
             balise = _nom_balise(enfant.tag)
+
+            if balise == "extensions":
+                for detail in enfant.iter():
+                    if _nom_balise(detail.tag) == "power" and detail.text:
+                        try:
+                            watts = float(detail.text)
+                            if 0 <= watts <= 3000:
+                                puissance = watts
+                        except ValueError:
+                            pass
 
             if balise == "ele" and enfant.text:
                 try:
@@ -74,7 +85,7 @@ def _lire_points(racine):
                     pass
 
         if heure is not None:
-            points.append((lat, lon, altitude, heure))
+            points.append((lat, lon, altitude, heure, puissance))
 
     return points
 
@@ -209,26 +220,39 @@ def _tracer(points):
     n = len(points)
 
     if n <= POINTS_TRACE:
-        choisis = points
+        indices_choisis = list(range(n))
     else:
         # Une partie des points suit la forme du parcours (virages), l'autre est
         # régulièrement espacée pour garder l'altitude et le temps bien répartis.
         indices = set(_indices_virages(points, POINTS_TRACE - POINTS_REGULIERS))
         pas = (n - 1) / (POINTS_REGULIERS - 1)
         indices.update(round(i * pas) for i in range(POINTS_REGULIERS))
-        choisis = [points[i] for i in sorted(indices)]
+        indices_choisis = sorted(indices)
 
-    # 3e valeur : secondes depuis le départ (photos) ; 4e : altitude en mètres (pente).
+    # 3e valeur : secondes depuis le départ (photos) ; 4e : altitude en mètres (pente) ;
+    # 5e (seulement si le fichier la donne) : puissance moyenne du cycliste en watts, depuis le point précédent.
     depart = points[0][3]
-    return [
-        [
+    avec_puissance = any(len(p) > 4 and p[4] is not None for p in points)
+    trace = []
+    precedent = -1
+
+    for i in indices_choisis:
+        p = points[i]
+        ligne = [
             round(p[0], 5),
             round(p[1], 5),
             round((p[3] - depart).total_seconds()),
             round(p[2], 1) if p[2] is not None else None,
         ]
-        for p in choisis
-    ]
+
+        if avec_puissance:
+            valeurs = [q[4] for q in points[precedent + 1:i + 1] if len(q) > 4 and q[4] is not None]
+            ligne.append(round(sum(valeurs) / len(valeurs)) if valeurs else None)
+
+        precedent = i
+        trace.append(ligne)
+
+    return trace
 
 
 def _verifier_texte_xml(texte):
