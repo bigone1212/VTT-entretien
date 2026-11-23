@@ -8149,13 +8149,13 @@ def accueil():
                     const derniere = Number(sessionStorage.getItem('maillons_bosch_sorties_auto') || '0');
                     if (!force && Date.now() - derniere < 30 * 60 * 1000) return;
                     boschSortiesAutoEnCours = true;
-                    sessionStorage.setItem('maillons_bosch_sorties_auto', String(Date.now()));
                     const r = await fetch('/api/bosch/sorties?limite=20&decalage=0', { headers: getHeaders() });
                     if (!r.ok) return;
                     const d = await r.json();
                     const deja = boschSortiesTraitees();
+                    // Les plus récentes d'abord : si la page est rechargée en route, ce sont les nouvelles sorties qui sont déjà là.
                     const nouvelles = (d.sorties || []).filter(x => x && x.id && !deja.includes(x.id))
-                        .sort((x, y) => String(x.startTime).localeCompare(String(y.startTime)));
+                        .sort((x, y) => String(y.startTime).localeCompare(String(x.startTime)));
                     let ajoutees = 0;
                     let erreurs = 0;
                     for (const a of nouvelles) {
@@ -8166,6 +8166,8 @@ def accueil():
                             if (erreurs >= 2) break;
                         }
                     }
+                    // On ne note « vérifié » qu'une fois tout traité : si la page est rechargée en route ou s'il y a des erreurs, on reprendra à la prochaine ouverture.
+                    if (erreurs < 2) sessionStorage.setItem('maillons_bosch_sorties_auto', String(Date.now()));
                     if (ajoutees) {
                         await boschRafraichirSorties();
                         const etat = document.getElementById('boschEtat');
