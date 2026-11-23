@@ -8126,7 +8126,7 @@ def accueil():
                 } catch (e) { /* tant pis : on réessaiera à la prochaine ouverture */ }
             }
 
-            // À l'ouverture de l'appli : ajoute à Sorties les nouvelles sorties Bosch (au plus une fois toutes les 30 minutes).
+            // À l'ouverture de l'appli : ajoute à Sorties les nouvelles sorties Bosch (au plus une fois toutes les 10 minutes).
             // On regarde les 20 plus récentes. Celles déjà traitées sur cet appareil sont sautées ; une sortie déjà dans Maillons est refusée par le serveur.
             let boschSortiesAutoEnCours = false;
 
@@ -8146,8 +8146,8 @@ def accueil():
                 if (boschSortiesAutoEnCours) return;
                 try {
                     if (!Object.keys(boschLiaisons || {}).length) return;
-                    const derniere = Number(sessionStorage.getItem('maillons_bosch_sorties_auto') || '0');
-                    if (!force && Date.now() - derniere < 30 * 60 * 1000) return;
+                    const derniere = Number(sessionStorage.getItem('maillons_bosch_sorties_auto_v2') || '0');
+                    if (!force && Date.now() - derniere < 10 * 60 * 1000) return;
                     boschSortiesAutoEnCours = true;
                     const r = await fetch('/api/bosch/sorties?limite=20&decalage=0', { headers: getHeaders() });
                     if (!r.ok) return;
@@ -8167,7 +8167,7 @@ def accueil():
                         }
                     }
                     // On ne note « vérifié » qu'une fois tout traité : si la page est rechargée en route ou s'il y a des erreurs, on reprendra à la prochaine ouverture.
-                    if (erreurs < 2) sessionStorage.setItem('maillons_bosch_sorties_auto', String(Date.now()));
+                    if (erreurs < 2) sessionStorage.setItem('maillons_bosch_sorties_auto_v2', String(Date.now()));
                     if (ajoutees) {
                         await boschRafraichirSorties();
                         const etat = document.getElementById('boschEtat');
