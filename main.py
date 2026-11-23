@@ -8094,7 +8094,10 @@ def accueil():
                         rafraichirBosch();
                         return;
                     }
-                    if (d.connecte) synchroBoschAuto();
+                    if (d.connecte) {
+                        await synchroBoschAuto();
+                        boschSortiesAuto();
+                    }
                 } catch (e) { /* hors ligne : on garde l'affichage actuel */ }
             }
 
@@ -8121,6 +8124,56 @@ def accueil():
                         }
                     }
                 } catch (e) { /* tant pis : on réessaiera à la prochaine ouverture */ }
+            }
+
+            // À l'ouverture de l'appli : ajoute à Sorties les nouvelles sorties Bosch (au plus une fois toutes les 30 minutes).
+            // On regarde les 20 plus récentes. Celles déjà traitées sur cet appareil sont sautées ; une sortie déjà dans Maillons est refusée par le serveur.
+            let boschSortiesAutoEnCours = false;
+
+            function boschSortiesTraitees() {
+                try { return JSON.parse(localStorage.getItem('maillons_bosch_sorties_traitees') || '[]'); } catch (e) { return []; }
+            }
+
+            function boschMarquerTraitee(id) {
+                try {
+                    const liste = boschSortiesTraitees();
+                    if (!liste.includes(id)) liste.push(id);
+                    localStorage.setItem('maillons_bosch_sorties_traitees', JSON.stringify(liste.slice(-500)));
+                } catch (e) { /* tant pis : le serveur refusera les doublons */ }
+            }
+
+            async function boschSortiesAuto(force) {
+                if (boschSortiesAutoEnCours) return;
+                try {
+                    if (!Object.keys(boschLiaisons || {}).length) return;
+                    const derniere = Number(sessionStorage.getItem('maillons_bosch_sorties_auto') || '0');
+                    if (!force && Date.now() - derniere < 30 * 60 * 1000) return;
+                    boschSortiesAutoEnCours = true;
+                    sessionStorage.setItem('maillons_bosch_sorties_auto', String(Date.now()));
+                    const r = await fetch('/api/bosch/sorties?limite=20&decalage=0', { headers: getHeaders() });
+                    if (!r.ok) return;
+                    const d = await r.json();
+                    const deja = boschSortiesTraitees();
+                    const nouvelles = (d.sorties || []).filter(x => x && x.id && !deja.includes(x.id))
+                        .sort((x, y) => String(x.startTime).localeCompare(String(y.startTime)));
+                    let ajoutees = 0;
+                    let erreurs = 0;
+                    for (const a of nouvelles) {
+                        const res = await boschImporterUneSortie(a);
+                        if (res.etat === 'ok') ajoutees += 1;
+                        if (res.etat === 'erreur') {
+                            erreurs += 1;
+                            if (erreurs >= 2) break;
+                        }
+                    }
+                    if (ajoutees) {
+                        await boschRafraichirSorties();
+                        const etat = document.getElementById('boschEtat');
+                        if (etat) etat.textContent += ' ' + ajoutees + ' nouvelle(s) sortie(s) Bosch ajoutée(s) à Sorties.';
+                    }
+                } catch (e) { /* tant pis : on réessaiera à la prochaine ouverture */ } finally {
+                    boschSortiesAutoEnCours = false;
+                }
             }
 
             // Après « Lire mes vélos Bosch » : un menu pour relier chaque vélo Bosch à un vélo de Maillons.
@@ -8631,10 +8684,10 @@ def accueil():
                     const r = await fetch('/api/bosch/sorties/' + encodeURIComponent(a.id) + '/details', { headers: getHeaders() });
                     const d = await r.json();
                     if (!r.ok) return { etat: 'erreur', texte: d.detail || 'Tracé illisible.' };
-                    if (!d.points || d.points.length < 2) return { etat: 'ignoree', texte: "Pas de position GPS chez Bosch pour cette sortie." };
+                    if (!d.points || d.points.length < 2) { boschMarquerTraitee(a.id); return { etat: 'ignoree', texte: "Pas de position GPS chez Bosch pour cette sortie." }; }
                     const titre = a.title || ('Sortie Bosch du ' + boschDate(a.startTime));
                     const gpx = boschConstruireGpx(titre, a.startTime, d.points);
-                    if (!gpx) return { etat: 'ignoree', texte: "Pas assez de positions GPS différentes chez Bosch pour cette sortie." };
+                    if (!gpx) { boschMarquerTraitee(a.id); return { etat: 'ignoree', texte: "Pas assez de positions GPS différentes chez Bosch pour cette sortie." }; }
                     const envoi = await fetchOriginal('/api/sorties/import?velo_id=' + encodeURIComponent(veloId), {
                         method: 'POST',
                         headers: getHeaders(),
@@ -8642,9 +8695,10 @@ def accueil():
                     });
                     let rep = null;
                     try { rep = await envoi.json(); } catch (e) { rep = null; }
-                    if (envoi.status === 409) return { etat: 'deja', texte: 'Cette sortie est déjà dans Maillons.' };
-                    if (envoi.status === 400) return { etat: 'ignoree', texte: (rep && rep.detail) || 'Sortie ignorée.' };
+                    if (envoi.status === 409) { boschMarquerTraitee(a.id); return { etat: 'deja', texte: 'Cette sortie est déjà dans Maillons.' }; }
+                    if (envoi.status === 400) { boschMarquerTraitee(a.id); return { etat: 'ignoree', texte: (rep && rep.detail) || 'Sortie ignorée.' }; }
                     if (!envoi.ok) return { etat: 'erreur', texte: (rep && rep.detail) || 'Ajout impossible.' };
+                    boschMarquerTraitee(a.id);
                     const reconstitue = boschHeuresPoints(d.points);
                     const totalS = reconstitue[reconstitue.length - 1];
                     return { etat: 'ok', texte: 'Sortie ajoutée à Maillons. (Durée reconstituée : ' + boschDuree(totalS) + ' ; Bosch : ' + boschDuree(a.durationWithoutStops || 0) + ' en mouvement.)' };
