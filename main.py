@@ -8162,7 +8162,7 @@ def accueil():
                         if (res.etat === 'ok') {
                             ajoutees += 1;
                             // La sortie apparaît tout de suite dans Sorties, sans attendre la fin de la vérification des autres.
-                            if (ajoutees === 1) await boschRafraichirSorties();
+                            if (ajoutees === 1) await boschRafraichirSorties(true);
                         }
                         if (res.etat === 'erreur') {
                             erreurs += 1;
@@ -8172,7 +8172,7 @@ def accueil():
                     // On ne note « vérifié » qu'une fois tout traité : si la page est rechargée en route ou s'il y a des erreurs, on reprendra à la prochaine ouverture.
                     if (erreurs < 2) sessionStorage.setItem('maillons_bosch_sorties_auto_v2', String(Date.now()));
                     if (ajoutees) {
-                        if (ajoutees > 1) await boschRafraichirSorties();
+                        if (ajoutees > 1) await boschRafraichirSorties(true);
                         const etat = document.getElementById('boschEtat');
                         if (etat) etat.textContent += ' ' + ajoutees + ' nouvelle(s) sortie(s) Bosch ajoutée(s) à Sorties.';
                     }
@@ -8712,7 +8712,10 @@ def accueil():
                 }
             }
 
-            async function boschRafraichirSorties() {
+            // automatique = true : sortie ajoutée toute seule à l'ouverture de l'appli. Ce n'est pas une action de la personne
+            // (la synchro du kilométrage, juste avant, passait pour telle et rendait la pastille rouge silencieuse).
+            async function boschRafraichirSorties(automatique) {
+                if (automatique) derniereModifLocale = 0;
                 try {
                     if (typeof chargerSorties === 'function') await chargerSorties(false);
                     if (typeof chargerVelos === 'function') await chargerVelos();
