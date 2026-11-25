@@ -10883,12 +10883,62 @@ def accueil():
                 const fmt = (n, dec) => Number(n).toLocaleString('fr-FR', { maximumFractionDigits: dec, minimumFractionDigits: 0 });
                 if (typeof b.cycles === 'number') ligne('Cycles de charge', fmt(b.cycles, 1));
                 if (typeof b.wh === 'number' && b.wh > 0) ligne('Énergie délivrée', fmt(b.wh / 1000, 1) + ' kWh');
+                if (typeof b.cycles === 'number') {
+                    const e = santeBatterieEstimee(b.cycles / Math.max(1, Number(b.nb) || 1));
+                    const bloc = document.createElement('div');
+                    bloc.className = 'sante-bosch';
+                    bloc.style.cssText = 'margin-top:8px; padding-top:8px; border-top:1px solid var(--line);';
+                    const haut = document.createElement('div');
+                    haut.style.cssText = 'display:flex; justify-content:space-between; gap:12px; font-size:0.9rem;';
+                    const g = document.createElement('span');
+                    g.className = 'sante-nom';
+                    g.style.opacity = '0.75';
+                    g.textContent = 'Santé estimée';
+                    const v = document.createElement('strong');
+                    v.className = 'sante-valeur';
+                    v.textContent = '≈ ' + e.pct + ' % : ' + e.libelle;
+                    haut.appendChild(g);
+                    haut.appendChild(v);
+                    const piste = document.createElement('div');
+                    piste.style.cssText = 'height:8px; border-radius:999px; background:var(--field); margin-top:6px; overflow:hidden;';
+                    const barre = document.createElement('div');
+                    barre.className = 'sante-barre';
+                    barre.style.cssText = 'height:100%; border-radius:999px; width:' + e.pct + '%; background:' + e.couleur + ';';
+                    piste.appendChild(barre);
+                    const aide = document.createElement('div');
+                    aide.className = 'form-help sante-aide';
+                    aide.style.cssText = 'margin-top:6px;';
+                    aide.textContent = e.extrapole
+                        ? "Estimation à partir des cycles de charge. Tu dépasses les 1 000 cycles annoncés par Bosch : la valeur est une extrapolation."
+                        : "Estimation à partir des cycles de charge : Bosch annonce 80 % de capacité après 1 000 cycles (essai en laboratoire). Le vieillissement dû au temps, à la chaleur ou aux décharges complètes n'est pas compté : la vraie valeur peut être plus basse.";
+                    bloc.appendChild(haut);
+                    bloc.appendChild(piste);
+                    bloc.appendChild(aide);
+                    boite.appendChild(bloc);
+                }
                 const note = document.createElement('div');
                 note.className = 'form-help';
                 note.style.cssText = 'margin-top:6px;';
                 note.textContent = "Chiffres lus chez Bosch, mis à jour à l'ouverture de l'appli.";
                 boite.appendChild(note);
                 chargerCapaciteBosch(boite);
+            }
+
+            // Tendance de la santé de la batterie, d'après les cycles de charge : Bosch annonce 80 % de la capacité d'origine
+            // après 1 000 cycles (essai en laboratoire), soit environ 0,02 % de perte par cycle. Estimation indicative, pas une mesure.
+            function santeBatterieEstimee(cycles) {
+                const c = Math.max(0, Number(cycles) || 0);
+                const pct = Math.max(0, Math.min(100, Math.round(100 - 0.02 * c)));
+                return santeBatterieNiveau(pct, c > 1000);
+            }
+
+            function santeBatterieNiveau(pct, extrapole) {
+                let libelle = 'très bonne';
+                let couleur = '#2e9d5b';
+                if (pct < 70) { libelle = 'usée'; couleur = '#d64545'; }
+                else if (pct < 80) { libelle = 'à surveiller'; couleur = '#e07b00'; }
+                else if (pct < 90) { libelle = 'bonne'; couleur = '#8bb92e'; }
+                return { pct: pct, libelle: libelle, couleur: couleur, extrapole: !!extrapole };
             }
 
             // Capacité mesurée par un vélociste (testeur de capacité Bosch) : lue chez Bosch, au plus une fois par 30 minutes et par vélo.
@@ -10922,6 +10972,21 @@ def accueil():
                     const m = bat.mesures && bat.mesures[0];
                     if (m) {
                         const pct = m.nominale_wh ? ' (' + fmt(100 * m.mesuree_wh / m.nominale_wh, 0) + ' % du neuf)' : '';
+                        if (m.nominale_wh && !boite.querySelector('.sante-mesuree')) {
+                            const mes = santeBatterieNiveau(Math.max(0, Math.min(100, Math.round(100 * m.mesuree_wh / m.nominale_wh))), false);
+                            const nom = boite.querySelector('.sante-nom');
+                            const val = boite.querySelector('.sante-valeur');
+                            const bar = boite.querySelector('.sante-barre');
+                            const aid = boite.querySelector('.sante-aide');
+                            if (nom && val && bar && aid) {
+                                nom.textContent = 'Santé mesurée';
+                                val.textContent = mes.pct + ' % : ' + mes.libelle;
+                                bar.style.width = mes.pct + '%';
+                                bar.style.background = mes.couleur;
+                                aid.textContent = 'Mesure faite par un vélociste avec le testeur de capacité Bosch le ' + m.date.split('-').reverse().join('/') + " : elle remplace l'estimation.";
+                                aid.classList.add('sante-mesuree');
+                            }
+                        }
                         v.textContent = fmt(m.mesuree_wh, 0) + ' Wh' + pct + ' le ' + m.date.split('-').reverse().join('/');
                     } else if (bat.statut === 200) {
                         v.textContent = 'aucune mesure chez Bosch';
