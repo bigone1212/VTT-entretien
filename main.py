@@ -493,6 +493,17 @@ HEURES_PAR_PIECE = {
 }
 
 
+def effacer_heures_bosch_orphelines(cursor):
+    """Un vélo qui n'est plus relié (ou relié à un autre vélo Bosch) n'a plus de temps total connu :
+    on efface les heures de départ des pièces et des entretiens, qui étaient celles de l'ancien vélo Bosch."""
+    cursor.execute(
+        "UPDATE composants SET heures_depart = NULL WHERE velo_id IN (SELECT id FROM velos WHERE bosch_heures IS NULL)"
+    )
+    cursor.execute(
+        "UPDATE historique SET heures_intervention = NULL WHERE velo_id IN (SELECT id FROM velos WHERE bosch_heures IS NULL)"
+    )
+
+
 def appliquer_seuils_heures(cursor, velo_id=None):
     """Donne le réglage en heures aux pièces qui n'en ont pas encore (vide = jamais réglé).
 
@@ -1836,6 +1847,16 @@ def accueil():
                 border: 1px solid rgba(var(--ac-rgb),0.3);
                 border-radius: 999px;
                 padding: 6px 12px;
+                white-space: nowrap;
+                text-align: center;
+            }
+
+            .km-pill-heures {
+                display: block;
+                font-size: 0.7rem;
+                font-weight: 600;
+                line-height: 1.15;
+                opacity: 0.85;
             }
 
             .sync-card {
@@ -10850,7 +10871,15 @@ def accueil():
                     kmTotalActuel = Number(data.km_total) || 0;
                     etatComposants = data.composants;
 
-                    document.getElementById('veloInfo').innerText = fmtDistance(data.km_total).complet;
+                    // Temps total du vélo Bosch affiché à côté des km (seulement si le vélo est relié à Bosch).
+                    const pastilleKm = document.getElementById('veloInfo');
+                    pastilleKm.textContent = fmtDistance(data.km_total).complet;
+                    if (typeof data.heures_total === 'number' && data.heures_total > 0) {
+                        const ligneHeures = document.createElement('span');
+                        ligneHeures.className = 'km-pill-heures';
+                        ligneHeures.textContent = `${Math.round(data.heures_total)} h`;
+                        pastilleKm.appendChild(ligneHeures);
+                    }
 
                     const container =
                         document.getElementById('composantsList');
@@ -20212,13 +20241,14 @@ def bosch_lier(data: BoschLierRequest, x_code_acces: Optional[str] = Header(defa
     cursor = conn.cursor()
     try:
         cursor.execute(
-            "UPDATE velos SET bosch_bike_id = NULL, bosch_odometre_m = NULL WHERE personne_id = ? AND bosch_bike_id = ?",
+            "UPDATE velos SET bosch_bike_id = NULL, bosch_odometre_m = NULL, bosch_heures = NULL WHERE personne_id = ? AND bosch_bike_id = ?",
             (personne_id, data.bosch_id)
         )
         cursor.execute(
-            "UPDATE velos SET bosch_bike_id = ?, bosch_odometre_m = NULL WHERE id = ? AND personne_id = ?",
+            "UPDATE velos SET bosch_bike_id = ?, bosch_odometre_m = NULL, bosch_heures = NULL WHERE id = ? AND personne_id = ?",
             (data.bosch_id, data.velo_id, personne_id)
         )
+        effacer_heures_bosch_orphelines(cursor)
         conn.commit()
         return {"ok": True}
     except Exception:
@@ -20235,9 +20265,10 @@ def bosch_delier(velo_id: int, x_code_acces: Optional[str] = Header(default=None
     cursor = conn.cursor()
     try:
         cursor.execute(
-            "UPDATE velos SET bosch_bike_id = NULL, bosch_odometre_m = NULL WHERE id = ? AND personne_id = ?",
+            "UPDATE velos SET bosch_bike_id = NULL, bosch_odometre_m = NULL, bosch_heures = NULL WHERE id = ? AND personne_id = ?",
             (velo_id, personne_id)
         )
+        effacer_heures_bosch_orphelines(cursor)
         conn.commit()
         return {"ok": True}
     finally:
@@ -20290,9 +20321,10 @@ def bosch_synchroniser(x_code_acces: Optional[str] = Header(default=None)):
                     candidats = [r[0] for r in tous if "electri" in str(r[3] or "").lower()]
                 if len(candidats) == 1:
                     cursor.execute(
-                        "UPDATE velos SET bosch_bike_id = ?, bosch_odometre_m = NULL WHERE id = ? AND personne_id = ?",
+                        "UPDATE velos SET bosch_bike_id = ?, bosch_odometre_m = NULL, bosch_heures = NULL WHERE id = ? AND personne_id = ?",
                         (ids_bosch[0], candidats[0], personne_id)
                     )
+                    effacer_heures_bosch_orphelines(cursor)
                     conn.commit()
                     liees = [(candidats[0], ids_bosch[0], None)]
             finally:
@@ -22978,6 +23010,8 @@ def obtenir_etat(
 
         return {
             "km_total": km_global,
+            # Temps total du vélo Bosch en heures (vide si le vélo n'est pas relié à Bosch).
+            "heures_total": heures_velo,
             "composants": resultat
         }
 

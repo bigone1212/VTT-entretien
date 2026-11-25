@@ -155,3 +155,23 @@ def test_sans_temps_total_le_km_continue_de_se_mettre_a_jour():
         cur.execute("SELECT bosch_heures FROM velos WHERE id = 1")
         assert cur.fetchone()[0] is None
         conn.close()
+
+
+def test_temps_total_visible_et_effacé_quand_on_delie_le_velo():
+    with TestClient(main.app, base_url="https://x.onrender.com", follow_redirects=False) as c:
+        preparer(c)
+        faux_bosch(118.4)
+        c.post("/api/bosch/synchro", headers=ENTETE)
+        etat = c.get("/api/etat?velo_id=1", headers=ENTETE).json()
+        assert etat["heures_total"] == 118.4
+
+        # On délie le vélo : plus de temps total, les pièces repassent en jours
+        assert c.delete("/api/bosch/lier/1", headers=ENTETE).status_code == 200
+        etat = c.get("/api/etat?velo_id=1", headers=ENTETE).json()
+        assert etat["heures_total"] is None
+        assert all(p["heures_ecoulees"] is None for p in etat["composants"])
+        conn = main.db.connect()
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM composants WHERE velo_id = 1 AND heures_depart IS NOT NULL")
+        assert cur.fetchone()[0] == 0
+        conn.close()
