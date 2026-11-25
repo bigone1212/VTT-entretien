@@ -1117,6 +1117,7 @@ def init_db():
     ajouter_colonne(cursor, "composants", "heures_depart", "DOUBLE PRECISION")
     ajouter_colonne(cursor, "historique", "heures_intervention", "DOUBLE PRECISION")
     ajouter_colonne(cursor, "velos", "bosch_heures", "DOUBLE PRECISION")
+    ajouter_colonne(cursor, "velos", "bosch_batterie", "TEXT")
     appliquer_seuils_heures(cursor)
     ajouter_colonne(cursor, "velo", "date_achat", "TEXT")
     cursor.execute(
@@ -5040,6 +5041,8 @@ def accueil():
         <div id="composantsList" class="grid">
             <div class="loading">Chargement des composants...</div>
         </div>
+
+        <section class="sync-card" id="batterieBosch" style="display:none;" aria-label="Batterie Bosch"></section>
 
         <div class="sync-card">
             <label for="kmInput">Kilométrage total du VTTAE (saisie en km)</label>
@@ -10854,6 +10857,39 @@ def accueil():
                 }
             }
 
+            // Encadré batterie (données lues chez Bosch, seulement si le vélo est relié à Bosch).
+            function afficherBatterieBosch(b, kmTotal) {
+                const boite = document.getElementById('batterieBosch');
+                if (!boite) return;
+                boite.replaceChildren();
+                if (!b || typeof b !== 'object') { boite.style.display = 'none'; return; }
+                boite.style.display = '';
+                const titre = document.createElement('div');
+                titre.style.cssText = 'font-weight:700; margin-bottom:8px;';
+                titre.textContent = b.nb > 1 ? 'Batteries Bosch' : 'Batterie Bosch';
+                boite.appendChild(titre);
+                const ligne = (nom, valeur) => {
+                    const l = document.createElement('div');
+                    l.style.cssText = 'display:flex; justify-content:space-between; gap:12px; padding:4px 0; font-size:0.9rem;';
+                    const g = document.createElement('span');
+                    g.style.opacity = '0.75';
+                    g.textContent = nom;
+                    const d = document.createElement('strong');
+                    d.textContent = valeur;
+                    l.appendChild(g);
+                    l.appendChild(d);
+                    boite.appendChild(l);
+                };
+                const fmt = (n, dec) => Number(n).toLocaleString('fr-FR', { maximumFractionDigits: dec, minimumFractionDigits: 0 });
+                if (typeof b.cycles === 'number') ligne('Cycles de charge', fmt(b.cycles, 1));
+                if (typeof b.wh === 'number' && b.wh > 0) ligne('Énergie délivrée', fmt(b.wh / 1000, 1) + ' kWh');
+                const note = document.createElement('div');
+                note.className = 'form-help';
+                note.style.cssText = 'margin-top:6px;';
+                note.textContent = "Chiffres lus chez Bosch, mis à jour à l'ouverture de l'appli.";
+                boite.appendChild(note);
+            }
+
             async function chargerEtat() {
                 try {
                     const res = await fetch('/api/etat', { headers: getHeaders() });
@@ -10880,6 +10916,8 @@ def accueil():
                         ligneHeures.textContent = `${Math.round(data.heures_total)} h`;
                         pastilleKm.appendChild(ligneHeures);
                     }
+
+                    afficherBatterieBosch(data.batterie, data.km_total);
 
                     const container =
                         document.getElementById('composantsList');
@@ -20241,11 +20279,11 @@ def bosch_lier(data: BoschLierRequest, x_code_acces: Optional[str] = Header(defa
     cursor = conn.cursor()
     try:
         cursor.execute(
-            "UPDATE velos SET bosch_bike_id = NULL, bosch_odometre_m = NULL, bosch_heures = NULL WHERE personne_id = ? AND bosch_bike_id = ?",
+            "UPDATE velos SET bosch_bike_id = NULL, bosch_odometre_m = NULL, bosch_heures = NULL, bosch_batterie = NULL WHERE personne_id = ? AND bosch_bike_id = ?",
             (personne_id, data.bosch_id)
         )
         cursor.execute(
-            "UPDATE velos SET bosch_bike_id = ?, bosch_odometre_m = NULL, bosch_heures = NULL WHERE id = ? AND personne_id = ?",
+            "UPDATE velos SET bosch_bike_id = ?, bosch_odometre_m = NULL, bosch_heures = NULL, bosch_batterie = NULL WHERE id = ? AND personne_id = ?",
             (data.bosch_id, data.velo_id, personne_id)
         )
         effacer_heures_bosch_orphelines(cursor)
@@ -20265,7 +20303,7 @@ def bosch_delier(velo_id: int, x_code_acces: Optional[str] = Header(default=None
     cursor = conn.cursor()
     try:
         cursor.execute(
-            "UPDATE velos SET bosch_bike_id = NULL, bosch_odometre_m = NULL, bosch_heures = NULL WHERE id = ? AND personne_id = ?",
+            "UPDATE velos SET bosch_bike_id = NULL, bosch_odometre_m = NULL, bosch_heures = NULL, bosch_batterie = NULL WHERE id = ? AND personne_id = ?",
             (velo_id, personne_id)
         )
         effacer_heures_bosch_orphelines(cursor)
@@ -20273,6 +20311,35 @@ def bosch_delier(velo_id: int, x_code_acces: Optional[str] = Header(default=None
         return {"ok": True}
     finally:
         conn.close()
+
+
+def resume_batterie_bosch(batteries):
+    """Résume les batteries Bosch d'un vélo : cycles de charge et énergie délivrée (Wh) depuis le début."""
+    if not isinstance(batteries, list):
+        return None
+    cycles = 0.0
+    wh = 0.0
+    nb = 0
+    noms = []
+    for bat in batteries:
+        if not isinstance(bat, dict):
+            continue
+        cc = (bat.get("chargeCycles") or {}).get("total")
+        dwh = bat.get("deliveredWhOverLifetime")
+        ok_cc = isinstance(cc, (int, float)) and not isinstance(cc, bool) and cc >= 0
+        ok_wh = isinstance(dwh, (int, float)) and not isinstance(dwh, bool) and dwh >= 0
+        if not ok_cc and not ok_wh:
+            continue
+        nb += 1
+        if ok_cc:
+            cycles += float(cc)
+        if ok_wh:
+            wh += float(dwh)
+        if bat.get("productName"):
+            noms.append(str(bat.get("productName"))[:60])
+    if nb == 0:
+        return None
+    return {"cycles": round(cycles, 1), "wh": int(round(wh)), "nb": nb, "noms": noms}
 
 
 @app.post("/api/bosch/synchro")
@@ -20321,7 +20388,7 @@ def bosch_synchroniser(x_code_acces: Optional[str] = Header(default=None)):
                     candidats = [r[0] for r in tous if "electri" in str(r[3] or "").lower()]
                 if len(candidats) == 1:
                     cursor.execute(
-                        "UPDATE velos SET bosch_bike_id = ?, bosch_odometre_m = NULL, bosch_heures = NULL WHERE id = ? AND personne_id = ?",
+                        "UPDATE velos SET bosch_bike_id = ?, bosch_odometre_m = NULL, bosch_heures = NULL, bosch_batterie = NULL WHERE id = ? AND personne_id = ?",
                         (ids_bosch[0], candidats[0], personne_id)
                     )
                     effacer_heures_bosch_orphelines(cursor)
@@ -20347,6 +20414,12 @@ def bosch_synchroniser(x_code_acces: Optional[str] = Header(default=None)):
                     "UPDATE composants SET heures_depart = ? WHERE velo_id = ? AND heures_depart IS NULL AND seuil_heures > 0",
                     (float(heures), ligne[0])
                 )
+            # Batterie : cycles de charge et énergie délivrée depuis le début, gardés pour l'onglet Entretien.
+            batterie = resume_batterie_bosch((velo or {}).get("batteries"))
+            cursor.execute(
+                "UPDATE velos SET bosch_batterie = ? WHERE id = ?",
+                (json.dumps(batterie) if batterie else None, ligne[0])
+            )
             odo = ((velo or {}).get("driveUnit") or {}).get("odometer")
             if not isinstance(odo, (int, float)) or isinstance(odo, bool) or odo <= 0:
                 continue
@@ -22813,7 +22886,7 @@ def obtenir_etat(
 
     try:
         cursor.execute("""
-            SELECT id, km_total, date_achat, legacy_velo_id, suivi_depuis, bosch_heures
+            SELECT id, km_total, date_achat, legacy_velo_id, suivi_depuis, bosch_heures, bosch_batterie
             FROM velos
             WHERE id = ? AND actif = 1
         """, (velo_id,))
@@ -22825,6 +22898,11 @@ def obtenir_etat(
         km_global = velo["km_total"] if velo["km_total"] is not None else 0
         # Temps total donné par le vélo Bosch (heures) : vide si le vélo n'est pas relié à Bosch.
         heures_velo = velo["bosch_heures"]
+        batterie_velo = None
+        try:
+            batterie_velo = json.loads(velo["bosch_batterie"]) if velo["bosch_batterie"] else None
+        except Exception:
+            batterie_velo = None
         date_achat = velo["date_achat"] or (
             DATE_ACHAT_PAR_DEFAUT
             if velo["legacy_velo_id"] == 1
@@ -23012,6 +23090,7 @@ def obtenir_etat(
             "km_total": km_global,
             # Temps total du vélo Bosch en heures (vide si le vélo n'est pas relié à Bosch).
             "heures_total": heures_velo,
+            "batterie": batterie_velo,
             "composants": resultat
         }
 
