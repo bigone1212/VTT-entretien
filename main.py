@@ -477,6 +477,51 @@ NOMS_VERIFICATIONS = (
 )
 
 
+# Entretiens liés à l'usage : comptés en heures (temps total donné par le vélo Bosch) quand le vélo est relié à Bosch.
+# Les entretiens liés au calendrier (liquide de frein, tubeless, contrôle annuel, batterie) restent en jours.
+HEURES_PAR_PIECE = {
+    "Pneus - pression et état (contrôle)": 8,
+    "Fourche - pression et SAG (contrôle)": 15,
+    "Amortisseur - pression et SAG (contrôle)": 15,
+    "Rayons et voile des roues (contrôle)": 80,
+    "Contrôle des serrages (potence, cintre, roues, pédalier)": 80,
+    "Contrôle des serrages (vis et boulons)": 80,
+    "Pédales (graissage et jeu)": 150,
+    "Roulements de moyeux (avant + arrière)": 150,
+    "Roulements de suspension (biellettes)": 150,
+    "Jeu de direction (contrôle et graissage)": 150,
+}
+
+
+def effacer_heures_bosch_orphelines(cursor):
+    """Un vélo qui n'est plus relié (ou relié à un autre vélo Bosch) n'a plus de temps total connu :
+    on efface les heures de départ des pièces et des entretiens, qui étaient celles de l'ancien vélo Bosch."""
+    cursor.execute(
+        "UPDATE composants SET heures_depart = NULL WHERE velo_id IN (SELECT id FROM velos WHERE bosch_heures IS NULL)"
+    )
+    cursor.execute(
+        "UPDATE historique SET heures_intervention = NULL WHERE velo_id IN (SELECT id FROM velos WHERE bosch_heures IS NULL)"
+    )
+
+
+def appliquer_seuils_heures(cursor, velo_id=None):
+    """Donne le réglage en heures aux pièces qui n'en ont pas encore (vide = jamais réglé).
+
+    Un 0 choisi par la personne est respecté : seules les cases vides sont remplies.
+    """
+    for nom, heures in HEURES_PAR_PIECE.items():
+        if velo_id is None:
+            cursor.execute(
+                "UPDATE composants SET seuil_heures = ? WHERE nom = ? AND seuil_heures IS NULL",
+                (heures, nom)
+            )
+        else:
+            cursor.execute(
+                "UPDATE composants SET seuil_heures = ? WHERE nom = ? AND velo_id = ? AND seuil_heures IS NULL",
+                (heures, nom, velo_id)
+            )
+
+
 def marquer_verifications_une_fois(cursor):
     cursor.execute(
         "SELECT valeur FROM reglages WHERE cle = ?",
@@ -698,6 +743,7 @@ def mettre_a_niveau_un_velo(cursor, velo_id, type_velo):
             VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, 1)
         """, (velo_id, nom, km, jours, categorie, x, y, verification))
         noms.add(nom)
+    appliquer_seuils_heures(cursor, velo_id)
 
 
 def mettre_a_niveau_velos(cursor):
@@ -1065,6 +1111,14 @@ def init_db():
     ajouter_colonne(cursor, "composants", "seuil_jours", "INTEGER DEFAULT 0")
     ajouter_colonne(cursor, "composants", "verification", "INTEGER DEFAULT 0")
     ajouter_colonne(cursor, "composants", "coef_usure", "DOUBLE PRECISION DEFAULT 1")
+    # Temps total Bosch (en heures) : réglage de la pièce, heures du vélo au départ du compteur de la pièce,
+    # et heures du vélo à chaque entretien (vide quand on ne les connaît pas).
+    ajouter_colonne(cursor, "composants", "seuil_heures", "INTEGER")
+    ajouter_colonne(cursor, "composants", "heures_depart", "DOUBLE PRECISION")
+    ajouter_colonne(cursor, "historique", "heures_intervention", "DOUBLE PRECISION")
+    ajouter_colonne(cursor, "velos", "bosch_heures", "DOUBLE PRECISION")
+    ajouter_colonne(cursor, "velos", "bosch_batterie", "TEXT")
+    appliquer_seuils_heures(cursor)
     ajouter_colonne(cursor, "velo", "date_achat", "TEXT")
     cursor.execute(
         "UPDATE velo SET date_achat = ? WHERE id = 1 AND date_achat IS NULL",
@@ -1180,6 +1234,8 @@ def init_db():
 
     migrer_composants_v2(cursor)
     mettre_a_niveau_velos(cursor)
+    # Une fois toutes les pièces en place : réglage en heures des pièces qui n'en ont pas encore.
+    appliquer_seuils_heures(cursor)
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS bibliotheque_lieux_geo (
@@ -1241,6 +1297,8 @@ class MesReglagesRequest(BaseModel):
 class SeuilsRequest(BaseModel):
     seuil_alerte: int = Field(ge=0, le=200000)
     seuil_jours: int = Field(ge=0, le=3650)
+    # Vide = on ne touche pas au réglage en heures (ancienne version de l'appli encore ouverte).
+    seuil_heures: Optional[int] = Field(default=None, ge=0, le=100000)
 
 
 class CoefsPiecesRequest(BaseModel):
@@ -1790,6 +1848,16 @@ def accueil():
                 border: 1px solid rgba(var(--ac-rgb),0.3);
                 border-radius: 999px;
                 padding: 6px 12px;
+                white-space: nowrap;
+                text-align: center;
+            }
+
+            .km-pill-heures {
+                display: block;
+                font-size: 0.7rem;
+                font-weight: 600;
+                line-height: 1.15;
+                opacity: 0.85;
             }
 
             .sync-card {
@@ -3528,7 +3596,7 @@ def accueil():
             .v3d-cinema-marque { display: flex; align-items: center; gap: 9px; color: #65e6d4; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.19em; }
             .v3d-cinema-logo { width: 22px; height: 22px; flex-shrink: 0; border-radius: 6px; }
             .v3d-cinema-nom { margin-top: 7px; font-size: clamp(1.05rem, 2.2vw, 1.65rem); font-weight: 750; line-height: 1.15; text-shadow: 0 2px 8px rgba(0,0,0,0.5); }
-            .v3d-cinema-date { margin-top: 5px; color: rgba(255,255,255,0.72); font-size: 0.78rem; letter-spacing: 0.06em; }
+            .v3d-cinema-date { margin-left: auto; padding-left: 14px; color: rgba(255,255,255,0.72); font-size: 0.78rem; font-weight: 500; letter-spacing: 0.06em; white-space: nowrap; }
             .v3d-cinema-stats { display: flex; flex-wrap: wrap; gap: 12px 20px; margin-top: 13px; }
             .v3d-cinema-stat { min-width: 62px; }
             .v3d-cinema-stat strong { display: block; font-size: 1.12rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -4188,14 +4256,14 @@ def accueil():
                 padding: 6px 12px;
                 display: grid;
                 grid-template-columns: auto minmax(0, 1fr) minmax(0, 34%);
-                grid-template-areas: "marque stats profil" "nom stats profil" "date stats profil";
+                grid-template-areas: "marque stats profil" "nom stats profil";
                 column-gap: 18px;
                 align-items: center;
             }
             :root.paysage .v3d-cinema-marque { grid-area: marque; font-size: 0.6rem; }
             :root.paysage .v3d-cinema-logo { width: 16px; height: 16px; }
             :root.paysage .v3d-cinema-nom { grid-area: nom; margin-top: 2px; font-size: 0.95rem; max-width: 24vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-            :root.paysage .v3d-cinema-date { grid-area: date; margin-top: 1px; font-size: 0.66rem; }
+            :root.paysage .v3d-cinema-date { font-size: 0.66rem; }
             :root.paysage .v3d-cinema-stats { grid-area: stats; margin-top: 0; gap: 4px 12px; justify-content: space-between; }
             :root.paysage .v3d-cinema-stat { min-width: 0; }
             :root.paysage .v3d-cinema-stat strong { font-size: 0.82rem; }
@@ -4839,9 +4907,8 @@ def accueil():
                 </div>
             </div>
             <div class="v3d-cinema-hud" id="v3dCinemaHud" aria-hidden="true">
-                <div class="v3d-cinema-marque"><svg class="v3d-cinema-logo" role="img" aria-label="Maillons"><use href="#logo-maillon"/></svg><span>MAILLONS</span></div>
+                <div class="v3d-cinema-marque"><svg class="v3d-cinema-logo" role="img" aria-label="Maillons"><use href="#logo-maillon"/></svg><span>MAILLONS</span><div class="v3d-cinema-date" id="v3dCinemaDate"></div></div>
                 <div class="v3d-cinema-nom" id="v3dCinemaNom"></div>
-                <div class="v3d-cinema-date" id="v3dCinemaDate"></div>
                 <div class="v3d-cinema-stats">
                     <div class="v3d-cinema-stat"><strong id="v3dCinemaDistance">0,0 km</strong><span>Distance</span></div>
                     <div class="v3d-cinema-stat" id="v3dCinemaDeniveleBloc"><strong id="v3dCinemaDenivele">D+ 0 m</strong><span>D+ cumulé</span></div>
@@ -4974,6 +5041,8 @@ def accueil():
         <div id="composantsList" class="grid">
             <div class="loading">Chargement des composants...</div>
         </div>
+
+        <section class="sync-card" id="batterieBosch" style="display:none;" aria-label="Batterie Bosch"></section>
 
         <div class="sync-card">
             <label for="kmInput">Kilométrage total du VTTAE (saisie en km)</label>
@@ -8163,7 +8232,7 @@ def accueil():
                         if (res.etat === 'ok') {
                             ajoutees += 1;
                             // La sortie apparaît tout de suite dans Sorties, sans attendre la fin de la vérification des autres.
-                            if (ajoutees === 1) await boschRafraichirSorties();
+                            if (ajoutees === 1) await boschRafraichirSorties(true);
                         }
                         if (res.etat === 'erreur') {
                             erreurs += 1;
@@ -8173,7 +8242,7 @@ def accueil():
                     // On ne note « vérifié » qu'une fois tout traité : si la page est rechargée en route ou s'il y a des erreurs, on reprendra à la prochaine ouverture.
                     if (erreurs < 2) sessionStorage.setItem('maillons_bosch_sorties_auto_v2', String(Date.now()));
                     if (ajoutees) {
-                        if (ajoutees > 1) await boschRafraichirSorties();
+                        if (ajoutees > 1) await boschRafraichirSorties(true);
                         const etat = document.getElementById('boschEtat');
                         if (etat) etat.textContent += ' ' + ajoutees + ' nouvelle(s) sortie(s) Bosch ajoutée(s) à Sorties.';
                     }
@@ -8713,7 +8782,10 @@ def accueil():
                 }
             }
 
-            async function boschRafraichirSorties() {
+            // automatique = true : sortie ajoutée toute seule à l'ouverture de l'appli. Ce n'est pas une action de la personne
+            // (la synchro du kilométrage, juste avant, passait pour telle et rendait la pastille rouge silencieuse).
+            async function boschRafraichirSorties(automatique) {
+                if (automatique) derniereModifLocale = 0;
                 try {
                     if (typeof chargerSorties === 'function') await chargerSorties(false);
                     if (typeof chargerVelos === 'function') await chargerVelos();
@@ -10431,7 +10503,21 @@ def accueil():
                 return nom.split(' - ')[0].split(' (')[0];
             }
 
+            // Pièce comptée en heures de roulage (temps total Bosch) : seulement si le vélo est relié à Bosch.
+            function enHeures(c) {
+                return c.seuil_heures > 0 && typeof c.heures_ecoulees === 'number';
+            }
+
+            function fmtHeures(h) {
+                return `${String(Math.round(h * 10) / 10).replace('.', ',')} h`;
+            }
+
             function texteDelai(c) {
+                if (enHeures(c)) {
+                    const usure = typeof c.heures_usure === 'number' ? c.heures_usure : c.heures_ecoulees;
+                    const resteH = c.seuil_heures - usure;
+                    return resteH >= 0 ? fmtHeures(resteH) : `+${fmtHeures(-resteH)}`;
+                }
                 if (!(c.seuil_jours > 0) || c.jours_ecoules === null) return '';
                 const ecoules = typeof c.jours_usure === 'number' ? c.jours_usure : c.jours_ecoules;
                 const reste = c.seuil_jours - ecoules;
@@ -10610,9 +10696,11 @@ def accueil():
                 nom.textContent = v.nom;
                 const info = document.createElement('div');
                 info.className = 'vd-info';
-                info.textContent = v.seuil_jours > 0
-                    ? `Fait il y a ${v.jours_ecoules} j · à refaire tous les ${v.seuil_jours} j`
-                    : `Seuil : ${fmtDistance(v.seuil_alerte).complet}`;
+                info.textContent = enHeures(v)
+                    ? `Roulé depuis le dernier contrôle : ${fmtHeures(v.heures_ecoulees)} · à refaire toutes les ${v.seuil_heures} h`
+                    : v.seuil_jours > 0
+                        ? `Fait il y a ${v.jours_ecoules} j · à refaire tous les ${v.seuil_jours} j`
+                        : `Seuil : ${fmtDistance(v.seuil_alerte).complet}`;
                 detail.appendChild(nom);
                 detail.appendChild(info);
 
@@ -10726,6 +10814,11 @@ def accueil():
                     c.seuil_jours || 0
                 );
                 if (jours === null) return;
+                const heures = prompt(
+                    `Seuil en heures de roulage (temps total du vélo Bosch) pour « ${c.nom} » (0 = aucun) :`,
+                    c.seuil_heures || 0
+                );
+                if (heures === null) return;
 
                 try {
                     const res = await fetch(`/api/composants/${c.id}/seuils`, {
@@ -10733,7 +10826,8 @@ def accueil():
                         headers: getHeaders(),
                         body: JSON.stringify({
                             seuil_alerte: parseInt(km, 10) || 0,
-                            seuil_jours: parseInt(jours, 10) || 0
+                            seuil_jours: parseInt(jours, 10) || 0,
+                            seuil_heures: parseInt(heures, 10) || 0
                         })
                     });
                     if (!res.ok) {
@@ -10763,6 +10857,39 @@ def accueil():
                 }
             }
 
+            // Encadré batterie (données lues chez Bosch, seulement si le vélo est relié à Bosch).
+            function afficherBatterieBosch(b, kmTotal) {
+                const boite = document.getElementById('batterieBosch');
+                if (!boite) return;
+                boite.replaceChildren();
+                if (!b || typeof b !== 'object') { boite.style.display = 'none'; return; }
+                boite.style.display = '';
+                const titre = document.createElement('div');
+                titre.style.cssText = 'font-weight:700; margin-bottom:8px;';
+                titre.textContent = b.nb > 1 ? 'Batteries Bosch' : 'Batterie Bosch';
+                boite.appendChild(titre);
+                const ligne = (nom, valeur) => {
+                    const l = document.createElement('div');
+                    l.style.cssText = 'display:flex; justify-content:space-between; gap:12px; padding:4px 0; font-size:0.9rem;';
+                    const g = document.createElement('span');
+                    g.style.opacity = '0.75';
+                    g.textContent = nom;
+                    const d = document.createElement('strong');
+                    d.textContent = valeur;
+                    l.appendChild(g);
+                    l.appendChild(d);
+                    boite.appendChild(l);
+                };
+                const fmt = (n, dec) => Number(n).toLocaleString('fr-FR', { maximumFractionDigits: dec, minimumFractionDigits: 0 });
+                if (typeof b.cycles === 'number') ligne('Cycles de charge', fmt(b.cycles, 1));
+                if (typeof b.wh === 'number' && b.wh > 0) ligne('Énergie délivrée', fmt(b.wh / 1000, 1) + ' kWh');
+                const note = document.createElement('div');
+                note.className = 'form-help';
+                note.style.cssText = 'margin-top:6px;';
+                note.textContent = "Chiffres lus chez Bosch, mis à jour à l'ouverture de l'appli.";
+                boite.appendChild(note);
+            }
+
             async function chargerEtat() {
                 try {
                     const res = await fetch('/api/etat', { headers: getHeaders() });
@@ -10780,7 +10907,17 @@ def accueil():
                     kmTotalActuel = Number(data.km_total) || 0;
                     etatComposants = data.composants;
 
-                    document.getElementById('veloInfo').innerText = fmtDistance(data.km_total).complet;
+                    // Temps total du vélo Bosch affiché à côté des km (seulement si le vélo est relié à Bosch).
+                    const pastilleKm = document.getElementById('veloInfo');
+                    pastilleKm.textContent = fmtDistance(data.km_total).complet;
+                    if (typeof data.heures_total === 'number' && data.heures_total > 0) {
+                        const ligneHeures = document.createElement('span');
+                        ligneHeures.className = 'km-pill-heures';
+                        ligneHeures.textContent = `${Math.round(data.heures_total)} h`;
+                        pastilleKm.appendChild(ligneHeures);
+                    }
+
+                    afficherBatterieBosch(data.batterie, data.km_total);
 
                     const container =
                         document.getElementById('composantsList');
@@ -10897,7 +11034,16 @@ def accueil():
                             statsRow.appendChild(thresholdText);
                         }
 
-                        if (c.seuil_jours > 0) {
+                        if (enHeures(c)) {
+                            const hTxt = document.createElement('span');
+                            hTxt.textContent =
+                                `Temps roulé : ${fmtHeures(c.heures_ecoulees)}`;
+                            const hSeuil = document.createElement('span');
+                            hSeuil.textContent =
+                                `Toutes les ${c.seuil_heures} h`;
+                            statsRow.appendChild(hTxt);
+                            statsRow.appendChild(hSeuil);
+                        } else if (c.seuil_jours > 0) {
                             const jTxt = document.createElement('span');
                             jTxt.textContent =
                                 `Temps écoulé : ${c.jours_ecoules} j`;
@@ -20133,13 +20279,14 @@ def bosch_lier(data: BoschLierRequest, x_code_acces: Optional[str] = Header(defa
     cursor = conn.cursor()
     try:
         cursor.execute(
-            "UPDATE velos SET bosch_bike_id = NULL, bosch_odometre_m = NULL WHERE personne_id = ? AND bosch_bike_id = ?",
+            "UPDATE velos SET bosch_bike_id = NULL, bosch_odometre_m = NULL, bosch_heures = NULL, bosch_batterie = NULL WHERE personne_id = ? AND bosch_bike_id = ?",
             (personne_id, data.bosch_id)
         )
         cursor.execute(
-            "UPDATE velos SET bosch_bike_id = ?, bosch_odometre_m = NULL WHERE id = ? AND personne_id = ?",
+            "UPDATE velos SET bosch_bike_id = ?, bosch_odometre_m = NULL, bosch_heures = NULL, bosch_batterie = NULL WHERE id = ? AND personne_id = ?",
             (data.bosch_id, data.velo_id, personne_id)
         )
+        effacer_heures_bosch_orphelines(cursor)
         conn.commit()
         return {"ok": True}
     except Exception:
@@ -20156,13 +20303,43 @@ def bosch_delier(velo_id: int, x_code_acces: Optional[str] = Header(default=None
     cursor = conn.cursor()
     try:
         cursor.execute(
-            "UPDATE velos SET bosch_bike_id = NULL, bosch_odometre_m = NULL WHERE id = ? AND personne_id = ?",
+            "UPDATE velos SET bosch_bike_id = NULL, bosch_odometre_m = NULL, bosch_heures = NULL, bosch_batterie = NULL WHERE id = ? AND personne_id = ?",
             (velo_id, personne_id)
         )
+        effacer_heures_bosch_orphelines(cursor)
         conn.commit()
         return {"ok": True}
     finally:
         conn.close()
+
+
+def resume_batterie_bosch(batteries):
+    """Résume les batteries Bosch d'un vélo : cycles de charge et énergie délivrée (Wh) depuis le début."""
+    if not isinstance(batteries, list):
+        return None
+    cycles = 0.0
+    wh = 0.0
+    nb = 0
+    noms = []
+    for bat in batteries:
+        if not isinstance(bat, dict):
+            continue
+        cc = (bat.get("chargeCycles") or {}).get("total")
+        dwh = bat.get("deliveredWhOverLifetime")
+        ok_cc = isinstance(cc, (int, float)) and not isinstance(cc, bool) and cc >= 0
+        ok_wh = isinstance(dwh, (int, float)) and not isinstance(dwh, bool) and dwh >= 0
+        if not ok_cc and not ok_wh:
+            continue
+        nb += 1
+        if ok_cc:
+            cycles += float(cc)
+        if ok_wh:
+            wh += float(dwh)
+        if bat.get("productName"):
+            noms.append(str(bat.get("productName"))[:60])
+    if nb == 0:
+        return None
+    return {"cycles": round(cycles, 1), "wh": int(round(wh)), "nb": nb, "noms": noms}
 
 
 @app.post("/api/bosch/synchro")
@@ -20211,9 +20388,10 @@ def bosch_synchroniser(x_code_acces: Optional[str] = Header(default=None)):
                     candidats = [r[0] for r in tous if "electri" in str(r[3] or "").lower()]
                 if len(candidats) == 1:
                     cursor.execute(
-                        "UPDATE velos SET bosch_bike_id = ?, bosch_odometre_m = NULL WHERE id = ? AND personne_id = ?",
+                        "UPDATE velos SET bosch_bike_id = ?, bosch_odometre_m = NULL, bosch_heures = NULL, bosch_batterie = NULL WHERE id = ? AND personne_id = ?",
                         (ids_bosch[0], candidats[0], personne_id)
                     )
+                    effacer_heures_bosch_orphelines(cursor)
                     conn.commit()
                     liees = [(candidats[0], ids_bosch[0], None)]
             finally:
@@ -20227,6 +20405,21 @@ def bosch_synchroniser(x_code_acces: Optional[str] = Header(default=None)):
     try:
         for ligne in liees:
             velo = par_id.get(ligne[1])
+            # Temps total du vélo (heures allumé) : pris à chaque synchro, indépendamment du kilométrage.
+            heures = (((velo or {}).get("driveUnit") or {}).get("powerOnTime") or {}).get("total")
+            if isinstance(heures, (int, float)) and not isinstance(heures, bool) and heures > 0:
+                cursor.execute("UPDATE velos SET bosch_heures = ? WHERE id = ?", (float(heures), ligne[0]))
+                # Les pièces comptées en heures qui n'ont pas encore de point de départ démarrent à cet instant.
+                cursor.execute(
+                    "UPDATE composants SET heures_depart = ? WHERE velo_id = ? AND heures_depart IS NULL AND seuil_heures > 0",
+                    (float(heures), ligne[0])
+                )
+            # Batterie : cycles de charge et énergie délivrée depuis le début, gardés pour l'onglet Entretien.
+            batterie = resume_batterie_bosch((velo or {}).get("batteries"))
+            cursor.execute(
+                "UPDATE velos SET bosch_batterie = ? WHERE id = ?",
+                (json.dumps(batterie) if batterie else None, ligne[0])
+            )
             odo = ((velo or {}).get("driveUnit") or {}).get("odometer")
             if not isinstance(odo, (int, float)) or isinstance(odo, bool) or odo <= 0:
                 continue
@@ -20566,6 +20759,7 @@ def adapter_freins_velo(cursor, velo_id, freins, suspension=None, tubeless=None,
                 ) VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, 1)
             """, (velo_id, nom, km, jours, categorie, x, y, verification))
             noms.add(nom)
+    appliquer_seuils_heures(cursor, velo_id)
 
 
 @app.put("/api/velos/{velo_id}")
@@ -20678,6 +20872,7 @@ def inserer_velo(cursor, personne_id, type_velo, nom, data, date_achat):
         for nom_comp, km, jours, categorie, x, y, verification
         in entretiens_du_type(type_velo, data.freins, data.suspension, data.tubeless, data.transmission)
     ])
+    appliquer_seuils_heures(cursor, velo_id)
     # Ce vélo a déjà sa liste complète : le démarrage ne la retouchera pas.
     poser_marqueur_entretiens(cursor, velo_id)
     return velo_id
@@ -22691,7 +22886,7 @@ def obtenir_etat(
 
     try:
         cursor.execute("""
-            SELECT id, km_total, date_achat, legacy_velo_id, suivi_depuis
+            SELECT id, km_total, date_achat, legacy_velo_id, suivi_depuis, bosch_heures, bosch_batterie
             FROM velos
             WHERE id = ? AND actif = 1
         """, (velo_id,))
@@ -22701,6 +22896,13 @@ def obtenir_etat(
             raise HTTPException(status_code=404, detail="Vélo introuvable.")
 
         km_global = velo["km_total"] if velo["km_total"] is not None else 0
+        # Temps total donné par le vélo Bosch (heures) : vide si le vélo n'est pas relié à Bosch.
+        heures_velo = velo["bosch_heures"]
+        batterie_velo = None
+        try:
+            batterie_velo = json.loads(velo["bosch_batterie"]) if velo["bosch_batterie"] else None
+        except Exception:
+            batterie_velo = None
         date_achat = velo["date_achat"] or (
             DATE_ACHAT_PAR_DEFAUT
             if velo["legacy_velo_id"] == 1
@@ -22765,6 +22967,15 @@ def obtenir_etat(
         """, (velo_id, velo_id))
         dernier_entretien = {r[0]: r[1] for r in cursor.fetchall()}
 
+        # Heures du vélo au dernier entretien de chaque pièce (la plus récente ligne qui les connaît).
+        cursor.execute("""
+            SELECT composant_id, heures_intervention
+            FROM historique
+            WHERE velo_id = ? AND heures_intervention IS NOT NULL
+            ORDER BY id
+        """, (velo_id,))
+        heures_dernier_entretien = {r[0]: r[1] for r in cursor.fetchall()}
+
         resultat = []
 
         for row in rows:
@@ -22799,7 +23010,25 @@ def obtenir_etat(
             jours_ecoules = None
             pourcentage_jours = 0
 
-            if seuil_jours > 0:
+            # Entretien lié à l'usage : compté en heures Bosch depuis le dernier entretien (ou depuis la liaison
+            # avec Bosch). Sans heures Bosch, c'est le délai en jours qui reste.
+            seuil_heures = row["seuil_heures"] or 0
+            heures_ecoulees = None
+            pourcentage_heures = 0
+            point_depart_heures = heures_dernier_entretien.get(row["id"])
+            if point_depart_heures is None:
+                point_depart_heures = row["heures_depart"]
+            en_heures = (
+                seuil_heures > 0
+                and heures_velo is not None
+                and point_depart_heures is not None
+            )
+
+            if en_heures:
+                heures_ecoulees = max(0.0, float(heures_velo) - float(point_depart_heures))
+                pourcentage_heures = round(heures_ecoulees * coef_piece / seuil_heures * 100)
+
+            if seuil_jours > 0 and not en_heures:
                 try:
                     reference = date.fromisoformat((depuis or date_depart_suivi)[:10])
                 except ValueError:
@@ -22810,7 +23039,7 @@ def obtenir_etat(
                     jours_ecoules * coef_piece / seuil_jours * 100
                 )
 
-            pourcentage = max(pourcentage_km, pourcentage_jours)
+            pourcentage = max(pourcentage_km, pourcentage_jours, pourcentage_heures)
 
             est_verification = bool(row["verification"])
             numero = None
@@ -22829,6 +23058,17 @@ def obtenir_etat(
                 "seuil_alerte": seuil,
                 "pourcentage_usure": pourcentage,
                 "seuil_jours": seuil_jours,
+                "seuil_heures": seuil_heures,
+                "heures_ecoulees": (
+                    round(heures_ecoulees, 1)
+                    if heures_ecoulees is not None
+                    else None
+                ),
+                "heures_usure": (
+                    round(heures_ecoulees * coef_piece, 1)
+                    if heures_ecoulees is not None
+                    else None
+                ),
                 "jours_ecoules": jours_ecoules,
                 "jours_usure": (
                     round(jours_ecoules * coef_piece)
@@ -22848,6 +23088,9 @@ def obtenir_etat(
 
         return {
             "km_total": km_global,
+            # Temps total du vélo Bosch en heures (vide si le vélo n'est pas relié à Bosch).
+            "heures_total": heures_velo,
+            "batterie": batterie_velo,
             "composants": resultat
         }
 
@@ -22919,9 +23162,15 @@ def ajouter_historique(
                 detail="Composant introuvable pour ce vélo."
             )
 
-        cursor.execute("SELECT km_total FROM velos WHERE id = ?", (velo_id,))
+        cursor.execute("SELECT km_total, bosch_heures FROM velos WHERE id = ?", (velo_id,))
         velo = cursor.fetchone()
         km_total = velo[0] if velo and velo[0] is not None else 2700
+        # Les heures du vélo ne sont connues que pour un entretien daté d'aujourd'hui (pas pour un ancien entretien).
+        heures_velo = (
+            velo[1]
+            if velo and str(data.date_remplacement)[:10] == str(date.today())
+            else None
+        )
 
         if data.km_intervention > km_total:
             raise HTTPException(
@@ -22947,9 +23196,10 @@ def ajouter_historique(
                 cout,
                 notes,
                 km_intervention,
-                km_avant
+                km_avant,
+                heures_intervention
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             velo_id,
             data.composant_id,
@@ -22957,7 +23207,8 @@ def ajouter_historique(
             data.cout or 0.0,
             data.notes or "Ancien entretien",
             data.km_intervention,
-            km_avant
+            km_avant,
+            heures_velo
         ))
 
         cursor.execute("""
@@ -23282,7 +23533,7 @@ def remplacer_composant(
                 detail="Composant introuvable."
             )
 
-        cursor.execute("SELECT km_total FROM velos WHERE id = ?", (velo_id,))
+        cursor.execute("SELECT km_total, bosch_heures FROM velos WHERE id = ?", (velo_id,))
         velo = cursor.fetchone()
 
         km_global = (
@@ -23290,6 +23541,8 @@ def remplacer_composant(
             if velo and velo[0] is not None
             else 2700
         )
+        # Heures du vélo au moment de l'entretien (vide si le vélo n'est pas relié à Bosch).
+        heures_velo = velo[1] if velo else None
 
         date_resp = (
             data.date_remplacement
@@ -23333,9 +23586,10 @@ def remplacer_composant(
                 cout,
                 notes,
                 km_intervention,
-                km_avant
+                km_avant,
+                heures_intervention
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             velo_id,
             composant_id,
@@ -23343,7 +23597,8 @@ def remplacer_composant(
             cout_resp,
             notes_resp,
             km_global,
-            km_avant
+            km_avant,
+            heures_velo
         ))
 
         conn.commit()
@@ -23481,10 +23736,10 @@ def modifier_seuils(
 ):
     controle_acces(x_code_acces, velo_id)
 
-    if data.seuil_alerte == 0 and data.seuil_jours == 0:
+    if data.seuil_alerte == 0 and data.seuil_jours == 0 and not data.seuil_heures:
         raise HTTPException(
             status_code=400,
-            detail="Indiquez au moins un seuil (en km ou en jours)."
+            detail="Indiquez au moins un seuil (en km, en jours ou en heures)."
         )
 
     conn = db.connect()
@@ -23503,6 +23758,18 @@ def modifier_seuils(
             "UPDATE composants SET seuil_alerte = ?, seuil_jours = ? WHERE id = ? AND velo_id = ?",
             (data.seuil_alerte, data.seuil_jours, composant_id, velo_id)
         )
+        if data.seuil_heures is not None:
+            cursor.execute(
+                "UPDATE composants SET seuil_heures = ? WHERE id = ? AND velo_id = ?",
+                (data.seuil_heures, composant_id, velo_id)
+            )
+            if data.seuil_heures > 0:
+                # Réglage en heures donné pour la première fois : le compteur démarre aux heures actuelles du vélo.
+                cursor.execute(
+                    "UPDATE composants SET heures_depart = (SELECT bosch_heures FROM velos WHERE id = ?) "
+                    "WHERE id = ? AND velo_id = ? AND heures_depart IS NULL",
+                    (velo_id, composant_id, velo_id)
+                )
         conn.commit()
 
         return {"statut": "success"}
