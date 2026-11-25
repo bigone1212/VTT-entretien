@@ -477,6 +477,40 @@ NOMS_VERIFICATIONS = (
 )
 
 
+# Entretiens liés à l'usage : comptés en heures (temps total donné par le vélo Bosch) quand le vélo est relié à Bosch.
+# Les entretiens liés au calendrier (liquide de frein, tubeless, contrôle annuel, batterie) restent en jours.
+HEURES_PAR_PIECE = {
+    "Pneus - pression et état (contrôle)": 8,
+    "Fourche - pression et SAG (contrôle)": 15,
+    "Amortisseur - pression et SAG (contrôle)": 15,
+    "Rayons et voile des roues (contrôle)": 80,
+    "Contrôle des serrages (potence, cintre, roues, pédalier)": 80,
+    "Contrôle des serrages (vis et boulons)": 80,
+    "Pédales (graissage et jeu)": 150,
+    "Roulements de moyeux (avant + arrière)": 150,
+    "Roulements de suspension (biellettes)": 150,
+    "Jeu de direction (contrôle et graissage)": 150,
+}
+
+
+def appliquer_seuils_heures(cursor, velo_id=None):
+    """Donne le réglage en heures aux pièces qui n'en ont pas encore (vide = jamais réglé).
+
+    Un 0 choisi par la personne est respecté : seules les cases vides sont remplies.
+    """
+    for nom, heures in HEURES_PAR_PIECE.items():
+        if velo_id is None:
+            cursor.execute(
+                "UPDATE composants SET seuil_heures = ? WHERE nom = ? AND seuil_heures IS NULL",
+                (heures, nom)
+            )
+        else:
+            cursor.execute(
+                "UPDATE composants SET seuil_heures = ? WHERE nom = ? AND velo_id = ? AND seuil_heures IS NULL",
+                (heures, nom, velo_id)
+            )
+
+
 def marquer_verifications_une_fois(cursor):
     cursor.execute(
         "SELECT valeur FROM reglages WHERE cle = ?",
@@ -698,6 +732,7 @@ def mettre_a_niveau_un_velo(cursor, velo_id, type_velo):
             VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, 1)
         """, (velo_id, nom, km, jours, categorie, x, y, verification))
         noms.add(nom)
+    appliquer_seuils_heures(cursor, velo_id)
 
 
 def mettre_a_niveau_velos(cursor):
@@ -1065,6 +1100,13 @@ def init_db():
     ajouter_colonne(cursor, "composants", "seuil_jours", "INTEGER DEFAULT 0")
     ajouter_colonne(cursor, "composants", "verification", "INTEGER DEFAULT 0")
     ajouter_colonne(cursor, "composants", "coef_usure", "DOUBLE PRECISION DEFAULT 1")
+    # Temps total Bosch (en heures) : réglage de la pièce, heures du vélo au départ du compteur de la pièce,
+    # et heures du vélo à chaque entretien (vide quand on ne les connaît pas).
+    ajouter_colonne(cursor, "composants", "seuil_heures", "INTEGER")
+    ajouter_colonne(cursor, "composants", "heures_depart", "DOUBLE PRECISION")
+    ajouter_colonne(cursor, "historique", "heures_intervention", "DOUBLE PRECISION")
+    ajouter_colonne(cursor, "velos", "bosch_heures", "DOUBLE PRECISION")
+    appliquer_seuils_heures(cursor)
     ajouter_colonne(cursor, "velo", "date_achat", "TEXT")
     cursor.execute(
         "UPDATE velo SET date_achat = ? WHERE id = 1 AND date_achat IS NULL",
@@ -1180,6 +1222,8 @@ def init_db():
 
     migrer_composants_v2(cursor)
     mettre_a_niveau_velos(cursor)
+    # Une fois toutes les pièces en place : réglage en heures des pièces qui n'en ont pas encore.
+    appliquer_seuils_heures(cursor)
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS bibliotheque_lieux_geo (
@@ -1241,6 +1285,8 @@ class MesReglagesRequest(BaseModel):
 class SeuilsRequest(BaseModel):
     seuil_alerte: int = Field(ge=0, le=200000)
     seuil_jours: int = Field(ge=0, le=3650)
+    # Vide = on ne touche pas au réglage en heures (ancienne version de l'appli encore ouverte).
+    seuil_heures: Optional[int] = Field(default=None, ge=0, le=100000)
 
 
 class CoefsPiecesRequest(BaseModel):
@@ -10433,7 +10479,21 @@ def accueil():
                 return nom.split(' - ')[0].split(' (')[0];
             }
 
+            // Pièce comptée en heures de roulage (temps total Bosch) : seulement si le vélo est relié à Bosch.
+            function enHeures(c) {
+                return c.seuil_heures > 0 && typeof c.heures_ecoulees === 'number';
+            }
+
+            function fmtHeures(h) {
+                return `${String(Math.round(h * 10) / 10).replace('.', ',')} h`;
+            }
+
             function texteDelai(c) {
+                if (enHeures(c)) {
+                    const usure = typeof c.heures_usure === 'number' ? c.heures_usure : c.heures_ecoulees;
+                    const resteH = c.seuil_heures - usure;
+                    return resteH >= 0 ? fmtHeures(resteH) : `+${fmtHeures(-resteH)}`;
+                }
                 if (!(c.seuil_jours > 0) || c.jours_ecoules === null) return '';
                 const ecoules = typeof c.jours_usure === 'number' ? c.jours_usure : c.jours_ecoules;
                 const reste = c.seuil_jours - ecoules;
@@ -10612,9 +10672,11 @@ def accueil():
                 nom.textContent = v.nom;
                 const info = document.createElement('div');
                 info.className = 'vd-info';
-                info.textContent = v.seuil_jours > 0
-                    ? `Fait il y a ${v.jours_ecoules} j · à refaire tous les ${v.seuil_jours} j`
-                    : `Seuil : ${fmtDistance(v.seuil_alerte).complet}`;
+                info.textContent = enHeures(v)
+                    ? `Roulé depuis le dernier contrôle : ${fmtHeures(v.heures_ecoulees)} · à refaire toutes les ${v.seuil_heures} h`
+                    : v.seuil_jours > 0
+                        ? `Fait il y a ${v.jours_ecoules} j · à refaire tous les ${v.seuil_jours} j`
+                        : `Seuil : ${fmtDistance(v.seuil_alerte).complet}`;
                 detail.appendChild(nom);
                 detail.appendChild(info);
 
@@ -10728,6 +10790,11 @@ def accueil():
                     c.seuil_jours || 0
                 );
                 if (jours === null) return;
+                const heures = prompt(
+                    `Seuil en heures de roulage (temps total du vélo Bosch) pour « ${c.nom} » (0 = aucun) :`,
+                    c.seuil_heures || 0
+                );
+                if (heures === null) return;
 
                 try {
                     const res = await fetch(`/api/composants/${c.id}/seuils`, {
@@ -10735,7 +10802,8 @@ def accueil():
                         headers: getHeaders(),
                         body: JSON.stringify({
                             seuil_alerte: parseInt(km, 10) || 0,
-                            seuil_jours: parseInt(jours, 10) || 0
+                            seuil_jours: parseInt(jours, 10) || 0,
+                            seuil_heures: parseInt(heures, 10) || 0
                         })
                     });
                     if (!res.ok) {
@@ -10899,7 +10967,16 @@ def accueil():
                             statsRow.appendChild(thresholdText);
                         }
 
-                        if (c.seuil_jours > 0) {
+                        if (enHeures(c)) {
+                            const hTxt = document.createElement('span');
+                            hTxt.textContent =
+                                `Temps roulé : ${fmtHeures(c.heures_ecoulees)}`;
+                            const hSeuil = document.createElement('span');
+                            hSeuil.textContent =
+                                `Toutes les ${c.seuil_heures} h`;
+                            statsRow.appendChild(hTxt);
+                            statsRow.appendChild(hSeuil);
+                        } else if (c.seuil_jours > 0) {
                             const jTxt = document.createElement('span');
                             jTxt.textContent =
                                 `Temps écoulé : ${c.jours_ecoules} j`;
@@ -20229,6 +20306,15 @@ def bosch_synchroniser(x_code_acces: Optional[str] = Header(default=None)):
     try:
         for ligne in liees:
             velo = par_id.get(ligne[1])
+            # Temps total du vélo (heures allumé) : pris à chaque synchro, indépendamment du kilométrage.
+            heures = (((velo or {}).get("driveUnit") or {}).get("powerOnTime") or {}).get("total")
+            if isinstance(heures, (int, float)) and not isinstance(heures, bool) and heures > 0:
+                cursor.execute("UPDATE velos SET bosch_heures = ? WHERE id = ?", (float(heures), ligne[0]))
+                # Les pièces comptées en heures qui n'ont pas encore de point de départ démarrent à cet instant.
+                cursor.execute(
+                    "UPDATE composants SET heures_depart = ? WHERE velo_id = ? AND heures_depart IS NULL AND seuil_heures > 0",
+                    (float(heures), ligne[0])
+                )
             odo = ((velo or {}).get("driveUnit") or {}).get("odometer")
             if not isinstance(odo, (int, float)) or isinstance(odo, bool) or odo <= 0:
                 continue
@@ -20568,6 +20654,7 @@ def adapter_freins_velo(cursor, velo_id, freins, suspension=None, tubeless=None,
                 ) VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, 1)
             """, (velo_id, nom, km, jours, categorie, x, y, verification))
             noms.add(nom)
+    appliquer_seuils_heures(cursor, velo_id)
 
 
 @app.put("/api/velos/{velo_id}")
@@ -20680,6 +20767,7 @@ def inserer_velo(cursor, personne_id, type_velo, nom, data, date_achat):
         for nom_comp, km, jours, categorie, x, y, verification
         in entretiens_du_type(type_velo, data.freins, data.suspension, data.tubeless, data.transmission)
     ])
+    appliquer_seuils_heures(cursor, velo_id)
     # Ce vélo a déjà sa liste complète : le démarrage ne la retouchera pas.
     poser_marqueur_entretiens(cursor, velo_id)
     return velo_id
@@ -22693,7 +22781,7 @@ def obtenir_etat(
 
     try:
         cursor.execute("""
-            SELECT id, km_total, date_achat, legacy_velo_id, suivi_depuis
+            SELECT id, km_total, date_achat, legacy_velo_id, suivi_depuis, bosch_heures
             FROM velos
             WHERE id = ? AND actif = 1
         """, (velo_id,))
@@ -22703,6 +22791,8 @@ def obtenir_etat(
             raise HTTPException(status_code=404, detail="Vélo introuvable.")
 
         km_global = velo["km_total"] if velo["km_total"] is not None else 0
+        # Temps total donné par le vélo Bosch (heures) : vide si le vélo n'est pas relié à Bosch.
+        heures_velo = velo["bosch_heures"]
         date_achat = velo["date_achat"] or (
             DATE_ACHAT_PAR_DEFAUT
             if velo["legacy_velo_id"] == 1
@@ -22767,6 +22857,15 @@ def obtenir_etat(
         """, (velo_id, velo_id))
         dernier_entretien = {r[0]: r[1] for r in cursor.fetchall()}
 
+        # Heures du vélo au dernier entretien de chaque pièce (la plus récente ligne qui les connaît).
+        cursor.execute("""
+            SELECT composant_id, heures_intervention
+            FROM historique
+            WHERE velo_id = ? AND heures_intervention IS NOT NULL
+            ORDER BY id
+        """, (velo_id,))
+        heures_dernier_entretien = {r[0]: r[1] for r in cursor.fetchall()}
+
         resultat = []
 
         for row in rows:
@@ -22801,7 +22900,25 @@ def obtenir_etat(
             jours_ecoules = None
             pourcentage_jours = 0
 
-            if seuil_jours > 0:
+            # Entretien lié à l'usage : compté en heures Bosch depuis le dernier entretien (ou depuis la liaison
+            # avec Bosch). Sans heures Bosch, c'est le délai en jours qui reste.
+            seuil_heures = row["seuil_heures"] or 0
+            heures_ecoulees = None
+            pourcentage_heures = 0
+            point_depart_heures = heures_dernier_entretien.get(row["id"])
+            if point_depart_heures is None:
+                point_depart_heures = row["heures_depart"]
+            en_heures = (
+                seuil_heures > 0
+                and heures_velo is not None
+                and point_depart_heures is not None
+            )
+
+            if en_heures:
+                heures_ecoulees = max(0.0, float(heures_velo) - float(point_depart_heures))
+                pourcentage_heures = round(heures_ecoulees * coef_piece / seuil_heures * 100)
+
+            if seuil_jours > 0 and not en_heures:
                 try:
                     reference = date.fromisoformat((depuis or date_depart_suivi)[:10])
                 except ValueError:
@@ -22812,7 +22929,7 @@ def obtenir_etat(
                     jours_ecoules * coef_piece / seuil_jours * 100
                 )
 
-            pourcentage = max(pourcentage_km, pourcentage_jours)
+            pourcentage = max(pourcentage_km, pourcentage_jours, pourcentage_heures)
 
             est_verification = bool(row["verification"])
             numero = None
@@ -22831,6 +22948,17 @@ def obtenir_etat(
                 "seuil_alerte": seuil,
                 "pourcentage_usure": pourcentage,
                 "seuil_jours": seuil_jours,
+                "seuil_heures": seuil_heures,
+                "heures_ecoulees": (
+                    round(heures_ecoulees, 1)
+                    if heures_ecoulees is not None
+                    else None
+                ),
+                "heures_usure": (
+                    round(heures_ecoulees * coef_piece, 1)
+                    if heures_ecoulees is not None
+                    else None
+                ),
                 "jours_ecoules": jours_ecoules,
                 "jours_usure": (
                     round(jours_ecoules * coef_piece)
@@ -22921,9 +23049,15 @@ def ajouter_historique(
                 detail="Composant introuvable pour ce vélo."
             )
 
-        cursor.execute("SELECT km_total FROM velos WHERE id = ?", (velo_id,))
+        cursor.execute("SELECT km_total, bosch_heures FROM velos WHERE id = ?", (velo_id,))
         velo = cursor.fetchone()
         km_total = velo[0] if velo and velo[0] is not None else 2700
+        # Les heures du vélo ne sont connues que pour un entretien daté d'aujourd'hui (pas pour un ancien entretien).
+        heures_velo = (
+            velo[1]
+            if velo and str(data.date_remplacement)[:10] == str(date.today())
+            else None
+        )
 
         if data.km_intervention > km_total:
             raise HTTPException(
@@ -22949,9 +23083,10 @@ def ajouter_historique(
                 cout,
                 notes,
                 km_intervention,
-                km_avant
+                km_avant,
+                heures_intervention
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             velo_id,
             data.composant_id,
@@ -22959,7 +23094,8 @@ def ajouter_historique(
             data.cout or 0.0,
             data.notes or "Ancien entretien",
             data.km_intervention,
-            km_avant
+            km_avant,
+            heures_velo
         ))
 
         cursor.execute("""
@@ -23284,7 +23420,7 @@ def remplacer_composant(
                 detail="Composant introuvable."
             )
 
-        cursor.execute("SELECT km_total FROM velos WHERE id = ?", (velo_id,))
+        cursor.execute("SELECT km_total, bosch_heures FROM velos WHERE id = ?", (velo_id,))
         velo = cursor.fetchone()
 
         km_global = (
@@ -23292,6 +23428,8 @@ def remplacer_composant(
             if velo and velo[0] is not None
             else 2700
         )
+        # Heures du vélo au moment de l'entretien (vide si le vélo n'est pas relié à Bosch).
+        heures_velo = velo[1] if velo else None
 
         date_resp = (
             data.date_remplacement
@@ -23335,9 +23473,10 @@ def remplacer_composant(
                 cout,
                 notes,
                 km_intervention,
-                km_avant
+                km_avant,
+                heures_intervention
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             velo_id,
             composant_id,
@@ -23345,7 +23484,8 @@ def remplacer_composant(
             cout_resp,
             notes_resp,
             km_global,
-            km_avant
+            km_avant,
+            heures_velo
         ))
 
         conn.commit()
@@ -23483,10 +23623,10 @@ def modifier_seuils(
 ):
     controle_acces(x_code_acces, velo_id)
 
-    if data.seuil_alerte == 0 and data.seuil_jours == 0:
+    if data.seuil_alerte == 0 and data.seuil_jours == 0 and not data.seuil_heures:
         raise HTTPException(
             status_code=400,
-            detail="Indiquez au moins un seuil (en km ou en jours)."
+            detail="Indiquez au moins un seuil (en km, en jours ou en heures)."
         )
 
     conn = db.connect()
@@ -23505,6 +23645,18 @@ def modifier_seuils(
             "UPDATE composants SET seuil_alerte = ?, seuil_jours = ? WHERE id = ? AND velo_id = ?",
             (data.seuil_alerte, data.seuil_jours, composant_id, velo_id)
         )
+        if data.seuil_heures is not None:
+            cursor.execute(
+                "UPDATE composants SET seuil_heures = ? WHERE id = ? AND velo_id = ?",
+                (data.seuil_heures, composant_id, velo_id)
+            )
+            if data.seuil_heures > 0:
+                # Réglage en heures donné pour la première fois : le compteur démarre aux heures actuelles du vélo.
+                cursor.execute(
+                    "UPDATE composants SET heures_depart = (SELECT bosch_heures FROM velos WHERE id = ?) "
+                    "WHERE id = ? AND velo_id = ? AND heures_depart IS NULL",
+                    (velo_id, composant_id, velo_id)
+                )
         conn.commit()
 
         return {"statut": "success"}
