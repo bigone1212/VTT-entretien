@@ -13,6 +13,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import main
 from fastapi.testclient import TestClient
 
+VRAIE_LECTURE_CAPACITE = main.bosch_lire_capacite
+
 ENTETE = {"x-code-acces": "code-de-test"}
 BIKE = "0ede75c1-3f16-46a0-9c18-f16afd601b50"
 
@@ -72,3 +74,54 @@ def test_synchro_garde_la_batterie_puis_deliaison_l_efface():
         assert c.get("/api/etat?velo_id=1", headers=ENTETE).json()["batterie"]["cycles"] == 12
         assert c.delete("/api/bosch/lier/1", headers=ENTETE).status_code == 200
         assert c.get("/api/etat?velo_id=1", headers=ENTETE).json()["batterie"] is None
+
+
+def test_capacite_mesuree_lue_chez_bosch():
+    with TestClient(main.app, base_url="https://x.onrender.com", follow_redirects=False) as c:
+        preparer()
+        bat = {"productName": "PowerTube 750", "partNumber": "EB1210000X", "serialNumber": "17331-0067-02-797-00-0016",
+               "deliveredWhOverLifetime": 10000, "chargeCycles": {"total": 27.9}}
+        faux_bosch([bat])
+        # Pas relié : rien à lire
+        assert c.get("/api/bosch/capacite?velo_id=1", headers=ENTETE).json() == {"lie": False, "batteries": []}
+        assert c.post("/api/bosch/synchro", headers=ENTETE).status_code == 200
+
+        # Mesure de vélociste présente : la plus récente est renvoyée en premier
+        main.bosch_lire_capacite = lambda acces, ref, serie: (200, [
+            {"date": "2026-05-02", "mesuree_wh": 700.0, "nominale_wh": 750.0, "cycles": 20.0},
+        ])
+        r = c.get("/api/bosch/capacite?velo_id=1", headers=ENTETE).json()
+        assert r["lie"] is True and r["batteries"][0]["mesures"][0]["mesuree_wh"] == 700.0
+
+        # Aucune mesure, puis refus de Bosch : le code est transmis tel quel
+        main.bosch_lire_capacite = lambda acces, ref, serie: (200, [])
+        assert c.get("/api/bosch/capacite?velo_id=1", headers=ENTETE).json()["batteries"][0]["statut"] == 200
+        main.bosch_lire_capacite = lambda acces, ref, serie: (403, [])
+        r = c.get("/api/bosch/capacite?velo_id=1", headers=ENTETE).json()
+        assert r["batteries"][0]["statut"] == 403 and r["batteries"][0]["mesures"] == []
+
+
+def test_lecture_des_mesures_bosch_analyse_la_reponse():
+    import json as _json
+    import urllib.request as _ur
+
+    class Rep:
+        def __init__(self, texte): self.texte = texte
+        def read(self): return self.texte.encode("utf-8")
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    corps = _json.dumps({"capacityTesters": [
+        {"capacityTesterSerialNumber": "BCT1", "createdAt": "2026-01-10T10:00:00Z",
+         "batteryData": {"measuredCapacity": 680, "nominalCapacity": 750, "fullChargeCycles": 40.5}},
+        {"createdAt": "2026-06-10T10:00:00Z", "batteryData": {"measuredCapacity": 650, "nominalCapacity": 750}},
+        {"createdAt": "2026-07-01T10:00:00Z", "batteryData": {"nominalCapacity": 750}},
+    ]})
+    ancien = _ur.urlopen
+    _ur.urlopen = lambda *a, **k: Rep(corps)
+    try:
+        code, mesures = VRAIE_LECTURE_CAPACITE("A", "EB1210000X", "S")
+    finally:
+        _ur.urlopen = ancien
+    assert code == 200 and [m["date"] for m in mesures] == ["2026-06-10", "2026-01-10"]
+    assert mesures[1]["cycles"] == 40.5 and mesures[0]["cycles"] is None
