@@ -6121,6 +6121,7 @@ def accueil():
 
             let veloActifId = Number(sessionStorage.getItem('maillons_velo_id')) || 1;
             let profilMoi = null;
+            let versionAppliVue = '';
             let velosDisponibles = [];
             const fetchOriginal = window.fetch.bind(window);
 
@@ -8197,12 +8198,24 @@ def accueil():
             // À l'ouverture de l'appli : reprend l'odomètre Bosch (au plus une fois toutes les 30 minutes).
             async function synchroBoschAuto(force) {
                 try {
+                    // Première ouverture après une nouvelle version de l'appli : on relit Bosch sans attendre la pause de 30 minutes,
+                    // pour que les nouveautés (batterie, portée, composants...) apparaissent tout de suite.
+                    let nouvelleVersion = false;
+                    try {
+                        nouvelleVersion = !!versionAppliVue && localStorage.getItem('maillons_bosch_version_vue') !== versionAppliVue;
+                    } catch (e) { nouvelleVersion = false; }
                     const derniere = Number(sessionStorage.getItem('maillons_bosch_synchro') || '0');
-                    if (!force && Date.now() - derniere < 30 * 60 * 1000) return;
+                    if (!force && !nouvelleVersion && Date.now() - derniere < 30 * 60 * 1000) return;
                     sessionStorage.setItem('maillons_bosch_synchro', String(Date.now()));
                     const r = await fetch('/api/bosch/synchro', { method: 'POST', headers: getHeaders() });
                     if (!r.ok) return;
+                    if (nouvelleVersion) {
+                        try { localStorage.setItem('maillons_bosch_version_vue', versionAppliVue); } catch (e) { /* tant pis */ }
+                    }
                     const d = await r.json();
+                    if (nouvelleVersion && !(d.modifies && d.modifies.length)) {
+                        await chargerEtat();
+                    }
                     if (d.modifies && d.modifies.length) {
                         await chargerVelos();
                         await chargerEtat();
@@ -9085,6 +9098,7 @@ def accueil():
 
             function majProfilCompte(moi) {
                 const m = moi || {};
+                if (m.version) versionAppliVue = String(m.version);
                 const nomComplet = [m.prenom, m.nom_famille].filter(Boolean).join(' ');
                 document.getElementById('compteNomComplet').textContent = nomComplet || m.nom || '';
                 document.getElementById('compteEmail').textContent = m.email || '';
