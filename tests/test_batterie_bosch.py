@@ -158,3 +158,24 @@ def test_synchro_garde_les_modes_avec_ou_sans_batterie():
         c.post("/api/bosch/synchro", headers=ENTETE)
         b = c.get("/api/etat?velo_id=1", headers=ENTETE).json()["batterie"]
         assert "cycles" not in b and len(b["modes"]) == 2
+
+
+def test_modes_bosch_codes_internes_remplaces_par_les_vrais_noms():
+    codes = [{"name": "A100G", "reachableRange": 120000}, {"name": "A200G", "reachableRange": 95000},
+             {"name": "A300G", "reachableRange": 70000}, {"name": "A400G", "reachableRange": 55000}]
+    # Moteur CX, 4 modes du plus doux au plus puissant : les vrais noms
+    r = main.resume_modes_bosch({"productName": "Drive Unit Performance Line CX", "activeAssistModes": codes})
+    assert [m["nom"] for m in r] == ["Eco", "Tour+", "eMTB", "Turbo"]
+    assert [m["km"] for m in r] == [120, 95, 70, 55]
+    # Autre moteur : on ne devine pas
+    r = main.resume_modes_bosch({"productName": "Drive Unit Active Line Plus", "activeAssistModes": codes})
+    assert [m["nom"] for m in r] == ["Mode 1", "Mode 2", "Mode 3", "Mode 4"]
+    # Classement incohérent (la portée remonte) : on ne devine pas non plus
+    desordre = [{"name": "A1", "reachableRange": 50000}, {"name": "A2", "reachableRange": 90000},
+                {"name": "A3", "reachableRange": 70000}, {"name": "A4", "reachableRange": 55000}]
+    r = main.resume_modes_bosch({"productName": "Performance Line CX", "activeAssistModes": desordre})
+    assert r[0]["nom"] == "Mode 1"
+    # Noms déjà lisibles : gardés, avec la bonne casse
+    r = main.resume_modes_bosch({"productName": "x", "activeAssistModes": [
+        {"name": "ECO", "reachableRange": 80000}, {"name": "tour+", "reachableRange": 60000}, {"name": "EMTB", "reachableRange": 40000}]})
+    assert [m["nom"] for m in r] == ["Eco", "Tour+", "eMTB"]

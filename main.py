@@ -20577,10 +20577,23 @@ def resume_composants_bosch(velo):
     return resultat or None
 
 
+# Noms de modes d'assistance que Bosch utilise sur les écrans, pour reconnaître ceux que l'API renvoie en clair.
+NOMS_MODES_BOSCH = {
+    "eco": "Eco", "eco+": "Eco+", "tour": "Tour", "tour+": "Tour+", "sport": "Sport", "sprint": "Sprint",
+    "auto": "Auto", "turbo": "Turbo", "emtb": "eMTB", "emtb+": "eMTB+", "race": "Race", "cargo": "Cargo", "limit": "Limit",
+}
+# Moteur Performance Line CX : ses 4 modes, du plus doux au plus puissant.
+MODES_CX_BOSCH = ["Eco", "Tour+", "eMTB", "Turbo"]
+
+
 def resume_modes_bosch(drive):
-    """Portée estimée par Bosch pour chaque mode d'assistance actif, en km (Bosch la donne en mètres)."""
+    """Portée estimée par Bosch pour chaque mode d'assistance actif, en km (Bosch la donne en mètres).
+
+    Bosch classe les modes du plus doux au plus puissant. Quand l'API donne des codes internes (A100G...) au lieu des noms,
+    on met les vrais noms d'après ce classement, seulement pour un moteur CX avec 4 modes dont la portée ne remonte jamais ;
+    sinon « Mode 1, Mode 2... » (du plus doux au plus puissant) plutôt qu'un nom deviné."""
     modes = (drive or {}).get("activeAssistModes") if isinstance(drive, dict) else None
-    resultat = []
+    valides = []
     for m in (modes if isinstance(modes, list) else []):
         if not isinstance(m, dict):
             continue
@@ -20592,8 +20605,22 @@ def resume_modes_bosch(drive):
             continue
         # Bosch annonce des mètres ; une valeur sous 1000 ne peut être que des km.
         km = portee / 1000.0 if portee >= 1000 else float(portee)
-        resultat.append({"nom": nom.strip()[:20], "km": int(round(km))})
-    return resultat[:8] or None
+        valides.append((nom.strip(), int(round(km))))
+    valides = valides[:8]
+    if not valides:
+        return None
+    connus = [NOMS_MODES_BOSCH.get(nom.lower()) for nom, _ in valides]
+    if all(connus):
+        return [{"nom": connus[i], "km": valides[i][1]} for i in range(len(valides))]
+    moteur = str((drive or {}).get("productName") or "").lower()
+    kms = [km for _, km in valides]
+    classe_ok = all(kms[i] >= kms[i + 1] for i in range(len(kms) - 1))
+    if len(valides) == len(MODES_CX_BOSCH) and "cx" in moteur and classe_ok:
+        return [{"nom": MODES_CX_BOSCH[i], "km": valides[i][1]} for i in range(len(valides))]
+    return [
+        {"nom": connus[i] or ("Mode " + str(i + 1)), "km": valides[i][1]}
+        for i in range(len(valides))
+    ]
 
 
 def resume_batterie_bosch(batteries):
