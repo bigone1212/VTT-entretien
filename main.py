@@ -502,6 +502,9 @@ def effacer_heures_bosch_orphelines(cursor):
     cursor.execute(
         "UPDATE historique SET heures_intervention = NULL WHERE velo_id IN (SELECT id FROM velos WHERE bosch_heures IS NULL)"
     )
+    cursor.execute(
+        "DELETE FROM bosch_odometre_jours WHERE velo_id IN (SELECT id FROM velos WHERE bosch_odometre_m IS NULL)"
+    )
 
 
 def appliquer_seuils_heures(cursor, velo_id=None):
@@ -836,6 +839,15 @@ def init_db():
     # Lien avec le vélo Bosch (eBike Flow) : identifiant Bosch, et dernier odomètre Bosch (en mètres) déjà repris.
     ajouter_colonne(cursor, "velos", "bosch_bike_id", "TEXT")
     ajouter_colonne(cursor, "velos", "bosch_odometre_m", "BIGINT")
+    # Compteur total du vélo Bosch relevé à chaque synchro (une valeur par jour) : sert au bilan des sorties.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS bosch_odometre_jours (
+            velo_id INTEGER NOT NULL,
+            jour TEXT NOT NULL,
+            odometre_m BIGINT NOT NULL,
+            PRIMARY KEY (velo_id, jour)
+        )
+    """)
 
     # Le CUBE reçoit TOUJOURS l'identifiant 1 : les pièces et les sorties
     # existantes sont rattachées au vélo n° 1 (velo_id par défaut).
@@ -14109,6 +14121,40 @@ def accueil():
                 });
             }
 
+            // Compteur total du vélo (en mètres) à une date, par interpolation entre deux relevés. Vide si la date sort des relevés.
+            function bilanCompteurAu(releves, jourIso, finIncluse) {
+                if (!releves.length) return null;
+                const t = jour => new Date(jour + 'T12:00:00').getTime();
+                const cible = t(jourIso);
+                const premier = releves[0], dernier = releves[releves.length - 1];
+                if (cible < t(premier.jour)) return null;
+                if (cible >= t(dernier.jour)) return finIncluse ? dernier.m : null;
+                for (let i = 1; i < releves.length; i++) {
+                    const a = releves[i - 1], b = releves[i];
+                    if (cible <= t(b.jour)) {
+                        const part = (cible - t(a.jour)) / Math.max(1, t(b.jour) - t(a.jour));
+                        return a.m + part * (b.m - a.m);
+                    }
+                }
+                return null;
+            }
+
+            function bilanJourIso(d) {
+                return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+            }
+
+            // Kilomètres d'une période d'après le compteur total (sorties non enregistrées comprises). Vide si les relevés ne couvrent pas la période.
+            function bilanKmCompteur(periode) {
+                if (!bilanBosch || !bilanBosch.releves || bilanBosch.releves.length < 2) return null;
+                const avant = new Date(periode.debut.getFullYear(), periode.debut.getMonth(), periode.debut.getDate() - 1, 12);
+                const debutM = bilanCompteurAu(bilanBosch.releves, bilanJourIso(avant), false);
+                const aujourdhui = bilanJourIso(new Date());
+                const enCours = bilanJourIso(periode.debut) <= aujourdhui && bilanJourIso(periode.fin) >= aujourdhui;
+                const finM = bilanCompteurAu(bilanBosch.releves, bilanJourIso(enCours ? new Date() : periode.fin), enCours);
+                if (debutM === null || finM === null || finM < debutM) return null;
+                return (finM - debutM) / 1000;
+            }
+
             function bilanAgreger(elements, type) {
                 const par = {};
                 elements.forEach(e => {
@@ -14174,7 +14220,7 @@ def accueil():
                     if (!r.ok) return;
                     const d = await r.json();
                     const items = d && d.lie && Array.isArray(d.activites) ? d.activites : [];
-                    bilanBosch = { velo: velo, t: Date.now(), items: items };
+                    bilanBosch = { velo: velo, t: Date.now(), items: items, compteurM: d && d.compteur_m ? Number(d.compteur_m) : 0, releves: d && Array.isArray(d.releves) ? d.releves : [] };
                     if (items.length && velo === veloActifId) afficherBilanSorties(bilanSorties);
                 } catch (e) { /* le bilan reste calculé avec les sorties de Maillons */ } finally {
                     bilanBoschEnCours = false;
@@ -14198,6 +14244,15 @@ def accueil():
                 const premiere = annees.length ? Math.min(...annees) : new Date().getFullYear();
                 const vide = { n: 0, km: 0, dplus: 0, duree: 0, watts: 0, dureeW: 0, cal: 0 };
                 const donnees = bilanListePeriodes(type, premiere).map(p => Object.assign({}, p, par[p.cle] || vide));
+                if (depuisBosch) {
+                    donnees.forEach(p => {
+                        const kmCompteur = bilanKmCompteur(p);
+                        if (kmCompteur !== null && kmCompteur > p.km) {
+                            p.kmNonEnregistres = kmCompteur - p.km;
+                            p.km = kmCompteur;
+                        }
+                    });
+                }
                 const affichees = donnees.slice(1);
                 let index = affichees.length - 1;
                 if (bilanChoix) {
@@ -14298,6 +14353,21 @@ def accueil():
                 });
                 corps.appendChild(barres);
 
+                if (depuisBosch && choisie.kmNonEnregistres >= 1) {
+                    const cpt = document.createElement('p');
+                    cpt.className = 'bilan-note';
+                    cpt.textContent = "Distance d'après le compteur total du vélo : " + bilanTexteKm(choisie.kmNonEnregistres) + ' ont été roulés sans être enregistrés par Bosch.';
+                    corps.appendChild(cpt);
+                }
+                if (depuisBosch && bilanBosch.compteurM > 0) {
+                    const kmEnregistres = bilanBosch.items.reduce((somme, e) => somme + Number(e.km || 0), 0);
+                    const ecart = bilanBosch.compteurM / 1000 - kmEnregistres;
+                    const tot = document.createElement('p');
+                    tot.className = 'bilan-note';
+                    tot.textContent = 'Compteur total : ' + bilanTexteKm(bilanBosch.compteurM / 1000) + ' · sorties enregistrées : ' + bilanTexteKm(kmEnregistres)
+                        + (ecart >= 1 ? ' · non enregistrés (dont avant eBike Flow) : ' + bilanTexteKm(ecart) : '');
+                    corps.appendChild(tot);
+                }
                 const info = document.createElement('p');
                 info.className = 'bilan-note';
                 info.textContent = (depuisBosch
@@ -20826,13 +20896,19 @@ def bosch_bilan(velo_id: int = 1, x_code_acces: Optional[str] = Header(default=N
     cursor = conn.cursor()
     try:
         cursor.execute(
-            "SELECT bosch_bike_id FROM velos WHERE id = ? AND personne_id = ? AND actif = 1",
+            "SELECT bosch_bike_id, bosch_odometre_m FROM velos WHERE id = ? AND personne_id = ? AND actif = 1",
             (velo_id, personne_id)
         )
         ligne = cursor.fetchone()
+        cursor.execute(
+            "SELECT jour, odometre_m FROM bosch_odometre_jours WHERE velo_id = ? ORDER BY jour",
+            (velo_id,)
+        )
+        releves = [{"jour": r[0], "m": int(r[1])} for r in cursor.fetchall()]
     finally:
         conn.close()
     bike_id = ligne[0] if ligne else None
+    compteur_m = int(ligne[1]) if ligne and ligne[1] else None
     if not bike_id:
         return {"lie": False, "activites": []}
     acces = bosch_jeton_valide(personne_id)
@@ -20844,14 +20920,14 @@ def bosch_bilan(velo_id: int = 1, x_code_acces: Optional[str] = Header(default=N
     else:
         code, toutes = bosch_lire_toutes_activites(acces)
         if code != 200:
-            return {"lie": True, "erreur": code, "activites": []}
+            return {"lie": True, "erreur": code, "activites": [], "compteur_m": compteur_m, "releves": releves}
         resumees = [r for r in (resume_activite_bosch(x) for x in toutes) if r]
         BILAN_BOSCH_CACHE[personne_id] = (time.time(), resumees)
     activites = [
         {k: v for k, v in r.items() if k != "velo"}
         for r in resumees if r.get("velo") == bike_id
     ]
-    return {"lie": True, "activites": activites}
+    return {"lie": True, "activites": activites, "compteur_m": compteur_m, "releves": releves}
 
 
 @app.get("/api/bosch/sorties")
@@ -21252,6 +21328,17 @@ def bosch_synchroniser(x_code_acces: Optional[str] = Header(default=None)):
             if not isinstance(odo, (int, float)) or isinstance(odo, bool) or odo <= 0:
                 continue
             odo = int(odo)
+            # Relevé du compteur : une valeur par jour (la dernière), gardée pour le bilan.
+            try:
+                from zoneinfo import ZoneInfo
+                aujourdhui = datetime.now(ZoneInfo("Europe/Paris")).date().isoformat()
+            except Exception:
+                aujourdhui = datetime.now(timezone.utc).date().isoformat()
+            cursor.execute("DELETE FROM bosch_odometre_jours WHERE velo_id = ? AND jour = ?", (ligne[0], aujourdhui))
+            cursor.execute(
+                "INSERT INTO bosch_odometre_jours (velo_id, jour, odometre_m) VALUES (?, ?, ?)",
+                (ligne[0], aujourdhui, odo)
+            )
             deja = ligne[2]
             if deja is not None and odo <= int(deja):
                 continue

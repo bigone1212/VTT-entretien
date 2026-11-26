@@ -88,7 +88,7 @@ def test_bilan_erreur_bosch():
         preparer()
         relier()
         main.bosch_lire_toutes_activites = lambda acces: (403, [])
-        assert c.get("/api/bosch/bilan?velo_id=1", headers=ENTETE).json() == {"lie": True, "erreur": 403, "activites": []}
+        assert c.get("/api/bosch/bilan?velo_id=1", headers=ENTETE).json() == {"lie": True, "erreur": 403, "activites": [], "compteur_m": None, "releves": []}
 
 
 def test_lecture_par_pages():
@@ -116,3 +116,23 @@ def test_lecture_par_pages():
     finally:
         ur.urlopen = ancien
     assert code == 200 and len(toutes) == 130 and len(adresses) == 2
+
+
+def test_compteur_releve_a_chaque_synchro_et_efface_a_la_deliaison():
+    with TestClient(main.app, base_url="https://x.onrender.com", follow_redirects=False) as c:
+        preparer()
+        relier()
+        main.bosch_lire_toutes_activites = lambda acces: (200, [])
+        main.bosch_lire_velos = lambda acces: (None, [{"id": BIKE, "driveUnit": {"odometer": 3000000}}])
+        assert c.post("/api/bosch/synchro", headers=ENTETE).status_code == 200
+        main.bosch_lire_velos = lambda acces: (None, [{"id": BIKE, "driveUnit": {"odometer": 3012500}}])
+        assert c.post("/api/bosch/synchro", headers=ENTETE).status_code == 200
+        r = c.get("/api/bosch/bilan?velo_id=1", headers=ENTETE).json()
+        assert r["compteur_m"] == 3012500
+        assert len(r["releves"]) == 1 and r["releves"][0]["m"] == 3012500  # une seule valeur par jour : la dernière
+        assert c.delete("/api/bosch/lier/1", headers=ENTETE).status_code == 200
+        conn = main.db.connect()
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM bosch_odometre_jours WHERE velo_id = 1")
+        assert cur.fetchone()[0] == 0
+        conn.close()
