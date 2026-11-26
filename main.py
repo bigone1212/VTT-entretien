@@ -14094,26 +14094,38 @@ def accueil():
                 return liste;
             }
 
-            function bilanAgreger(sorties, type) {
+            // Éléments du bilan : jour, km, dénivelé, durée, puissance moyenne, calories. Ils viennent soit des sorties de Maillons, soit de Bosch.
+            function bilanElementsMaillons(sorties) {
+                return sorties.map(s => {
+                    const b = s.donnees_bosch;
+                    return {
+                        jour: jourLocalSortie(s.debut),
+                        km: Number(s.distance_km || 0),
+                        dplus: Number(s.denivele_pos || 0),
+                        duree: Number(s.duree_s || 0),
+                        watts: b && typeof b.puissance_moy === 'number' && b.puissance_moy > 0 ? b.puissance_moy : null,
+                        cal: b && typeof b.calories === 'number' && b.calories > 0 ? b.calories : null
+                    };
+                });
+            }
+
+            function bilanAgreger(elements, type) {
                 const par = {};
-                sorties.forEach(s => {
-                    const jour = jourLocalSortie(s.debut);
-                    if (!jour) return;
-                    const morceaux = jour.split('-');
+                elements.forEach(e => {
+                    if (!e.jour) return;
+                    const morceaux = e.jour.split('-');
                     const d = new Date(Number(morceaux[0]), Number(morceaux[1]) - 1, Number(morceaux[2]), 12);
                     const cle = bilanCle(d, type);
                     const a = par[cle] || (par[cle] = { n: 0, km: 0, dplus: 0, duree: 0, watts: 0, dureeW: 0, cal: 0 });
                     a.n += 1;
-                    a.km += Number(s.distance_km || 0);
-                    a.dplus += Number(s.denivele_pos || 0);
-                    const duree = Number(s.duree_s || 0);
-                    a.duree += duree;
-                    const b = s.donnees_bosch;
-                    if (b && typeof b.puissance_moy === 'number' && b.puissance_moy > 0 && duree > 0) {
-                        a.watts += b.puissance_moy * duree;
-                        a.dureeW += duree;
+                    a.km += Number(e.km || 0);
+                    a.dplus += Number(e.dplus || 0);
+                    a.duree += Number(e.duree || 0);
+                    if (e.watts && e.duree > 0) {
+                        a.watts += e.watts * e.duree;
+                        a.dureeW += e.duree;
                     }
-                    if (b && typeof b.calories === 'number' && b.calories > 0) a.cal += b.calories;
+                    if (e.cal) a.cal += e.cal;
                 });
                 return par;
             }
@@ -14148,16 +14160,41 @@ def accueil():
                 return fmtDistance(km, km >= 100 ? 0 : 1).complet;
             }
 
+            let bilanBosch = null;
+            let bilanBoschEnCours = false;
+
+            // Lit chez Bosch toutes les sorties du vélo actif (au plus une fois par 10 minutes) puis redessine le bilan.
+            async function chargerBilanBosch() {
+                if (bilanBoschEnCours) return;
+                const velo = veloActifId;
+                if (bilanBosch && bilanBosch.velo === velo && Date.now() - bilanBosch.t < 10 * 60 * 1000) return;
+                bilanBoschEnCours = true;
+                try {
+                    const r = await fetch('/api/bosch/bilan', { headers: getHeaders() });
+                    if (!r.ok) return;
+                    const d = await r.json();
+                    const items = d && d.lie && Array.isArray(d.activites) ? d.activites : [];
+                    bilanBosch = { velo: velo, t: Date.now(), items: items };
+                    if (items.length && velo === veloActifId) afficherBilanSorties(bilanSorties);
+                } catch (e) { /* le bilan reste calculé avec les sorties de Maillons */ } finally {
+                    bilanBoschEnCours = false;
+                }
+            }
+
             function afficherBilanSorties(sorties) {
                 const boite = document.getElementById('bilanSorties');
                 const corps = document.getElementById('bilanCorps');
                 if (!boite || !corps) return;
-                if (!Array.isArray(sorties) || !sorties.length) { boite.style.display = 'none'; return; }
+                const liste = Array.isArray(sorties) ? sorties : [];
+                // Si le vélo est relié à Bosch, le bilan vient de toutes les sorties enregistrées chez Bosch (pas seulement de celles importées).
+                const depuisBosch = !!(bilanBosch && bilanBosch.velo === veloActifId && bilanBosch.items.length);
+                if (!liste.length && !depuisBosch) { boite.style.display = 'none'; return; }
                 boite.style.display = '';
-                bilanSorties = sorties;
+                bilanSorties = liste;
                 const type = bilanPeriode;
-                const par = bilanAgreger(sorties, type);
-                const annees = sorties.map(s => new Date(s.debut).getFullYear()).filter(a => a > 1990);
+                const elements = depuisBosch ? bilanBosch.items : bilanElementsMaillons(liste);
+                const par = bilanAgreger(elements, type);
+                const annees = elements.map(e => Number(String(e.jour).slice(0, 4))).filter(a => a > 1990);
                 const premiere = annees.length ? Math.min(...annees) : new Date().getFullYear();
                 const vide = { n: 0, km: 0, dplus: 0, duree: 0, watts: 0, dureeW: 0, cal: 0 };
                 const donnees = bilanListePeriodes(type, premiere).map(p => Object.assign({}, p, par[p.cle] || vide));
@@ -14234,7 +14271,7 @@ def accueil():
                     const note = document.createElement('p');
                     note.className = 'bilan-note';
                     note.style.marginTop = '0';
-                    note.textContent = details.join(' · ') + ' (sorties enregistrées par Bosch)';
+                    note.textContent = details.join(' · ') + ' (sorties Bosch)';
                     corps.appendChild(note);
                 }
 
@@ -14263,7 +14300,10 @@ def accueil():
 
                 const info = document.createElement('p');
                 info.className = 'bilan-note';
-                info.textContent = 'Les pourcentages comparent à la période juste avant. Toutes les sorties de ce vélo sont comptées, sans tenir compte des filtres. Touche une colonne pour voir une autre période.';
+                info.textContent = (depuisBosch
+                    ? 'Chiffres Bosch (eBike Flow) : toutes les sorties enregistrées par ton vélo, même celles qui ne sont pas importées dans Maillons. '
+                    : 'Calculé avec les sorties importées dans Maillons pour ce vélo. ')
+                    + 'Les pourcentages comparent à la période juste avant. Touche une colonne pour voir une autre période.';
                 corps.appendChild(info);
             }
 
@@ -14336,6 +14376,7 @@ def accueil():
                     }
                     preparerFiltresSorties(sorties);
                     afficherBilanSorties(sorties);
+                    chargerBilanBosch();
                     const sortiesAffichees = filtrerSorties(sorties);
                     liste.innerHTML = '';
                     document.getElementById('compteurSorties').textContent =
@@ -20699,6 +20740,118 @@ def bosch_velos(x_code_acces: Optional[str] = Header(default=None)):
         "odometres": bosch_chercher_valeurs(velos),
         "brut": donnees,
     }
+
+
+BILAN_BOSCH_CACHE = {}
+BILAN_BOSCH_DUREE_S = 600
+
+
+def bosch_lire_toutes_activites(acces):
+    """Lit toutes les sorties (résumés) enregistrées par eBike Flow, page par page. Renvoie (code HTTP, liste)."""
+    toutes = []
+    decalage = 0
+    total = None
+    while True:
+        adresse = BOSCH_API_ACTIVITES + "?" + urllib.parse.urlencode({"limit": 100, "offset": decalage})
+        demande = urllib.request.Request(adresse, headers={
+            "Authorization": "Bearer " + acces,
+            "Accept": "application/json",
+        })
+        try:
+            with urllib.request.urlopen(demande, timeout=20) as reponse:
+                donnees = json.loads(reponse.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            return e.code, []
+        except Exception:
+            return 0, []
+        if not isinstance(donnees, dict):
+            break
+        page = donnees.get("activitySummaries")
+        if not isinstance(page, list) or not page:
+            break
+        toutes.extend(a for a in page if isinstance(a, dict))
+        decalage += len(page)
+        pagination = donnees.get("pagination")
+        if total is None and isinstance(pagination, dict) and isinstance(pagination.get("total"), int):
+            total = pagination["total"]
+        if (total is not None and decalage >= total) or decalage >= 3000:
+            break
+    return 200, toutes
+
+
+def resume_activite_bosch(a):
+    """Réduit une sortie Bosch aux chiffres du bilan : jour local, km, dénivelé, durée, puissance moyenne, calories."""
+    if not isinstance(a, dict):
+        return None
+
+    def nombre(valeur):
+        return float(valeur) if isinstance(valeur, (int, float)) and not isinstance(valeur, bool) and valeur >= 0 else None
+
+    debut = a.get("startTime")
+    distance = nombre(a.get("distance"))
+    if not isinstance(debut, str) or distance is None:
+        return None
+    try:
+        moment = datetime.fromisoformat(debut)
+        if moment.tzinfo is None:
+            moment = moment.replace(tzinfo=timezone.utc)
+        try:
+            from zoneinfo import ZoneInfo
+            moment = moment.astimezone(ZoneInfo(str(a.get("timeZone"))))
+        except Exception:
+            pass
+        jour = moment.date().isoformat()
+    except ValueError:
+        return None
+    puissance = nombre((a.get("riderPower") or {}).get("average"))
+    gain = nombre((a.get("elevation") or {}).get("gain"))
+    duree = nombre(a.get("durationWithoutStops"))
+    calories = nombre(a.get("caloriesBurned"))
+    return {
+        "velo": a.get("bikeId"),
+        "jour": jour,
+        "km": round(distance / 1000.0, 2),
+        "dplus": int(round(gain)) if gain is not None else 0,
+        "duree": int(round(duree)) if duree is not None else 0,
+        "watts": round(puissance, 1) if puissance else None,
+        "cal": int(round(calories)) if calories else None,
+    }
+
+
+@app.get("/api/bosch/bilan")
+def bosch_bilan(velo_id: int = 1, x_code_acces: Optional[str] = Header(default=None)):
+    """Toutes les sorties enregistrées chez Bosch pour le vélo relié, réduites aux chiffres du bilan (semaine, mois, année)."""
+    personne_id = controle_acces(x_code_acces, velo_id)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "SELECT bosch_bike_id FROM velos WHERE id = ? AND personne_id = ? AND actif = 1",
+            (velo_id, personne_id)
+        )
+        ligne = cursor.fetchone()
+    finally:
+        conn.close()
+    bike_id = ligne[0] if ligne else None
+    if not bike_id:
+        return {"lie": False, "activites": []}
+    acces = bosch_jeton_valide(personne_id)
+    if not acces:
+        return {"lie": False, "activites": []}
+    memo = BILAN_BOSCH_CACHE.get(personne_id)
+    if memo and time.time() - memo[0] < BILAN_BOSCH_DUREE_S:
+        resumees = memo[1]
+    else:
+        code, toutes = bosch_lire_toutes_activites(acces)
+        if code != 200:
+            return {"lie": True, "erreur": code, "activites": []}
+        resumees = [r for r in (resume_activite_bosch(x) for x in toutes) if r]
+        BILAN_BOSCH_CACHE[personne_id] = (time.time(), resumees)
+    activites = [
+        {k: v for k, v in r.items() if k != "velo"}
+        for r in resumees if r.get("velo") == bike_id
+    ]
+    return {"lie": True, "activites": activites}
 
 
 @app.get("/api/bosch/sorties")
