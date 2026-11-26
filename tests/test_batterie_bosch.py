@@ -125,3 +125,36 @@ def test_lecture_des_mesures_bosch_analyse_la_reponse():
         _ur.urlopen = ancien
     assert code == 200 and [m["date"] for m in mesures] == ["2026-06-10", "2026-01-10"]
     assert mesures[1]["cycles"] == 40.5 and mesures[0]["cycles"] is None
+
+
+def test_resume_modes_bosch_convertit_les_metres_en_km():
+    assert main.resume_modes_bosch(None) is None
+    assert main.resume_modes_bosch({}) is None
+    r = main.resume_modes_bosch({"activeAssistModes": [
+        {"name": "Eco", "reachableRange": 60000},
+        {"name": "Tour", "reachableRange": 50400},
+        {"name": "eMTB", "reachableRange": 45},      # déjà en km : gardé tel quel
+        {"name": "0", "reachableRange": 0},          # sans assistance : ignoré
+        {"name": "Turbo", "reachableRange": True},   # valeur invalide : ignorée
+        {"name": "Sport", "reachableRange": "x"},    # valeur invalide : ignorée
+    ]})
+    assert r == [{"nom": "Eco", "km": 60}, {"nom": "Tour", "km": 50}, {"nom": "eMTB", "km": 45}]
+
+
+def test_synchro_garde_les_modes_avec_ou_sans_batterie():
+    with TestClient(main.app, base_url="https://x.onrender.com", follow_redirects=False) as c:
+        preparer()
+        modes = [{"name": "Eco", "reachableRange": 60000}, {"name": "Turbo", "reachableRange": 30000}]
+        velo = {"id": BIKE, "driveUnit": {"odometer": 3096890, "activeAssistModes": modes},
+                "batteries": [{"deliveredWhOverLifetime": 10000, "chargeCycles": {"total": 27.9}}]}
+        main.bosch_lire_velos = lambda acces: (None, [velo])
+        assert c.post("/api/bosch/synchro", headers=ENTETE).status_code == 200
+        b = c.get("/api/etat?velo_id=1", headers=ENTETE).json()["batterie"]
+        assert b["cycles"] == 27.9 and b["modes"] == [{"nom": "Eco", "km": 60}, {"nom": "Turbo", "km": 30}]
+
+        # Sans données de batterie, la portée reste affichée
+        velo2 = {"id": BIKE, "driveUnit": {"odometer": 3096890, "activeAssistModes": modes}}
+        main.bosch_lire_velos = lambda acces: (None, [velo2])
+        c.post("/api/bosch/synchro", headers=ENTETE)
+        b = c.get("/api/etat?velo_id=1", headers=ENTETE).json()["batterie"]
+        assert "cycles" not in b and len(b["modes"]) == 2

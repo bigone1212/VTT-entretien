@@ -8334,6 +8334,11 @@ def accueil():
 
             document.getElementById('boschConnecter').addEventListener('click', boschDemarrerConnexion);
 
+            // Bosch donne la portée en mètres ; une valeur sous 1000 ne peut être que des km.
+            function boschPorteeKm(v) {
+                return v >= 1000 ? v / 1000 : v;
+            }
+
             function boschNombre(v, decimales) {
                 return typeof v === 'number' ? v.toLocaleString('fr-FR', { maximumFractionDigits: decimales === undefined ? 1 : decimales }) : String(v);
             }
@@ -8429,7 +8434,7 @@ def accueil():
                         if (Array.isArray(du.activeAssistModes) && du.activeAssistModes.length) {
                             const sa = boschSection(boite, "Modes d'assistance");
                             du.activeAssistModes.forEach(m => {
-                                boschLigne(sa, m.name === '0' ? 'Sans assistance' : String(m.name), typeof m.reachableRange === 'number' ? 'portée ' + boschNombre(m.reachableRange, 0) + ' km' : '');
+                                boschLigne(sa, m.name === '0' ? 'Sans assistance' : String(m.name), typeof m.reachableRange === 'number' ? 'portée ' + boschNombre(boschPorteeKm(m.reachableRange), 0) + ' km' : '');
                             });
                         }
                     }
@@ -11005,6 +11010,19 @@ def accueil():
                     bloc.appendChild(piste);
                     bloc.appendChild(aide);
                     boite.appendChild(bloc);
+                }
+                if (Array.isArray(b.modes) && b.modes.length) {
+                    const sous = document.createElement('div');
+                    sous.className = 'portee-bosch';
+                    sous.style.cssText = 'margin-top:8px; padding-top:8px; border-top:1px solid var(--line); font-size:0.9rem; font-weight:700;';
+                    sous.textContent = 'Portée estimée par mode';
+                    boite.appendChild(sous);
+                    b.modes.forEach(m => ligne(m.nom, '≈ ' + fmt(m.km, 0) + ' km'));
+                    const aidePortee = document.createElement('div');
+                    aidePortee.className = 'form-help';
+                    aidePortee.style.cssText = 'margin-top:2px;';
+                    aidePortee.textContent = 'Portée annoncée par Bosch pour chaque mode : indicative, elle dépend du terrain, du poids et de la température.';
+                    boite.appendChild(aidePortee);
                 }
                 const note = document.createElement('div');
                 note.className = 'form-help';
@@ -20545,6 +20563,25 @@ def resume_composants_bosch(velo):
     return resultat or None
 
 
+def resume_modes_bosch(drive):
+    """Portée estimée par Bosch pour chaque mode d'assistance actif, en km (Bosch la donne en mètres)."""
+    modes = (drive or {}).get("activeAssistModes") if isinstance(drive, dict) else None
+    resultat = []
+    for m in (modes if isinstance(modes, list) else []):
+        if not isinstance(m, dict):
+            continue
+        nom = m.get("name")
+        portee = m.get("reachableRange")
+        if not isinstance(nom, str) or not nom.strip() or nom.strip() == "0":
+            continue
+        if not isinstance(portee, (int, float)) or isinstance(portee, bool) or portee <= 0:
+            continue
+        # Bosch annonce des mètres ; une valeur sous 1000 ne peut être que des km.
+        km = portee / 1000.0 if portee >= 1000 else float(portee)
+        resultat.append({"nom": nom.strip()[:20], "km": int(round(km))})
+    return resultat[:8] or None
+
+
 def resume_batterie_bosch(batteries):
     """Résume les batteries Bosch d'un vélo : cycles de charge et énergie délivrée (Wh) depuis le début."""
     if not isinstance(batteries, list):
@@ -20714,6 +20751,10 @@ def bosch_synchroniser(x_code_acces: Optional[str] = Header(default=None)):
                 )
             # Batterie : cycles de charge et énergie délivrée depuis le début, gardés pour l'onglet Entretien.
             batterie = resume_batterie_bosch((velo or {}).get("batteries"))
+            modes_bosch = resume_modes_bosch((velo or {}).get("driveUnit"))
+            if modes_bosch:
+                batterie = dict(batterie or {})
+                batterie["modes"] = modes_bosch
             cursor.execute(
                 "UPDATE velos SET bosch_batterie = ? WHERE id = ?",
                 (json.dumps(batterie) if batterie else None, ligne[0])
