@@ -5994,6 +5994,13 @@ def accueil():
                 </summary>
                 <div class="bilan-corps" id="bilanCorps"></div>
             </details>
+            <details class="sync-card bilan-sorties" id="recordsSorties" style="display:none;">
+                <summary>
+                    <span>Mes records</span>
+                    <span class="bilan-resume" id="recordsResume"></span>
+                </summary>
+                <div class="bilan-corps" id="recordsCorps"></div>
+            </details>
             <p id="compteurSorties" class="form-help" style="margin:0 0 10px;"></p>
             <div id="sortiesList">
                 <div class="loading">Chargement des sorties...</div>
@@ -14206,6 +14213,67 @@ def accueil():
                 return fmtDistance(km, km >= 100 ? 0 : 1).complet;
             }
 
+            // Records : le meilleur de chaque domaine parmi toutes les sorties enregistrées par Bosch.
+            function afficherRecordsSorties() {
+                const boite = document.getElementById('recordsSorties');
+                const corps = document.getElementById('recordsCorps');
+                if (!boite || !corps) return;
+                const items = bilanBosch && bilanBosch.velo === veloActifId ? bilanBosch.items : [];
+                if (!items.length) { boite.style.display = 'none'; return; }
+                const meilleur = (valeur) => {
+                    let gagnant = null;
+                    items.forEach(e => {
+                        const v = Number(valeur(e));
+                        if (v > 0 && (!gagnant || v > gagnant.v)) gagnant = { v: v, jour: e.jour };
+                    });
+                    return gagnant;
+                };
+                const rec = (e, cle) => (e.rec && e.rec[cle]) || 0;
+                const liste = [
+                    ['Plus longue sortie', meilleur(e => e.km), v => bilanTexteKm(v)],
+                    ['Plus gros dénivelé', meilleur(e => e.dplus), v => fmtAltitude(v).complet + ' D+'],
+                    ['Plus longue durée', meilleur(e => e.duree), v => formaterDuree(v)],
+                    ['Vitesse max', meilleur(e => rec(e, 'vmax')), v => fmtVitesse(v, 1).complet],
+                    ['Puissance max', meilleur(e => rec(e, 'pmax')), v => Math.round(v) + ' W'],
+                    ['Saut le plus haut', meilleur(e => rec(e, 'saut_haut_m')), v => fmtAltitude(v, 2).complet],
+                    ['Saut le plus long', meilleur(e => rec(e, 'saut_long_m')), v => fmtAltitude(v, 1).complet],
+                    ['Plus long wheelie', meilleur(e => rec(e, 'wheelie_long_m')), v => fmtAltitude(v, 1).complet],
+                    ['Plus long manual', meilleur(e => rec(e, 'manual_long_m')), v => fmtAltitude(v, 1).complet],
+                    ['Plus long stoppie', meilleur(e => rec(e, 'stoppie_long_m')), v => fmtAltitude(v, 1).complet]
+                ].filter(l => l[1]);
+                if (!liste.length) { boite.style.display = 'none'; return; }
+                corps.replaceChildren();
+                const grille = document.createElement('div');
+                grille.className = 'bilan-grille';
+                liste.forEach(l => {
+                    const t = document.createElement('div');
+                    t.className = 'bilan-tuile';
+                    const lib = document.createElement('span');
+                    lib.className = 'bilan-lib';
+                    lib.textContent = l[0];
+                    const val = document.createElement('strong');
+                    val.textContent = l[2](l[1].v);
+                    const quand = document.createElement('span');
+                    quand.className = 'bilan-evo';
+                    const d = new Date(l[1].jour + 'T12:00:00');
+                    quand.textContent = isNaN(d.getTime()) ? '' : d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+                    t.appendChild(lib);
+                    t.appendChild(val);
+                    t.appendChild(quand);
+                    grille.appendChild(t);
+                });
+                corps.appendChild(grille);
+                const sauts = items.reduce((somme, e) => somme + rec(e, 'saut_nb'), 0);
+                const note = document.createElement('p');
+                note.className = 'bilan-note';
+                note.style.marginTop = '0';
+                note.textContent = 'Records sur ' + items.length + ' sorties enregistrées par Bosch' + (sauts > 0 ? ' · ' + sauts + ' sauts détectés au total' : '') + '.';
+                corps.appendChild(note);
+                boite.style.display = '';
+                const premier = liste[0];
+                document.getElementById('recordsResume').textContent = premier[0] + ' : ' + premier[2](premier[1].v);
+            }
+
             let bilanBosch = null;
             let bilanBoschEnCours = false;
 
@@ -14213,7 +14281,8 @@ def accueil():
             async function chargerBilanBosch() {
                 if (bilanBoschEnCours) return;
                 const velo = veloActifId;
-                if (bilanBosch && bilanBosch.velo === velo && Date.now() - bilanBosch.t < 10 * 60 * 1000) return;
+                if (bilanBosch && bilanBosch.velo !== velo) afficherRecordsSorties();
+                if (bilanBosch && bilanBosch.velo === velo && Date.now() - bilanBosch.t < 10 * 60 * 1000) { afficherRecordsSorties(); return; }
                 bilanBoschEnCours = true;
                 try {
                     const r = await fetch('/api/bosch/bilan', { headers: getHeaders() });
@@ -14222,6 +14291,7 @@ def accueil():
                     const items = d && d.lie && Array.isArray(d.activites) ? d.activites : [];
                     bilanBosch = { velo: velo, t: Date.now(), items: items, compteurM: d && d.compteur_m ? Number(d.compteur_m) : 0, releves: d && Array.isArray(d.releves) ? d.releves : [] };
                     if (items.length && velo === veloActifId) afficherBilanSorties(bilanSorties);
+                    if (velo === veloActifId) afficherRecordsSorties();
                 } catch (e) { /* le bilan reste calculé avec les sorties de Maillons */ } finally {
                     bilanBoschEnCours = false;
                 }
@@ -20874,6 +20944,32 @@ def resume_activite_bosch(a):
     except ValueError:
         return None
     puissance = nombre((a.get("riderPower") or {}).get("average"))
+    # Records de la sortie : vitesse max, puissance max, plus beaux sauts / wheelings / manuals / stoppies (valeurs à zéro ignorées).
+    records = {}
+    vmax = nombre((a.get("speed") or {}).get("maximum"))
+    pmax = nombre((a.get("riderPower") or {}).get("maximum"))
+    if vmax:
+        records["vmax"] = round(vmax, 1)
+    if pmax:
+        records["pmax"] = int(round(pmax))
+    tours = a.get("tricks") if isinstance(a.get("tricks"), dict) else {}
+    for nom, cle in (("jumps", "saut"), ("wheelies", "wheelie"), ("manuals", "manual"), ("stoppies", "stoppie")):
+        t = tours.get(nom) if isinstance(tours.get(nom), dict) else {}
+        nb = nombre(t.get("amount"))
+        if not nb:
+            continue
+        records[cle + "_nb"] = int(nb)
+        longueur = nombre(t.get("maxDistance"))
+        if longueur:
+            records[cle + "_long_m"] = round(longueur, 1)
+        if cle == "saut":
+            hauteur = nombre(t.get("maxHeight"))
+            if hauteur:
+                records["saut_haut_m"] = round(hauteur / 1000.0, 2)
+        else:
+            angle = nombre(t.get("maxAngle"))
+            if angle:
+                records[cle + "_angle"] = round(angle, 1)
     gain = nombre((a.get("elevation") or {}).get("gain"))
     duree = nombre(a.get("durationWithoutStops"))
     calories = nombre(a.get("caloriesBurned"))
@@ -20885,6 +20981,7 @@ def resume_activite_bosch(a):
         "duree": int(round(duree)) if duree is not None else 0,
         "watts": round(puissance, 1) if puissance else None,
         "cal": int(round(calories)) if calories else None,
+        "rec": records,
     }
 
 
