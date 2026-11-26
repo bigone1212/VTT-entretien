@@ -1118,6 +1118,7 @@ def init_db():
     ajouter_colonne(cursor, "historique", "heures_intervention", "DOUBLE PRECISION")
     ajouter_colonne(cursor, "velos", "bosch_heures", "DOUBLE PRECISION")
     ajouter_colonne(cursor, "velos", "bosch_batterie", "TEXT")
+    ajouter_colonne(cursor, "velos", "bosch_composants", "TEXT")
     appliquer_seuils_heures(cursor)
     ajouter_colonne(cursor, "velo", "date_achat", "TEXT")
     cursor.execute(
@@ -4793,6 +4794,27 @@ def accueil():
                 overflow-wrap: anywhere;
             }
 
+            .ftv-bosch-titre {
+                margin: 2px 0 8px;
+                color: var(--text-muted);
+                font-size: 0.78rem;
+                font-weight: 700;
+            }
+            .ftv-bosch .ftv-grille { grid-template-columns: minmax(0, 1fr); padding-bottom: 6px; }
+            .ftv-bosch-copier {
+                width: 100%;
+                margin: 0 0 10px;
+                padding: 9px 12px;
+                color: var(--accent);
+                background: rgba(40, 200, 185, 0.1);
+                border: 1px solid rgba(40, 200, 185, 0.3);
+                border-radius: 10px;
+                font: inherit;
+                font-size: 0.82rem;
+                font-weight: 700;
+                cursor: pointer;
+            }
+
             .ftv-note {
                 margin: 2px 0 4px;
                 color: var(--text-muted);
@@ -5318,6 +5340,7 @@ def accueil():
                 </div>
             </div>
             <p class="ftv-note">Caractéristiques du modèle 2025. Les équipements peuvent varier selon la version et la taille du vélo.</p>
+            <div class="ftv-bosch" style="display:none;"></div>
         </details>
         <details class="fiche-technique-velo" id="ficheTechniqueAutre" style="display:none;">
             <summary class="ftv-resume">
@@ -5353,6 +5376,7 @@ def accueil():
                 </div>
             </div>
             <div class="ftv-grille" id="ficheAutreEquipement"></div>
+            <div class="ftv-bosch" style="display:none;"></div>
         </details>
 
         <section class="mes-reglages mr-repliable" id="mesReglages" aria-label="Mes réglages vélo">
@@ -10857,6 +10881,72 @@ def accueil():
                 }
             }
 
+            // Fiche technique : composants Bosch du vélo (nom, numéro de série, référence), seulement si le vélo est relié à Bosch.
+            function afficherFicheBosch(liste) {
+                const nl = String.fromCharCode(10);
+                document.querySelectorAll('.ftv-bosch').forEach(boite => {
+                    boite.replaceChildren();
+                    if (!Array.isArray(liste) || !liste.length) { boite.style.display = 'none'; return; }
+                    boite.style.display = '';
+                    const titre = document.createElement('div');
+                    titre.className = 'ftv-bosch-titre';
+                    titre.textContent = 'Composants Bosch (lus chez Bosch)';
+                    boite.appendChild(titre);
+                    const grille = document.createElement('div');
+                    grille.className = 'ftv-grille';
+                    liste.forEach(c => {
+                        const carte = document.createElement('div');
+                        carte.className = 'ftv-item';
+                        const ico = document.createElement('span');
+                        ico.className = 'ftv-icone';
+                        ico.setAttribute('aria-hidden', 'true');
+                        ico.innerHTML = '<svg viewBox="0 0 48 48"><rect x="11" y="11" width="26" height="26" rx="4"/><path d="M18 5v6M30 5v6M18 37v6M30 37v6M5 18h6M5 30h6M37 18h6M37 30h6"/></svg>';
+                        const corps = document.createElement('span');
+                        const lib = document.createElement('span');
+                        lib.className = 'ftv-libelle';
+                        lib.textContent = c.role || '';
+                        const val = document.createElement('span');
+                        val.className = 'ftv-valeur';
+                        val.textContent = c.nom || '—';
+                        corps.appendChild(lib);
+                        corps.appendChild(val);
+                        if (c.serie) {
+                            const n = document.createElement('span');
+                            n.className = 'ftv-note';
+                            n.style.display = 'block';
+                            n.textContent = 'Série : ' + c.serie;
+                            corps.appendChild(n);
+                        }
+                        if (c.reference) {
+                            const n = document.createElement('span');
+                            n.className = 'ftv-note';
+                            n.style.display = 'block';
+                            n.textContent = 'Référence : ' + c.reference;
+                            corps.appendChild(n);
+                        }
+                        carte.appendChild(ico);
+                        carte.appendChild(corps);
+                        grille.appendChild(carte);
+                    });
+                    boite.appendChild(grille);
+                    const bouton = document.createElement('button');
+                    bouton.type = 'button';
+                    bouton.className = 'ftv-bosch-copier';
+                    bouton.textContent = 'Copier les numéros de série';
+                    bouton.addEventListener('click', async () => {
+                        const texte = liste.map(c => [c.role, c.nom, c.serie ? 'série ' + c.serie : '', c.reference ? 'réf. ' + c.reference : ''].filter(Boolean).join(' - ')).join(nl);
+                        try {
+                            await navigator.clipboard.writeText(texte);
+                            bouton.textContent = 'Copié';
+                        } catch (e) {
+                            bouton.textContent = 'Copie impossible sur ce téléphone';
+                        }
+                        setTimeout(() => { bouton.textContent = 'Copier les numéros de série'; }, 2500);
+                    });
+                    boite.appendChild(bouton);
+                });
+            }
+
             // Encadré batterie (données lues chez Bosch, seulement si le vélo est relié à Bosch).
             function afficherBatterieBosch(b, kmTotal) {
                 const boite = document.getElementById('batterieBosch');
@@ -11028,6 +11118,7 @@ def accueil():
                     }
 
                     afficherBatterieBosch(data.batterie, data.km_total);
+                    afficherFicheBosch(data.composants_bosch);
 
                     const container =
                         document.getElementById('composantsList');
@@ -20390,11 +20481,11 @@ def bosch_lier(data: BoschLierRequest, x_code_acces: Optional[str] = Header(defa
     cursor = conn.cursor()
     try:
         cursor.execute(
-            "UPDATE velos SET bosch_bike_id = NULL, bosch_odometre_m = NULL, bosch_heures = NULL, bosch_batterie = NULL WHERE personne_id = ? AND bosch_bike_id = ?",
+            "UPDATE velos SET bosch_bike_id = NULL, bosch_odometre_m = NULL, bosch_heures = NULL, bosch_batterie = NULL, bosch_composants = NULL WHERE personne_id = ? AND bosch_bike_id = ?",
             (personne_id, data.bosch_id)
         )
         cursor.execute(
-            "UPDATE velos SET bosch_bike_id = ?, bosch_odometre_m = NULL, bosch_heures = NULL, bosch_batterie = NULL WHERE id = ? AND personne_id = ?",
+            "UPDATE velos SET bosch_bike_id = ?, bosch_odometre_m = NULL, bosch_heures = NULL, bosch_batterie = NULL, bosch_composants = NULL WHERE id = ? AND personne_id = ?",
             (data.bosch_id, data.velo_id, personne_id)
         )
         effacer_heures_bosch_orphelines(cursor)
@@ -20414,7 +20505,7 @@ def bosch_delier(velo_id: int, x_code_acces: Optional[str] = Header(default=None
     cursor = conn.cursor()
     try:
         cursor.execute(
-            "UPDATE velos SET bosch_bike_id = NULL, bosch_odometre_m = NULL, bosch_heures = NULL, bosch_batterie = NULL WHERE id = ? AND personne_id = ?",
+            "UPDATE velos SET bosch_bike_id = NULL, bosch_odometre_m = NULL, bosch_heures = NULL, bosch_batterie = NULL, bosch_composants = NULL WHERE id = ? AND personne_id = ?",
             (velo_id, personne_id)
         )
         effacer_heures_bosch_orphelines(cursor)
@@ -20422,6 +20513,36 @@ def bosch_delier(velo_id: int, x_code_acces: Optional[str] = Header(default=None
         return {"ok": True}
     finally:
         conn.close()
+
+
+def resume_composants_bosch(velo):
+    """Liste des composants Bosch d'un vélo (moteur, batterie, afficheur...) avec nom, numéro de série et référence."""
+    if not isinstance(velo, dict):
+        return None
+
+    def texte(valeur):
+        return str(valeur).strip()[:60] if isinstance(valeur, (str, int, float)) and not isinstance(valeur, bool) and str(valeur).strip() else None
+
+    modeles = [
+        ("Moteur", [velo.get("driveUnit")]),
+        ("Batterie", velo.get("batteries")),
+        ("Afficheur", [velo.get("headUnit")]),
+        ("Télécommande", [velo.get("remoteControl")]),
+        ("ConnectModule", [velo.get("connectModule")]),
+        ("ABS", velo.get("antiLockBrakeSystems")),
+    ]
+    resultat = []
+    for role, pieces in modeles:
+        pieces = [x for x in (pieces if isinstance(pieces, list) else []) if isinstance(x, dict)]
+        for i, piece in enumerate(pieces):
+            nom = texte(piece.get("productName"))
+            serie = texte(piece.get("serialNumber"))
+            reference = texte(piece.get("partNumber"))
+            if not (nom or serie or reference):
+                continue
+            etiquette = role + " " + str(i + 1) if len(pieces) > 1 and role == "Batterie" else role
+            resultat.append({"role": etiquette, "nom": nom, "serie": serie, "reference": reference})
+    return resultat or None
 
 
 def resume_batterie_bosch(batteries):
@@ -20565,7 +20686,7 @@ def bosch_synchroniser(x_code_acces: Optional[str] = Header(default=None)):
                     candidats = [r[0] for r in tous if "electri" in str(r[3] or "").lower()]
                 if len(candidats) == 1:
                     cursor.execute(
-                        "UPDATE velos SET bosch_bike_id = ?, bosch_odometre_m = NULL, bosch_heures = NULL, bosch_batterie = NULL WHERE id = ? AND personne_id = ?",
+                        "UPDATE velos SET bosch_bike_id = ?, bosch_odometre_m = NULL, bosch_heures = NULL, bosch_batterie = NULL, bosch_composants = NULL WHERE id = ? AND personne_id = ?",
                         (ids_bosch[0], candidats[0], personne_id)
                     )
                     effacer_heures_bosch_orphelines(cursor)
@@ -20596,6 +20717,12 @@ def bosch_synchroniser(x_code_acces: Optional[str] = Header(default=None)):
             cursor.execute(
                 "UPDATE velos SET bosch_batterie = ? WHERE id = ?",
                 (json.dumps(batterie) if batterie else None, ligne[0])
+            )
+            # Références des composants (numéros de série) : gardées pour la fiche technique du vélo.
+            composants_bosch = resume_composants_bosch(velo)
+            cursor.execute(
+                "UPDATE velos SET bosch_composants = ? WHERE id = ?",
+                (json.dumps(composants_bosch) if composants_bosch else None, ligne[0])
             )
             odo = ((velo or {}).get("driveUnit") or {}).get("odometer")
             if not isinstance(odo, (int, float)) or isinstance(odo, bool) or odo <= 0:
@@ -23063,7 +23190,7 @@ def obtenir_etat(
 
     try:
         cursor.execute("""
-            SELECT id, km_total, date_achat, legacy_velo_id, suivi_depuis, bosch_heures, bosch_batterie
+            SELECT id, km_total, date_achat, legacy_velo_id, suivi_depuis, bosch_heures, bosch_batterie, bosch_composants
             FROM velos
             WHERE id = ? AND actif = 1
         """, (velo_id,))
@@ -23080,6 +23207,11 @@ def obtenir_etat(
             batterie_velo = json.loads(velo["bosch_batterie"]) if velo["bosch_batterie"] else None
         except Exception:
             batterie_velo = None
+        composants_bosch = None
+        try:
+            composants_bosch = json.loads(velo["bosch_composants"]) if velo["bosch_composants"] else None
+        except Exception:
+            composants_bosch = None
         date_achat = velo["date_achat"] or (
             DATE_ACHAT_PAR_DEFAUT
             if velo["legacy_velo_id"] == 1
@@ -23268,6 +23400,7 @@ def obtenir_etat(
             # Temps total du vélo Bosch en heures (vide si le vélo n'est pas relié à Bosch).
             "heures_total": heures_velo,
             "batterie": batterie_velo,
+            "composants_bosch": composants_bosch,
             "composants": resultat
         }
 
