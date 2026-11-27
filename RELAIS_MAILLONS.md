@@ -1,3 +1,11 @@
+# Mise à jour — 27/11/2026 — fenêtre « Quoi de neuf » (version test)
+
+- Demande de Math : informer des nouveautés par une fenêtre dans l'appli ; vraies notifications téléphone : plus tard, pour les choses importantes. Le partage anonyme attend.
+- `main.py` seul : fenêtre affichée une fois par appareil après connexion. Pour une nouvelle annonce : changer `id` et `points` dans `NOUVEAUTES`.
+- Vérifié en local (navigateur format téléphone) : affichage, fermeture, pas de retour, retour avec un nouvel `id`. Tests lancés fichier par fichier : réussis (lancés ensemble avant cette modification : 3 échecs, cause non cherchée).
+- Enregistré sur la branche test. Pas déployé, pas envoyé sur `main`.
+
+
 # Mise à jour — 15/11/2026 — survol 3D simplifié, bibliothèque fiable, caméra fluide, fusion sur main
 
 Travail validé par Math sur le service de test puis sur la vraie version (« ça marche très bien »).

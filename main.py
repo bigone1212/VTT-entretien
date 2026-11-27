@@ -6421,6 +6421,15 @@ def accueil():
             </form>
         </dialog>
 
+        <dialog id="fenetreNouveautes" class="fenetre-velo" aria-labelledby="titreFenetreNouveautes">
+            <div class="fenetre-velo-entete">
+                <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.5 6 6.5.5-5 4.3 1.6 6.4L12 16.8 6.4 20.2 8 13.8 3 9.5 9.5 9z"/></svg><span id="titreFenetreNouveautes">Quoi de neuf</span></strong>
+                <button type="button" class="fenetre-velo-fermer" id="boutonFermerNouveautes" aria-label="Fermer les nouveautés">✕</button>
+            </div>
+            <ul id="listeNouveautes" style="margin:8px 0 14px; padding-left:20px; line-height:1.5;"></ul>
+            <form method="dialog"><button class="btn-primary" type="submit">J’ai compris</button></form>
+        </dialog>
+
         <script>
             const PAGES = ['entretien', 'historique', 'reglages', 'sorties', 'parametres', 'compte'];
 
@@ -9777,6 +9786,42 @@ def accueil():
 
             let moiId = null;
 
+            // ---- Fenêtre « Quoi de neuf » : affichée une fois par appareil à chaque nouvelle annonce ----
+            // Pour annoncer une nouveauté : changer le numéro (id) et la liste des points.
+            const NOUVEAUTES = {
+                id: '2026-11-27',
+                points: [
+                    'L’usure de chaque pièce tient maintenant compte de vos sorties : terrain, dénivelé, effort, météo, poids et chocs.',
+                    'Onglet Sorties : bilans par semaine, mois et année, et vos records.',
+                    'La liste des sorties se déplie, avec un aperçu du parcours et du profil.'
+                ]
+            };
+
+            function afficherNouveautes() {
+                const fenetre = document.getElementById('fenetreNouveautes');
+                if (!fenetre || fenetre.open || typeof fenetre.showModal !== 'function') return;
+                // Jamais par-dessus une autre fenêtre : ce sera pour la prochaine ouverture.
+                if (document.querySelector('dialog[open]')) return;
+                try {
+                    if (localStorage.getItem('maillons_nouveautes_vues') === NOUVEAUTES.id) return;
+                } catch (e) {
+                    return;
+                }
+                const liste = document.getElementById('listeNouveautes');
+                liste.textContent = '';
+                NOUVEAUTES.points.forEach(texte => {
+                    const ligne = document.createElement('li');
+                    ligne.textContent = texte;
+                    liste.appendChild(ligne);
+                });
+                fenetre.showModal();
+            }
+
+            document.getElementById('boutonFermerNouveautes').addEventListener('click', () => document.getElementById('fenetreNouveautes').close());
+            document.getElementById('fenetreNouveautes').addEventListener('close', () => {
+                try { localStorage.setItem('maillons_nouveautes_vues', NOUVEAUTES.id); } catch (e) {}
+            });
+
             function afficherBienvenue(nom) {
                 const zone = document.getElementById('headerBienvenue');
                 if (!zone) return;
@@ -9795,6 +9840,7 @@ def accueil():
                     afficherBienvenue(moi ? moi.nom : '');
                     majBlocCompte(moi ? moi.nom : '');
                     majProfilCompte(moi);
+                    if (moi) afficherNouveautes();
                 } catch (e) {
                     admin = false;
                     afficherBienvenue('');
