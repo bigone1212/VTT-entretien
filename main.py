@@ -3150,10 +3150,10 @@ def accueil():
                 position: absolute;
                 right: 3px;
                 bottom: 1px;
-                font-size: 6px;
+                font-size: 7px;
                 line-height: 1;
-                color: #444;
-                text-shadow: 0 0 2px #fff;
+                color: #fff;
+                text-shadow: 0 0 2px #000;
                 pointer-events: none;
             }
             .mini-profil { display: none; margin-top: 6px; }
@@ -12803,7 +12803,7 @@ def accueil():
             }
 
 
-            // Petit parcours sur fond de carte clair (tuiles CARTO / OpenStreetMap, comme l'image de partage). Sans trace : cadre vide.
+            // Petit parcours sur fond de carte satellite (tuiles Esri, comme la fiche de la sortie). Sans trace : cadre vide.
             function dessinerTraceAvecFond(trace) {
                 const L = 120, H = 72, M = 9;
                 const boite = document.createElement('div');
@@ -12824,27 +12824,17 @@ def accueil():
                 const ox = (mx(minLon, z) + mx(maxLon, z)) / 2 - L / 2;
                 const oy = (my(minLat, z) + my(maxLat, z)) / 2 - H / 2;
                 const n = Math.pow(2, z);
-                const chargements = [];
                 for (let ty = Math.floor(oy / 256); ty <= Math.floor((oy + H) / 256); ty++) {
                     if (ty < 0 || ty >= n) continue;
                     for (let tx = Math.floor(ox / 256); tx <= Math.floor((ox + L) / 256); tx++) {
                         const img = document.createElement('img');
                         img.alt = '';
+                        img.loading = 'lazy';
+                        img.decoding = 'async';
                         img.style.left = (tx * 256 - ox).toFixed(1) + 'px';
                         img.style.top = (ty * 256 - oy).toFixed(1) + 'px';
-                        const txm = ((tx % n) + n) % n;
-                        // Plusieurs adresses essayées l'une après l'autre : la même carte que l'image de partage (@2x), puis les autres serveurs.
-                        const sources = [
-                            'https://' + 'abcd'.charAt((txm + ty) % 4) + '.basemaps.cartocdn.com/rastertiles/voyager/' + z + '/' + txm + '/' + ty + '@2x.png',
-                            'https://' + 'abcd'.charAt((txm + ty + 1) % 4) + '.basemaps.cartocdn.com/rastertiles/voyager/' + z + '/' + txm + '/' + ty + '.png',
-                            'https://tile.openstreetmap.org/' + z + '/' + txm + '/' + ty + '.png'
-                        ];
-                        let essai = 0;
-                        img.addEventListener('error', () => {
-                            essai += 1;
-                            if (essai < sources.length) img.src = sources[essai]; else img.remove();
-                        });
-                        chargements.push(() => { img.src = sources[0]; });
+                        img.addEventListener('error', () => img.remove());
+                        img.src = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/' + z + '/' + ty + '/' + (((tx % n) + n) % n);
                         boite.appendChild(img);
                     }
                 }
@@ -12868,25 +12858,8 @@ def accueil():
                 });
                 boite.appendChild(svg);
                 const mention = document.createElement('small');
-                mention.textContent = '© OpenStreetMap · CARTO';
+                mention.textContent = '© Esri';
                 boite.appendChild(mention);
-                // Les cartes ne se chargent que lorsque la sortie arrive à l'écran (liste longue).
-                const lancer = () => { chargements.forEach(f => f()); chargements.length = 0; };
-                if (typeof IntersectionObserver === 'function') {
-                    if (!window.observateurMiniCartes) {
-                        window.observateurMiniCartes = new IntersectionObserver((entrees) => {
-                            entrees.forEach(e => {
-                                if (!e.isIntersecting) return;
-                                window.observateurMiniCartes.unobserve(e.target);
-                                if (typeof e.target.lancerCarte === 'function') e.target.lancerCarte();
-                            });
-                        }, { rootMargin: '400px' });
-                    }
-                    boite.lancerCarte = lancer;
-                    window.observateurMiniCartes.observe(boite);
-                } else {
-                    lancer();
-                }
                 return boite;
             }
 
