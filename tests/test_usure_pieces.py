@@ -140,3 +140,82 @@ def test_usure_des_pieces_dans_l_etat():
         mouille = pieces()
         assert mouille["freins"][0]["km_usure"] > sec["freins"][0]["km_usure"]
         assert mouille["pneu"][0]["km_usure"] >= sec["pneu"][0]["km_usure"]
+
+
+def test_cadence_basse_use_la_chaine():
+    assert main.facteur_cadence(None) == 1.0
+    assert main.facteur_cadence(80) == 1.0
+    assert main.facteur_cadence(60) == 1.0
+    assert abs(main.facteur_cadence(50) - 1.12) < 1e-9
+    assert main.facteur_cadence(10) == 1.3          # plafonné
+    assert abs(main.facteur_cadence(105) - 1.04) < 1e-9
+    assert main.facteur_cadence(200) == 1.1
+    reglages = dict(REGLAGES)
+    reglages["poids_effort"] = 1.0
+    doux = main.facteur_usure("transmission", 30, 500, 500, "mixte", reglages, 1.0, 1.0, None, 85)
+    lent = main.facteur_usure("transmission", 30, 500, 500, "mixte", reglages, 1.0, 1.0, None, 50)
+    assert abs(lent / doux - 1.12) < 1e-9
+    # Les autres familles ignorent la cadence
+    freins_lent = main.facteur_usure("freins", 30, 500, 500, "mixte", reglages, 1.0, 1.0, None, 50)
+    freins_doux = main.facteur_usure("freins", 30, 500, 500, "mixte", reglages, 1.0, 1.0, None, 85)
+    assert freins_lent == freins_doux
+
+
+def test_chaleur_poids_et_chocs():
+    assert main.facteur_chaleur("freins", 20) == 1.0
+    assert abs(main.facteur_chaleur("freins", 30) - 1.05) < 1e-9
+    assert main.facteur_chaleur("freins", 60) == 1.15
+    assert main.facteur_chaleur("pneu", 35) == 1.0
+    assert main.facteur_chaleur("freins", None) == 1.0
+    # Poids : référence 85 + 2,5 + 25 kg ; plus lourd = plus d'usure des freins, de la fourche et des roues
+    assert main.facteur_charge("freins", 85, 2.5) == 1.0
+    assert main.facteur_charge("freins", 105, 2.5) > 1.0
+    assert main.facteur_charge("freins", 70, 2.5) < 1.0
+    assert main.facteur_charge("transmission", 120, 5) == 1.0
+    assert main.facteur_charge("freins", None, None) == 1.0   # poids inconnu : référence
+    # Chocs : 10 sauts sur 10 km = surplus plafonné à 30 % x poids de la famille
+    assert main.facteur_chocs("suspension", 0) == 1.0
+    assert abs(main.facteur_chocs("suspension", 5) - 1.15) < 1e-9
+    assert abs(main.facteur_chocs("suspension", 50) - 1.3) < 1e-9
+    assert abs(main.facteur_chocs("roues", 50) - 1.24) < 1e-9
+    assert main.facteur_chocs("freins", 50) == 1.0
+
+
+def test_donnees_bosch_cadence_et_sauts():
+    assert main.cadence_moyenne_sortie(None) is None
+    assert main.cadence_moyenne_sortie({"cadence_moy": 78.5}) == 78.5
+    assert main.cadence_moyenne_sortie('{"cadence_moy": 0}') is None
+    assert main.sauts_pour_10_km(None, 20) == 0.0
+    d = {"sauts": {"jumps": {"nombre": 6}}}
+    assert abs(main.sauts_pour_10_km(d, 30) - 2.0) < 1e-9
+    assert main.sauts_pour_10_km(d, 0) == 0.0
+
+
+def test_nouvelle_famille_roues():
+    for nom in ("Rayons et voile des roues (contrôle)", "Roulements de moyeux", "Roulements de direction", "Jante arrière"):
+        assert main.famille_de(nom) == "roues", nom
+    assert main.famille_de("Pneu arrière") == "pneu"
+    route = main.coef_terrain_famille("roues", {"route": 1.0}, False, "route", REGLAGES)
+    sentier = main.coef_terrain_famille("roues", {"sentier": 1.0}, False, "sentier", REGLAGES)
+    assert abs(route - 0.7) < 1e-9 and sentier > route
+
+
+def test_lecture_meteo_pluie_et_temperature():
+    import urllib.request as ur
+
+    class Rep:
+        def __init__(self, t): self.t = t
+        def read(self): return self.t.encode("utf-8")
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    heures = ["2026-10-05T%02d:00" % h for h in range(7, 11)]
+    corps = json.dumps({"hourly": {"time": heures, "precipitation": [0.0, 2.0, 4.0, 1.0], "temperature_2m": [8.0, 10.0, 14.0, 16.0]}})
+    ancien = ur.urlopen
+    ur.urlopen = lambda demande, timeout=0: Rep(corps)
+    try:
+        meteo = main.lire_meteo_open_meteo(44.0, 2.0, "2026-10-05T08:30:00Z", 3600)
+    finally:
+        ur.urlopen = ancien
+    assert abs(meteo["pluie_mm"] - 3.0) < 1e-9
+    assert abs(meteo["temperature_c"] - 12.0) < 1e-9     # moyenne de 10 °C et 14 °C, une demi-heure chacun
