@@ -3114,6 +3114,68 @@ def accueil():
             #histFermer { width: 38px; height: 38px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid var(--line); background: var(--fill); color: var(--strong); cursor: pointer; }
             #histFermer .ico { width: 18px; height: 18px; }
 
+            /* Sorties repliables : replié = titre, kilométrage et petit parcours sur fond de carte. */
+            .fleche-sortie {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 26px;
+                height: 26px;
+                padding: 0;
+                margin: -3px 4px -3px -4px;
+                vertical-align: middle;
+                border: none;
+                background: transparent;
+                color: var(--text-muted);
+                cursor: pointer;
+            }
+            .fleche-sortie::before {
+                content: '';
+                width: 8px;
+                height: 8px;
+                border-right: 2px solid currentColor;
+                border-bottom: 2px solid currentColor;
+                transform: translateY(-2px) rotate(45deg);
+                transition: transform 0.15s;
+            }
+            .fleche-sortie[aria-expanded="true"]::before { transform: translateY(1px) rotate(225deg); }
+            .ligne-km { display: none; color: var(--text-muted); margin-top: 4px; }
+            .sortie-item.sortie-repliee .ligne-km { display: block; }
+            .sortie-item.sortie-repliee .sortie-detail,
+            .sortie-item.sortie-repliee .photos-gallery,
+            .sortie-item.sortie-repliee .videos-liste,
+            .sortie-item.sortie-repliee .profil-sortie { display: none !important; }
+            .mini-carte {
+                position: relative;
+                width: 120px;
+                height: 72px;
+                flex-shrink: 0;
+                overflow: hidden;
+                border-radius: 8px;
+                background: var(--fill);
+            }
+            .mini-carte img { position: absolute; width: 256px; height: 256px; max-width: none; pointer-events: none; }
+            .mini-carte svg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+            .mini-carte small {
+                position: absolute;
+                right: 3px;
+                bottom: 1px;
+                font-size: 7px;
+                line-height: 1;
+                color: #fff;
+                text-shadow: 0 0 2px #000;
+                pointer-events: none;
+            }
+            .btn-deplier-sorties {
+                background: none;
+                border: none;
+                padding: 0;
+                margin: 0 0 10px 0;
+                font-size: 0.8rem;
+                color: var(--accent);
+                cursor: pointer;
+            }
+
             .sortie-media {
                 display: flex;
                 flex-direction: column;
@@ -6001,7 +6063,8 @@ def accueil():
                 </summary>
                 <div class="bilan-corps" id="recordsCorps"></div>
             </details>
-            <p id="compteurSorties" class="form-help" style="margin:0 0 10px;"></p>
+            <p id="compteurSorties" class="form-help" style="margin:0 0 6px;"></p>
+            <button type="button" id="toutDeplierSorties" class="btn-deplier-sorties" style="display:none;"></button>
             <div id="sortiesList">
                 <div class="loading">Chargement des sorties...</div>
             </div>
@@ -12746,6 +12809,78 @@ def accueil():
             }
 
 
+            // Petit parcours sur fond de carte satellite (tuiles Esri, comme la fiche de la sortie). Sans trace : cadre vide.
+            function dessinerTraceAvecFond(trace) {
+                const L = 120, H = 72, M = 9;
+                const boite = document.createElement('div');
+                boite.className = 'mini-carte';
+                if (!Array.isArray(trace) || trace.length < 2 || trace.some(p => !Array.isArray(p) || typeof p[0] !== 'number' || typeof p[1] !== 'number')) {
+                    return boite;
+                }
+                const mx = (lon, z) => (lon + 180) / 360 * 256 * Math.pow(2, z);
+                const my = (lat, z) => {
+                    const r = Math.max(-85, Math.min(85, lat)) * Math.PI / 180;
+                    return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * 256 * Math.pow(2, z);
+                };
+                const lats = trace.map(p => p[0]), lons = trace.map(p => p[1]);
+                const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+                const minLon = Math.min(...lons), maxLon = Math.max(...lons);
+                let z = 17;
+                while (z > 3 && (mx(maxLon, z) - mx(minLon, z) > L - 2 * M || my(minLat, z) - my(maxLat, z) > H - 2 * M)) z--;
+                const ox = (mx(minLon, z) + mx(maxLon, z)) / 2 - L / 2;
+                const oy = (my(minLat, z) + my(maxLat, z)) / 2 - H / 2;
+                const n = Math.pow(2, z);
+                for (let ty = Math.floor(oy / 256); ty <= Math.floor((oy + H) / 256); ty++) {
+                    if (ty < 0 || ty >= n) continue;
+                    for (let tx = Math.floor(ox / 256); tx <= Math.floor((ox + L) / 256); tx++) {
+                        const img = document.createElement('img');
+                        img.alt = '';
+                        img.loading = 'lazy';
+                        img.decoding = 'async';
+                        img.style.left = (tx * 256 - ox).toFixed(1) + 'px';
+                        img.style.top = (ty * 256 - oy).toFixed(1) + 'px';
+                        img.addEventListener('error', () => img.remove());
+                        img.src = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/' + z + '/' + ty + '/' + (((tx % n) + n) % n);
+                        boite.appendChild(img);
+                    }
+                }
+                const ns = 'http://www.w3.org/2000/svg';
+                const svg = document.createElementNS(ns, 'svg');
+                svg.setAttribute('viewBox', '0 0 ' + L + ' ' + H);
+                const pas = Math.max(1, Math.floor(trace.length / 150));
+                const points = [];
+                for (let i = 0; i < trace.length; i += pas) points.push(trace[i]);
+                points.push(trace[trace.length - 1]);
+                const texte = points.map(p => (mx(p[1], z) - ox).toFixed(1) + ',' + (my(p[0], z) - oy).toFixed(1)).join(' ');
+                [['#ffffff', '4'], ['#3b82f6', '2']].forEach(style => {
+                    const ligne = document.createElementNS(ns, 'polyline');
+                    ligne.setAttribute('points', texte);
+                    ligne.setAttribute('fill', 'none');
+                    ligne.setAttribute('stroke', style[0]);
+                    ligne.setAttribute('stroke-width', style[1]);
+                    ligne.setAttribute('stroke-linejoin', 'round');
+                    ligne.setAttribute('stroke-linecap', 'round');
+                    svg.appendChild(ligne);
+                });
+                boite.appendChild(svg);
+                const mention = document.createElement('small');
+                mention.textContent = '© Esri';
+                boite.appendChild(mention);
+                return boite;
+            }
+
+            // Sorties dépliées (les autres sont repliées), gardées sur le téléphone.
+            function lireSortiesDepliees() {
+                try {
+                    const liste = JSON.parse(localStorage.getItem('maillons_sorties_depliees') || '[]');
+                    return new Set(Array.isArray(liste) ? liste.map(String) : []);
+                } catch (e) { return new Set(); }
+            }
+
+            function enregistrerSortiesDepliees(ensemble) {
+                try { localStorage.setItem('maillons_sorties_depliees', JSON.stringify(Array.from(ensemble))); } catch (e) { /* stockage refusé */ }
+            }
+
             // ---------- Pente et type de chemin ----------
             const COULEURS_PENTE = [
                 { max: 4, couleur: '#22c55e', nom: 'moins de 4 %' },
@@ -14565,6 +14700,21 @@ def accueil():
                         liste.appendChild(vide);
                     }
 
+                    const depliees = lireSortiesDepliees();
+                    const boutonTout = document.getElementById('toutDeplierSorties');
+                    const majBoutonTout = () => {
+                        const toutes = sortiesAffichees.length > 0 && sortiesAffichees.every(x => depliees.has(String(x.id)));
+                        boutonTout.textContent = toutes ? 'Tout replier' : 'Tout déplier';
+                    };
+                    boutonTout.style.display = sortiesAffichees.length > 1 ? '' : 'none';
+                    boutonTout.onclick = () => {
+                        const toutes = sortiesAffichees.every(x => depliees.has(String(x.id)));
+                        sortiesAffichees.forEach(x => { if (toutes) depliees.delete(String(x.id)); else depliees.add(String(x.id)); });
+                        enregistrerSortiesDepliees(depliees);
+                        chargerSorties(true);
+                    };
+                    majBoutonTout();
+
                     sortiesAffichees.forEach(s => {
                         const item = document.createElement('div');
                         item.className = 'history-item';
@@ -14599,7 +14749,17 @@ def accueil():
                             titre.prepend(aVerifier);
                         }
 
+                        // Flèche pour replier / déplier la sortie : replié, on ne voit que le titre, le kilométrage et le petit parcours.
+                        const fleche = document.createElement('button');
+                        fleche.type = 'button';
+                        fleche.className = 'fleche-sortie';
+                        titre.prepend(fleche);
+                        const ligneKm = document.createElement('div');
+                        ligneKm.className = 'ligne-km';
+                        ligneKm.textContent = fmtDistance(s.distance_km).texte + ' ' + fmtDistance(s.distance_km).unite;
+
                         const ligne1 = document.createElement('div');
+                        ligne1.className = 'sortie-detail';
                         ligne1.style.color = 'var(--text-muted)';
                         ligne1.style.marginTop = '4px';
                         ligne1.textContent =
@@ -14607,6 +14767,7 @@ def accueil():
                             `${formaterDuree(s.duree_s)} · ${fmtVitesse(s.vitesse_moy).texte} ${fmtVitesse(s.vitesse_moy).unite}`;
 
                         const ligne2 = document.createElement('div');
+                        ligne2.className = 'sortie-detail';
                         ligne2.style.color = 'var(--text-muted)';
                         ligne2.style.display = 'flex';
                         ligne2.style.flexWrap = 'wrap';
@@ -14658,7 +14819,7 @@ def accueil():
                         }
 
                         const ligneUsure = document.createElement('div');
-                        ligneUsure.className = 'ligne-usure';
+                        ligneUsure.className = 'ligne-usure sortie-detail';
                         if (s.coef_analyse) {
                             ligneUsure.textContent =
                                 `Usure des pièces ×${String(s.coef_usure).replace('.', ',')} · d'après le terrain analysé`;
@@ -14711,6 +14872,7 @@ def accueil():
                         });
 
                         details.appendChild(titre);
+                        details.appendChild(ligneKm);
                         details.appendChild(ligne1);
                         details.appendChild(ligne2);
                         details.appendChild(ligneUsure);
@@ -14728,7 +14890,7 @@ def accueil():
                         });
 
                         const bouton3d = document.createElement('button');
-                        bouton3d.className = 'btn-survol';
+                        bouton3d.className = 'btn-survol sortie-detail';
                         bouton3d.type = 'button';
                         remplirBouton(bouton3d, 'montagne', 'Survol 3D');
                         bouton3d.disabled = !s.trace || s.trace.length < 2;
@@ -14857,7 +15019,7 @@ def accueil():
                             item.appendChild(zoneVideos);
                         }
 
-                        mediaDiv.appendChild(dessinerTrace(s.trace));
+                        mediaDiv.appendChild(dessinerTraceAvecFond(s.trace));
                         item.insertBefore(mediaDiv, item.querySelector('.videos-liste'));
 
                         const blocProfil = dessinerProfil(s);
@@ -14865,6 +15027,23 @@ def accueil():
                             item.style.flexWrap = 'wrap';
                             item.appendChild(blocProfil);
                         }
+
+                        // État replié / déplié (replié par défaut).
+                        const majFleche = () => {
+                            const ouverte = depliees.has(String(s.id));
+                            item.classList.toggle('sortie-repliee', !ouverte);
+                            fleche.setAttribute('aria-expanded', ouverte ? 'true' : 'false');
+                            fleche.setAttribute('aria-label', ouverte ? 'Replier la sortie' : 'Déplier la sortie');
+                        };
+                        majFleche();
+                        fleche.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            const cle = String(s.id);
+                            if (depliees.has(cle)) depliees.delete(cle); else depliees.add(cle);
+                            enregistrerSortiesDepliees(depliees);
+                            majFleche();
+                            majBoutonTout();
+                        });
 
                         // On touche la sortie (hors boutons, photos, menus) pour ouvrir sa fiche.
                         item.classList.add('sortie-cliquable');
