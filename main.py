@@ -47,6 +47,10 @@ REGLAGES_PAR_DEFAUT = {
     "terrain_chemin": 1.3,
     "terrain_sentier": 1.6,
     "poids_denivele": 1.0,
+    # Effet de l'effort (puissance moyenne du cycliste) sur la transmission : 0 = ignoré, 1 = effet complet.
+    "poids_effort": 0.5,
+    # Puissance moyenne « habituelle » du cycliste (W) : en dessous l'effort allège l'usure, au-dessus il l'alourdit.
+    "puissance_reference": 100.0,
 }
 
 
@@ -328,6 +332,9 @@ def famille_de(nom):
     if "pneu" in nom:
         return "pneu"
 
+    if any(m in nom for m in ("rayon", "jante", "roulement", "moyeu")):
+        return "roues"
+
     if any(m in nom for m in (
         "chaîne", "chaine", "cassette", "plateau", "galet",
         "dérailleur", "derailleur", "transmission"
@@ -379,28 +386,336 @@ def coef_terrain_sortie(trace_json, surfaces, terrain, reglages):
     return somme / total, True
 
 
-def facteur_usure(famille, distance_km, d_pos, d_neg, terrain, reglages, coef=None):
+# ------------------------------------------------------------
+# Usure adaptée à chaque famille de pièces
+# ------------------------------------------------------------
+# Les coefficients de terrain (route, chemin, sentier) des réglages donnent l'usure générale ; chaque famille les
+# corrige selon ce qui l'use vraiment. Ce sont des estimations de départ (usage de Math : beaucoup de route, pneu
+# arrière conseillé à 1 500 km mais tenu à 2 300 km ; la fourche ne s'use presque pas sur la route).
+PROFIL_PIECE = {
+    "pneu": {"route": 0.65, "chemin": 0.85, "sentier": 0.85},
+    "freins": {"route": 0.8, "chemin": 1.0, "sentier": 1.0},
+    "transmission": {"route": 0.9, "chemin": 1.0, "sentier": 1.0},
+    "suspension": {"route": 0.15, "chemin": 0.75, "sentier": 0.9},
+    "roues": {"route": 0.7, "chemin": 1.0, "sentier": 1.2},
+}
+# Répartition supposée du terrain choisi quand le type de chemin n'a pas été analysé.
+REPARTITION_TERRAIN = {
+    "route": {"route": 1.0},
+    "mixte": {"route": 0.4, "chemin": 0.45, "sentier": 0.15},
+    "chemin": {"chemin": 1.0},
+    "sentier": {"sentier": 1.0},
+}
+# Effet de la pluie (3 mm ou plus = sortie bien mouillée) : plaquettes et chaîne souffrent le plus.
+POIDS_PLUIE = {"freins": 0.6, "transmission": 0.4, "pneu": 0.1, "suspension": 0.15, "roues": 0.25}
+# Poids total roulé (cycliste + sac + vélo) comparé à une référence : plus de charge, plus de contraintes.
+POIDS_VELO_KG = 25.0
+POIDS_CYCLISTE_DEFAUT_KG = 85.0
+CHARGE_REFERENCE_KG = POIDS_CYCLISTE_DEFAUT_KG + 2.5 + POIDS_VELO_KG
+POIDS_CHARGE = {"freins": 0.6, "suspension": 0.5, "roues": 0.5, "pneu": 0.3}
+# Chocs et sauts (nombre de sauts pour 10 km) : surtout la suspension, les roues et les pneus.
+POIDS_CHOCS = {"suspension": 1.0, "roues": 0.8, "pneu": 0.4}
+CHOCS_MAX = 0.3
+
+
+def facteur_cadence(cadence):
+    """Usure de la chaîne selon la cadence moyenne (tours/min) : cadence basse = couple et tension de chaîne élevés."""
+    if not isinstance(cadence, (int, float)) or isinstance(cadence, bool) or cadence <= 0:
+        return 1.0
+    if cadence < 60:
+        return min(1.3, 1.0 + 0.012 * (60 - cadence))
+    if cadence > 95:
+        return min(1.1, 1.0 + 0.004 * (cadence - 95))
+    return 1.0
+
+
+def facteur_charge(famille, poids_cycliste, poids_sac):
+    """Surplus d'usure dû au poids total roulé (cycliste + sac + vélo) par rapport à la référence."""
+    poids = poids_cycliste if isinstance(poids_cycliste, (int, float)) and poids_cycliste > 0 else POIDS_CYCLISTE_DEFAUT_KG
+    sac = poids_sac if isinstance(poids_sac, (int, float)) and poids_sac >= 0 else 2.5
+    rapport = max(0.85, min(1.3, (poids + sac + POIDS_VELO_KG) / CHARGE_REFERENCE_KG))
+    return 1.0 + POIDS_CHARGE.get(famille, 0.0) * (rapport - 1.0)
+
+
+def facteur_chocs(famille, chocs_10km):
+    """Surplus d'usure dû aux sauts et chocs (nombre de sauts pour 10 km)."""
+    if not isinstance(chocs_10km, (int, float)) or chocs_10km <= 0:
+        return 1.0
+    return 1.0 + POIDS_CHOCS.get(famille, 0.0) * min(CHOCS_MAX, 0.03 * chocs_10km)
+
+
+def facteur_chaleur(famille, temperature):
+    """Plaquettes : au-dessus de 25 °C elles chauffent et s'usent un peu plus vite (jusqu'à +15 %)."""
+    if famille != "freins" or not isinstance(temperature, (int, float)) or isinstance(temperature, bool):
+        return 1.0
+    return 1.0 + min(0.15, 0.01 * max(0.0, temperature - 25.0))
+PLUIE_SORTIE_MOUILLEE_MM = 3.0
+
+
+def parts_terrain_sortie(trace_json, surfaces, terrain):
+    """Part de route / chemin / sentier d'une sortie (somme = 1) et si elle vient d'une analyse du type de chemin.
+    Les parties inconnues, ou toute la sortie sans analyse, suivent la répartition du terrain choisi."""
+    repartition = REPARTITION_TERRAIN.get(terrain or "mixte", REPARTITION_TERRAIN["mixte"])
+    if not surfaces:
+        return dict(repartition), False
+    try:
+        trace = json.loads(trace_json or "[]")
+    except ValueError:
+        return dict(repartition), False
+    if not isinstance(trace, list) or len(trace) != len(surfaces) or len(trace) < 2:
+        return dict(repartition), False
+    cumul = {"route": 0.0, "chemin": 0.0, "sentier": 0.0, "inconnu": 0.0}
+    total = 0.0
+    for i in range(len(trace) - 1):
+        d = gpx_import._distance_m(trace[i], trace[i + 1])
+        total += d
+        code = surfaces[i]
+        if code in ("r", "v"):
+            cumul["route"] += d
+        elif code == "c":
+            cumul["chemin"] += d
+        elif code == "s":
+            cumul["sentier"] += d
+        else:
+            cumul["inconnu"] += d
+    if total <= 0:
+        return dict(repartition), False
+    parts = {"route": 0.0, "chemin": 0.0, "sentier": 0.0}
+    for type_chemin in parts:
+        parts[type_chemin] = cumul[type_chemin] / total
+    inconnu = cumul["inconnu"] / total
+    for type_chemin, part in repartition.items():
+        parts[type_chemin] += inconnu * part
+    return parts, True
+
+
+def coef_terrain_famille(famille, parts, analyse, terrain, reglages):
+    """Coefficient de terrain d'une sortie pour une famille de pièces."""
+    profil = PROFIL_PIECE.get(famille)
+    if profil is None:
+        # Familles sans profil propre : le coefficient général du terrain, comme avant.
+        if analyse:
+            return sum(part * reglages.get(f"terrain_{t}", 1.0) for t, part in parts.items())
+        return reglages.get(f"terrain_{terrain}", 1.0)
+    if analyse:
+        return sum(part * reglages.get(f"terrain_{t}", 1.0) * profil[t] for t, part in parts.items())
+    base = reglages.get(f"terrain_{terrain}", 1.0)
+    repartition = REPARTITION_TERRAIN.get(terrain or "mixte", REPARTITION_TERRAIN["mixte"])
+    return base * sum(part * profil[t] for t, part in repartition.items())
+
+
+def facteur_pluie(famille, pluie_mm):
+    """Surplus d'usure dû à la pluie (1,0 = sortie au sec ou météo inconnue)."""
+    if not isinstance(pluie_mm, (int, float)) or isinstance(pluie_mm, bool) or pluie_mm <= 0:
+        return 1.0
+    mouille = min(1.0, float(pluie_mm) / PLUIE_SORTIE_MOUILLEE_MM)
+    return 1.0 + POIDS_PLUIE.get(famille, 0.0) * mouille
+
+
+EFFORT_MINI = 0.6
+EFFORT_MAXI = 1.6
+
+
+def puissance_moyenne_sortie(donnees_bosch):
+    """Puissance moyenne du cycliste (W) d'une sortie d'après les chiffres Bosch (texte JSON ou dict), sinon None."""
+    if isinstance(donnees_bosch, str):
+        try:
+            donnees_bosch = json.loads(donnees_bosch or "null")
+        except ValueError:
+            return None
+    if not isinstance(donnees_bosch, dict):
+        return None
+    valeur = donnees_bosch.get("puissance_moy")
+    if isinstance(valeur, (int, float)) and not isinstance(valeur, bool) and valeur > 0:
+        return float(valeur)
+    return None
+
+
+def donnees_bosch_dict(donnees_bosch):
+    if isinstance(donnees_bosch, str):
+        try:
+            donnees_bosch = json.loads(donnees_bosch or "null")
+        except ValueError:
+            return {}
+    return donnees_bosch if isinstance(donnees_bosch, dict) else {}
+
+
+def cadence_moyenne_sortie(donnees_bosch):
+    """Cadence moyenne (tours/min) d'une sortie d'après les chiffres Bosch, sinon None."""
+    valeur = donnees_bosch_dict(donnees_bosch).get("cadence_moy")
+    if isinstance(valeur, (int, float)) and not isinstance(valeur, bool) and valeur > 0:
+        return float(valeur)
+    return None
+
+
+def sauts_pour_10_km(donnees_bosch, distance_km):
+    """Nombre de sauts pour 10 km d'après les chiffres Bosch (0 si inconnu)."""
+    sauts = donnees_bosch_dict(donnees_bosch).get("sauts")
+    jumps = sauts.get("jumps") if isinstance(sauts, dict) else None
+    nombre = jumps.get("nombre") if isinstance(jumps, dict) else None
+    if not isinstance(nombre, (int, float)) or isinstance(nombre, bool) or nombre <= 0 or not distance_km or distance_km <= 0:
+        return 0.0
+    return float(nombre) / float(distance_km) * 10.0
+
+
+def efforts_des_sorties(puissances, reference=100.0):
+    """Effort relatif de chaque sortie : sa puissance moyenne comparée à une puissance de référence
+    (1,0 = effort habituel), entre 0,6 et 1,6. Sans chiffres Bosch pour la sortie, l'effort reste neutre."""
+    reference = float(reference) if reference and reference > 0 else 100.0
+    return [
+        max(EFFORT_MINI, min(EFFORT_MAXI, p / reference)) if p else 1.0
+        for p in puissances
+    ]
+
+
+def facteur_usure(famille, distance_km, d_pos, d_neg, terrain, reglages, coef=None, effort=1.0, pluie_mm=None,
+                  cadence=None, temperature_c=None, chocs_10km=0.0, charge=None):
     """
     Combien de km d'usure équivaut 1 km de cette sortie pour cette famille.
     1,0 = usure normale ; 2,0 = deux fois plus vite.
     `coef` : coefficient de terrain déjà calculé (analyse du type de chemin).
+    `effort` : effort relatif de la sortie (1,0 = habituel) ; ne joue que sur la transmission.
+    `pluie_mm` : pluie tombée pendant la sortie (mm) ; alourdit surtout les plaquettes et la chaîne.
+    `cadence` : cadence moyenne (tours/min) ; une cadence basse use plus la chaîne.
+    `temperature_c` : température moyenne ; la chaleur use un peu plus les plaquettes.
+    `chocs_10km` : sauts pour 10 km ; surtout fourche, roues et pneus.
+    `charge` : (poids du cycliste, poids du sac) ; surtout freins, fourche et roues.
     """
     coef_terrain = coef if coef is not None else reglages.get(f"terrain_{terrain}", 1.0)
     distance = max(float(distance_km or 0), 0.1)
     poids = reglages.get("poids_denivele", 1.0)
 
+    pluie = facteur_pluie(famille, pluie_mm)
+    pluie *= facteur_chocs(famille, chocs_10km) * facteur_chaleur(famille, temperature_c)
+    if charge is not None:
+        pluie *= facteur_charge(famille, charge[0], charge[1])
+
     if famille == "transmission":
         montee = (d_pos or 0) / distance
-        return coef_terrain * (1 + poids * montee / 100)
+        poids_effort = reglages.get("poids_effort", 0.5)
+        return (coef_terrain * (1 + poids * montee / 100) * (1 + poids_effort * (effort - 1))
+                * (1 + poids_effort * (facteur_cadence(cadence) - 1)) * pluie)
 
     if famille == "freins":
         descente = (d_neg or 0) / distance
-        return coef_terrain * (1 + poids * descente / 100)
+        return coef_terrain * (1 + poids * descente / 100) * pluie
 
     if famille == "autre":
         return 1.0
 
-    return coef_terrain
+    return coef_terrain * pluie
+
+
+PLUIE_ESSAIS_MAX = 3
+PLUIE_PAUSE_S = 1800
+pluie_pause_jusqua = 0.0
+pluie_en_cours = False
+
+
+def lire_meteo_open_meteo(latitude, longitude, debut_iso, duree_s):
+    """Pluie (mm) et température moyenne (°C) pendant une sortie, d'après Open-Meteo.
+    Renvoie None si la météo n'est pas encore disponible."""
+    debut = datetime.fromisoformat(debut_iso.replace("Z", "+00:00"))
+    if debut.tzinfo is None:
+        debut = debut.replace(tzinfo=timezone.utc)
+    fin = debut + timedelta(seconds=max(float(duree_s or 0), 600.0))
+    jour = debut.date().isoformat()
+    ancien = (datetime.now(timezone.utc) - debut).days > 80
+    racine = "https://archive-api.open-meteo.com/v1/archive?" if ancien else "https://api.open-meteo.com/v1/forecast?"
+    adresse = racine + urllib.parse.urlencode({
+        "latitude": round(latitude, 4), "longitude": round(longitude, 4),
+        "start_date": jour, "end_date": fin.date().isoformat(),
+        "hourly": "precipitation,temperature_2m", "timezone": "UTC",
+    })
+    with urllib.request.urlopen(urllib.request.Request(adresse, headers={"Accept": "application/json"}), timeout=15) as reponse:
+        donnees = json.loads(reponse.read().decode("utf-8"))
+    heures = (donnees.get("hourly") or {}).get("time") or []
+    pluies = (donnees.get("hourly") or {}).get("precipitation") or []
+    temperatures = (donnees.get("hourly") or {}).get("temperature_2m") or []
+    total = 0.0
+    vues = 0
+    somme_temp = 0.0
+    poids_temp = 0.0
+    for position, (heure, mm) in enumerate(zip(heures, pluies)):
+        debut_h = datetime.fromisoformat(heure).replace(tzinfo=timezone.utc)
+        fin_h = debut_h + timedelta(hours=1)
+        recouvrement = (min(fin, fin_h) - max(debut, debut_h)).total_seconds()
+        if recouvrement <= 0:
+            continue
+        if mm is None:
+            return None
+        total += float(mm) * recouvrement / 3600.0
+        vues += 1
+        temp = temperatures[position] if position < len(temperatures) else None
+        if isinstance(temp, (int, float)) and not isinstance(temp, bool):
+            somme_temp += float(temp) * recouvrement
+            poids_temp += recouvrement
+    if not vues:
+        return None
+    return {
+        "pluie_mm": round(total, 2),
+        "temperature_c": round(somme_temp / poids_temp, 1) if poids_temp > 0 else None,
+    }
+
+
+def lire_pluie_open_meteo(latitude, longitude, debut_iso, duree_s):
+    """Pluie (mm) seule, d'après Open-Meteo (None si indisponible)."""
+    meteo = lire_meteo_open_meteo(latitude, longitude, debut_iso, duree_s)
+    return meteo["pluie_mm"] if meteo else None
+
+
+def remplir_pluie_sorties():
+    """Cherche la pluie des sorties qui n'en ont pas encore (quelques-unes à la fois). Sans réseau : pause de 30 minutes."""
+    global pluie_pause_jusqua, pluie_en_cours
+    try:
+        conn = db.connect()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "SELECT id, debut, duree_s, trace, COALESCE(pluie_essais, 0) FROM sorties "
+                "WHERE (pluie_mm IS NULL OR temperature_c IS NULL) AND COALESCE(pluie_essais, 0) < ? ORDER BY debut DESC LIMIT 8",
+                (PLUIE_ESSAIS_MAX,)
+            )
+            lignes = cursor.fetchall()
+            for ligne in lignes:
+                try:
+                    trace = json.loads(ligne[3] or "[]")
+                    point = next((p for p in trace if isinstance(p, list) and len(p) >= 2), None)
+                except ValueError:
+                    point = None
+                if point is None or not ligne[1]:
+                    cursor.execute("UPDATE sorties SET pluie_essais = ? WHERE id = ?", (PLUIE_ESSAIS_MAX, ligne[0]))
+                    continue
+                try:
+                    meteo = lire_meteo_open_meteo(point[0], point[1], ligne[1], ligne[2])
+                except (urllib.error.URLError, OSError):
+                    pluie_pause_jusqua = time.time() + PLUIE_PAUSE_S
+                    break
+                except Exception:
+                    meteo = None
+                if meteo is None:
+                    cursor.execute("UPDATE sorties SET pluie_essais = ? WHERE id = ?", (ligne[4] + 1, ligne[0]))
+                else:
+                    cursor.execute(
+                        "UPDATE sorties SET pluie_mm = ?, temperature_c = ?, pluie_essais = ? WHERE id = ?",
+                        (meteo["pluie_mm"], meteo["temperature_c"], 0 if meteo["temperature_c"] is not None else ligne[4] + 1, ligne[0])
+                    )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        pluie_pause_jusqua = time.time() + PLUIE_PAUSE_S
+    finally:
+        pluie_en_cours = False
+
+
+def lancer_lecture_pluie():
+    """Lance en arrière-plan la lecture de la pluie des sorties qui n'en ont pas, sans ralentir la page."""
+    global pluie_en_cours
+    if pluie_en_cours or time.time() < pluie_pause_jusqua:
+        return
+    pluie_en_cours = True
+    threading.Thread(target=remplir_pluie_sorties, daemon=True).start()
 
 
 def maintenant_utc():
@@ -1057,6 +1372,10 @@ def init_db():
     ajouter_colonne(cursor, "sorties", "vitesse_max_capteur", "DOUBLE PRECISION")
     # Autres chiffres donnés par Bosch (puissance, cadence, calories, sauts...), en texte JSON. Vide pour les autres sorties.
     ajouter_colonne(cursor, "sorties", "donnees_bosch", "TEXT")
+    # Pluie tombée pendant la sortie (mm, d'après Open-Meteo) et nombre d'essais de lecture : sert à l'usure des pièces.
+    ajouter_colonne(cursor, "sorties", "pluie_mm", "DOUBLE PRECISION")
+    ajouter_colonne(cursor, "sorties", "pluie_essais", "INTEGER DEFAULT 0")
+    ajouter_colonne(cursor, "sorties", "temperature_c", "DOUBLE PRECISION")
 
     # Les liens de partage secrets ont été abandonnés : on nettoie leur table.
     cursor.execute("DROP TABLE IF EXISTS partages")
@@ -1293,6 +1612,8 @@ class ReglagesRequest(BaseModel):
     terrain_chemin: float = Field(ge=0.5, le=5)
     terrain_sentier: float = Field(ge=0.5, le=5)
     poids_denivele: float = Field(ge=0, le=5)
+    poids_effort: float = Field(default=0.5, ge=0, le=2)
+    puissance_reference: float = Field(default=100.0, ge=30, le=300)
 
 
 MES_REGLAGES_CLES = {
@@ -5794,6 +6115,21 @@ def accueil():
                     <label for="regDenivele">Poids du dénivelé</label>
                     <input type="text" inputmode="decimal" id="regDenivele">
                 </div>
+
+                <div class="mr-ligne">
+                    <label for="regEffort">Poids de l'effort et de la cadence (transmission)</label>
+                    <input type="text" inputmode="decimal" id="regEffort">
+                </div>
+                <div class="mr-ligne">
+                    <label for="regPuissance">Puissance habituelle (W)</label>
+                    <input type="text" inputmode="decimal" id="regPuissance">
+                </div>
+                <p class="form-help" style="margin:0 0 8px;">
+                    Plus ta puissance moyenne mesurée par Bosch dépasse ta puissance habituelle, plus la chaîne, la cassette et le plateau comptent d'usure (et moins quand tu pédales doucement) ; une cadence basse (sous 60 tours par minute) les use aussi davantage. Poids de l'effort : 0 = ignoré, 0,5 = effet modéré (par défaut), 1 = effet complet. Sans chiffres Bosch, la sortie compte normalement.
+                </p>
+                <p class="form-help" style="margin:0 0 8px;">
+                    L'usure est aussi adaptée à chaque pièce : les pneus et les plaquettes s'usent moins sur route, la fourche presque pas, la chaîne souffre des montées, de l'effort et d'une cadence basse, la pluie (lue automatiquement sur la météo de chaque sortie) use surtout les plaquettes et la chaîne, la chaleur use un peu plus les plaquettes, et ton poids total ainsi que les sauts pèsent sur les freins, la fourche, les roues et les pneus.
+                </p>
 
                 <button
                     class="btn-primary"
@@ -20316,7 +20652,9 @@ def accueil():
                 terrain_mixte: 'regMixte',
                 terrain_chemin: 'regChemin',
                 terrain_sentier: 'regSentier',
-                poids_denivele: 'regDenivele'
+                poids_denivele: 'regDenivele',
+                poids_effort: 'regEffort',
+                puissance_reference: 'regPuissance'
             };
 
 
@@ -24247,15 +24585,25 @@ def obtenir_etat(
 
         cursor.execute("""
             SELECT debut, distance_km, denivele_pos, denivele_neg, terrain,
-                   trace, surfaces
+                   trace, surfaces, donnees_bosch, pluie_mm, temperature_c
             FROM sorties
             WHERE velo_id = ?
         """, (velo_id,))
         sorties = cursor.fetchall()
-        coefs_sorties = [
-            coef_terrain_sortie(s[5], s[6], s[4] or "mixte", reglages)[0]
+        # Part de route / chemin / sentier de chaque sortie, pour adapter l'usure à chaque famille de pièces.
+        terrains_sorties = [
+            parts_terrain_sortie(s[5], s[6], s[4] or "mixte")
             for s in sorties
         ]
+        cursor.execute("SELECT poids_kg, poids_sac_kg FROM personnes WHERE id = ?", (personne_id,))
+        ligne_poids = cursor.fetchone()
+        charge_cycliste = (ligne_poids[0], ligne_poids[1]) if ligne_poids else (None, None)
+        cadences_sorties = [cadence_moyenne_sortie(s[7]) for s in sorties]
+        chocs_sorties = [sauts_pour_10_km(s[7], s[1]) for s in sorties]
+        lancer_lecture_pluie()
+        efforts_sorties = efforts_des_sorties(
+            [puissance_moyenne_sortie(s[7]) for s in sorties], reglages.get("puissance_reference", 100.0)
+        )
 
         cursor.execute("""
             SELECT h.composant_id, MAX(h.date_remplacement)
@@ -24287,11 +24635,14 @@ def obtenir_etat(
             depuis = dernier_entretien.get(row["id"])
             surplus = 0.0
 
-            for s, coef_s in zip(sorties, coefs_sorties):
+            for s, (parts_s, analyse_s), effort_s, cadence_s, chocs_s in zip(
+                sorties, terrains_sorties, efforts_sorties, cadences_sorties, chocs_sorties
+            ):
                 if depuis is None or s[0][:10] >= depuis:
+                    coef_s = coef_terrain_famille(famille, parts_s, analyse_s, s[4] or "mixte", reglages)
                     facteur = facteur_usure(
                         famille, s[1], s[2], s[3], s[4] or "mixte", reglages,
-                        coef_s
+                        coef_s, effort_s, s[8], cadence_s, s[9], chocs_s, charge_cycliste
                     )
                     surplus += float(s[1] or 0) * (facteur - 1)
 
