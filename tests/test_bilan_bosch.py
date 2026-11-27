@@ -52,6 +52,9 @@ ACTIVITES = [
 def test_resume_activite_jour_local_et_unites():
     r = main.resume_activite_bosch(ACTIVITES[0])
     assert r["jour"] == "2026-11-21"  # 23h30 UTC = 00h30 à Paris
+    assert r["debut"] == "2026-11-20T23:30:00Z"
+    assert r["debut_m"] is None and r["fin_m"] is None
+    assert main.resume_activite_bosch({**ACTIVITES[0], "startOdometer": 3090700, "distance": 6200})["fin_m"] == 3096900
     assert r["km"] == 25.5 and r["dplus"] == 640 and r["duree"] == 5400 and r["watts"] == 120.4 and r["cal"] == 800
     r = main.resume_activite_bosch(ACTIVITES[2])
     assert r["jour"] == "2026-03-02" and r["watts"] is None and r["cal"] is None and r["dplus"] == 0
@@ -136,3 +139,16 @@ def test_compteur_releve_a_chaque_synchro_et_efface_a_la_deliaison():
         cur.execute("SELECT COUNT(*) FROM bosch_odometre_jours WHERE velo_id = 1")
         assert cur.fetchone()[0] == 0
         conn.close()
+
+
+def test_records_de_chaque_sortie():
+    r = main.resume_activite_bosch({
+        "bikeId": BIKE, "startTime": "2026-06-01T10:00:00Z", "distance": 30000,
+        "speed": {"average": 18, "maximum": 54.3}, "riderPower": {"average": 110, "maximum": 640},
+        "tricks": {"jumps": {"amount": 4, "maxDistance": 5.2, "maxDuration": 900, "maxHeight": 1250},
+                   "wheelies": {"amount": 2, "maxDistance": 12.5, "maxAngle": 30},
+                   "manuals": {"amount": 0, "maxDistance": 0}},
+    })
+    assert r["rec"] == {"vmax": 54.3, "pmax": 640, "saut_nb": 4, "saut_long_m": 5.2, "saut_haut_m": 1.25,
+                        "wheelie_nb": 2, "wheelie_long_m": 12.5, "wheelie_angle": 30.0}
+    assert main.resume_activite_bosch({"startTime": "2026-06-01T10:00:00Z", "distance": 1000})["rec"] == {}

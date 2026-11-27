@@ -2783,7 +2783,10 @@ def accueil():
             .menu-sortie-btn.bouton-favori.actif { color: var(--danger); }
             .menu-sortie-btn.bouton-favori.actif svg { fill: currentColor; }
             .history-item.sortie-item .titre-sortie,
-            .history-item.sortie-item .history-details > div:nth-child(2) { padding-right: 78px; }
+            .history-item.sortie-item .history-details > div:nth-child(2),
+            .history-item.sortie-item .history-details > div:nth-child(3) { padding-right: 24px; }
+            .history-item.sortie-item .titre-sortie { overflow-wrap: break-word; }
+            .history-item.sortie-item .history-details { min-width: 0; }
             .menu-sortie button.hist-periode-btn.actif { border-color: var(--danger); }
             .menu-sortie button.hist-periode-btn.actif .ico { stroke: var(--danger); fill: var(--danger); }
             .menu-sortie-btn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; }
@@ -3113,6 +3116,59 @@ def accueil():
             .fi-boite h2 { font-size: 1.1rem; }
             #histFermer { width: 38px; height: 38px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid var(--line); background: var(--fill); color: var(--strong); cursor: pointer; }
             #histFermer .ico { width: 18px; height: 18px; }
+
+            /* Sorties repliables : replié = titre, kilométrage et petit parcours sur fond de carte. */
+            .menu-sortie-btn.fleche-sortie { right: 114px; }
+            .fleche-sortie::before {
+                content: '';
+                width: 8px;
+                height: 8px;
+                border-right: 2px solid currentColor;
+                border-bottom: 2px solid currentColor;
+                transform: translateY(-2px) rotate(45deg);
+                transition: transform 0.15s;
+            }
+            .fleche-sortie[aria-expanded="true"]::before { transform: translateY(1px) rotate(225deg); }
+            .ligne-km { display: none; color: var(--text-muted); margin-top: 4px; }
+            .sortie-item.sortie-repliee .ligne-km { display: block; }
+            .sortie-item.sortie-repliee .sortie-detail,
+            .sortie-item.sortie-repliee .photos-gallery,
+            .sortie-item.sortie-repliee .videos-liste,
+            .sortie-item.sortie-repliee .profil-sortie { display: none !important; }
+            .mini-carte {
+                position: relative;
+                width: 120px;
+                height: 72px;
+                flex-shrink: 0;
+                overflow: hidden;
+                border-radius: 8px;
+                background: var(--fill);
+            }
+            .mini-carte img { position: absolute; width: 256px; height: 256px; max-width: none; pointer-events: none; }
+            .mini-carte svg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+            .mini-carte small {
+                position: absolute;
+                right: 3px;
+                bottom: 1px;
+                font-size: 7px;
+                line-height: 1;
+                color: #fff;
+                text-shadow: 0 0 2px #000;
+                pointer-events: none;
+            }
+            .mini-profil { display: none; margin-top: 6px; }
+            .sortie-item.sortie-repliee .mini-profil { display: block; }
+            .mini-profil svg { display: block; width: 100%; height: 40px; }
+            .mini-profil small { display: block; font-size: 0.7rem; color: var(--text-muted); margin-top: 2px; }
+            .btn-deplier-sorties {
+                background: none;
+                border: none;
+                padding: 0;
+                margin: 0 0 10px 0;
+                font-size: 0.8rem;
+                color: var(--accent);
+                cursor: pointer;
+            }
 
             .sortie-media {
                 display: flex;
@@ -5994,7 +6050,15 @@ def accueil():
                 </summary>
                 <div class="bilan-corps" id="bilanCorps"></div>
             </details>
-            <p id="compteurSorties" class="form-help" style="margin:0 0 10px;"></p>
+            <details class="sync-card bilan-sorties" id="recordsSorties" style="display:none;">
+                <summary>
+                    <span>Mes records</span>
+                    <span class="bilan-resume" id="recordsResume"></span>
+                </summary>
+                <div class="bilan-corps" id="recordsCorps"></div>
+            </details>
+            <p id="compteurSorties" class="form-help" style="margin:0 0 6px;"></p>
+            <button type="button" id="toutDeplierSorties" class="btn-deplier-sorties" style="display:none;"></button>
             <div id="sortiesList">
                 <div class="loading">Chargement des sorties...</div>
             </div>
@@ -12739,6 +12803,126 @@ def accueil():
             }
 
 
+            // Petit parcours sur fond de carte satellite (tuiles Esri, comme la fiche de la sortie). Sans trace : cadre vide.
+            function dessinerTraceAvecFond(trace) {
+                const L = 120, H = 72, M = 9;
+                const boite = document.createElement('div');
+                boite.className = 'mini-carte';
+                if (!Array.isArray(trace) || trace.length < 2 || trace.some(p => !Array.isArray(p) || typeof p[0] !== 'number' || typeof p[1] !== 'number')) {
+                    return boite;
+                }
+                const mx = (lon, z) => (lon + 180) / 360 * 256 * Math.pow(2, z);
+                const my = (lat, z) => {
+                    const r = Math.max(-85, Math.min(85, lat)) * Math.PI / 180;
+                    return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * 256 * Math.pow(2, z);
+                };
+                const lats = trace.map(p => p[0]), lons = trace.map(p => p[1]);
+                const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+                const minLon = Math.min(...lons), maxLon = Math.max(...lons);
+                let z = 17;
+                while (z > 3 && (mx(maxLon, z) - mx(minLon, z) > L - 2 * M || my(minLat, z) - my(maxLat, z) > H - 2 * M)) z--;
+                const ox = (mx(minLon, z) + mx(maxLon, z)) / 2 - L / 2;
+                const oy = (my(minLat, z) + my(maxLat, z)) / 2 - H / 2;
+                const n = Math.pow(2, z);
+                for (let ty = Math.floor(oy / 256); ty <= Math.floor((oy + H) / 256); ty++) {
+                    if (ty < 0 || ty >= n) continue;
+                    for (let tx = Math.floor(ox / 256); tx <= Math.floor((ox + L) / 256); tx++) {
+                        const img = document.createElement('img');
+                        img.alt = '';
+                        img.loading = 'lazy';
+                        img.decoding = 'async';
+                        img.style.left = (tx * 256 - ox).toFixed(1) + 'px';
+                        img.style.top = (ty * 256 - oy).toFixed(1) + 'px';
+                        img.addEventListener('error', () => img.remove());
+                        img.src = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/' + z + '/' + ty + '/' + (((tx % n) + n) % n);
+                        boite.appendChild(img);
+                    }
+                }
+                const ns = 'http://www.w3.org/2000/svg';
+                const svg = document.createElementNS(ns, 'svg');
+                svg.setAttribute('viewBox', '0 0 ' + L + ' ' + H);
+                const pas = Math.max(1, Math.floor(trace.length / 150));
+                const points = [];
+                for (let i = 0; i < trace.length; i += pas) points.push(trace[i]);
+                points.push(trace[trace.length - 1]);
+                const texte = points.map(p => (mx(p[1], z) - ox).toFixed(1) + ',' + (my(p[0], z) - oy).toFixed(1)).join(' ');
+                [['#ffffff', '4'], ['#3b82f6', '2']].forEach(style => {
+                    const ligne = document.createElementNS(ns, 'polyline');
+                    ligne.setAttribute('points', texte);
+                    ligne.setAttribute('fill', 'none');
+                    ligne.setAttribute('stroke', style[0]);
+                    ligne.setAttribute('stroke-width', style[1]);
+                    ligne.setAttribute('stroke-linejoin', 'round');
+                    ligne.setAttribute('stroke-linecap', 'round');
+                    svg.appendChild(ligne);
+                });
+                boite.appendChild(svg);
+                const mention = document.createElement('small');
+                mention.textContent = '© Esri';
+                boite.appendChild(mention);
+                return boite;
+            }
+
+            // Petit profil d'altitude sous le titre d'une sortie repliée. Rien si la trace n'a pas d'altitudes.
+            function dessinerMiniProfil(trace) {
+                if (!Array.isArray(trace) || trace.length < 3) return null;
+                if (trace.some(p => !Array.isArray(p) || typeof p[3] !== 'number')) return null;
+                const dist = [0];
+                for (let i = 1; i < trace.length; i++) dist.push(dist[i - 1] + distanceLatLon(trace[i - 1], trace[i]));
+                const total = dist[dist.length - 1];
+                if (!(total > 0)) return null;
+                const pas = Math.max(1, Math.floor(trace.length / 90));
+                const alts = [], xs = [];
+                for (let i = 0; i < trace.length; i += pas) { alts.push(trace[i][3]); xs.push(dist[i]); }
+                alts.push(trace[trace.length - 1][3]);
+                xs.push(total);
+                const lisse = alts.map((a, i) => {
+                    const voisins = alts.slice(Math.max(0, i - 1), i + 2);
+                    return voisins.reduce((somme, v) => somme + v, 0) / voisins.length;
+                });
+                const mini = Math.min(...lisse), maxi = Math.max(...lisse);
+                const plage = Math.max(maxi - mini, 10);
+                const L = 200, H = 40;
+                const pts = lisse.map((a, i) => [xs[i] / total * L, H - 3 - (a - mini) / plage * (H - 8)]);
+                const ns = 'http://www.w3.org/2000/svg';
+                const svg = document.createElementNS(ns, 'svg');
+                svg.setAttribute('viewBox', '0 0 ' + L + ' ' + H);
+                svg.setAttribute('preserveAspectRatio', 'none');
+                const ligneTexte = pts.map(q => q[0].toFixed(1) + ',' + q[1].toFixed(1)).join(' ');
+                const aire = document.createElementNS(ns, 'polygon');
+                aire.setAttribute('points', '0,' + H + ' ' + ligneTexte + ' ' + L + ',' + H);
+                aire.setAttribute('fill', 'var(--accent)');
+                aire.setAttribute('fill-opacity', '0.22');
+                svg.appendChild(aire);
+                const ligne = document.createElementNS(ns, 'polyline');
+                ligne.setAttribute('points', ligneTexte);
+                ligne.setAttribute('fill', 'none');
+                ligne.setAttribute('stroke', 'var(--accent)');
+                ligne.setAttribute('stroke-width', '1.6');
+                ligne.setAttribute('stroke-linejoin', 'round');
+                ligne.setAttribute('vector-effect', 'non-scaling-stroke');
+                svg.appendChild(ligne);
+                const boite = document.createElement('div');
+                boite.className = 'mini-profil';
+                boite.appendChild(svg);
+                const legende = document.createElement('small');
+                legende.textContent = 'Altitude de ' + fmtAltitude(Math.min(...alts)).complet + ' à ' + fmtAltitude(Math.max(...alts)).complet;
+                boite.appendChild(legende);
+                return boite;
+            }
+
+            // Sorties dépliées (les autres sont repliées), gardées sur le téléphone.
+            function lireSortiesDepliees() {
+                try {
+                    const liste = JSON.parse(localStorage.getItem('maillons_sorties_depliees') || '[]');
+                    return new Set(Array.isArray(liste) ? liste.map(String) : []);
+                } catch (e) { return new Set(); }
+            }
+
+            function enregistrerSortiesDepliees(ensemble) {
+                try { localStorage.setItem('maillons_sorties_depliees', JSON.stringify(Array.from(ensemble))); } catch (e) { /* stockage refusé */ }
+            }
+
             // ---------- Pente et type de chemin ----------
             const COULEURS_PENTE = [
                 { max: 4, couleur: '#22c55e', nom: 'moins de 4 %' },
@@ -14121,38 +14305,28 @@ def accueil():
                 });
             }
 
-            // Compteur total du vélo (en mètres) à une date, par interpolation entre deux relevés. Vide si la date sort des relevés.
-            function bilanCompteurAu(releves, jourIso, finIncluse) {
-                if (!releves.length) return null;
-                const t = jour => new Date(jour + 'T12:00:00').getTime();
-                const cible = t(jourIso);
-                const premier = releves[0], dernier = releves[releves.length - 1];
-                if (cible < t(premier.jour)) return null;
-                if (cible >= t(dernier.jour)) return finIncluse ? dernier.m : null;
-                for (let i = 1; i < releves.length; i++) {
-                    const a = releves[i - 1], b = releves[i];
-                    if (cible <= t(b.jour)) {
-                        const part = (cible - t(a.jour)) / Math.max(1, t(b.jour) - t(a.jour));
-                        return a.m + part * (b.m - a.m);
-                    }
-                }
-                return null;
-            }
-
             function bilanJourIso(d) {
                 return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
             }
 
-            // Kilomètres d'une période d'après le compteur total (sorties non enregistrées comprises). Vide si les relevés ne couvrent pas la période.
-            function bilanKmCompteur(periode) {
-                if (!bilanBosch || !bilanBosch.releves || bilanBosch.releves.length < 2) return null;
-                const avant = new Date(periode.debut.getFullYear(), periode.debut.getMonth(), periode.debut.getDate() - 1, 12);
-                const debutM = bilanCompteurAu(bilanBosch.releves, bilanJourIso(avant), false);
+            // Kilomètres d'une période d'après le compteur total : compteur à la fin de la dernière sortie de la période,
+            // moins compteur à la fin de la dernière sortie d'avant. Les sorties non enregistrées sont donc comptées aussi.
+            function bilanKmCompteur(periode, elements, compteurActuelM) {
+                const debutIso = bilanJourIso(periode.debut);
+                const finIso = bilanJourIso(periode.fin);
                 const aujourdhui = bilanJourIso(new Date());
-                const enCours = bilanJourIso(periode.debut) <= aujourdhui && bilanJourIso(periode.fin) >= aujourdhui;
-                const finM = bilanCompteurAu(bilanBosch.releves, bilanJourIso(enCours ? new Date() : periode.fin), enCours);
-                if (debutM === null || finM === null || finM < debutM) return null;
-                return (finM - debutM) / 1000;
+                let fin = 0, avant = 0, premierDepart = 0;
+                elements.forEach(e => {
+                    if (!e.jour || !(e.fin_m > 0)) return;
+                    if (e.jour < debutIso) avant = Math.max(avant, e.fin_m);
+                    if (e.jour <= finIso) fin = Math.max(fin, e.fin_m);
+                    if (e.jour >= debutIso && e.jour <= finIso && e.debut_m > 0) premierDepart = premierDepart ? Math.min(premierDepart, e.debut_m) : e.debut_m;
+                });
+                // Période en cours : le compteur actuel du vélo compte aussi (sortie pas encore envoyée à Bosch).
+                if (debutIso <= aujourdhui && finIso >= aujourdhui && compteurActuelM > fin) fin = compteurActuelM;
+                const depart = avant || premierDepart;
+                if (!fin || !depart || fin < depart) return null;
+                return (fin - depart) / 1000;
             }
 
             function bilanAgreger(elements, type) {
@@ -14206,22 +14380,146 @@ def accueil():
                 return fmtDistance(km, km >= 100 ? 0 : 1).complet;
             }
 
+            // Records d'une sortie de Maillons (GPX importé, y compris celui d'une autre personne) : mêmes champs que ceux de Bosch.
+            const recordsSortieMemo = new Map();
+            function recordsDeSortieMaillons(s) {
+                const cle = String(s.id) + ':' + (s.trace ? s.trace.length : 0);
+                if (recordsSortieMemo.has(cle)) return recordsSortieMemo.get(cle);
+                const b = s.donnees_bosch && typeof s.donnees_bosch === 'object' ? s.donnees_bosch : null;
+                const rec = {};
+                const vmax = (typeof s.vitesse_max_capteur === 'number' && s.vitesse_max_capteur > 0) ? s.vitesse_max_capteur : vitesseMaxSortie(s.trace);
+                if (vmax > 0) rec.vmax = vmax;
+                if (b && b.puissance_max > 0) rec.pmax = b.puissance_max;
+                const sauts = b && b.sauts ? b.sauts : {};
+                [['jumps', 'saut'], ['wheelies', 'wheelie'], ['manuals', 'manual'], ['stoppies', 'stoppie']].forEach(c => {
+                    const x = sauts[c[0]];
+                    if (!x || !(x.nombre > 0)) return;
+                    rec[c[1] + '_nb'] = x.nombre;
+                    if (x.longueur_m > 0) rec[c[1] + '_long_m'] = x.longueur_m;
+                    if (c[1] === 'saut' && x.hauteur_m > 0) rec.saut_haut_m = x.hauteur_m;
+                });
+                const element = {
+                    jour: jourLocalSortie(s.debut),
+                    km: Number(s.distance_km || 0),
+                    dplus: Number(s.denivele_pos || 0),
+                    duree: Number(s.duree_s || 0),
+                    rec: rec,
+                    maillons: true,
+                    boschImportee: !!b
+                };
+                recordsSortieMemo.set(cle, element);
+                return element;
+            }
+
+            // Records : le meilleur de chaque domaine, avec toutes les sorties enregistrées par Bosch ET toutes celles de Maillons (GPX d'autres personnes compris).
+            function afficherRecordsSorties() {
+                const boite = document.getElementById('recordsSorties');
+                const corps = document.getElementById('recordsCorps');
+                if (!boite || !corps) return;
+                const deBosch = bilanBosch && bilanBosch.velo === veloActifId ? bilanBosch.items : [];
+                const deMaillons = (Array.isArray(bilanSorties) ? bilanSorties : []).map(recordsDeSortieMaillons);
+                const items = deBosch.concat(deMaillons);
+                if (!items.length) { boite.style.display = 'none'; return; }
+                const meilleur = (valeur) => {
+                    let gagnant = null;
+                    items.forEach(e => {
+                        const v = Number(valeur(e));
+                        if (v > 0 && (!gagnant || v > gagnant.v)) gagnant = { v: v, jour: e.jour };
+                    });
+                    return gagnant;
+                };
+                const rec = (e, cle) => (e.rec && e.rec[cle]) || 0;
+                const liste = [
+                    ['Plus longue sortie', meilleur(e => e.km), v => bilanTexteKm(v)],
+                    ['Plus gros dénivelé', meilleur(e => e.dplus), v => fmtAltitude(v).complet + ' D+'],
+                    ['Plus longue durée', meilleur(e => e.duree), v => formaterDuree(v)],
+                    ['Vitesse max', meilleur(e => rec(e, 'vmax')), v => fmtVitesse(v, 1).complet],
+                    ['Puissance max', meilleur(e => rec(e, 'pmax')), v => Math.round(v) + ' W'],
+                    ['Saut le plus haut', meilleur(e => rec(e, 'saut_haut_m')), v => fmtAltitude(v, 2).complet],
+                    ['Saut le plus long', meilleur(e => rec(e, 'saut_long_m')), v => fmtAltitude(v, 1).complet],
+                    ['Plus long wheelie', meilleur(e => rec(e, 'wheelie_long_m')), v => fmtAltitude(v, 1).complet],
+                    ['Plus long manual', meilleur(e => rec(e, 'manual_long_m')), v => fmtAltitude(v, 1).complet],
+                    ['Plus long stoppie', meilleur(e => rec(e, 'stoppie_long_m')), v => fmtAltitude(v, 1).complet]
+                ].filter(l => l[1]);
+                if (!liste.length) { boite.style.display = 'none'; return; }
+                corps.replaceChildren();
+                const grille = document.createElement('div');
+                grille.className = 'bilan-grille';
+                liste.forEach(l => {
+                    const t = document.createElement('div');
+                    t.className = 'bilan-tuile';
+                    const lib = document.createElement('span');
+                    lib.className = 'bilan-lib';
+                    lib.textContent = l[0];
+                    const val = document.createElement('strong');
+                    val.textContent = l[2](l[1].v);
+                    const quand = document.createElement('span');
+                    quand.className = 'bilan-evo';
+                    const d = new Date(l[1].jour + 'T12:00:00');
+                    quand.textContent = isNaN(d.getTime()) ? '' : d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+                    t.appendChild(lib);
+                    t.appendChild(val);
+                    t.appendChild(quand);
+                    grille.appendChild(t);
+                });
+                corps.appendChild(grille);
+                // Une sortie Bosch déjà importée dans Maillons n'est comptée qu'une fois dans le total.
+                const nombre = deBosch.length + deMaillons.filter(e => !e.boschImportee).length;
+                const sauts = items.reduce((somme, e) => somme + (e.maillons && e.boschImportee ? 0 : rec(e, 'saut_nb')), 0);
+                const note = document.createElement('p');
+                note.className = 'bilan-note';
+                note.style.marginTop = '0';
+                note.textContent = 'Records sur ' + nombre + (nombre > 1 ? ' sorties' : ' sortie') + ' (Bosch + sorties importées dans Maillons, GPX compris)' + (sauts > 0 ? ' · ' + sauts + ' sauts détectés au total' : '') + '.';
+                corps.appendChild(note);
+                boite.style.display = '';
+                const premier = liste[0];
+                document.getElementById('recordsResume').textContent = premier[0] + ' : ' + premier[2](premier[1].v);
+            }
+
             let bilanBosch = null;
             let bilanBoschEnCours = false;
 
             // Lit chez Bosch toutes les sorties du vélo actif (au plus une fois par 10 minutes) puis redessine le bilan.
+            // Sortie Bosch correspondant à une sortie de Maillons (même heure de départ à 20 minutes près) : ses chiffres sont ceux du vélo.
+            function boschPourSortie(s) {
+                if (!bilanBosch || bilanBosch.velo !== veloActifId || !bilanBosch.items.length) return null;
+                const t = Date.parse(s.debut);
+                if (isNaN(t)) return null;
+                let meilleur = null, ecart = 20 * 60 * 1000 + 1;
+                bilanBosch.items.forEach(e => {
+                    const d = Math.abs(Date.parse(e.debut) - t);
+                    if (d < ecart) { ecart = d; meilleur = e; }
+                });
+                return meilleur;
+            }
+
+            // Distance, dénivelé, durée et vitesse moyenne d'une sortie : ceux de Bosch s'ils existent, sinon ceux calculés avec le GPX.
+            function chiffresSortie(s) {
+                const b = boschPourSortie(s);
+                const km = b && b.km > 0 ? b.km : Number(s.distance_km || 0);
+                const dplus = b && b.dplus > 0 ? b.dplus : Number(s.denivele_pos || 0);
+                const duree = b && b.duree > 0 ? b.duree : Number(s.duree_s || 0);
+                const vitesse = b && b.km > 0 && b.duree > 0 ? b.km / (b.duree / 3600) : Number(s.vitesse_moy || 0);
+                return { km: km, dplus: dplus, duree: duree, vitesse: vitesse };
+            }
+
             async function chargerBilanBosch() {
                 if (bilanBoschEnCours) return;
                 const velo = veloActifId;
-                if (bilanBosch && bilanBosch.velo === velo && Date.now() - bilanBosch.t < 10 * 60 * 1000) return;
+                if (bilanBosch && bilanBosch.velo !== velo) afficherRecordsSorties();
+                if (bilanBosch && bilanBosch.velo === velo && Date.now() - bilanBosch.t < 10 * 60 * 1000) { afficherRecordsSorties(); return; }
                 bilanBoschEnCours = true;
                 try {
                     const r = await fetch('/api/bosch/bilan', { headers: getHeaders() });
                     if (!r.ok) return;
                     const d = await r.json();
                     const items = d && d.lie && Array.isArray(d.activites) ? d.activites : [];
+                    const premiereLecture = !bilanBosch || bilanBosch.velo !== velo;
                     bilanBosch = { velo: velo, t: Date.now(), items: items, compteurM: d && d.compteur_m ? Number(d.compteur_m) : 0, releves: d && Array.isArray(d.releves) ? d.releves : [] };
                     if (items.length && velo === veloActifId) afficherBilanSorties(bilanSorties);
+                    if (velo === veloActifId) afficherRecordsSorties();
+                    // Les chiffres de la liste passent à ceux de Bosch dès qu'ils sont connus.
+                    if (items.length && premiereLecture && velo === veloActifId && sortiesConnues.length) chargerSorties(true);
                 } catch (e) { /* le bilan reste calculé avec les sorties de Maillons */ } finally {
                     bilanBoschEnCours = false;
                 }
@@ -14232,11 +14530,11 @@ def accueil():
                 const corps = document.getElementById('bilanCorps');
                 if (!boite || !corps) return;
                 const liste = Array.isArray(sorties) ? sorties : [];
+                bilanSorties = liste;
                 // Si le vélo est relié à Bosch, le bilan vient de toutes les sorties enregistrées chez Bosch (pas seulement de celles importées).
                 const depuisBosch = !!(bilanBosch && bilanBosch.velo === veloActifId && bilanBosch.items.length);
                 if (!liste.length && !depuisBosch) { boite.style.display = 'none'; return; }
                 boite.style.display = '';
-                bilanSorties = liste;
                 const type = bilanPeriode;
                 const elements = depuisBosch ? bilanBosch.items : bilanElementsMaillons(liste);
                 const par = bilanAgreger(elements, type);
@@ -14246,7 +14544,7 @@ def accueil():
                 const donnees = bilanListePeriodes(type, premiere).map(p => Object.assign({}, p, par[p.cle] || vide));
                 if (depuisBosch) {
                     donnees.forEach(p => {
-                        const kmCompteur = bilanKmCompteur(p);
+                        const kmCompteur = bilanKmCompteur(p, elements, bilanBosch.compteurM);
                         if (kmCompteur !== null && kmCompteur > p.km) {
                             p.kmNonEnregistres = kmCompteur - p.km;
                             p.km = kmCompteur;
@@ -14446,6 +14744,7 @@ def accueil():
                     }
                     preparerFiltresSorties(sorties);
                     afficherBilanSorties(sorties);
+                    afficherRecordsSorties();
                     chargerBilanBosch();
                     const sortiesAffichees = filtrerSorties(sorties);
                     liste.innerHTML = '';
@@ -14468,6 +14767,21 @@ def accueil():
                         vide.textContent = 'Aucune sortie ne correspond à ces critères.';
                         liste.appendChild(vide);
                     }
+
+                    const depliees = lireSortiesDepliees();
+                    const boutonTout = document.getElementById('toutDeplierSorties');
+                    const majBoutonTout = () => {
+                        const toutes = sortiesAffichees.length > 0 && sortiesAffichees.every(x => depliees.has(String(x.id)));
+                        boutonTout.textContent = toutes ? 'Tout replier' : 'Tout déplier';
+                    };
+                    boutonTout.style.display = sortiesAffichees.length > 1 ? '' : 'none';
+                    boutonTout.onclick = () => {
+                        const toutes = sortiesAffichees.every(x => depliees.has(String(x.id)));
+                        sortiesAffichees.forEach(x => { if (toutes) depliees.delete(String(x.id)); else depliees.add(String(x.id)); });
+                        enregistrerSortiesDepliees(depliees);
+                        chargerSorties(true);
+                    };
+                    majBoutonTout();
 
                     sortiesAffichees.forEach(s => {
                         const item = document.createElement('div');
@@ -14503,14 +14817,27 @@ def accueil():
                             titre.prepend(aVerifier);
                         }
 
+                        // Flèche pour replier / déplier la sortie : replié, on ne voit que le titre, le kilométrage et le petit parcours.
+                        const fleche = document.createElement('button');
+                        fleche.type = 'button';
+                        fleche.className = 'menu-sortie-btn fleche-sortie';
+                        const ligneKm = document.createElement('div');
+                        ligneKm.className = 'ligne-km';
+                        const chiffres = chiffresSortie(s);
+                        ligneKm.textContent = fmtDistance(chiffres.km, 1).complet
+                            + ' · ' + fmtAltitude(chiffres.dplus).complet + ' D+'
+                            + (chiffres.duree ? ' · ' + formaterDuree(chiffres.duree) : '');
+
                         const ligne1 = document.createElement('div');
+                        ligne1.className = 'sortie-detail';
                         ligne1.style.color = 'var(--text-muted)';
                         ligne1.style.marginTop = '4px';
                         ligne1.textContent =
-                            `${fmtDistance(s.distance_km).texte} ${fmtDistance(s.distance_km).unite} · ${fmtAltitude(s.denivele_pos).texte} ${fmtAltitude(s.denivele_pos).unite} D+ · ` +
-                            `${formaterDuree(s.duree_s)} · ${fmtVitesse(s.vitesse_moy).texte} ${fmtVitesse(s.vitesse_moy).unite}`;
+                            `${fmtDistance(chiffres.km, 1).complet} · ${fmtAltitude(chiffres.dplus).complet} D+ · ` +
+                            `${formaterDuree(chiffres.duree)} · ${fmtVitesse(chiffres.vitesse, 1).complet}`;
 
                         const ligne2 = document.createElement('div');
+                        ligne2.className = 'sortie-detail';
                         ligne2.style.color = 'var(--text-muted)';
                         ligne2.style.display = 'flex';
                         ligne2.style.flexWrap = 'wrap';
@@ -14562,7 +14889,7 @@ def accueil():
                         }
 
                         const ligneUsure = document.createElement('div');
-                        ligneUsure.className = 'ligne-usure';
+                        ligneUsure.className = 'ligne-usure sortie-detail';
                         if (s.coef_analyse) {
                             ligneUsure.textContent =
                                 `Usure des pièces ×${String(s.coef_usure).replace('.', ',')} · d'après le terrain analysé`;
@@ -14615,6 +14942,9 @@ def accueil():
                         });
 
                         details.appendChild(titre);
+                        details.appendChild(ligneKm);
+                        const miniProfil = dessinerMiniProfil(s.trace);
+                        if (miniProfil) details.appendChild(miniProfil);
                         details.appendChild(ligne1);
                         details.appendChild(ligne2);
                         details.appendChild(ligneUsure);
@@ -14632,7 +14962,7 @@ def accueil():
                         });
 
                         const bouton3d = document.createElement('button');
-                        bouton3d.className = 'btn-survol';
+                        bouton3d.className = 'btn-survol sortie-detail';
                         bouton3d.type = 'button';
                         remplirBouton(bouton3d, 'montagne', 'Survol 3D');
                         bouton3d.disabled = !s.trace || s.trace.length < 2;
@@ -14724,6 +15054,7 @@ def accueil():
                             if (sortiesFavorisSeuls) chargerSorties(true);
                         });
 
+                        item.appendChild(fleche);
                         item.appendChild(boutonFavori);
                         item.appendChild(boutonPartage);
                         item.appendChild(kebab);
@@ -14761,7 +15092,7 @@ def accueil():
                             item.appendChild(zoneVideos);
                         }
 
-                        mediaDiv.appendChild(dessinerTrace(s.trace));
+                        mediaDiv.appendChild(dessinerTraceAvecFond(s.trace));
                         item.insertBefore(mediaDiv, item.querySelector('.videos-liste'));
 
                         const blocProfil = dessinerProfil(s);
@@ -14769,6 +15100,23 @@ def accueil():
                             item.style.flexWrap = 'wrap';
                             item.appendChild(blocProfil);
                         }
+
+                        // État replié / déplié (replié par défaut).
+                        const majFleche = () => {
+                            const ouverte = depliees.has(String(s.id));
+                            item.classList.toggle('sortie-repliee', !ouverte);
+                            fleche.setAttribute('aria-expanded', ouverte ? 'true' : 'false');
+                            fleche.setAttribute('aria-label', ouverte ? 'Replier la sortie' : 'Déplier la sortie');
+                        };
+                        majFleche();
+                        fleche.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            const cle = String(s.id);
+                            if (depliees.has(cle)) depliees.delete(cle); else depliees.add(cle);
+                            enregistrerSortiesDepliees(depliees);
+                            majFleche();
+                            majBoutonTout();
+                        });
 
                         // On touche la sortie (hors boutons, photos, menus) pour ouvrir sa fiche.
                         item.classList.add('sortie-cliquable');
@@ -20874,7 +21222,34 @@ def resume_activite_bosch(a):
     except ValueError:
         return None
     puissance = nombre((a.get("riderPower") or {}).get("average"))
+    # Records de la sortie : vitesse max, puissance max, plus beaux sauts / wheelings / manuals / stoppies (valeurs à zéro ignorées).
+    records = {}
+    vmax = nombre((a.get("speed") or {}).get("maximum"))
+    pmax = nombre((a.get("riderPower") or {}).get("maximum"))
+    if vmax:
+        records["vmax"] = round(vmax, 1)
+    if pmax:
+        records["pmax"] = int(round(pmax))
+    tours = a.get("tricks") if isinstance(a.get("tricks"), dict) else {}
+    for nom, cle in (("jumps", "saut"), ("wheelies", "wheelie"), ("manuals", "manual"), ("stoppies", "stoppie")):
+        t = tours.get(nom) if isinstance(tours.get(nom), dict) else {}
+        nb = nombre(t.get("amount"))
+        if not nb:
+            continue
+        records[cle + "_nb"] = int(nb)
+        longueur = nombre(t.get("maxDistance"))
+        if longueur:
+            records[cle + "_long_m"] = round(longueur, 1)
+        if cle == "saut":
+            hauteur = nombre(t.get("maxHeight"))
+            if hauteur:
+                records["saut_haut_m"] = round(hauteur / 1000.0, 2)
+        else:
+            angle = nombre(t.get("maxAngle"))
+            if angle:
+                records[cle + "_angle"] = round(angle, 1)
     gain = nombre((a.get("elevation") or {}).get("gain"))
+    depart_m = nombre(a.get("startOdometer"))
     duree = nombre(a.get("durationWithoutStops"))
     calories = nombre(a.get("caloriesBurned"))
     return {
@@ -20885,6 +21260,10 @@ def resume_activite_bosch(a):
         "duree": int(round(duree)) if duree is not None else 0,
         "watts": round(puissance, 1) if puissance else None,
         "cal": int(round(calories)) if calories else None,
+        "rec": records,
+        "debut": debut,
+        "debut_m": int(depart_m) if depart_m else None,
+        "fin_m": int(depart_m + distance) if depart_m else None,
     }
 
 
