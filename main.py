@@ -3150,12 +3150,16 @@ def accueil():
                 position: absolute;
                 right: 3px;
                 bottom: 1px;
-                font-size: 7px;
+                font-size: 6px;
                 line-height: 1;
-                color: #fff;
-                text-shadow: 0 0 2px #000;
+                color: #444;
+                text-shadow: 0 0 2px #fff;
                 pointer-events: none;
             }
+            .mini-profil { display: none; margin-top: 6px; }
+            .sortie-item.sortie-repliee .mini-profil { display: block; }
+            .mini-profil svg { display: block; width: 100%; height: 40px; }
+            .mini-profil small { display: block; font-size: 0.7rem; color: var(--text-muted); margin-top: 2px; }
             .btn-deplier-sorties {
                 background: none;
                 border: none;
@@ -12799,7 +12803,7 @@ def accueil():
             }
 
 
-            // Petit parcours sur fond de carte satellite (tuiles Esri, comme la fiche de la sortie). Sans trace : cadre vide.
+            // Petit parcours sur fond de carte clair (tuiles CARTO / OpenStreetMap, comme l'image de partage). Sans trace : cadre vide.
             function dessinerTraceAvecFond(trace) {
                 const L = 120, H = 72, M = 9;
                 const boite = document.createElement('div');
@@ -12830,7 +12834,8 @@ def accueil():
                         img.style.left = (tx * 256 - ox).toFixed(1) + 'px';
                         img.style.top = (ty * 256 - oy).toFixed(1) + 'px';
                         img.addEventListener('error', () => img.remove());
-                        img.src = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/' + z + '/' + ty + '/' + (((tx % n) + n) % n);
+                        const txm = ((tx % n) + n) % n;
+                        img.src = 'https://' + 'abcd'.charAt((txm + ty) % 4) + '.basemaps.cartocdn.com/rastertiles/voyager/' + z + '/' + txm + '/' + ty + '.png';
                         boite.appendChild(img);
                     }
                 }
@@ -12854,8 +12859,56 @@ def accueil():
                 });
                 boite.appendChild(svg);
                 const mention = document.createElement('small');
-                mention.textContent = '© Esri';
+                mention.textContent = '© OpenStreetMap · CARTO';
                 boite.appendChild(mention);
+                return boite;
+            }
+
+            // Petit profil d'altitude sous le titre d'une sortie repliée. Rien si la trace n'a pas d'altitudes.
+            function dessinerMiniProfil(trace) {
+                if (!Array.isArray(trace) || trace.length < 3) return null;
+                if (trace.some(p => !Array.isArray(p) || typeof p[3] !== 'number')) return null;
+                const dist = [0];
+                for (let i = 1; i < trace.length; i++) dist.push(dist[i - 1] + distanceLatLon(trace[i - 1], trace[i]));
+                const total = dist[dist.length - 1];
+                if (!(total > 0)) return null;
+                const pas = Math.max(1, Math.floor(trace.length / 90));
+                const alts = [], xs = [];
+                for (let i = 0; i < trace.length; i += pas) { alts.push(trace[i][3]); xs.push(dist[i]); }
+                alts.push(trace[trace.length - 1][3]);
+                xs.push(total);
+                const lisse = alts.map((a, i) => {
+                    const voisins = alts.slice(Math.max(0, i - 1), i + 2);
+                    return voisins.reduce((somme, v) => somme + v, 0) / voisins.length;
+                });
+                const mini = Math.min(...lisse), maxi = Math.max(...lisse);
+                const plage = Math.max(maxi - mini, 10);
+                const L = 200, H = 40;
+                const pts = lisse.map((a, i) => [xs[i] / total * L, H - 3 - (a - mini) / plage * (H - 8)]);
+                const ns = 'http://www.w3.org/2000/svg';
+                const svg = document.createElementNS(ns, 'svg');
+                svg.setAttribute('viewBox', '0 0 ' + L + ' ' + H);
+                svg.setAttribute('preserveAspectRatio', 'none');
+                const ligneTexte = pts.map(q => q[0].toFixed(1) + ',' + q[1].toFixed(1)).join(' ');
+                const aire = document.createElementNS(ns, 'polygon');
+                aire.setAttribute('points', '0,' + H + ' ' + ligneTexte + ' ' + L + ',' + H);
+                aire.setAttribute('fill', 'var(--accent)');
+                aire.setAttribute('fill-opacity', '0.22');
+                svg.appendChild(aire);
+                const ligne = document.createElementNS(ns, 'polyline');
+                ligne.setAttribute('points', ligneTexte);
+                ligne.setAttribute('fill', 'none');
+                ligne.setAttribute('stroke', 'var(--accent)');
+                ligne.setAttribute('stroke-width', '1.6');
+                ligne.setAttribute('stroke-linejoin', 'round');
+                ligne.setAttribute('vector-effect', 'non-scaling-stroke');
+                svg.appendChild(ligne);
+                const boite = document.createElement('div');
+                boite.className = 'mini-profil';
+                boite.appendChild(svg);
+                const legende = document.createElement('small');
+                legende.textContent = 'Altitude de ' + fmtAltitude(Math.min(...alts)).complet + ' à ' + fmtAltitude(Math.max(...alts)).complet;
+                boite.appendChild(legende);
                 return boite;
             }
 
@@ -14745,7 +14798,9 @@ def accueil():
                         fleche.className = 'menu-sortie-btn fleche-sortie';
                         const ligneKm = document.createElement('div');
                         ligneKm.className = 'ligne-km';
-                        ligneKm.textContent = fmtDistance(s.distance_km).texte + ' ' + fmtDistance(s.distance_km).unite;
+                        ligneKm.textContent = fmtDistance(s.distance_km).texte + ' ' + fmtDistance(s.distance_km).unite
+                            + ' · ' + fmtAltitude(s.denivele_pos).texte + ' ' + fmtAltitude(s.denivele_pos).unite + ' D+'
+                            + (s.duree_s ? ' · ' + formaterDuree(s.duree_s) : '');
 
                         const ligne1 = document.createElement('div');
                         ligne1.className = 'sortie-detail';
@@ -14862,6 +14917,8 @@ def accueil():
 
                         details.appendChild(titre);
                         details.appendChild(ligneKm);
+                        const miniProfil = dessinerMiniProfil(s.trace);
+                        if (miniProfil) details.appendChild(miniProfil);
                         details.appendChild(ligne1);
                         details.appendChild(ligne2);
                         details.appendChild(ligneUsure);
