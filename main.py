@@ -14507,6 +14507,29 @@ def accueil():
             let bilanBoschEnCours = false;
 
             // Lit chez Bosch toutes les sorties du vélo actif (au plus une fois par 10 minutes) puis redessine le bilan.
+            // Sortie Bosch correspondant à une sortie de Maillons (même heure de départ à 20 minutes près) : ses chiffres sont ceux du vélo.
+            function boschPourSortie(s) {
+                if (!bilanBosch || bilanBosch.velo !== veloActifId || !bilanBosch.items.length) return null;
+                const t = Date.parse(s.debut);
+                if (isNaN(t)) return null;
+                let meilleur = null, ecart = 20 * 60 * 1000 + 1;
+                bilanBosch.items.forEach(e => {
+                    const d = Math.abs(Date.parse(e.debut) - t);
+                    if (d < ecart) { ecart = d; meilleur = e; }
+                });
+                return meilleur;
+            }
+
+            // Distance, dénivelé, durée et vitesse moyenne d'une sortie : ceux de Bosch s'ils existent, sinon ceux calculés avec le GPX.
+            function chiffresSortie(s) {
+                const b = boschPourSortie(s);
+                const km = b && b.km > 0 ? b.km : Number(s.distance_km || 0);
+                const dplus = b && b.dplus > 0 ? b.dplus : Number(s.denivele_pos || 0);
+                const duree = b && b.duree > 0 ? b.duree : Number(s.duree_s || 0);
+                const vitesse = b && b.km > 0 && b.duree > 0 ? b.km / (b.duree / 3600) : Number(s.vitesse_moy || 0);
+                return { km: km, dplus: dplus, duree: duree, vitesse: vitesse };
+            }
+
             async function chargerBilanBosch() {
                 if (bilanBoschEnCours) return;
                 const velo = veloActifId;
@@ -14518,9 +14541,12 @@ def accueil():
                     if (!r.ok) return;
                     const d = await r.json();
                     const items = d && d.lie && Array.isArray(d.activites) ? d.activites : [];
+                    const premiereLecture = !bilanBosch || bilanBosch.velo !== velo;
                     bilanBosch = { velo: velo, t: Date.now(), items: items, compteurM: d && d.compteur_m ? Number(d.compteur_m) : 0, releves: d && Array.isArray(d.releves) ? d.releves : [] };
                     if (items.length && velo === veloActifId) afficherBilanSorties(bilanSorties);
                     if (velo === veloActifId) afficherRecordsSorties();
+                    // Les chiffres de la liste passent à ceux de Bosch dès qu'ils sont connus.
+                    if (items.length && premiereLecture && velo === veloActifId && sortiesConnues.length) chargerSorties(true);
                 } catch (e) { /* le bilan reste calculé avec les sorties de Maillons */ } finally {
                     bilanBoschEnCours = false;
                 }
@@ -14824,17 +14850,18 @@ def accueil():
                         fleche.className = 'menu-sortie-btn fleche-sortie';
                         const ligneKm = document.createElement('div');
                         ligneKm.className = 'ligne-km';
-                        ligneKm.textContent = fmtDistance(s.distance_km).texte + ' ' + fmtDistance(s.distance_km).unite
-                            + ' · ' + fmtAltitude(s.denivele_pos).texte + ' ' + fmtAltitude(s.denivele_pos).unite + ' D+'
-                            + (s.duree_s ? ' · ' + formaterDuree(s.duree_s) : '');
+                        const chiffres = chiffresSortie(s);
+                        ligneKm.textContent = fmtDistance(chiffres.km, 1).complet
+                            + ' · ' + fmtAltitude(chiffres.dplus).complet + ' D+'
+                            + (chiffres.duree ? ' · ' + formaterDuree(chiffres.duree) : '');
 
                         const ligne1 = document.createElement('div');
                         ligne1.className = 'sortie-detail';
                         ligne1.style.color = 'var(--text-muted)';
                         ligne1.style.marginTop = '4px';
                         ligne1.textContent =
-                            `${fmtDistance(s.distance_km).texte} ${fmtDistance(s.distance_km).unite} · ${fmtAltitude(s.denivele_pos).texte} ${fmtAltitude(s.denivele_pos).unite} D+ · ` +
-                            `${formaterDuree(s.duree_s)} · ${fmtVitesse(s.vitesse_moy).texte} ${fmtVitesse(s.vitesse_moy).unite}`;
+                            `${fmtDistance(chiffres.km, 1).complet} · ${fmtAltitude(chiffres.dplus).complet} D+ · ` +
+                            `${formaterDuree(chiffres.duree)} · ${fmtVitesse(chiffres.vitesse, 1).complet}`;
 
                         const ligne2 = document.createElement('div');
                         ligne2.className = 'sortie-detail';
@@ -21261,6 +21288,7 @@ def resume_activite_bosch(a):
         "watts": round(puissance, 1) if puissance else None,
         "cal": int(round(calories)) if calories else None,
         "rec": records,
+        "debut": debut,
         "debut_m": int(depart_m) if depart_m else None,
         "fin_m": int(depart_m + distance) if depart_m else None,
     }
