@@ -47,6 +47,10 @@ REGLAGES_PAR_DEFAUT = {
     "terrain_chemin": 1.3,
     "terrain_sentier": 1.6,
     "poids_denivele": 1.0,
+    # Effet de l'effort (puissance moyenne du cycliste) sur la transmission : 0 = ignoré, 1 = effet complet.
+    "poids_effort": 0.5,
+    # Puissance moyenne « habituelle » du cycliste (W) : en dessous l'effort allège l'usure, au-dessus il l'alourdit.
+    "puissance_reference": 100.0,
 }
 
 
@@ -379,11 +383,41 @@ def coef_terrain_sortie(trace_json, surfaces, terrain, reglages):
     return somme / total, True
 
 
-def facteur_usure(famille, distance_km, d_pos, d_neg, terrain, reglages, coef=None):
+EFFORT_MINI = 0.6
+EFFORT_MAXI = 1.6
+
+
+def puissance_moyenne_sortie(donnees_bosch):
+    """Puissance moyenne du cycliste (W) d'une sortie d'après les chiffres Bosch (texte JSON ou dict), sinon None."""
+    if isinstance(donnees_bosch, str):
+        try:
+            donnees_bosch = json.loads(donnees_bosch or "null")
+        except ValueError:
+            return None
+    if not isinstance(donnees_bosch, dict):
+        return None
+    valeur = donnees_bosch.get("puissance_moy")
+    if isinstance(valeur, (int, float)) and not isinstance(valeur, bool) and valeur > 0:
+        return float(valeur)
+    return None
+
+
+def efforts_des_sorties(puissances, reference=100.0):
+    """Effort relatif de chaque sortie : sa puissance moyenne comparée à une puissance de référence
+    (1,0 = effort habituel), entre 0,6 et 1,6. Sans chiffres Bosch pour la sortie, l'effort reste neutre."""
+    reference = float(reference) if reference and reference > 0 else 100.0
+    return [
+        max(EFFORT_MINI, min(EFFORT_MAXI, p / reference)) if p else 1.0
+        for p in puissances
+    ]
+
+
+def facteur_usure(famille, distance_km, d_pos, d_neg, terrain, reglages, coef=None, effort=1.0):
     """
     Combien de km d'usure équivaut 1 km de cette sortie pour cette famille.
     1,0 = usure normale ; 2,0 = deux fois plus vite.
     `coef` : coefficient de terrain déjà calculé (analyse du type de chemin).
+    `effort` : effort relatif de la sortie (1,0 = habituel) ; ne joue que sur la transmission.
     """
     coef_terrain = coef if coef is not None else reglages.get(f"terrain_{terrain}", 1.0)
     distance = max(float(distance_km or 0), 0.1)
@@ -391,7 +425,8 @@ def facteur_usure(famille, distance_km, d_pos, d_neg, terrain, reglages, coef=No
 
     if famille == "transmission":
         montee = (d_pos or 0) / distance
-        return coef_terrain * (1 + poids * montee / 100)
+        poids_effort = reglages.get("poids_effort", 0.5)
+        return coef_terrain * (1 + poids * montee / 100) * (1 + poids_effort * (effort - 1))
 
     if famille == "freins":
         descente = (d_neg or 0) / distance
@@ -1293,6 +1328,8 @@ class ReglagesRequest(BaseModel):
     terrain_chemin: float = Field(ge=0.5, le=5)
     terrain_sentier: float = Field(ge=0.5, le=5)
     poids_denivele: float = Field(ge=0, le=5)
+    poids_effort: float = Field(default=0.5, ge=0, le=2)
+    puissance_reference: float = Field(default=100.0, ge=30, le=300)
 
 
 MES_REGLAGES_CLES = {
@@ -5794,6 +5831,18 @@ def accueil():
                     <label for="regDenivele">Poids du dénivelé</label>
                     <input type="text" inputmode="decimal" id="regDenivele">
                 </div>
+
+                <div class="mr-ligne">
+                    <label for="regEffort">Poids de l'effort (transmission)</label>
+                    <input type="text" inputmode="decimal" id="regEffort">
+                </div>
+                <div class="mr-ligne">
+                    <label for="regPuissance">Puissance habituelle (W)</label>
+                    <input type="text" inputmode="decimal" id="regPuissance">
+                </div>
+                <p class="form-help" style="margin:0 0 8px;">
+                    Plus ta puissance moyenne mesurée par Bosch dépasse ta puissance habituelle, plus la chaîne, la cassette et le plateau comptent d'usure (et moins quand tu pédales doucement). Poids de l'effort : 0 = ignoré, 0,5 = effet modéré (par défaut), 1 = effet complet. Sans chiffres Bosch, la sortie compte normalement.
+                </p>
 
                 <button
                     class="btn-primary"
@@ -20316,7 +20365,9 @@ def accueil():
                 terrain_mixte: 'regMixte',
                 terrain_chemin: 'regChemin',
                 terrain_sentier: 'regSentier',
-                poids_denivele: 'regDenivele'
+                poids_denivele: 'regDenivele',
+                poids_effort: 'regEffort',
+                puissance_reference: 'regPuissance'
             };
 
 
@@ -24247,7 +24298,7 @@ def obtenir_etat(
 
         cursor.execute("""
             SELECT debut, distance_km, denivele_pos, denivele_neg, terrain,
-                   trace, surfaces
+                   trace, surfaces, donnees_bosch
             FROM sorties
             WHERE velo_id = ?
         """, (velo_id,))
@@ -24256,6 +24307,9 @@ def obtenir_etat(
             coef_terrain_sortie(s[5], s[6], s[4] or "mixte", reglages)[0]
             for s in sorties
         ]
+        efforts_sorties = efforts_des_sorties(
+            [puissance_moyenne_sortie(s[7]) for s in sorties], reglages.get("puissance_reference", 100.0)
+        )
 
         cursor.execute("""
             SELECT h.composant_id, MAX(h.date_remplacement)
@@ -24287,11 +24341,11 @@ def obtenir_etat(
             depuis = dernier_entretien.get(row["id"])
             surplus = 0.0
 
-            for s, coef_s in zip(sorties, coefs_sorties):
+            for s, coef_s, effort_s in zip(sorties, coefs_sorties, efforts_sorties):
                 if depuis is None or s[0][:10] >= depuis:
                     facteur = facteur_usure(
                         famille, s[1], s[2], s[3], s[4] or "mixte", reglages,
-                        coef_s
+                        coef_s, effort_s
                     )
                     surplus += float(s[1] or 0) * (facteur - 1)
 
