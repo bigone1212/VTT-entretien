@@ -2783,7 +2783,10 @@ def accueil():
             .menu-sortie-btn.bouton-favori.actif { color: var(--danger); }
             .menu-sortie-btn.bouton-favori.actif svg { fill: currentColor; }
             .history-item.sortie-item .titre-sortie,
-            .history-item.sortie-item .history-details > div:nth-child(2) { padding-right: 78px; }
+            .history-item.sortie-item .history-details > div:nth-child(2),
+            .history-item.sortie-item .history-details > div:nth-child(3) { padding-right: 24px; }
+            .history-item.sortie-item .titre-sortie { overflow-wrap: break-word; }
+            .history-item.sortie-item .history-details { min-width: 0; }
             .menu-sortie button.hist-periode-btn.actif { border-color: var(--danger); }
             .menu-sortie button.hist-periode-btn.actif .ico { stroke: var(--danger); fill: var(--danger); }
             .menu-sortie-btn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; }
@@ -3115,20 +3118,7 @@ def accueil():
             #histFermer .ico { width: 18px; height: 18px; }
 
             /* Sorties repliables : replié = titre, kilométrage et petit parcours sur fond de carte. */
-            .fleche-sortie {
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                width: 26px;
-                height: 26px;
-                padding: 0;
-                margin: -3px 4px -3px -4px;
-                vertical-align: middle;
-                border: none;
-                background: transparent;
-                color: var(--text-muted);
-                cursor: pointer;
-            }
+            .menu-sortie-btn.fleche-sortie { right: 114px; }
             .fleche-sortie::before {
                 content: '';
                 width: 8px;
@@ -14752,8 +14742,7 @@ def accueil():
                         // Flèche pour replier / déplier la sortie : replié, on ne voit que le titre, le kilométrage et le petit parcours.
                         const fleche = document.createElement('button');
                         fleche.type = 'button';
-                        fleche.className = 'fleche-sortie';
-                        titre.prepend(fleche);
+                        fleche.className = 'menu-sortie-btn fleche-sortie';
                         const ligneKm = document.createElement('div');
                         ligneKm.className = 'ligne-km';
                         ligneKm.textContent = fmtDistance(s.distance_km).texte + ' ' + fmtDistance(s.distance_km).unite;
@@ -14982,6 +14971,7 @@ def accueil():
                             if (sortiesFavorisSeuls) chargerSorties(true);
                         });
 
+                        item.appendChild(fleche);
                         item.appendChild(boutonFavori);
                         item.appendChild(boutonPartage);
                         item.appendChild(kebab);
