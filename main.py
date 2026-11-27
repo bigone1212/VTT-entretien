@@ -14203,12 +14203,45 @@ def accueil():
                 return fmtDistance(km, km >= 100 ? 0 : 1).complet;
             }
 
-            // Records : le meilleur de chaque domaine parmi toutes les sorties enregistrées par Bosch.
+            // Records d'une sortie de Maillons (GPX importé, y compris celui d'une autre personne) : mêmes champs que ceux de Bosch.
+            const recordsSortieMemo = new Map();
+            function recordsDeSortieMaillons(s) {
+                const cle = String(s.id) + ':' + (s.trace ? s.trace.length : 0);
+                if (recordsSortieMemo.has(cle)) return recordsSortieMemo.get(cle);
+                const b = s.donnees_bosch && typeof s.donnees_bosch === 'object' ? s.donnees_bosch : null;
+                const rec = {};
+                const vmax = (typeof s.vitesse_max_capteur === 'number' && s.vitesse_max_capteur > 0) ? s.vitesse_max_capteur : vitesseMaxSortie(s.trace);
+                if (vmax > 0) rec.vmax = vmax;
+                if (b && b.puissance_max > 0) rec.pmax = b.puissance_max;
+                const sauts = b && b.sauts ? b.sauts : {};
+                [['jumps', 'saut'], ['wheelies', 'wheelie'], ['manuals', 'manual'], ['stoppies', 'stoppie']].forEach(c => {
+                    const x = sauts[c[0]];
+                    if (!x || !(x.nombre > 0)) return;
+                    rec[c[1] + '_nb'] = x.nombre;
+                    if (x.longueur_m > 0) rec[c[1] + '_long_m'] = x.longueur_m;
+                    if (c[1] === 'saut' && x.hauteur_m > 0) rec.saut_haut_m = x.hauteur_m;
+                });
+                const element = {
+                    jour: jourLocalSortie(s.debut),
+                    km: Number(s.distance_km || 0),
+                    dplus: Number(s.denivele_pos || 0),
+                    duree: Number(s.duree_s || 0),
+                    rec: rec,
+                    maillons: true,
+                    boschImportee: !!b
+                };
+                recordsSortieMemo.set(cle, element);
+                return element;
+            }
+
+            // Records : le meilleur de chaque domaine, avec toutes les sorties enregistrées par Bosch ET toutes celles de Maillons (GPX d'autres personnes compris).
             function afficherRecordsSorties() {
                 const boite = document.getElementById('recordsSorties');
                 const corps = document.getElementById('recordsCorps');
                 if (!boite || !corps) return;
-                const items = bilanBosch && bilanBosch.velo === veloActifId ? bilanBosch.items : [];
+                const deBosch = bilanBosch && bilanBosch.velo === veloActifId ? bilanBosch.items : [];
+                const deMaillons = (Array.isArray(bilanSorties) ? bilanSorties : []).map(recordsDeSortieMaillons);
+                const items = deBosch.concat(deMaillons);
                 if (!items.length) { boite.style.display = 'none'; return; }
                 const meilleur = (valeur) => {
                     let gagnant = null;
@@ -14253,11 +14286,13 @@ def accueil():
                     grille.appendChild(t);
                 });
                 corps.appendChild(grille);
-                const sauts = items.reduce((somme, e) => somme + rec(e, 'saut_nb'), 0);
+                // Une sortie Bosch déjà importée dans Maillons n'est comptée qu'une fois dans le total.
+                const nombre = deBosch.length + deMaillons.filter(e => !e.boschImportee).length;
+                const sauts = items.reduce((somme, e) => somme + (e.maillons && e.boschImportee ? 0 : rec(e, 'saut_nb')), 0);
                 const note = document.createElement('p');
                 note.className = 'bilan-note';
                 note.style.marginTop = '0';
-                note.textContent = 'Records sur ' + items.length + ' sorties enregistrées par Bosch' + (sauts > 0 ? ' · ' + sauts + ' sauts détectés au total' : '') + '.';
+                note.textContent = 'Records sur ' + nombre + (nombre > 1 ? ' sorties' : ' sortie') + ' (Bosch + sorties importées dans Maillons, GPX compris)' + (sauts > 0 ? ' · ' + sauts + ' sauts détectés au total' : '') + '.';
                 corps.appendChild(note);
                 boite.style.display = '';
                 const premier = liste[0];
@@ -14292,11 +14327,11 @@ def accueil():
                 const corps = document.getElementById('bilanCorps');
                 if (!boite || !corps) return;
                 const liste = Array.isArray(sorties) ? sorties : [];
+                bilanSorties = liste;
                 // Si le vélo est relié à Bosch, le bilan vient de toutes les sorties enregistrées chez Bosch (pas seulement de celles importées).
                 const depuisBosch = !!(bilanBosch && bilanBosch.velo === veloActifId && bilanBosch.items.length);
                 if (!liste.length && !depuisBosch) { boite.style.display = 'none'; return; }
                 boite.style.display = '';
-                bilanSorties = liste;
                 const type = bilanPeriode;
                 const elements = depuisBosch ? bilanBosch.items : bilanElementsMaillons(liste);
                 const par = bilanAgreger(elements, type);
@@ -14506,6 +14541,7 @@ def accueil():
                     }
                     preparerFiltresSorties(sorties);
                     afficherBilanSorties(sorties);
+                    afficherRecordsSorties();
                     chargerBilanBosch();
                     const sortiesAffichees = filtrerSorties(sorties);
                     liste.innerHTML = '';
