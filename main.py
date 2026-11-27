@@ -14128,38 +14128,28 @@ def accueil():
                 });
             }
 
-            // Compteur total du vélo (en mètres) à une date, par interpolation entre deux relevés. Vide si la date sort des relevés.
-            function bilanCompteurAu(releves, jourIso, finIncluse) {
-                if (!releves.length) return null;
-                const t = jour => new Date(jour + 'T12:00:00').getTime();
-                const cible = t(jourIso);
-                const premier = releves[0], dernier = releves[releves.length - 1];
-                if (cible < t(premier.jour)) return null;
-                if (cible >= t(dernier.jour)) return finIncluse ? dernier.m : null;
-                for (let i = 1; i < releves.length; i++) {
-                    const a = releves[i - 1], b = releves[i];
-                    if (cible <= t(b.jour)) {
-                        const part = (cible - t(a.jour)) / Math.max(1, t(b.jour) - t(a.jour));
-                        return a.m + part * (b.m - a.m);
-                    }
-                }
-                return null;
-            }
-
             function bilanJourIso(d) {
                 return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
             }
 
-            // Kilomètres d'une période d'après le compteur total (sorties non enregistrées comprises). Vide si les relevés ne couvrent pas la période.
-            function bilanKmCompteur(periode) {
-                if (!bilanBosch || !bilanBosch.releves || bilanBosch.releves.length < 2) return null;
-                const avant = new Date(periode.debut.getFullYear(), periode.debut.getMonth(), periode.debut.getDate() - 1, 12);
-                const debutM = bilanCompteurAu(bilanBosch.releves, bilanJourIso(avant), false);
+            // Kilomètres d'une période d'après le compteur total : compteur à la fin de la dernière sortie de la période,
+            // moins compteur à la fin de la dernière sortie d'avant. Les sorties non enregistrées sont donc comptées aussi.
+            function bilanKmCompteur(periode, elements, compteurActuelM) {
+                const debutIso = bilanJourIso(periode.debut);
+                const finIso = bilanJourIso(periode.fin);
                 const aujourdhui = bilanJourIso(new Date());
-                const enCours = bilanJourIso(periode.debut) <= aujourdhui && bilanJourIso(periode.fin) >= aujourdhui;
-                const finM = bilanCompteurAu(bilanBosch.releves, bilanJourIso(enCours ? new Date() : periode.fin), enCours);
-                if (debutM === null || finM === null || finM < debutM) return null;
-                return (finM - debutM) / 1000;
+                let fin = 0, avant = 0, premierDepart = 0;
+                elements.forEach(e => {
+                    if (!e.jour || !(e.fin_m > 0)) return;
+                    if (e.jour < debutIso) avant = Math.max(avant, e.fin_m);
+                    if (e.jour <= finIso) fin = Math.max(fin, e.fin_m);
+                    if (e.jour >= debutIso && e.jour <= finIso && e.debut_m > 0) premierDepart = premierDepart ? Math.min(premierDepart, e.debut_m) : e.debut_m;
+                });
+                // Période en cours : le compteur actuel du vélo compte aussi (sortie pas encore envoyée à Bosch).
+                if (debutIso <= aujourdhui && finIso >= aujourdhui && compteurActuelM > fin) fin = compteurActuelM;
+                const depart = avant || premierDepart;
+                if (!fin || !depart || fin < depart) return null;
+                return (fin - depart) / 1000;
             }
 
             function bilanAgreger(elements, type) {
@@ -14316,7 +14306,7 @@ def accueil():
                 const donnees = bilanListePeriodes(type, premiere).map(p => Object.assign({}, p, par[p.cle] || vide));
                 if (depuisBosch) {
                     donnees.forEach(p => {
-                        const kmCompteur = bilanKmCompteur(p);
+                        const kmCompteur = bilanKmCompteur(p, elements, bilanBosch.compteurM);
                         if (kmCompteur !== null && kmCompteur > p.km) {
                             p.kmNonEnregistres = kmCompteur - p.km;
                             p.km = kmCompteur;
@@ -20971,6 +20961,7 @@ def resume_activite_bosch(a):
             if angle:
                 records[cle + "_angle"] = round(angle, 1)
     gain = nombre((a.get("elevation") or {}).get("gain"))
+    depart_m = nombre(a.get("startOdometer"))
     duree = nombre(a.get("durationWithoutStops"))
     calories = nombre(a.get("caloriesBurned"))
     return {
@@ -20982,6 +20973,8 @@ def resume_activite_bosch(a):
         "watts": round(puissance, 1) if puissance else None,
         "cal": int(round(calories)) if calories else None,
         "rec": records,
+        "debut_m": int(depart_m) if depart_m else None,
+        "fin_m": int(depart_m + distance) if depart_m else None,
     }
 
 

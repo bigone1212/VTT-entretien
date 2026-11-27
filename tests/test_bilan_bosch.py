@@ -52,6 +52,8 @@ ACTIVITES = [
 def test_resume_activite_jour_local_et_unites():
     r = main.resume_activite_bosch(ACTIVITES[0])
     assert r["jour"] == "2026-11-21"  # 23h30 UTC = 00h30 à Paris
+    assert r["debut_m"] is None and r["fin_m"] is None
+    assert main.resume_activite_bosch({**ACTIVITES[0], "startOdometer": 3090700, "distance": 6200})["fin_m"] == 3096900
     assert r["km"] == 25.5 and r["dplus"] == 640 and r["duree"] == 5400 and r["watts"] == 120.4 and r["cal"] == 800
     r = main.resume_activite_bosch(ACTIVITES[2])
     assert r["jour"] == "2026-03-02" and r["watts"] is None and r["cal"] is None and r["dplus"] == 0
