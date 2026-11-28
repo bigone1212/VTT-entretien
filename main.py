@@ -626,6 +626,148 @@ def facteur_usure(famille, distance_km, d_pos, d_neg, terrain, reglages, coef=No
     return coef_terrain * pluie
 
 
+def preparer_sorties_usure(sorties, reglages):
+    """Ce qui se calcule une seule fois par sortie. Colonnes attendues : debut, distance_km, denivele_pos,
+    denivele_neg, terrain, trace, surfaces, donnees_bosch, pluie_mm, temperature_c."""
+    puissances = [puissance_moyenne_sortie(s[7]) for s in sorties]
+    efforts = efforts_des_sorties(
+        puissances,
+        puissance_habituelle(puissances, [s[1] for s in sorties], reglages.get("puissance_reference"))
+    )
+    return [
+        (s, parts_terrain_sortie(s[5], s[6], s[4] or "mixte"), effort,
+         cadence_moyenne_sortie(s[7]), sauts_pour_10_km(s[7], s[1]))
+        for s, effort in zip(sorties, efforts)
+    ]
+
+
+def surplus_usure(preparees, famille, reglages, charge, depuis=None, jusque=None):
+    """Km d'usure en plus (ou en moins) des km réels, pour les sorties faites entre deux dates (AAAA-MM-JJ)."""
+    surplus = 0.0
+    for s, (parts, analyse), effort, cadence, chocs in preparees:
+        if depuis is not None and s[0][:10] < depuis:
+            continue
+        if jusque is not None and s[0][:10] >= jusque:
+            continue
+        coef = coef_terrain_famille(famille, parts, analyse, s[4] or "mixte", reglages)
+        facteur = facteur_usure(
+            famille, s[1], s[2], s[3], s[4] or "mixte", reglages,
+            coef, effort, s[8], cadence, s[9], chocs, charge
+        )
+        surplus += float(s[1] or 0) * (facteur - 1)
+    return surplus
+
+
+# ------------------------------------------------------------
+# Statistiques d'usure : ce que les pièces ont vraiment tenu
+# ------------------------------------------------------------
+STATS_MINI_REMPLACEMENTS = 3    # en dessous, aucun conseil
+STATS_ECART_MINI = 0.10         # écart avec la durée prévue à partir duquel on conseille de changer
+STATS_KM_MINI = 100             # en dessous : double saisie ou erreur, pas une vraie durée de pièce
+
+LIBELLES_SORTES = {
+    "chaine": "Chaîne", "cassette": "Cassette", "plateau": "Plateau", "galets": "Galets de dérailleur",
+    "courroie": "Courroie", "plaquettes_av": "Plaquettes avant", "plaquettes_ar": "Plaquettes arrière",
+    "disque_av": "Disque avant", "disque_ar": "Disque arrière", "pneu_av": "Pneu avant", "pneu_ar": "Pneu arrière",
+    "patins": "Patins de frein",
+}
+LIBELLES_TYPES_STATS = {
+    "vtt_electrique": "VTT électrique", "vtt": "VTT", "enduro": "Enduro", "descente": "Descente",
+    "gravel": "Gravel", "gravel_electrique": "Gravel électrique", "route": "Route",
+    "route_electrique": "Route électrique",
+}
+
+
+def sorte_de_piece(nom):
+    """Sorte d'une pièce d'après son nom, pour regrouper les vélos entre eux (None = pas dans les statistiques)."""
+    nom = (nom or "").lower()
+    cote = "_av" if "avant" in nom else "_ar" if "arrière" in nom or "arriere" in nom else ""
+    if "lubrification" in nom or "nettoyage" in nom or "liquide" in nom:
+        return None
+    if "galet" in nom:
+        return "galets"
+    for mot, sorte in (("cassette", "cassette"), ("plateau", "plateau"), ("courroie", "courroie"), ("patins", "patins")):
+        if mot in nom:
+            return sorte
+    if "chaîne" in nom or "chaine" in nom:
+        return "chaine"
+    for mot, sorte in (("plaquette", "plaquettes"), ("disque", "disque"), ("pneu", "pneu")):
+        if mot in nom:
+            return sorte + cote if cote else None
+    return None
+
+
+def statistiques_usure(cursor):
+    """Regroupe, par sorte de pièce et type de vélo, les km d'usure tenus par les pièces remplacées
+    (même unité que les durées prévues), chez les personnes qui ont donné leur accord."""
+    cursor.execute("""
+        SELECT v.id, v.type, v.personne_id, p.poids_kg, p.poids_sac_kg
+        FROM velos v JOIN personnes p ON p.id = v.personne_id
+        WHERE v.actif = 1 AND p.partage_stats = 1
+    """)
+    groupes = {}
+    for velo in cursor.fetchall():
+        # « electrique » : ancien nom du type VTT électrique (premier vélo).
+        velo_id, type_velo = velo[0], "vtt_electrique" if velo[1] == "electrique" else velo[1] or ""
+        reglages = lire_reglages(cursor, velo[2])
+        cursor.execute("""
+            SELECT debut, distance_km, denivele_pos, denivele_neg, terrain,
+                   trace, surfaces, donnees_bosch, pluie_mm, temperature_c
+            FROM sorties WHERE velo_id = ?
+        """, (velo_id,))
+        preparees = preparer_sorties_usure(cursor.fetchall(), reglages)
+        cursor.execute(
+            "SELECT id, nom, seuil_alerte, coef_usure FROM composants WHERE velo_id = ? AND seuil_alerte > 0 "
+            "AND categorie = 'piece' AND COALESCE(verification, 0) = 0", (velo_id,)
+        )
+        for composant in cursor.fetchall():
+            sorte = sorte_de_piece(composant[1])
+            if sorte is None:
+                continue
+            groupe = groupes.setdefault((sorte, type_velo), {"durees": [], "pieces": []})
+            groupe["pieces"].append((composant[0], composant[2]))
+            cursor.execute(
+                "SELECT date_remplacement, km_intervention FROM historique WHERE composant_id = ? AND velo_id = ? "
+                "AND km_intervention IS NOT NULL ORDER BY km_intervention, date_remplacement", (composant[0], velo_id)
+            )
+            km_pose, date_pose = 0, None
+            for date_changement, km_changement in cursor.fetchall():
+                jour = str(date_changement or "")[:10]
+                km = km_changement - km_pose
+                if km >= STATS_KM_MINI and jour:
+                    surplus = surplus_usure(
+                        preparees, famille_de(composant[1]), reglages, (velo[3], velo[4]), date_pose, jour
+                    )
+                    groupe["durees"].append(max(0.0, km + surplus) * (composant[3] or 1.0))
+                km_pose, date_pose = km_changement, jour or date_pose
+
+    resultat = []
+    for (sorte, type_velo), groupe in groupes.items():
+        durees = sorted(groupe["durees"])
+        if not durees:
+            continue
+        nombre = len(durees)
+        milieu = nombre // 2
+        # Valeur du milieu : une pièce cassée par accident ne fausse pas tout.
+        mediane = durees[milieu] if nombre % 2 else (durees[milieu - 1] + durees[milieu]) / 2
+        seuils = sorted(seuil for _, seuil in groupe["pieces"])
+        prevu = seuils[len(seuils) // 2]
+        conseil = int(round(mediane / 100.0) * 100)
+        propose = (
+            nombre >= STATS_MINI_REMPLACEMENTS and conseil > 0
+            and abs(conseil - prevu) >= STATS_ECART_MINI * prevu
+        )
+        resultat.append({
+            "sorte": sorte, "type_velo": type_velo,
+            "libelle": LIBELLES_SORTES[sorte] + " · " + LIBELLES_TYPES_STATS.get(type_velo, "Autre vélo"),
+            "nombre": nombre, "tenu": int(round(mediane)), "prevu": prevu,
+            "conseil": conseil if propose else None,
+            "composants": [identifiant for identifiant, _ in groupe["pieces"]],
+        })
+    resultat.sort(key=lambda g: (g["conseil"] is None, -g["nombre"], g["libelle"]))
+    return resultat
+
+
 PLUIE_ESSAIS_MAX = 3
 PLUIE_PAUSE_S = 1800
 pluie_pause_jusqua = 0.0
@@ -1245,6 +1387,8 @@ def init_db():
     # Poids de la personne et du sac (kg) : servent aux pressions conseillées de la suspension.
     ajouter_colonne(cursor, "personnes", "poids_kg", "REAL")
     ajouter_colonne(cursor, "personnes", "poids_sac_kg", "REAL")
+    # Accord de la personne pour que ses remplacements servent aux statistiques d'usure.
+    ajouter_colonne(cursor, "personnes", "partage_stats", "INTEGER DEFAULT 0")
 
     # Sessions : un jeton aléatoire remis à la connexion ; seule son empreinte est gardée.
     cursor.execute("""
@@ -5964,6 +6108,23 @@ def accueil():
             <p class="form-help compte-version" id="compteVersion"></p>
         </section>
 
+        <section class="mes-reglages" id="blocPartageStats">
+            <div class="mr-titre">
+                <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>Statistiques d’usure</span></strong>
+            </div>
+            <label style="display:flex; gap:10px; align-items:center; margin-bottom:14px;">
+                <input type="checkbox" id="casePartageStats" style="width:22px; height:22px; flex:none;">
+                <span>Mes remplacements de pièces servent à rendre le calcul d’usure plus juste</span>
+            </label>
+            <p class="form-help">Seuls des chiffres regroupés sont calculés : personne ne consulte ton historique.</p>
+            <p class="form-help" id="messagePartageStats" aria-live="polite"></p>
+            <div id="zoneStatsUsure" style="display:none;">
+                <p class="form-help">Visible par toi seul. Un conseil apparaît à partir de 3 remplacements d’une même sorte. Les kilomètres comptés sont les kilomètres d’usure (terrain, effort, météo compris).</p>
+                <div id="listeStatsUsure"></div>
+                <p class="form-help" id="messageStatsUsure" aria-live="polite"></p>
+            </div>
+        </section>
+
         <section class="mes-reglages" id="blocPersonnes" style="display:none;">
             <div class="mr-titre">
                 <strong class="titre-pastille"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.4"/><path d="M16 14.2c2.9 0 5 2.2 5 5.2"/></svg><span>Personnes</span></strong>
@@ -6652,7 +6813,7 @@ def accueil():
                     if (methode !== 'GET' && !authentification.some(p => url === p || url.startsWith(p + '?'))) {
                         derniereModifLocale = Date.now();
                     }
-                    const globales = ['/api/velos', '/api/sauvegarde', '/api/reglages', '/api/connexion', '/api/inscription', '/api/deconnexion', '/api/mot-de-passe'];
+                    const globales = ['/api/velos', '/api/sauvegarde', '/api/reglages', '/api/statistiques-usure', '/api/connexion', '/api/inscription', '/api/deconnexion', '/api/mot-de-passe'];
                     if (!globales.some(p => url === p || url.startsWith(p + '?'))) {
                         const separateur = url.includes('?') ? '&' : '?';
                         cible = url + separateur + 'velo_id=' + encodeURIComponent(veloActifId);
@@ -9850,6 +10011,83 @@ def accueil():
                 zone.hidden = !propre;
             }
 
+            // ---- Statistiques d'usure : accord de chacun, conseils réservés à l'administrateur ----
+            async function chargerStatsUsure() {
+                const liste = document.getElementById('listeStatsUsure');
+                try {
+                    const res = await fetch('/api/statistiques-usure', { headers: getHeaders() });
+                    if (!res.ok) throw new Error('refus');
+                    const data = await res.json();
+                    liste.textContent = '';
+                    if (!data.groupes.length) liste.textContent = 'Pas encore de remplacement à comparer.';
+                    data.groupes.forEach(g => liste.appendChild(ligneStatUsure(g, data.minimum)));
+                } catch (e) {
+                    liste.textContent = 'Statistiques indisponibles pour le moment.';
+                }
+            }
+
+            function ligneStatUsure(g, minimum) {
+                const ligne = document.createElement('div');
+                ligne.style.cssText = 'padding:10px 0; border-top:1px solid var(--field-line);';
+                const titre = document.createElement('strong');
+                titre.textContent = g.libelle;
+                const detail = document.createElement('div');
+                detail.className = 'form-help';
+                detail.style.margin = '6px 0 0';
+                const combien = g.nombre + (g.nombre > 1 ? ' remplacements' : ' remplacement');
+                detail.textContent = combien + ' : tenu ' + g.tenu + ' km, prévu ' + g.prevu + ' km.'
+                    + (g.nombre < minimum ? ' Pas encore assez pour conseiller.' : g.conseil ? '' : ' La durée prévue est juste.');
+                ligne.appendChild(titre);
+                ligne.appendChild(detail);
+                if (g.conseil) {
+                    const bouton = document.createElement('button');
+                    bouton.type = 'button';
+                    bouton.className = 'btn-primary';
+                    bouton.style.cssText = 'width:100%; margin-top:6px;';
+                    bouton.textContent = 'Appliquer : ' + g.prevu + ' → ' + g.conseil + ' km';
+                    bouton.addEventListener('click', () => appliquerStatUsure(g, bouton));
+                    ligne.appendChild(bouton);
+                }
+                return ligne;
+            }
+
+            async function appliquerStatUsure(g, bouton) {
+                const question = g.libelle + ' : passer la durée prévue à ' + g.conseil + ' km sur les vélos de ce type des personnes qui participent ?';
+                if (!window.confirm(question)) return;
+                const message = document.getElementById('messageStatsUsure');
+                bouton.disabled = true;
+                try {
+                    const res = await fetch('/api/statistiques-usure/appliquer', {
+                        method: 'POST', headers: getHeaders(),
+                        body: JSON.stringify({ sorte: g.sorte, type_velo: g.type_velo, valeur: g.conseil })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Enregistrement impossible.');
+                    message.textContent = 'Nouvelle durée enregistrée.';
+                    derniereModifLocale = Date.now();
+                    chargerEtat();
+                } catch (e) {
+                    message.textContent = e.message;
+                }
+                chargerStatsUsure();
+            }
+
+            document.getElementById('casePartageStats').addEventListener('change', async event => {
+                const coche = event.target;
+                const message = document.getElementById('messagePartageStats');
+                try {
+                    const res = await fetch('/api/moi/partage-stats', {
+                        method: 'PUT', headers: getHeaders(), body: JSON.stringify({ actif: coche.checked })
+                    });
+                    if (!res.ok) throw new Error('refus');
+                    message.textContent = coche.checked ? 'Merci, c’est enregistré.' : 'C’est enregistré.';
+                    if (document.getElementById('zoneStatsUsure').style.display !== 'none') chargerStatsUsure();
+                } catch (e) {
+                    coche.checked = !coche.checked;
+                    message.textContent = 'Enregistrement impossible.';
+                }
+            });
+
             async function chargerMoi() {
                 let admin = false;
                 try {
@@ -9861,6 +10099,7 @@ def accueil():
                     majBlocCompte(moi ? moi.nom : '');
                     majProfilCompte(moi);
                     if (moi) afficherNouveautes();
+                    document.getElementById('casePartageStats').checked = Boolean(moi && moi.partage_stats);
                 } catch (e) {
                     admin = false;
                     afficherBienvenue('');
@@ -9869,6 +10108,8 @@ def accueil():
                 }
                 const bloc = document.getElementById('blocPersonnes');
                 if (bloc) bloc.style.display = admin ? '' : 'none';
+                document.getElementById('zoneStatsUsure').style.display = admin ? '' : 'none';
+                if (admin) chargerStatsUsure();
                 if (admin) {
                     await chargerPersonnes();
                     await chargerInvitations();
@@ -22675,7 +22916,7 @@ def qui_suis_je(x_code_acces: Optional[str] = Header(default=None)):
     cursor = conn.cursor()
     try:
         cursor.execute(
-            "SELECT nom, est_admin, prenom, nom_famille, email, cree_le, photo, poids_kg, poids_sac_kg FROM personnes WHERE id = ?",
+            "SELECT nom, est_admin, prenom, nom_famille, email, cree_le, photo, poids_kg, poids_sac_kg, partage_stats FROM personnes WHERE id = ?",
             (personne_id,)
         )
         ligne = cursor.fetchone()
@@ -22686,6 +22927,7 @@ def qui_suis_je(x_code_acces: Optional[str] = Header(default=None)):
             "photo": ligne[6] or None,
             "poids_kg": ligne[7],
             "poids_sac_kg": POIDS_SAC_DEFAUT_KG if ligne[8] is None else ligne[8],
+            "partage_stats": bool(ligne[9]),
             "version": version_appli(),
         }
     finally:
@@ -22703,6 +22945,64 @@ def version_appli():
     """Date de version, suivie du début du numéro de commit quand Render le donne."""
     commit = (os.environ.get("RENDER_GIT_COMMIT") or "").strip()[:7]
     return VERSION_APPLI + (" (" + commit + ")" if commit else "")
+
+
+class PartageStatsRequest(BaseModel):
+    actif: bool
+
+
+class AppliquerStatRequest(BaseModel):
+    sorte: str = Field(max_length=30)
+    type_velo: str = Field(default="", max_length=40)
+    valeur: int = Field(gt=0, le=100000)
+
+
+@app.put("/api/moi/partage-stats")
+def choisir_partage_stats(data: PartageStatsRequest, x_code_acces: Optional[str] = Header(default=None)):
+    personne_id = verifier_auth(x_code_acces)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("UPDATE personnes SET partage_stats = ? WHERE id = ?", (1 if data.actif else 0, personne_id))
+        conn.commit()
+        return {"statut": "success"}
+    finally:
+        conn.close()
+
+
+@app.get("/api/statistiques-usure")
+def obtenir_statistiques_usure(x_code_acces: Optional[str] = Header(default=None)):
+    exiger_admin(x_code_acces)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        groupes = statistiques_usure(cursor)
+        for groupe in groupes:
+            del groupe["composants"]
+        return {"minimum": STATS_MINI_REMPLACEMENTS, "groupes": groupes}
+    finally:
+        conn.close()
+
+
+@app.post("/api/statistiques-usure/appliquer")
+def appliquer_statistique_usure(data: AppliquerStatRequest, x_code_acces: Optional[str] = Header(default=None)):
+    """Applique la durée conseillée à toutes les pièces du groupe (même sorte, même type de vélo)."""
+    exiger_admin(x_code_acces)
+    conn = db.connect()
+    cursor = conn.cursor()
+    try:
+        for groupe in statistiques_usure(cursor):
+            if groupe["sorte"] == data.sorte and groupe["type_velo"] == data.type_velo:
+                # La valeur affichée doit être encore celle du calcul : sinon on redemande de regarder.
+                if groupe["conseil"] != data.valeur:
+                    break
+                for composant_id in groupe["composants"]:
+                    cursor.execute("UPDATE composants SET seuil_alerte = ? WHERE id = ?", (data.valeur, composant_id))
+                conn.commit()
+                return {"statut": "success", "pieces": len(groupe["composants"])}
+        raise HTTPException(status_code=409, detail="Les chiffres ont changé : regarde de nouveau les statistiques.")
+    finally:
+        conn.close()
 
 
 class ProfilRequest(BaseModel):
@@ -24656,22 +24956,11 @@ def obtenir_etat(
             WHERE velo_id = ?
         """, (velo_id,))
         sorties = cursor.fetchall()
-        # Part de route / chemin / sentier de chaque sortie, pour adapter l'usure à chaque famille de pièces.
-        terrains_sorties = [
-            parts_terrain_sortie(s[5], s[6], s[4] or "mixte")
-            for s in sorties
-        ]
         cursor.execute("SELECT poids_kg, poids_sac_kg FROM personnes WHERE id = ?", (personne_id,))
         ligne_poids = cursor.fetchone()
         charge_cycliste = (ligne_poids[0], ligne_poids[1]) if ligne_poids else (None, None)
-        cadences_sorties = [cadence_moyenne_sortie(s[7]) for s in sorties]
-        chocs_sorties = [sauts_pour_10_km(s[7], s[1]) for s in sorties]
+        preparees = preparer_sorties_usure(sorties, reglages)
         lancer_lecture_pluie()
-        puissances_sorties = [puissance_moyenne_sortie(s[7]) for s in sorties]
-        efforts_sorties = efforts_des_sorties(
-            puissances_sorties,
-            puissance_habituelle(puissances_sorties, [s[1] for s in sorties], reglages.get("puissance_reference"))
-        )
 
         cursor.execute("""
             SELECT h.composant_id, MAX(h.date_remplacement)
@@ -24701,18 +24990,7 @@ def obtenir_etat(
 
             famille = famille_de(row["nom"])
             depuis = dernier_entretien.get(row["id"])
-            surplus = 0.0
-
-            for s, (parts_s, analyse_s), effort_s, cadence_s, chocs_s in zip(
-                sorties, terrains_sorties, efforts_sorties, cadences_sorties, chocs_sorties
-            ):
-                if depuis is None or s[0][:10] >= depuis:
-                    coef_s = coef_terrain_famille(famille, parts_s, analyse_s, s[4] or "mixte", reglages)
-                    facteur = facteur_usure(
-                        famille, s[1], s[2], s[3], s[4] or "mixte", reglages,
-                        coef_s, effort_s, s[8], cadence_s, s[9], chocs_s, charge_cycliste
-                    )
-                    surplus += float(s[1] or 0) * (facteur - 1)
+            surplus = surplus_usure(preparees, famille, reglages, charge_cycliste, depuis)
 
             coef_piece = row["coef_usure"] if row["coef_usure"] else 1.0
 
