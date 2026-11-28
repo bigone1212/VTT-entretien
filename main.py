@@ -9970,11 +9970,9 @@ def accueil():
             // ---- Fenêtre « Quoi de neuf » : affichée une fois par appareil à chaque nouvelle annonce ----
             // Pour annoncer une nouveauté : changer le numéro (id) et la liste des points.
             const NOUVEAUTES = {
-                id: '2026-11-27',
+                id: '2026-11-28',
                 points: [
-                    'L’usure de chaque pièce tient maintenant compte de vos sorties : terrain, dénivelé, effort, météo, poids et chocs.',
-                    'Onglet Sorties : bilans par semaine, mois et année, et vos records.',
-                    'La liste des sorties se déplie, avec un aperçu du parcours et du profil.'
+                    'Nouveau : dans Mon compte, cochez « Statistiques d’usure » pour que vos remplacements de pièces aident à rendre les alertes plus justes.'
                 ]
             };
 

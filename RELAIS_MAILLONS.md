@@ -1,9 +1,15 @@
+# Mise à jour — 28/11/2026 — annonce « Statistiques d'usure » (version test)
+
+- Demande de Math (« Ajoute ») : nouvelle annonce « Quoi de neuf » (`id` 2026-11-28), qui remplace la précédente.
+- Déployé sur la version test, puis « Deploie et envoie » de Math le 28/11/2026 : appliqué sur `main` (déploiement automatique).
+
+
 # Mise à jour — 28/11/2026 — statistiques d'usure (version test)
 
 - Choix de Math : pas de liste ni d'anonymat ; les remplacements servent à affiner les seuils. Option A : l'appli propose, l'administrateur valide.
 - `main.py` : colonne `personnes.partage_stats` (accord, décoché au départ) ; bloc « Statistiques d'usure » dans Mon compte ; conseil à partir de 3 remplacements et 10 % d'écart, par sorte de pièce et type de vélo, en km d'usure (médiane). Calcul du surplus d'usure mis en commun avec `/api/etat`.
 - Limites : les coefficients ne sont pas ajustés ; un vélo ajouté après « Appliquer » reçoit encore la durée d'origine.
-- `tests/test_stats_usure.py` ajouté. Déployé sur la version test, puis « Envoie » de Math le 28/11/2026 : appliqué sur `main` (déploiement automatique).
+- `tests/test_stats_usure.py` ajouté. Enregistré sur la branche test. Pas déployé, pas envoyé sur `main`.
 
 
 # Mise à jour — 28/11/2026 — usure des galets et puissance habituelle (version test)
