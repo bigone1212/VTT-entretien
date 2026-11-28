@@ -1,3 +1,9 @@
+# Mise à jour — 28/11/2026 — annonce « Statistiques d'usure » (version test)
+
+- Demande de Math (« Ajoute ») : nouvelle annonce « Quoi de neuf » (`id` 2026-11-28), qui remplace la précédente.
+- Enregistré sur la branche test. Pas déployé, pas envoyé sur `main`.
+
+
 # Mise à jour — 28/11/2026 — statistiques d'usure (version test)
 
 - Choix de Math : pas de liste ni d'anonymat ; les remplacements servent à affiner les seuils. Option A : l'appli propose, l'administrateur valide.
