@@ -323,6 +323,10 @@ def famille_de(nom):
     """Famille d'une pièce, déduite de son nom."""
     nom = (nom or "").lower()
 
+    # Les galets sont sur le brin peu tendu de la chaîne : ni l'effort ni les montées ne comptent pour eux.
+    if "galet" in nom:
+        return "galets"
+
     if "plaquette" in nom or "frein" in nom or "disque" in nom:
         return "freins"
 
@@ -336,7 +340,7 @@ def famille_de(nom):
         return "roues"
 
     if any(m in nom for m in (
-        "chaîne", "chaine", "cassette", "plateau", "galet",
+        "chaîne", "chaine", "cassette", "plateau",
         "dérailleur", "derailleur", "transmission"
     )):
         return "transmission"
@@ -396,6 +400,7 @@ PROFIL_PIECE = {
     "pneu": {"route": 0.65, "chemin": 0.85, "sentier": 0.85},
     "freins": {"route": 0.8, "chemin": 1.0, "sentier": 1.0},
     "transmission": {"route": 0.9, "chemin": 1.0, "sentier": 1.0},
+    "galets": {"route": 0.9, "chemin": 1.0, "sentier": 1.0},
     "suspension": {"route": 0.15, "chemin": 0.75, "sentier": 0.9},
     "roues": {"route": 0.7, "chemin": 1.0, "sentier": 1.2},
 }
@@ -407,7 +412,7 @@ REPARTITION_TERRAIN = {
     "sentier": {"sentier": 1.0},
 }
 # Effet de la pluie (3 mm ou plus = sortie bien mouillée) : plaquettes et chaîne souffrent le plus.
-POIDS_PLUIE = {"freins": 0.6, "transmission": 0.4, "pneu": 0.1, "suspension": 0.15, "roues": 0.25}
+POIDS_PLUIE = {"freins": 0.6, "transmission": 0.4, "galets": 0.4, "pneu": 0.1, "suspension": 0.15, "roues": 0.25}
 # Poids total roulé (cycliste + sac + vélo) comparé à une référence : plus de charge, plus de contraintes.
 POIDS_VELO_KG = 25.0
 POIDS_CYCLISTE_DEFAUT_KG = 85.0
@@ -566,6 +571,21 @@ def efforts_des_sorties(puissances, reference=100.0):
         max(EFFORT_MINI, min(EFFORT_MAXI, p / reference)) if p else 1.0
         for p in puissances
     ]
+
+
+def puissance_habituelle(puissances, distances, reglage):
+    """Puissance « habituelle » (W). Le réglage laissé à 100 veut dire : calculée d'après les sorties
+    (moyenne des puissances Bosch, selon la distance). Toute autre valeur est celle choisie par la personne."""
+    defaut = REGLAGES_PAR_DEFAUT["puissance_reference"]
+    if reglage and reglage != defaut:
+        return float(reglage)
+    total = 0.0
+    somme = 0.0
+    for puissance, distance in zip(puissances, distances):
+        if puissance and distance and distance > 0:
+            total += float(distance)
+            somme += puissance * float(distance)
+    return somme / total if total > 0 else defaut
 
 
 def facteur_usure(famille, distance_km, d_pos, d_neg, terrain, reglages, coef=None, effort=1.0, pluie_mm=None,
@@ -6125,7 +6145,7 @@ def accueil():
                     <input type="text" inputmode="decimal" id="regPuissance">
                 </div>
                 <p class="form-help" style="margin:0 0 8px;">
-                    Plus ta puissance moyenne mesurée par Bosch dépasse ta puissance habituelle, plus la chaîne, la cassette et le plateau comptent d'usure (et moins quand tu pédales doucement) ; une cadence basse (sous 60 tours par minute) les use aussi davantage. Poids de l'effort : 0 = ignoré, 0,5 = effet modéré (par défaut), 1 = effet complet. Sans chiffres Bosch, la sortie compte normalement.
+                    Plus ta puissance moyenne mesurée par Bosch dépasse ta puissance habituelle, plus la chaîne, la cassette et le plateau comptent d'usure (et moins quand tu pédales doucement) ; une cadence basse (sous 60 tours par minute) les use aussi davantage. Poids de l'effort : 0 = ignoré, 0,5 = effet modéré (par défaut), 1 = effet complet. Sans chiffres Bosch, la sortie compte normalement. Laisse la puissance habituelle à 100 pour que Maillons la calcule d'après tes sorties. Les galets ne dépendent ni de l'effort ni des montées.
                 </p>
                 <p class="form-help" style="margin:0 0 8px;">
                     L'usure est aussi adaptée à chaque pièce : les pneus et les plaquettes s'usent moins sur route, la fourche presque pas, la chaîne souffre des montées, de l'effort et d'une cadence basse, la pluie (lue automatiquement sur la météo de chaque sortie) use surtout les plaquettes et la chaîne, la chaleur use un peu plus les plaquettes, et ton poids total ainsi que les sauts pèsent sur les freins, la fourche, les roues et les pneus.
@@ -24647,8 +24667,10 @@ def obtenir_etat(
         cadences_sorties = [cadence_moyenne_sortie(s[7]) for s in sorties]
         chocs_sorties = [sauts_pour_10_km(s[7], s[1]) for s in sorties]
         lancer_lecture_pluie()
+        puissances_sorties = [puissance_moyenne_sortie(s[7]) for s in sorties]
         efforts_sorties = efforts_des_sorties(
-            [puissance_moyenne_sortie(s[7]) for s in sorties], reglages.get("puissance_reference", 100.0)
+            puissances_sorties,
+            puissance_habituelle(puissances_sorties, [s[1] for s in sorties], reglages.get("puissance_reference"))
         )
 
         cursor.execute("""

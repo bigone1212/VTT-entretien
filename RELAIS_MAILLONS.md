@@ -1,9 +1,17 @@
+# Mise à jour — 28/11/2026 — usure des galets et puissance habituelle (version test)
+
+- Math trouvait l'usure des galets trop forte, puis a demandé de corriger l'ensemble.
+- `main.py` : les galets forment leur propre famille (kilomètres, terrain, pluie ; plus d'effort, cadence ni montées). Puissance habituelle : réglage à 100 = moyenne des sorties du vélo ; autre valeur = respectée.
+- `tests/test_usure_effort.py` : deux cas ajoutés, valeur 101 là où le test voulait une référence fixe.
+- Déployé sur la version test, puis « Deploie et envoie » de Math le 28/11/2026 : appliqué sur `main` (déploiement automatique).
+
+
 # Mise à jour — 27/11/2026 — fenêtre « Quoi de neuf » (version test)
 
 - Demande de Math : informer des nouveautés par une fenêtre dans l'appli ; vraies notifications téléphone : plus tard, pour les choses importantes. Le partage anonyme attend.
 - `main.py` seul : fenêtre affichée une fois par appareil après connexion. Pour une nouvelle annonce : changer `id` et `points` dans `NOUVEAUTES`.
 - Vérifié en local (navigateur format téléphone) : affichage, fermeture, pas de retour, retour avec un nouvel `id`. Tests lancés fichier par fichier : réussis (lancés ensemble avant cette modification : 3 échecs, cause non cherchée).
-- Déployé sur la version test, puis « Envoie » de Math le 27/11/2026 : appliqué sur `main` (déploiement automatique).
+- Enregistré sur la branche test. Pas déployé, pas envoyé sur `main`.
 
 
 # Mise à jour — 15/11/2026 — survol 3D simplifié, bibliothèque fiable, caméra fluide, fusion sur main

@@ -88,12 +88,30 @@ def test_usure_de_la_chaine_depend_de_l_effort():
             return chaine[0]["km_usure"]
 
         corps = {"terrain_route": 1.0, "terrain_mixte": 1.15, "terrain_chemin": 1.3, "terrain_sentier": 1.6, "poids_denivele": 1.0}
-        c.post("/api/reglages", headers=ENTETE, json={**corps, "poids_effort": 0, "puissance_reference": 100})
+        c.post("/api/reglages", headers=ENTETE, json={**corps, "poids_effort": 0, "puissance_reference": 101})
         sans_effort = usure_chaine()
-        c.post("/api/reglages", headers=ENTETE, json={**corps, "poids_effort": 1.0, "puissance_reference": 100})
+        c.post("/api/reglages", headers=ENTETE, json={**corps, "poids_effort": 1.0, "puissance_reference": 101})
         avec_effort = usure_chaine()
         # Puissances 90, 90, 90 et 160 W contre 100 W : efforts 0,9 ×3 et 1,6 -> plus d'usure au total
         assert avec_effort > sans_effort
         # Une puissance habituelle plus haute allège l'usure
         c.post("/api/reglages", headers=ENTETE, json={**corps, "poids_effort": 1.0, "puissance_reference": 200})
         assert usure_chaine() < sans_effort
+
+
+def test_puissance_habituelle_calculee_d_apres_les_sorties():
+    # Réglage laissé à 100 : moyenne des sorties selon la distance (les sorties sans puissance sont ignorées)
+    assert main.puissance_habituelle([150, 170, None], [10, 30, 50], 100.0) == 165.0
+    # Valeur choisie par la personne : gardée telle quelle
+    assert main.puissance_habituelle([150, 170], [10, 30], 120.0) == 120.0
+    # Aucune sortie avec puissance : 100 W
+    assert main.puissance_habituelle([None], [20], 100.0) == 100.0
+
+
+def test_galets_sans_effort_ni_montees():
+    r = dict(main.REGLAGES_PAR_DEFAUT)
+    for nom in ("Galets de dérailleur", "Galets de dérailleur arrière"):
+        assert main.famille_de(nom) == "galets"
+    plat = main.facteur_usure("galets", 30, 0, 0, "mixte", r, 1.0, 1.0)
+    assert main.facteur_usure("galets", 30, 900, 900, "mixte", r, 1.0, 1.5, cadence=45) == plat
+    assert main.facteur_usure("galets", 30, 0, 0, "mixte", r, 1.0, 1.0, 5.0) > plat   # la pluie compte
